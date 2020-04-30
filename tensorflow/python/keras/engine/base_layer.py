@@ -1213,7 +1213,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           collected_losses.append(loss_tensor)
     return collected_losses
 
-  def add_loss(self, losses, inputs=None):
+  def add_loss(self, losses, **kwargs):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
@@ -1230,7 +1230,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     ```python
     class MyLayer(tf.keras.layers.Layer):
       def call(self, inputs):
-        self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
+        self.add_loss(tf.abs(tf.reduce_mean(inputs)))
         return inputs
     ```
 
@@ -1270,14 +1270,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
-      inputs: Ignored when executing eagerly. If anything other than None is
-        passed, it signals the losses are conditional on some of the layer's
-        inputs, and thus they should only be run where these inputs are
-        available. This is the case for activity regularization losses, for
-        instance. If `None` is passed, the losses are assumed
-        to be unconditional, and will apply across all dataflows of the layer
-        (e.g. weight regularization losses).
+      **kwargs: Additional keyword arguments for backward compatibility.
+        Accepted values:
+          inputs - Deprecated, will be automatically inferred.
     """
+    kwargs.pop('inputs', None)
+    if kwargs:
+      raise TypeError('Unknown keyword arguments: %s' % (kwargs.keys(),))
 
     def _tag_callable(loss):
       """Tags callable loss tensor as `_unconditional_loss`."""

@@ -289,6 +289,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (
           InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}));
     }
+    case kTfLiteBuiltinHardSwish:
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:

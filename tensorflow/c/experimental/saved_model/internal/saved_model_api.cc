@@ -66,7 +66,7 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
 void TF_DeleteSavedModel(TF_SavedModel* model) { delete model; }
 
 TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(TF_SavedModel* model,
-                                                      char* function_path,
+                                                      const char* function_path,
                                                       TF_Status* status) {
   tensorflow::ConcreteFunction* result = nullptr;
   tensorflow::Status get_function_status =
@@ -79,7 +79,7 @@ TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(TF_SavedModel* model,
 }
 
 TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelSignatureDefFunction(
-    TF_SavedModel* model, char* signature_def_key, TF_Status* status) {
+    TF_SavedModel* model, const char* signature_def_key, TF_Status* status) {
   tensorflow::ConcreteFunction* result = nullptr;
   tensorflow::Status get_function_status =
       model->saved_model->GetSignatureDefFunction(signature_def_key, &result);

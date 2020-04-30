@@ -390,4 +390,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     }
     return
   }
+
+  // CHECK-LABEL: dont_update_for_ref
+  func @dont_update_for_ref() -> () {
+    // CHECK: () -> tensor<4x!tf.f32ref>
+    %11 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<4>, shared_name = ""} : () -> tensor<4x!tf.f32ref>
+    // CHECK: (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    %12 = "tf.Identity"(%11) {device = ""} : (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    // CHECK: (tensor<4xf32>) -> tensor<4xf32>
+    %13 = "tf.Neg"(%12) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
+    return
+  }
 }

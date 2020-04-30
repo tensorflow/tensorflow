@@ -31,7 +31,6 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -565,33 +564,6 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
           num_gpus=required_gpus)
 
 
-class MultiworkerMirroredStrategyTest(test.TestCase, parameterized.TestCase):
-
-  @combinations.generate(
-      combinations.combine(
-          strategy=strategy_combinations.multi_worker_mirrored_two_workers,
-          mode=['eager']))
-  def testReduce(self, strategy):
-
-    def fn():
-
-      def replica_fn():
-        return array_ops.ones((), dtypes.int32)
-
-      per_replica_value = strategy.run(replica_fn)
-      return strategy.reduce(
-          reduce_util.ReduceOp.SUM, value=per_replica_value, axis=None)
-
-    # Run reduce under the strategy scope to explicitly enter
-    # strategy default_device scope.
-    with strategy.scope():
-      self.assertEqual(fn().numpy(), 2)
-
-    # Run reduce without a strategy scope to implicitly enter
-    # strategy default_device scope.
-    self.assertEqual(fn().numpy(), 2)
-
-
 class LocalCollectiveAllReduceStrategy(
     CollectiveAllReduceStrategyTestBase,
     strategy_test_lib.DistributionTestBase,
@@ -701,4 +673,4 @@ class LocalCollectiveAllReduceStrategy(
 
 
 if __name__ == '__main__':
-  combinations.main()
+  test.main()

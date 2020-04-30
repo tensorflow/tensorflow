@@ -913,6 +913,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SEGMENT_SUM:
       return kTfLiteOk;
   }
+  return kTfLiteError;
 }  // NOLINT[readability/fn_size]
 
 }  // namespace tflite

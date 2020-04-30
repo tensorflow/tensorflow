@@ -1017,10 +1017,10 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       inst->getName().print(os);
       // Print out attributes except for large elementsattributes (which should
       // rarely be the cause why the legalization didn't happen).
-      if (!inst->getAttrList().getAttrs().empty()) {
+      if (!inst->getMutableAttrDict().getAttrs().empty()) {
         os << " {";
         bool first = true;
-        for (auto& named_attr : inst->getAttrList().getDictionary()) {
+        for (auto& named_attr : inst->getMutableAttrDict().getDictionary()) {
           os << (!first ? ", " : "");
           first = false;
           named_attr.first.print(os);

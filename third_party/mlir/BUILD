@@ -3070,6 +3070,7 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
+        ":VectorToLoops",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],

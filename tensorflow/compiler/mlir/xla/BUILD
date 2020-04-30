@@ -14,6 +14,7 @@ package_group(
         "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
+        "//learning/brain/google/xla/mlir/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",

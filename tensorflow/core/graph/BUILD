@@ -155,14 +155,6 @@ filegroup(
 )
 
 filegroup(
-    name = "mkl_related_tests",
-    srcs = [
-        "mkl_layout_pass_test.cc",
-        "mkl_tfconversion_pass_test.cc",
-    ],
-)
-
-filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "algorithm.cc",

@@ -136,7 +136,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
         // Create the replacement operation.
         auto *replacement = builder.createOperation(state);
-        replacement->setAttrs(wrapped_op.getAttrList());
+        replacement->setAttrs(wrapped_op.getMutableAttrDict());
 
         for (auto ops_and_ret_vals :
              llvm::zip(wrapped_op.getResults(), replacement->getResults()))
@@ -208,7 +208,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
     // Create the replacement operation.
     auto *replacement = builder.createOperation(state);
-    replacement->setAttrs(op.getAttrList());
+    replacement->setAttrs(op.getMutableAttrDict());
 
     if (auto next_iteration =
             dyn_cast<tf_executor::NextIterationSourceOp>(op)) {

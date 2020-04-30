@@ -1526,7 +1526,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> result = dataset.map(lambda x: x + 1)
 
     >>> # Each element is a tuple containing two `tf.Tensor` objects.
-    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz)")]
+    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz")]
     >>> dataset = tf.data.Dataset.from_generator(
     ...     lambda: elements, (tf.int32, tf.string))
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
@@ -1578,7 +1578,7 @@ name=None))
 
     Note that irrespective of the context in which `map_func` is defined (eager
     vs. graph), tf.data traces the function and executes it as a graph. To use
-    Python code inside of the function you have two options:
+    Python code inside of the function you have a few options:
 
     1) Rely on AutoGraph to convert Python code into an equivalent graph
     computation. The downside of this approach is that AutoGraph can convert
@@ -2079,6 +2079,36 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
+
+  def cardinality(self):
+    """Returns the (statically known) cardinality of the dataset.
+
+    The returned cardinality may be infinite or unknown. the latter will be
+    returned if static analysis fails to determine the number of elements in
+    `dataset` (e.g. when the dataset source is a file).
+
+    Note: To provide an idiomatic representation for infinite and unknown
+    cardinality, this method returns a 64-bit floating point number. As a
+    consequence, the returned cardinality will be approximate for datasets
+    whose integer cardinality cannot be accurately represented by 64-bit
+    floating point number (i.e. cardinalities greater than 2^53).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42.0
+    >>> dataset = dataset.repeat()
+    >>> print(dataset.cardinality().numpy() == np.inf)
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> print(np.isnan(dataset.cardinality().numpy()))
+    True
+
+    Returns:
+      A scalar `tf.float64` `Tensor` representing the cardinality of the
+      dataset. If the cardinality is infinite or unknown, the operation returns
+      IEEE 754 representation of infinity and NaN respectively.
+    """
+    return ged_ops.dataset_cardinality_v2(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])

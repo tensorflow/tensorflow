@@ -394,17 +394,17 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "normalization_tpu_test",
-    srcs = ["normalization_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "normalization_distribution_test",
+    srcs = ["normalization_distribution_test.py"],
+    main = "normalization_distribution_test.py",
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":normalization",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 

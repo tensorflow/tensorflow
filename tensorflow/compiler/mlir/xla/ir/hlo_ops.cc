@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
@@ -810,9 +811,53 @@ OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    auto axis = op.dimension().getLimitedValue();
+    llvm::SmallVector<Value, 6> new_operands;
+    for (auto operand : op.getOperands()) {
+      auto ty = operand.getType().cast<ShapedType>();
+      if (ty.getDimSize(axis) != 0) {
+        new_operands.push_back(operand);
+      }
+    }
+
+    if (!new_operands.empty() && new_operands.size() < op.getNumOperands()) {
+      rewriter.replaceOpWithNewOp<ConcatenateOp>(op, op.getResult().getType(),
+                                                 new_operands, op.dimension());
+      return success();
+    }
+
+    return failure();
+  }
+};
+}  // namespace
+
+void ConcatenateOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<ConcatenateOperandRemoval>(context);
+}
+
 OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (getNumOperands() == 1) return getOperand(0);
-  return {};
+
+  ShapedType type = getResult().getType().cast<ShapedType>();
+  if (!type.hasStaticShape()) return {};
+
+  auto axis = dimension().getLimitedValue();
+  llvm::SmallVector<Value, 6> new_operands;
+  for (auto operand : getOperands()) {
+    auto ty = operand.getType().cast<ShapedType>();
+    if (ty.getDimSize(axis) != 0) {
+      return {};
+    }
+  }
+
+  return DenseElementsAttr::get(type, ArrayRef<Attribute>());
 }
 
 static LogicalResult Verify(ConcatenateOp op) {
@@ -1379,6 +1424,89 @@ void SliceOp::build(OpBuilder& builder, OperationState& result, Value operand,
                InferOutputTypes(&builder, operand, start_indices, limit_indices,
                                 strides),
                operand, start_indices, limit_indices, strides);
+}
+
+template <typename I, typename E>
+static void SliceElements(I values, ArrayRef<int64_t> sizes,
+                          ArrayRef<int64_t> starts, ArrayRef<int64_t> limits,
+                          ArrayRef<int64_t> strides,
+                          llvm::SmallVectorImpl<E>* out_values) {
+  assert(starts.size() == limits.size());
+  assert(starts.size() == strides.size());
+  if (starts.empty()) return;
+
+  int64_t start = starts.front();
+  int64_t limit = limits.front();
+  int64_t stride = strides.front();
+  if (starts.size() == 1) {
+    for (int i = start; i < limit; i += stride) {
+      out_values->push_back(*(values + i));
+    }
+    return;
+  }
+
+  for (; start < limit; start += stride) {
+    auto begin = values + start * sizes.front();
+    SliceElements<I, E>(begin, sizes.drop_front(), starts.drop_front(),
+                        limits.drop_front(), strides.drop_front(), out_values);
+  }
+}
+
+template <typename I, typename E>
+static Attribute FoldSlice(SliceOp* op, I values) {
+  auto start = llvm::to_vector<6>(op->start_indices().getValues<int64_t>());
+  auto limit = llvm::to_vector<6>(op->limit_indices().getValues<int64_t>());
+  auto stride = llvm::to_vector<6>(op->strides().getValues<int64_t>());
+
+  auto result_type = op->operand().getType().cast<ShapedType>();
+  if (!result_type.hasStaticShape()) return {};
+
+  auto shape = result_type.getShape();
+  int64_t count = result_type.getNumElements();
+  // Compute the striding for each dimension.
+  llvm::SmallVector<int64_t, 6> sizes;
+  sizes.reserve(shape.size());
+  for (auto v : shape) {
+    count = count / v;
+    sizes.push_back(count);
+  }
+
+  llvm::SmallVector<E, 6> out_values;
+  out_values.reserve(result_type.getNumElements());
+  SliceElements<I, E>(values, sizes, start, limit, stride, &out_values);
+
+  return DenseElementsAttr::get(op->getResult().getType().cast<ShapedType>(),
+                                out_values);
+}
+
+OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
+  // Check if the SliceOp is a NoOp operation.
+  auto operand_shape = getOperand().getType().cast<ShapedType>().getShape();
+  auto result_type = getResult().getType().cast<ShapedType>();
+  auto result_shape = result_type.getShape();
+
+  if (result_type.hasStaticShape() && (operand_shape == result_shape)) {
+    return getOperand();
+  }
+
+  if (operands.empty() || !operands.front()) return {};
+
+  // Evaluate for statically valued inputs.
+  DenseElementsAttr elements = operands.front().dyn_cast<DenseElementsAttr>();
+  if (!elements) return {};
+
+  auto etype = elements.getType().getElementType();
+  if (etype.isa<IntegerType>()) {
+    return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
+        this, elements.getIntValues().begin());
+  } else if (etype.isa<FloatType>()) {
+    return FoldSlice<
+        llvm::mapped_iterator<DenseElementsAttr::IntElementIterator,
+                              std::function<APFloat(const APInt&)>>,
+        APFloat>(this, elements.getFloatValues().begin());
+  }
+
+  return {};
 }
 
 // Returns output dimension size for slice result for the given arguments.

@@ -79,6 +79,8 @@ class AbstractContextInterface {
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
 
+  virtual void ClearCachesAndThreadExecutors() = 0;
+
  protected:
   virtual ~AbstractContextInterface() {}
 };

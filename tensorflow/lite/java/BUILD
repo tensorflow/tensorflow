@@ -349,6 +349,14 @@ filegroup(
 )
 
 filegroup(
+    name = "portable_gpu_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "libtensorflowlite_jni",
     srcs = select({
         "//conditions:default": [":libtensorflowlite_jni.so"],

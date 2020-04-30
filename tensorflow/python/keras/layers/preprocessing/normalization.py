@@ -101,7 +101,7 @@ class Normalization(CombinerPreprocessingLayer):
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),
-        dtype=dtypes.int32,
+        dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer)
 
     super(Normalization, self).build(input_shape)

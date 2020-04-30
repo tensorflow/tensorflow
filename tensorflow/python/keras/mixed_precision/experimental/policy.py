@@ -195,6 +195,10 @@ class Policy(object):
   Other arguments are not automatically casted for technical reasons, but this
   may change in a future minor release.
 
+  The casting only occurs in TensorFlow 2, but can be enabled if
+  `tf.compat.v1.disable_v2_behavior()` has been called with
+  `tf.compat.v1.keras.layers.enable_v2_dtype_behavior()`.
+
   A layer subclass can prevent its inputs from being autocasted by passing
   `autocast=False` to the layer constructor. For example:
 
@@ -547,7 +551,10 @@ def set_policy(policy):
   """
   global _global_policy
   if not base_layer_utils.v2_dtype_behavior_enabled():
-    raise ValueError('The global policy can only be set in TensorFlow 2')
+    raise ValueError('The global policy can only be set in TensorFlow 2 or if '
+                     'V2 dtype behavior has been set. To enable V2 dtype '
+                     'behavior, call '
+                     '"tf.compat.v1.keras.layers.enable_v2_dtype_behavior()"')
   if policy is not None and not isinstance(policy, Policy):
     policy = Policy(policy)
   is_mixed_policy = policy is not None and policy.should_cast_variables
