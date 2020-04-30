@@ -160,7 +160,7 @@ TF_LITE_MICRO_TEST(Abs) {
   tflite::testing::TestElementwiseFloat(
       tflite::BuiltinOperator_ABS,  // ABS operator
       {2, 2, 2},                    // Input shape
-      {0.01f, -0.01f, 10, -10},       // Input values
+      {0.01f, -0.01f, 10.0f, -10.0f},       // Input values
       {2, 2, 2},                    // Output shape
       {0.01f, 0.01f, 10.0f, 10.0f},         // Output values
       output_data);
@@ -172,7 +172,7 @@ TF_LITE_MICRO_TEST(Sin) {
   tflite::testing::TestElementwiseFloat(
       tflite::BuiltinOperator_SIN,    // SIN operator
       {2, 2, 2},                      // Input shape
-      {0, 3.1415926f, -3.1415926f, 1},  // Input values
+      {0.0f, 3.1415926f, -3.1415926f, 1.0f},  // Input values
       {2, 2, 2},                      // Output shape
       {0.0f, 0.0f, 0.0f, 0.84147f},             // Output values
       output_data);
