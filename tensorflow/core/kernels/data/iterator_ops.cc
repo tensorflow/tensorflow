@@ -166,8 +166,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
-                                                DatasetBase* dataset,
-                                                JobToken job_token) {
+                                                DatasetBase* dataset) {
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);
@@ -180,7 +179,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr;
   params.function_handle_cache = new_state->function_handle_cache.get();
-  params.job_token = job_token;
   params.resource_mgr = &new_state->resource_mgr;
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -532,9 +530,7 @@ Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   TF_RETURN_IF_ERROR(
       LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
-  JobToken empty_token;
-  return iterator_resource->SetIteratorFromDataset(ctx, dataset,
-                                                   /*job_token=*/empty_token);
+  return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
 
 void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
@@ -855,9 +851,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // factory function.
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
-    JobToken empty_token;
-    TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(
-        ctx, dataset, /*job_token=*/empty_token));
+    TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(ctx, dataset));
     (*iterator)->Ref();
     return Status::OK();
   }

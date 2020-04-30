@@ -1043,6 +1043,8 @@ REGISTER_OP("ExperimentalUniqueDataset")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("DataServiceDataset")
+    .Input("dataset_id: int64")
+    .Input("processing_mode: string")
     .Input("address: string")
     .Input("protocol: string")
     .Input("max_outstanding_requests: int64")
@@ -1060,19 +1062,5 @@ REGISTER_OP("RegisterDataset")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
     .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("CreateJob")
-    .Input("dataset_id: int64")
-    .Input("address: string")
-    .Input("protocol: string")
-    .Input("processing_mode: string")
-    .Output("job_token: variant")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("MakeDataServiceIterator")
-    .Input("dataset: variant")
-    .Input("job_token: variant")
-    .Input("iterator: resource")
-    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

@@ -38,6 +38,30 @@ namespace data {
 namespace {
 constexpr const char kProtocol[] = "grpc+local";
 
+TEST(DataService, ParseParallelEpochsProcessingMode) {
+  ProcessingMode mode;
+  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", &mode));
+  EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
+}
+
+TEST(DataService, ParseOneEpochProcessingMode) {
+  ProcessingMode mode;
+  TF_ASSERT_OK(ParseProcessingMode("one_epoch", &mode));
+  EXPECT_EQ(mode, ProcessingMode::ONE_EPOCH);
+}
+
+TEST(DataService, ParseInvalidProcessingMode) {
+  ProcessingMode mode;
+  Status s = ParseProcessingMode("invalid", &mode);
+  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+}
+
+TEST(DataService, ProcessingModeToString) {
+  EXPECT_EQ("parallel_epochs",
+            ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
+  EXPECT_EQ("one_epoch", ProcessingModeToString(ProcessingMode::ONE_EPOCH));
+}
+
 Status CheckWorkerOutput(const std::string& worker_address, int64 task_id,
                          std::vector<std::vector<Tensor>> expected_output) {
   DataServiceWorkerClient worker(worker_address, kProtocol);

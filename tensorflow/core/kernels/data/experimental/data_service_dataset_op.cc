@@ -43,6 +43,8 @@ namespace tensorflow {
 namespace data {
 
 /* static */ constexpr const char* const DataServiceDatasetOp::kDatasetType;
+/* static */ constexpr const char* const DataServiceDatasetOp::kDatasetId;
+/* static */ constexpr const char* const DataServiceDatasetOp::kProcessingMode;
 /* static */ constexpr const char* const DataServiceDatasetOp::kAddress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kProtocol;
 /* static */ constexpr const char* const
@@ -50,12 +52,15 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
+namespace {
 // Once we've spent `kRetryTimeoutMicros` in `GetNextInternal`, we will wait for
 // the current attempt to complete and perform no more retries.
 const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
+
+}  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
 //
@@ -64,11 +69,14 @@ const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const std::string& address,
+  Dataset(OpKernelContext* ctx, int64 dataset_id,
+          ProcessingMode processing_mode, const std::string& address,
           const std::string& protocol, int64 max_outstanding_requests,
           int64 task_refresh_interval_ms, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
+        dataset_id_(dataset_id),
+        processing_mode_(processing_mode),
         address_(address),
         protocol_(protocol),
         max_outstanding_requests_(max_outstanding_requests),
@@ -102,6 +110,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
+    Node* dataset_id;
+    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_, &dataset_id));
+
+    Node* processing_mode;
+    tstring processing_mode_str = ProcessingModeToString(processing_mode_);
+    TF_RETURN_IF_ERROR(b->AddScalar(processing_mode_str, &processing_mode));
+
     Node* address;
     TF_RETURN_IF_ERROR(b->AddScalar(address_, &address));
 
@@ -117,7 +132,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       &task_refresh_interval_hint_ms);
 
     TF_RETURN_IF_ERROR(
-        b->AddDataset(this, {address, protocol, max_outstanding_requests},
+        b->AddDataset(this,
+                      {dataset_id, processing_mode, address, protocol,
+                       max_outstanding_requests},
                       {std::make_pair(kTaskRefreshIntervalHintMs,
                                       task_refresh_interval_hint_ms)},
                       output));
@@ -132,6 +149,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     ~Iterator() override {
       mutex_lock l(mu_);
+      VLOG(1) << "Destroying data service dataset iterator for job id "
+              << job_id_;
       cancelled_ = true;
       cv_.notify_all();
       // Thread destructors will block until the threads finish, no need to wait
@@ -141,14 +160,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
-      if (ctx->job_token().is_empty()) {
-        return errors::FailedPrecondition(
-            "Expected a job token, but none found. To iterate over a dataset "
-            "containing a `distribute` transformation, call `create_job`, "
-            "which will return a job token that you should then use to iterate "
-            "over the dataset via `create_iterator(dataset, job_token).`");
-      }
-      job_id_ = ctx->job_token().job_id();
+      DataServiceMasterClient master(dataset()->address_, dataset()->protocol_);
+      TF_RETURN_IF_ERROR(master.CreateJob(
+          dataset()->dataset_id_, dataset()->processing_mode_, &job_id_));
+      VLOG(1) << "Created data service job with id " << job_id_;
       return Status::OK();
     }
 
@@ -175,6 +190,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       DCHECK(!results_.empty());
+      *end_of_sequence = false;
       out_tensors->swap(results_.front());
       results_.pop();
       cv_.notify_all();
@@ -287,6 +303,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         if (!task_ids.contains(task_thread->task_id)) {
+          VLOG(3) << "Marking removed task thread " << task_thread->task_id
+                  << " as finished";
           task_thread->end_of_sequence = true;
         }
         ++it;
@@ -315,6 +333,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           if (task_handler->end_of_sequence) {
+            VLOG(3) << "Task thread " << task_handler->task_id
+                    << " reached end_of_sequence";
             return;
           }
           outstanding_requests_--;
@@ -427,6 +447,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
   };
 
+  const int64 dataset_id_;
+  const ProcessingMode processing_mode_;
   const tstring address_;
   const tstring protocol_;
   const int64 max_outstanding_requests_;
@@ -448,6 +470,16 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
+  int64 dataset_id;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id));
+
+  tstring processing_mode_str;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
+  ProcessingMode processing_mode;
+  OP_REQUIRES_OK(ctx,
+                 ParseProcessingMode(processing_mode_str, &processing_mode));
+
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
   OP_REQUIRES(ctx, !address.empty(),
@@ -468,9 +500,10 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  *output = new Dataset(ctx, address, protocol, max_outstanding_requests,
-                        task_refresh_interval_hint_ms_, output_types_,
-                        output_shapes_);
+  *output =
+      new Dataset(ctx, dataset_id, processing_mode, address, protocol,
+                  max_outstanding_requests, task_refresh_interval_hint_ms_,
+                  output_types_, output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),
