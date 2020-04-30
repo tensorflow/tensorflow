@@ -50,3 +50,14 @@ cc_library(
         "//tensorflow/c:tf_status",
     ],
 )
+
+cc_library(
+    name = "tensor",
+    hdrs = [
+        "tensor.h",
+    ],
+    deps = [
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_tensor",
+    ],
+)
