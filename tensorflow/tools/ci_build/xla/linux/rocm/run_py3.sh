@@ -41,7 +41,7 @@ bazel test \
       --config=rocm \
       --config=xla \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --test_tag_filters=-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
       --jobs=${N_JOBS} \
       --local_test_jobs=${TF_GPU_COUNT} \
       --test_timeout 600,900,2400,7200 \
@@ -65,7 +65,7 @@ bazel test \
       --config=rocm \
       --config=xla \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --test_tag_filters=-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
       --jobs=${N_JOBS} \
       --local_test_jobs=${TF_GPU_COUNT} \
       --test_timeout 600,900,2400,7200 \

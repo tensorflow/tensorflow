@@ -124,7 +124,16 @@ BINARY_TEST_16BIT(Min, {
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow),
-                  { Run(AddEmptyBroadcastDimension(Pow), std::pow); })
+                  { 
+  EvaluateOp fn = [](float x, float y) { return std::pow(x, y); };
+  if (platform_ == "ROCM") {
+    fn = [](float x, float y) {
+      if (x == 1.0f || y==0.0f)
+        return 1.0f;
+      return std::pow(x, y);
+    };
+  }
+   Run(AddEmptyBroadcastDimension(Pow), fn); })
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_CPU(Atan2),

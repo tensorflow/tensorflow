@@ -320,10 +320,10 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
 // this *did* find a bug, namely that some backends were assuming sqrt(x) ==
 // pow(x, 0.5), but this is not true for x == -inf.
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(PowOneHalf, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_GPU_ROCM(PowOneHalf), {
   EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
   // TODO(b/123837116): Enable the test for all values after fixing the bug.
-  if (platform_ != "Host" && platform_ != "CUDA") {
+  if (platform_ != "Host" && platform_ != "CUDA" && platform_ != "ROCM") {
     fn = +[](float x) {
       if (x == -std::numeric_limits<float>::infinity()) {
         return std::nanf("");

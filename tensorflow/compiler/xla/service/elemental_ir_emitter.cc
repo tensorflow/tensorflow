@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved8.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -527,9 +527,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto a = EmitExtractReal(operand_value);
       auto b = EmitExtractImag(operand_value);
       TF_ASSIGN_OR_RETURN(llvm::Value * angle, EmitAtan2(component_type, b, a));
-      TF_ASSIGN_OR_RETURN(llvm::Value * abs,
-                          EmitComplexAbs(component_type, operand_value));
-      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
+      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs,
+                          EmitLogComplexAbs(component_type, operand_value));
       return EmitComposeComplex(op, log_abs, angle);
     }
     case HloOpcode::kLog1p: {
@@ -765,6 +764,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
 
         real = Select(real_is_nan, nan, real);
         imag = Select(imag_is_zero, zero, imag);
+
+        // [ROCm unit test investigation]
+        // In addition to above rules, we also want:
+        // (0, NaN) -> (0, NaN)
+        // (0, inf) -> (0, NaN)
+        llvm::Value* zero_nan = And(Or(FCmpUNO(b, b), FCmpOEQ(b, inf)), FCmpOEQ(a, zero));
+        real = Select(zero_nan, zero, real);
       }
 
       return EmitComposeComplex(op, real, imag);
@@ -922,6 +928,64 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
   return Select(FCmpUNO(result, result), min, result);
+}
+
+StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+ElementalIrEmitter::EmitLogComplexAbsHelper(PrimitiveType prim_type,
+                                         llvm::Value* operand_value) {
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
+  llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
+  llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
+  llvm::Value* max = EmitFloatMax(abs_real, abs_imag);
+  llvm::Value* min = EmitFloatMin(abs_real, abs_imag);
+  llvm::Value* div = FDiv(min, max);
+  llvm::Value* div_sq = FMul(div, div);
+  return std::make_tuple(min, max, div_sq);
+}
+
+// This calculates log(sqrt(a^2+b^2)) = log(|a|) + 0.5*log(1+(b/a)^2)
+//  (assuming |a|>=|b|), to make it possible to avoid overflow when
+// |a| and/or |b| are just below FLT_MAX.
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitLogComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* div_sq;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, div_sq),
+      EmitLogComplexAbsHelper(prim_type, operand_value));
+  llvm::Value* half = llvm::ConstantFP::get(max->getType(), 0.5);
+  TF_ASSIGN_OR_RETURN(llvm::Value * log_div, EmitLog1p(prim_type, div_sq));
+  TF_ASSIGN_OR_RETURN(llvm::Value * log_max, EmitLog(prim_type, max));
+  llvm::Value* result = FAdd(log_max, FMul(half, log_div));
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    // To match STL, we need to return:
+    //  -inf for (0, 0)
+    //  inf for (nan, +/-inf)
+    //  inf for (+/-inf, nan)
+    //  nan for (nan, nan)
+    // Basic calculation returns nan for all these.
+    llvm::Type* type = static_cast<llvm::StructType*>(operand_value->getType())
+                         ->getElementType(0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* real = EmitExtractReal(operand_value);
+    llvm::Value* imag = EmitExtractImag(operand_value);
+    llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
+    llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
+    llvm::Value* isinf = Or(FCmpOEQ(abs_real,inf),FCmpOEQ(abs_imag,inf));
+    llvm::Value* is00 = And(FCmpOEQ(real,zero), FCmpOEQ(imag,zero));
+    return Select(is00, neg_inf, Select(isinf, inf, result));
+  }
+  else {
+    return result;
+  }
 }
 
 // Calculates ComplexAbs in the same way, except using:

@@ -83,7 +83,7 @@ ENTRY %TestComputation {
   ROOT %custom-call.1 = (f16[128,64,112,112]{1,3,2,0}, u8[0]{0}) custom-call(%param_0, %param_1), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=bf01_01oi->bf01, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
 })";
 
-  std::string expected_mlir_pattern =
+  std::string expected_mlir_pattern1 =
       R"(
 CHECK: func @Conv(%arg0: memref<128x112x112x64xf16>, %arg1: memref<128x224x224x4xf16>, %arg2: memref<64x7x7x4xf16>) {
 CHECK-NEXT:   affine.for %arg3 = 0 to 128 {
@@ -107,10 +107,20 @@ CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg
 CHECK-NEXT:                       %2 = fpext %1 : f16 to f32
 CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
 CHECK-NEXT:                       %4 = fpext %3 : f16 to f32
-CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
+)";
+   std::string expected_mlir_pattern21 = 
+R"(CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                       %6 = mulf %2, %4 : f32
 CHECK-NEXT:                       %7 = addf %5, %6 : f32
-CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
+)";
+   std::string expected_mlir_pattern22 = 
+R"(CHECK-NEXT:                       %5 = mulf %2, %4 : f32
+CHECK-NEXT:                       %6 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
+CHECK-NEXT:                       %7 = addf %6, %5 : f32
+)";
+
+   std::string expected_mlir_pattern3 = 
+R"(CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                     }
 CHECK-NEXT:                   }
 CHECK-NEXT:                 }
@@ -132,9 +142,11 @@ CHECK-NEXT:   return
 CHECK-NEXT: }
 )";
 
+  std::string gen_ir = CompileHloConvAndGetMlir(hlo_text);
+  std::string pattern_v1 = expected_mlir_pattern1 + expected_mlir_pattern21 + expected_mlir_pattern3;
+  std::string pattern_v2 = expected_mlir_pattern1 + expected_mlir_pattern22 + expected_mlir_pattern3;
   EXPECT_TRUE(
-      RunFileCheck(CompileHloConvAndGetMlir(hlo_text), expected_mlir_pattern)
-          .ValueOrDie());
+     (RunFileCheck(gen_ir, pattern_v1).ValueOrDie() || RunFileCheck(gen_ir, pattern_v2).ValueOrDie()));
 }
 
 }  // namespace
