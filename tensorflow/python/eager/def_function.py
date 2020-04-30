@@ -41,6 +41,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
@@ -305,8 +306,11 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 RUN_FUNCTIONS_EAGERLY = False
 
 
+@deprecation.deprecated(
+    None,
+    "Use tf.config.run_functions_eagerly instead of the experimental version.")
 @tf_export("config.experimental_run_functions_eagerly")
-def run_functions_eagerly(run_eagerly):
+def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.
 
   Calling `tf.config.experimental_run_functions_eagerly(True)` will make all
@@ -345,6 +349,60 @@ def run_functions_eagerly(run_eagerly):
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
 
+  Note: This flag has no effect on functions passed into tf.data transformations
+  as arguments. tf.data functions are never executed eagerly and are always
+  executed as a compiled Tensorflow Graph.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+  """
+  return run_functions_eagerly(run_eagerly)
+
+
+@tf_export("config.run_functions_eagerly")
+def run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  Calling `tf.config.run_functions_eagerly(True)` will make all
+  invocations of `tf.function` run eagerly instead of running as a traced graph
+  function.
+
+  This can be useful for debugging or profiling. For example, let's say you
+  implemented a simple iterative sqrt function, and you want to collect the
+  intermediate values and plot the convergence.  Appending the values to a list
+  in `@tf.function` normally wouldn't work since it will just record the Tensors
+  being traced, not the values.  Instead, you can do the following.
+
+  >>> ys = []
+  >>>
+  >>> @tf.function
+  ... def sqrt(x):
+  ...   y = x / 2
+  ...   d = y
+  ...   for _ in range(10):
+  ...     d /= 2
+  ...     if y * y < x:
+  ...       y += d
+  ...     else:
+  ...       y -= d
+  ...     ys.append(y.numpy())
+  ...   return y
+  >>>
+  >>> tf.config.run_functions_eagerly(True)
+  >>> sqrt(tf.constant(2.))
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
+  >>> ys
+  [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
+  1.4150391]
+  >>> tf.config.run_functions_eagerly(False)
+
+  Calling `tf.config.run_functions_eagerly(False)` will undo this
+  behavior.
+
+  Note: This flag has no effect on functions passed into tf.data transformations
+  as arguments. tf.data functions are never executed eagerly and are always
+  executed as a compiled Tensorflow Graph.
+
   Args:
     run_eagerly: Boolean. Whether to run functions eagerly.
   """
@@ -352,9 +410,18 @@ def run_functions_eagerly(run_eagerly):
   RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
 
 
+@deprecation.deprecated(
+    None,
+    "Use tf.config.functions_run_eagerly instead of the experimental version.")
 @tf_export("config.experimental_functions_run_eagerly")
-def functions_run_eagerly():
+def experimental_functions_run_eagerly():
   """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return functions_run_eagerly()
+
+
+@tf_export("config.functions_run_eagerly")
+def functions_run_eagerly():
+  """Returns the value of the `run_functions_eagerly` setting."""
   return RUN_FUNCTIONS_EAGERLY
 
 

@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
 import collections
 import enum  # pylint: disable=g-bad-import-order
 import inspect
@@ -47,114 +46,6 @@ ops = _xla.ops
 profiler = _xla.profiler
 
 
-class Backend(object, metaclass=abc.ABCMeta):
-  """Abstract base class for XLA backends."""
-
-  def __init__(self, platform):
-    """Creates a new Backend.
-
-    Args:
-      platform: A string naming the platform; for example 'gpu'.
-    """
-    self.platform = platform
-
-  @abc.abstractmethod
-  def device_count(self):
-    """Returns the number of devices known to the backend."""
-
-  @abc.abstractmethod
-  def local_device_count(self):
-    """Returns the number of devices local to this host."""
-
-  @abc.abstractmethod
-  def devices(self):
-    """Returns a list of `device_count()` Device subclasses."""
-
-  @abc.abstractmethod
-  def host_id(self):
-    """Returns the integer ID of this host."""
-
-  @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    """Allocates a fresh buffer and populates it with `pyval`."""
-
-  @abc.abstractmethod
-  def compile(self, computation, compile_options=None):
-    """Compiles a computation. Returns an executable."""
-
-  @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas, num_partitions):
-    """Returns the default device assignment that `compile` would use.
-
-    If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas and
-    partitions, possibly optimizing for device locality. This method returns
-    that assignment, which is useful for e.g. manually replicating a value
-    before passing it to a compiled executable.
-
-    Args:
-      num_replicas: the number of replicas needed.
-      num_partitions: the number of partitions needed.
-
-    Returns:
-      A list of list of Devices of size `(num_replicas, num_partitions)`.
-    """
-
-
-class LocalBackend(Backend):
-  """XLA backend implemented using the in-process xla::LocalClient API."""
-
-  def __init__(self, platform, client):
-    """Creates a new LocalBackend.
-
-    Args:
-      platform: A string; the user-visible platform name, e.g. 'gpu'.
-      client: An _xla.PyLocalClient object.
-    """
-    super(LocalBackend, self).__init__(platform)
-    self.client = client
-
-  def device_count(self):
-    return self.client.device_count()
-
-  def local_device_count(self):
-    return self.client.local_device_count()
-
-  def devices(self):
-    return self.client.devices()
-
-  def local_devices(self):
-    return self.client.local_devices()
-
-  def host_id(self):
-    return self.client.host_id()
-
-  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    return self.client.buffer_from_pyval(pyval, device, force_copy)
-
-  def compile(self, c_computation, compile_options=None):
-    compile_options = compile_options or CompileOptions()
-    options = _xla.CompileOptions()
-    options.argument_layouts = compile_options.argument_layouts
-    options.parameter_is_tupled_arguments = compile_options.tuple_arguments
-    build_options = options.executable_build_options
-    build_options.num_replicas = compile_options.num_replicas
-    build_options.num_partitions = compile_options.num_partitions
-    if compile_options.result_layout:
-      build_options.result_layout = compile_options.result_layout
-    if compile_options.device_assignment:
-      build_options.device_assignment = compile_options.device_assignment
-    return self.client.compile(c_computation, options)
-
-  def get_default_device_assignment(self, num_replicas, num_partitions=None):
-    if num_partitions is not None:
-      return self.client.get_default_device_assignment(num_replicas,
-                                                       num_partitions)
-    else:
-      # TODO(skye): delete this case after all callers can handle 2D output
-      return self.client.get_default_device_assignment(num_replicas)
-
-
 xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
@@ -162,8 +53,7 @@ xla_platform_names = {
 
 
 def _cpu_backend_factory():
-  client = _xla.get_cpu_client(asynchronous=True)
-  return LocalBackend(platform='cpu', client=client)
+  return _xla.get_cpu_client(asynchronous=True)
 
 
 def _gpu_backend_factory(distributed_client=None, node_id=0):
@@ -186,12 +76,11 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.get_nvidia_gpu_client(
+  return _xla.get_nvidia_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id)
-  return LocalBackend(platform='gpu', client=client)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -480,29 +369,7 @@ def computation_count():
 """
 
 Device = _xla.Device
-
-
-class CompileOptions(object):
-  """Python object for XLA compile options.
-
-  These options can be passed to the 'compile' step when using a local XLA
-  client.
-  """
-
-  def __init__(self):
-    self.executable_build_options = _xla.ExecutableBuildOptions()
-    self.xla_dump_to = None
-    self.dump_hlo_pass_re = None
-    self.dump_hlo_module_re = None
-    self.dump_hlo_as_text = None
-    self.dump_hlo_as_proto = None
-    self.hlo_profile = None
-    self.num_replicas = 1
-    self.num_partitions = 1
-    self.argument_layouts = None
-    self.result_layout = None
-    self.device_assignment = None
-    self.tuple_arguments = False
+CompileOptions = _xla.CompileOptions
 
 
 # An Executable is a C++ class that duck types with the following API:

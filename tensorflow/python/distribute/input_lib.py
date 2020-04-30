@@ -463,23 +463,6 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
     raise ValueError("Deserialization is currently unsupported for "
                      "DistributedIteratorSpec.")
 
-  @staticmethod
-  def _is_compatible(a, b):
-    """Returns true if the given type serializations compatible."""
-    if type(a) is not type(b):
-      return False
-    if isinstance(a, tuple):
-      return (len(a) == len(b) and
-              all(DistributedIteratorSpec._is_compatible(x, y) for (x, y) in
-                  zip(a, b)))
-    if isinstance(a, dict):
-      return (len(a) == len(b) and sorted(a.keys()) == sorted(b.keys()) and all(
-          DistributedIteratorSpec._is_compatible(a[k], b[k]) for k in a.keys()))
-    if isinstance(a, (type_spec.TypeSpec, tensor_shape.TensorShape,
-                      dtypes.DType)):
-      return a.is_compatible_with(b)
-    return a == b
-
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
@@ -495,17 +478,16 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
     if type(self) is not type(other):
       raise ValueError("No TypeSpec is compatible with both %s and %s" %
                        (self, other))
-    if not self._is_compatible(self._input_workers.serialize(),
-                               other._input_workers.serialize()):
+    if self._input_workers.serialize() != other._input_workers.serialize():
       raise ValueError("_input_workers is not compatible with both %s "
                        "and %s" % (self, other))
-    if self._element_spec != other._element_spec:
-      raise ValueError("_element_spec is not compatible with both %s "
-                       "and %s" % (self, other))
-    if id(self._strategy) != id(other._strategy):
+    if self._strategy is not other._strategy:
       raise ValueError("tf.distribute strategy is not compatible with both %s "
                        "and %s" % (self, other))
-    return DistributedIteratorSpec(self._input_workers, self._element_spec,
+    element_spec = nest.map_structure(
+        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
+        other._element_spec)
+    return DistributedIteratorSpec(self._input_workers, element_spec,
                                    self._strategy)
 
   @property

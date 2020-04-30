@@ -1089,7 +1089,7 @@ def _partition_outer_dimension(value, row_partition):
     nrows = row_partition.static_nrows
     ncols = row_partition.static_uniform_row_length
     shape = tensor_shape.TensorShape([nrows, ncols]).concatenate(
-        value.shape[2:])
+        value.shape[1:])
     fields = dict((k, _partition_outer_dimension(v, row_partition))
                   for (k, v) in value._fields.items())
     return StructuredTensor(

@@ -461,6 +461,9 @@ class ControlFlowTransformer(converter.Base):
         loop_vars, nonlocal_declarations, state_getter_name, state_setter_name)
 
     opts = self._create_loop_options(node)
+    opts.keys.append(gast.Constant('iterate_names', kind=None))
+    opts.values.append(gast.Constant(
+        parser.unparse(node.target, include_encoding_marker=False), kind=None))
 
     if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
       extra_test = anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST)

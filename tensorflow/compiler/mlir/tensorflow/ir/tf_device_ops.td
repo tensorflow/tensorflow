@@ -48,10 +48,14 @@ class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",
-                                    [SingleBlockImplicitTerminator<"ReturnOp">]>
-{
-  let summary = [{The `tf_device.launch` op captures all needed live-in values
-                  and launches containing operations on target device.}];
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.launch` op launches containing operations on target device.
+  }];
+
+  let description = [{
+This op captures all needed live-in values.
+  }];
 
   let arguments = (ins
     StrAttr:$device
@@ -85,8 +89,8 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
 
 def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
   let summary = [{
-    The `tf_device.return` operation terminates and returns values from
-    `tf_device.launch` operation;
+The `tf_device.return` operation terminates and returns values from a
+`tf_device` dialect operation.
   }];
 
   let arguments = (ins
@@ -121,7 +125,6 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let extraClassDeclaration = [{
     StringRef getFunc() { return func(); }
     StringRef getDevice() { return device(); }
-    FunctionType getFuncType();
   }];
 }
 
@@ -279,6 +282,53 @@ For example:
   let parser = [{ return Parse$cppClass(&parser, &result); }];
   let printer = [{ return Print(*this, &p); }];
   let verifier = [{ return Verify(*this); }];
+}
+
+def TfDevice_ClusterOp : TfDevice_Op<"cluster",
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.cluster` op wraps containing operations in a region.
+  }];
+
+  let description = [{
+This op can be used to group operations, and captures all needed live-in values.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
+  }];
+}
+
+def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {
+  let summary = [{
+The `tf_device.cluster_func` launches a function containing the body of a
+cluster.
+  }];
+
+  let description = [{
+This op is used for outlining a cluster.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$func,
+    Variadic<AnyType>:$operands
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let extraClassDeclaration = [{
+    StringRef getFunc() { return func(); }
+  }];
 }
 
 #endif // TF_DEVICE_DIALECT

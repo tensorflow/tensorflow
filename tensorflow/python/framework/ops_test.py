@@ -3432,7 +3432,7 @@ ops.register_tensor_conversion_function(
 
 class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
 
-  @test_util.disable_tfrt("b/154858769")
+  @test_util.disable_tfrt("TODO(kkb): This makes Kokoro tests fail.")
   def testCompositeTensorConversion(self):
     """Tests that a user can register a CompositeTensor converter."""
     x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))

@@ -523,6 +523,16 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
             "x": tensor_spec.TensorSpec([2, 2], dtypes.int32),
             "y": ragged_tensor.RaggedTensorSpec([2, 2, None], dtypes.int32)})))
 
+  def testPartitionOuterDimension3(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    struct = structured_tensor.StructuredTensor.from_fields({"r": rt}, [2])
+    struct_2 = struct.partition_outer_dimension(
+        row_partition.RowPartition.from_row_splits([0, 1, 2]))
+    struct_3 = struct_2.partition_outer_dimension(
+        row_partition.RowPartition.from_row_splits([0, 1, 2]))
+    self.assertEqual(3, struct_3.rank)
+
   def testPartitionOuterDimsErrors(self):
     st = StructuredTensor.from_fields({})
     partition = row_partition.RowPartition.from_row_splits([0])
@@ -888,6 +898,18 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval(st)
     result = st.merge_dims(outer_axis, inner_axis)
     self.assertAllEqual(result, expected)
+
+  def testMergeDims_0_1(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    struct = StructuredTensor.from_fields({"r": rt}, [2])
+    struct_2 = struct.partition_outer_dimension(
+        row_partition.RowPartition.from_row_splits([0, 1, 2]))
+    struct_3 = struct_2.partition_outer_dimension(
+        row_partition.RowPartition.from_row_splits([0, 1, 2]))
+    self.assertLen(struct_3.row_partitions, 2)
+    merged = struct_3.merge_dims(0, 1)
+    self.assertLen(merged.row_partitions, 1)
 
   def testMergeDimsError(self):
     st = StructuredTensor.from_pyval([[[{"a": 5}]]])

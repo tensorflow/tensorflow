@@ -1942,7 +1942,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          dlt, self.backend.client)
+          dlt, self.backend)
       np.testing.assert_array_equal(x, y.to_py())
 
     def testTensorsCanBeConsumedOnceOnly(self):
@@ -1952,7 +1952,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
       def ConsumeDLPackTensor():
         _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
-            dlt, self.backend.client)
+            dlt, self.backend)
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(

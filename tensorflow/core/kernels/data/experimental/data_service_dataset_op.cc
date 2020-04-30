@@ -18,18 +18,12 @@ limitations under the License.
 #include <memory>
 #include <queue>
 
-#include "grpcpp/create_channel.h"
-#include "grpcpp/impl/codegen/server_context.h"
-#include "grpcpp/security/credentials.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/compression_utils.h"
-#include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
-#include "tensorflow/core/data/service/master.pb.h"
-#include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -155,8 +149,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "over the dataset via `create_iterator(dataset, job_token).`");
       }
       job_id_ = ctx->job_token().job_id();
-      TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
-          dataset()->protocol_, &credentials_));
       return Status::OK();
     }
 
@@ -212,7 +204,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       int64 task_id;
       // Cached address of the worker for task `task_id`.
       std::string address;
-      std::unique_ptr<WorkerService::Stub> worker_stub;
+      std::unique_ptr<DataServiceWorkerClient> worker;
       std::unique_ptr<Thread> thread;
       bool end_of_sequence = false;
       // Indicates that the thread has finished running.
@@ -225,9 +217,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // the list of tasks changes.
     void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
       VLOG(3) << "Starting task handler manager";
-      auto channel = ::grpc::CreateChannel(dataset()->address_, credentials_);
-      std::unique_ptr<MasterService::Stub> master_stub =
-          MasterService::NewStub(channel);
+      DataServiceMasterClient master(dataset()->address_, dataset()->protocol_);
 
       uint64 next_check = Env::Default()->NowMicros();
       while (true) {
@@ -244,29 +234,27 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        UpdateTaskThreads(master_stub.get(), ctx.get());
+        UpdateTaskThreads(&master, ctx.get());
         next_check = Env::Default()->NowMicros() +
                      dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
-    void UpdateTaskThreads(MasterService::Stub* master_stub,
+    void UpdateTaskThreads(DataServiceMasterClient* master,
                            IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating task handler threads";
-      GetTasksResponse resp;
-      GetTasksRequest req;
-      req.set_job_id(job_id_);
-      grpc::ClientContext client_ctx;
-      grpc::Status s = master_stub->GetTasks(&client_ctx, req, &resp);
+      std::vector<TaskInfo> tasks;
+      bool job_finished;
+      Status s = master->GetTasks(job_id_, &tasks, &job_finished);
       if (!s.ok()) {
-        LOG(INFO) << "Failed to get task info for job id " << job_id_ << ": "
-                  << s.error_message() << "(" << s.error_code() << ")";
+        LOG(WARNING) << "Failed to get task info for job id " << job_id_ << ": "
+                     << s;
         return;
       }
       absl::flat_hash_set<int64> task_ids;
       mutex_lock l(mu_);
-      job_finished_ = resp.job_finished();
-      for (auto& task : resp.task_info()) {
+      job_finished_ = job_finished;
+      for (auto& task : tasks) {
         task_ids.insert(task.id());
         if (task_threads_.contains(task.id())) {
           continue;
@@ -315,11 +303,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << task_handler->task_id << " with worker address "
               << task_handler->address;
       while (true) {
-        if (!task_handler->worker_stub) {
-          Status s = CreateWorkerStub(task_handler->address,
-                                      &task_handler->worker_stub);
+        if (!task_handler->worker) {
+          Status s = CreateDataServiceWorkerClient(task_handler->address,
+                                                   dataset()->protocol_,
+                                                   &task_handler->worker);
           if (!s.ok()) {
-            LOG(WARNING) << "Failed to create a worker stub for "
+            LOG(WARNING) << "Failed to create a worker client for "
                          << task_handler->address << ": " << s;
           }
         }
@@ -359,9 +348,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // `results_`.
     Status FetchElement(TaskThread* task_handler, int64 deadline_micros) {
       VLOG(3) << "Fetching an element for task id " << task_handler->task_id;
-      GetElementResponse resp;
+      CompressedElement compressed;
+      bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {
-        Status s = RequestElement(task_handler, &resp);
+        Status s = task_handler->worker->GetElement(
+            task_handler->task_id, &compressed, &end_of_sequence);
         if (s.ok()) {
           break;
         }
@@ -395,43 +386,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       std::vector<Tensor> element;
-      if (!resp.end_of_sequence()) {
-        TF_RETURN_IF_ERROR(
-            service_util::Uncompress(resp.compressed_element(), &element));
+      if (!end_of_sequence) {
+        TF_RETURN_IF_ERROR(service_util::Uncompress(compressed, &element));
       }
       mutex_lock l(mu_);
-      if (resp.end_of_sequence()) {
+      if (end_of_sequence) {
         task_handler->end_of_sequence = true;
         return Status::OK();
       }
       results_.push(std::move(element));
       cv_.notify_all();
       VLOG(3) << "Fetched an element for task id " << task_handler->task_id;
-      return Status::OK();
-    }
-
-    Status RequestElement(TaskThread* task_handler, GetElementResponse* resp) {
-      GetElementRequest req;
-      req.set_task_id(task_handler->task_id);
-      grpc::ClientContext client_ctx;
-      grpc::Status s =
-          task_handler->worker_stub->GetElement(&client_ctx, req, resp);
-      if (s.ok()) {
-        return Status::OK();
-      }
-      return grpc_util::WrapError("Failed to request an element", s);
-    }
-
-    Status CreateWorkerStub(const std::string& worker_address,
-                            std::unique_ptr<WorkerService::Stub>* stub) {
-      ::grpc::ChannelArguments args;
-      args.SetMaxReceiveMessageSize(-1);
-      std::shared_ptr<::grpc::ChannelCredentials> credentials;
-      TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
-          dataset()->protocol_, &credentials));
-      auto channel =
-          ::grpc::CreateCustomChannel(worker_address, credentials, args);
-      *stub = WorkerService::NewStub(channel);
       return Status::OK();
     }
 
@@ -450,7 +415,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // Set once in Initialize().
     int64 job_id_;
-    std::shared_ptr<::grpc::ChannelCredentials> credentials_;
     int64 num_unfinished_tasks_ TF_GUARDED_BY(mu_) = 0;
 
     bool job_finished_ = false;

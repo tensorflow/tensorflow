@@ -87,6 +87,14 @@ gentbl(
             "lib/Dialect/Test/TestOpEnums.cpp.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "lib/Dialect/Test/TestOpStructs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "lib/Dialect/Test/TestOpStructs.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/Dialect/Test/TestPatterns.inc",
         ),

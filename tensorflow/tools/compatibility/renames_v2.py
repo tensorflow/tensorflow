@@ -524,6 +524,10 @@ renames = {
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
         'tf.compat.v1.keras.layers.CuDNNLSTM',
+    'tf.keras.layers.disable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.disable_v2_dtype_behavior',
+    'tf.keras.layers.enable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.enable_v2_dtype_behavior',
     'tf.keras.losses.cosine':
         'tf.keras.losses.cosine_similarity',
     'tf.keras.losses.cosine_proximity':

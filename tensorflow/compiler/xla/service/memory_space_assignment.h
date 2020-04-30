@@ -63,9 +63,15 @@ class PresetAssignments {
     return assignment_info_;
   }
 
+  // Get debugging information.
+  std::string buffer_info_str() const { return buffer_info_str_; }
+  std::string allocation_info_str() const { return allocation_info_str_; }
+
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, AssignmentInformation>> assignment_info_;
+  std::string buffer_info_str_;
+  std::string allocation_info_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -165,6 +171,14 @@ class PrefetchIntervalPicker {
   virtual std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
                                           int64 end_time) const = 0;
 
+  // Prefetch interval pickers may return a value corresponding to the benefit
+  // of placing the BufferInterval in the alternate memory. The larger value,
+  // the more beneficial.
+  virtual absl::optional<float> BufferIntervalAlternateMemoryBenefit(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    return absl::nullopt;
+  }
+
  protected:
   const absl::flat_hash_map<const HloInstruction*, int64>*
       instruction_schedule_ = nullptr;
@@ -238,6 +252,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   std::string ToDebugString() const override;
   std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
                                   int64 end_time) const override;
+
+  absl::optional<float> BufferIntervalAlternateMemoryBenefit(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval)
+      const override;
 
  private:
   // Returns the elapsed time in seconds between the logical interval that
@@ -316,6 +334,11 @@ class MemorySpaceAssignment {
     // If true, verifies the memory space assignment against overlapping
     // buffers.
     bool verify = false;
+
+    // If not nullptr, this function is called to dump debugging information.
+    // The first argument is appended to the file name and the second argument
+    // is the contents of the file.
+    std::function<void(absl::string_view, absl::string_view)> dump_fn = nullptr;
 
     // Enable prefetching buffers into preferred memory across program
     // boundaries
@@ -898,6 +921,17 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // removes pending chunks and asynchronous copies in the respective pending
   // buffers from the interval trees.
   void UncommitPendingChunks();
+
+  // Append buffer and allocation infos for debugging and dump it into a file,
+  // if enabled.
+  void AppendBufferInfoDebugString(const BufferInterval& interval,
+                                   std::string* debug_str) const;
+  void AppendAllocationInfoDebugString(
+      const BufferInterval& interval,
+      const MemorySpaceAssignment::Allocation& allocation,
+      std::string* debug_str) const;
+  void DumpIfEnabled(absl::string_view buffer_info_str,
+                     absl::string_view allocation_info_str) const;
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

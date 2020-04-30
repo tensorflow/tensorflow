@@ -55,7 +55,7 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
+        name = "ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
         compiler = "/clang_r42cab985fd95ba4f3f290e7bb26b93805edb447d/bin/clang",
         cuda_version = "10.1",
         cudnn_version = "7",

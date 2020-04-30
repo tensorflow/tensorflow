@@ -44,13 +44,6 @@ class RegisterDatasetOp : public OpKernel {
   SerializationContext::ExternalStatePolicy external_state_policy_;
 };
 
-enum class ProcessingMode : int64 {
-  // Each tf.data worker processes an entire epoch.
-  PARALLEL_EPOCHS = 0,
-  // Processing of an epoch is distributed across all tf.data workers.
-  ONE_EPOCH = 1,
-};
-
 // Creates a token for reading from the tf.data service.
 //
 // The dataset_id input identifies which dataset to create a token for.

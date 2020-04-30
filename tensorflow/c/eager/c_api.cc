@@ -747,9 +747,7 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
 }
 
 void TFE_ContextClearCaches(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->ClearCachesAndThreadExecutors();
+  tensorflow::unwrap(ctx)->ClearCachesAndThreadExecutors();
 }
 
 // Set server_def on the context, possibly updating it.
