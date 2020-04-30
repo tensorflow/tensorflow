@@ -174,7 +174,7 @@ TF_LITE_MICRO_TEST(Sin) {
       {2, 2, 2},                      // Input shape
       {0, 3.1415926f, -3.1415926f, 1},  // Input values
       {2, 2, 2},                      // Output shape
-      {0, 0, 0, 0.84147f},             // Output values
+      {0.0f, 0.0f, 0.0f, 0.84147f},             // Output values
       output_data);
 }
 
