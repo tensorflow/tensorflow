@@ -113,10 +113,6 @@ class Analyzer(cfg.GraphVisitor):
   def __init__(self, graph, definition_factory):
     self._definition_factory = definition_factory
     super(Analyzer, self).__init__(graph)
-    # This allows communicating that nodes have extra reaching definitions,
-    # e.g. those that a function closes over.
-    self.extra_in = {}
-
     self.gen_map = {}
 
   def init_state(self, _):
@@ -125,7 +121,7 @@ class Analyzer(cfg.GraphVisitor):
   def visit_node(self, node):
     prev_defs_out = self.out[node]
 
-    defs_in = _NodeState(self.extra_in.get(node.ast_node, None))
+    defs_in = _NodeState()
     for n in node.prev:
       defs_in |= self.out[n]
 
