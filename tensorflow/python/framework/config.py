@@ -656,7 +656,7 @@ def disable_mlir_graph_optimization():
   context.context().enable_mlir_graph_optimization = False
 
 
-@tf_export('config.get_build_info()')
+@tf_export('config.get_build_info')
 def get_build_info():
   """Get a dictionary describing TensorFlow's build environment.
 
