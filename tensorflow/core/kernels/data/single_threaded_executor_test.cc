@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -298,6 +299,36 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 
 // Tall fat graph
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+
+static void BM_const_identity(int iters, int width, int outputs_per_const) {
+#ifdef PLATFORM_GOOGLE
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(
+      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
+                             static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->ArgPair(100, 100);
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership
