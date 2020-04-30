@@ -9852,22 +9852,6 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
-// Creates an iterator for reading from the tf.data service.
-//
-// Returns the created operation.
-func MakeDataServiceIterator(scope *Scope, dataset tf.Output, job_token tf.Output, iterator tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MakeDataServiceIterator",
-		Input: []tf.Input{
-			dataset, job_token, iterator,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Registers a dataset with the tf.data service.
 func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
 	if scope.Err() != nil {
@@ -9897,7 +9881,7 @@ func DataServiceDatasetTaskRefreshIntervalHintMs(value int64) DataServiceDataset
 }
 
 // Creates a dataset that reads data from the tf.data service.
-func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
+func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -9908,7 +9892,7 @@ func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max
 	opspec := tf.OpSpec{
 		Type: "DataServiceDataset",
 		Input: []tf.Input{
-			address, protocol, max_outstanding_requests,
+			dataset_id, processing_mode, address, protocol, max_outstanding_requests,
 		},
 		Attrs: attrs,
 	}
@@ -46838,21 +46822,6 @@ func LoadTPUEmbeddingFTRLParameters(scope *Scope, parameters tf.Output, accumula
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Creates a tf.data service job.
-func CreateJob(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output, processing_mode tf.Output) (job_token tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CreateJob",
-		Input: []tf.Input{
-			dataset_id, address, protocol, processing_mode,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
