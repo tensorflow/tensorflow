@@ -828,7 +828,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce",
+       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.

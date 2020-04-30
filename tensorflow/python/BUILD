@@ -1686,6 +1686,7 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         ":client_testlib",
+        ":sendrecv_ops_gen",
     ],
 )
 
