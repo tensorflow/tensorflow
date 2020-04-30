@@ -154,6 +154,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "conv_common",
+    hdrs = ["conv_common.h"],
+)
+
 cc_test(
     name = "conv_buffer_1x1_test",
     srcs = ["conv_buffer_1x1_test.cc"],
@@ -298,6 +303,22 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "conv_weights_converter",
+    srcs = ["conv_weights_converter.cc"],
+    hdrs = ["conv_weights_converter.h"],
+    deps = [
+        ":conv_common",
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 
