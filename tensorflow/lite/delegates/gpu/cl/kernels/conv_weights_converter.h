@@ -29,8 +29,11 @@ namespace cl {
 
 class ConverterToConvWeights : public GPUOperation {
  public:
-  explicit ConverterToConvWeights(const OperationDef& definition)
-      : GPUOperation(definition), work_group_size_(8, 4, 1) {}
+  ConverterToConvWeights(const OperationDef& definition,
+                         const ConvWeightsDescription& conv_weights_desc)
+      : GPUOperation(definition),
+        conv_weights_desc_(conv_weights_desc),
+        work_group_size_(8, 4, 1) {}
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
 
@@ -46,16 +49,18 @@ class ConverterToConvWeights : public GPUOperation {
   absl::Status BindArguments();
   int3 GetGridSize() const;
 
+  ConvWeightsDescription conv_weights_desc_;
   CLKernel kernel_;
   int3 work_group_size_;
 };
 
-// We expect src BHWC tensor and we assume that B is O, H = 1, W = 1, C is I
-// C must be divisible by 4 and B must be divisible by 16;
+// We expect src BHWC tensor and we assume that B is O, H = H, W = W, C is I
 // as dst we expect Tensor with storage type BUFFER and
-// dst.b * dst.h * dst.w * dst.c = src.b * src.c
+// dst.b * dst.h * dst.w * dst.c = AlignByN(src.b, 4) * src.h * src.w
+// AlignByN(src.c, 4)
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition);
+    const OperationDef& definition,
+    const ConvWeightsDescription& conv_weights_desc);
 
 }  // namespace cl
 }  // namespace gpu

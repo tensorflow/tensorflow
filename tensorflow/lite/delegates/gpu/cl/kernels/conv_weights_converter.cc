@@ -25,7 +25,9 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetConverterToConvWeightsCode(const OperationDef& op_def) {
+std::string GetConverterToConvWeightsCode(
+    const OperationDef& op_def,
+    const ConvWeightsDescription& conv_weights_desc) {
   TensorCodeGenerator src_tensor(
       "src_data",
       WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
@@ -39,23 +41,46 @@ std::string GetConverterToConvWeightsCode(const OperationDef& op_def) {
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size              \n";
+  c += "    int4 src_size,              \n";
+  c += "    float4 mask\n";
   c += ") {\n";
+  c += "  int GROUP_SIZE = " +
+       std::to_string(conv_weights_desc.output_group_size) + ";\n";
   c += "  int O = get_global_id(0) * 4;\n";
   c += "  int I = get_global_id(1);\n";
-  c += "  if (O >= src_size.w || I >= src_size.z) return;\n";
-  c += "  FLT4 v0 =" + src_tensor.ReadWHSB("0", "0", "I", "O + 0") + ";\n";
-  c += "  FLT4 v1 =" + src_tensor.ReadWHSB("0", "0", "I", "O + 1") + ";\n";
-  c += "  FLT4 v2 =" + src_tensor.ReadWHSB("0", "0", "I", "O + 2") + ";\n";
-  c += "  FLT4 v3 =" + src_tensor.ReadWHSB("0", "0", "I", "O + 3") + ";\n";
+  c += "  int Z = get_global_id(2);\n";
+  c += "  int W = Z % src_size.x;\n";
+  c += "  int H = Z / src_size.x;\n";
+  c += "  if (O >= src_size.w || I >= src_size.z || H >= src_size.y) return;\n";
+  c += "  FLT4 v0 =" + src_tensor.ReadWHSB("W", "H", "I", "O + 0") + ";\n";
+  c += "  FLT4 v1 = (FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+  c += "  FLT4 v2 = (FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+  c += "  FLT4 v3 = (FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+  c += "  if (O + 1 < src_size.w) {\n";
+  c += "    v1 =" + src_tensor.ReadWHSB("W", "H", "I", "O + 1") + ";\n";
+  c += "  }\n";
+  c += "  if (O + 2 < src_size.w) {\n";
+  c += "    v2 =" + src_tensor.ReadWHSB("W", "H", "I", "O + 2") + ";\n";
+  c += "  }\n";
+  c += "  if (O + 3 < src_size.w) {\n";
+  c += "    v3 =" + src_tensor.ReadWHSB("W", "H", "I", "O + 3") + ";\n";
+  c += "  }\n";
+  c += "  if (I == src_size.z - 1) {\n";
+  c += "    FLT4 mask_t = TO_FLT4(mask);\n";
+  c += "    v0 *= mask_t;\n";
+  c += "    v1 *= mask_t;\n";
+  c += "    v2 *= mask_t;\n";
+  c += "    v3 *= mask_t;\n";
+  c += "  }\n";
   c += "  FLT4 r0 = (FLT4)(v0.x, v1.x, v2.x, v3.x);\n";
   c += "  FLT4 r1 = (FLT4)(v0.y, v1.y, v2.y, v3.y);\n";
   c += "  FLT4 r2 = (FLT4)(v0.z, v1.z, v2.z, v3.z);\n";
   c += "  FLT4 r3 = (FLT4)(v0.w, v1.w, v2.w, v3.w);\n";
-  c += "  int d_index = O / 16;\n";
-  c += "  int s_index = I;\n";
-  c += "  int k_index = (O % 16) / 4;\n";
-  c += "  int dst_offset = (d_index * src_size.z + s_index) * 4 + k_index;\n";
+  c += "  int d_index = O / (GROUP_SIZE * 4);\n";
+  c += "  int k_index = (O % (GROUP_SIZE * 4)) / 4;\n";
+  c += "  int dst_offset = (((d_index * src_size.y + H) * src_size.x + W) * "
+       "src_size.z + I) * GROUP_SIZE + "
+       "k_index;\n";
   c += "  int address0 = dst_offset * 4 + 0;\n";
   c += "  int address1 = dst_offset * 4 + 1;\n";
   c += "  int address2 = dst_offset * 4 + 2;\n";
@@ -72,12 +97,14 @@ std::string GetConverterToConvWeightsCode(const OperationDef& op_def) {
 ConverterToConvWeights::ConverterToConvWeights(
     ConverterToConvWeights&& operation)
     : GPUOperation(std::move(operation)),
+      conv_weights_desc_(operation.conv_weights_desc_),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 ConverterToConvWeights& ConverterToConvWeights::operator=(
     ConverterToConvWeights&& operation) {
   if (this != &operation) {
+    conv_weights_desc_ = operation.conv_weights_desc_;
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
@@ -87,7 +114,8 @@ ConverterToConvWeights& ConverterToConvWeights::operator=(
 
 absl::Status ConverterToConvWeights::Compile(
     const CreationContext& creation_context) {
-  std::string code = GetConverterToConvWeightsCode(definition_);
+  std::string code =
+      GetConverterToConvWeightsCode(definition_, conv_weights_desc_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -98,13 +126,15 @@ absl::Status ConverterToConvWeights::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
   return absl::OkStatus();
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
   const int grid_x = DivideRoundUp(src_[0]->Batch(), 4);
   const int grid_y = src_[0]->Slices();
-  const int grid_z = 1;
+  const int grid_z = src_[0]->Width() * src_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
 }
 
@@ -119,8 +149,9 @@ absl::Status ConverterToConvWeights::AddToQueue(CLCommandQueue* queue) {
 }
 
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition) {
-  return ConverterToConvWeights(definition);
+    const OperationDef& definition,
+    const ConvWeightsDescription& conv_weights_desc) {
+  return ConverterToConvWeights(definition, conv_weights_desc);
 }
 
 }  // namespace cl
