@@ -300,7 +300,6 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       y = worker_fn(x1)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
-  @test_util.run_in_async_and_sync_mode
   def testPendingNodesServerReplaced(self):
     """Update cluster when nodes are still pending on remote workers."""
     with ops.device(self.device_local):
@@ -371,10 +370,8 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     for result in t1_results + t2_results:
       np.testing.assert_array_equal([[2, 2], [2, 2]], result)
 
-  @test_util.run_in_async_and_sync_mode
   def testMultiThreadPendingNodesLockFree(self):
     """Update cluster when other remote function calls are being launched."""
-    self.skipTest("b/154053481")
 
     with ops.device(self.device_t1):
       x1 = array_ops.ones([2, 2])
