@@ -145,8 +145,8 @@ REGISTER_OP("CSVDataset")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -187,8 +187,8 @@ REGISTER_OP("ExperimentalCSVDataset")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -426,8 +426,8 @@ REGISTER_OP("LMDBDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalLMDBDataset")
@@ -435,8 +435,8 @@ REGISTER_OP("ExperimentalLMDBDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MapAndBatchDataset")
@@ -508,8 +508,8 @@ REGISTER_OP("ExperimentalMapDataset")
 REGISTER_OP("MatchingFilesDataset")
     .Input("patterns: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `patterns` must be a scalar or a vector.
@@ -520,8 +520,8 @@ REGISTER_OP("MatchingFilesDataset")
 REGISTER_OP("ExperimentalMatchingFilesDataset")
     .Input("patterns: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `patterns` must be a scalar or a vector.
@@ -689,8 +689,8 @@ REGISTER_OP("ExperimentalRandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size, seed, and seed2 should be scalars.
@@ -705,8 +705,8 @@ REGISTER_OP("RandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size, seed, and seed2 should be scalars.
@@ -893,8 +893,8 @@ REGISTER_OP("SqlDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // driver_name, data_source_name, and query should be scalars.
@@ -911,8 +911,8 @@ REGISTER_OP("ExperimentalSqlDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // driver_name, data_source_name, and query should be scalars.
