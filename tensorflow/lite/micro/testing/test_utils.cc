@@ -15,8 +15,40 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
+#include "tensorflow/lite/micro/simple_memory_allocator.h"
+
 namespace tflite {
 namespace testing {
+
+namespace {
+// TODO(b/141330728): Refactor out of test_utils.cc
+// The variables below (and the AllocatePersistentBuffer function) are only
+// needed for the kernel tests and benchmarks, i.e. where we do not have an
+// interpreter object, and the fully featured MicroAllocator.
+// Currently, these need to be sufficient for all the kernel_tests. If that
+// becomes problematic, we can investigate allowing the arena_size to be
+// specified for each call to PopulatContext.
+constexpr size_t kArenaSize = 10000;
+uint8_t raw_arena_[kArenaSize];
+SimpleMemoryAllocator* simple_memory_allocator_ = nullptr;
+constexpr size_t kBufferAlignment = 16;
+
+// Note that the context parameter in this function is only needed to match the
+// signature of TfLiteContext::AllocatePersistentBuffer and isn't needed in the
+// implementation because we are assuming a single global
+// simple_memory_allocator_
+TfLiteStatus AllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
+                                      void** ptr) {
+  TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
+  TFLITE_DCHECK(ptr != nullptr);
+  *ptr = simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
+  if (*ptr == nullptr) {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace
 
 uint8_t F2Q(float value, float min, float max) {
   int32_t result = ZeroPointFromMinMax<uint8_t>(min, max) +
@@ -48,6 +80,10 @@ int32_t F2Q32(float value, float scale) {
 // TODO(b/141330728): Move this method elsewhere as part clean up.
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      ErrorReporter* error_reporter, TfLiteContext* context) {
+  simple_memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
+      error_reporter, raw_arena_, kArenaSize);
+  TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
+
   context->tensors_size = tensors_size;
   context->tensors = tensors;
   context->impl_ = static_cast<void*>(error_reporter);
@@ -60,6 +96,12 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   context->recommended_num_threads = 1;
   context->GetExternalContext = nullptr;
   context->SetExternalContext = nullptr;
+
+  context->AllocatePersistentBuffer = AllocatePersistentBuffer;
+  // The scratch buffer API will need to be implemented for the tests once we
+  // start using it in the kernels.
+  context->RequestScratchBufferInArena = nullptr;
+  context->GetScratchBuffer = nullptr;
 
   for (int i = 0; i < tensors_size; ++i) {
     if (context->tensors[i].is_variable) {
