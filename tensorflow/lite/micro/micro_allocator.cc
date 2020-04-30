@@ -49,15 +49,6 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
-// Instance of a zero-length int to pass as tensor dims for a flatbuffer
-// Tensor with no shape. Note that the second member of a TfLiteArray is a
-// flexible array member, which is not strictly valid C++. However it is
-// supported by both GCC and clang, as long as the flexible array element is not
-// initialized, which is ok in this case as it should never be accessed.
-// Declaring this as constexpr causes build errors with clang, as it requires
-// the flexible array element to be initialized.
-const TfLiteIntArray kZeroLengthIntArray = {0};
-
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
@@ -90,6 +81,31 @@ TfLiteStatus AllocateVariables(
       }
     }
     tflite::ResetVariableTensor(&(runtime_tensors[i]));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus AllocateScalarTensorDims(
+    const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* flatbuffer_tensors,
+    TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
+  TfLiteIntArray *kOneLengthIntArray = nullptr;
+
+  for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
+    if (runtime_tensors[i].dims == nullptr) {
+      const int size = 1;
+
+      if (kOneLengthIntArray == nullptr) {
+        kOneLengthIntArray = reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
+          TfLiteIntArrayGetSizeInBytes(size), kBufferAlignment));
+      }
+      // Allocation failure.
+      if (kOneLengthIntArray == nullptr) {
+        return kTfLiteError;
+      }
+      runtime_tensors[i].dims = kOneLengthIntArray;
+      runtime_tensors[i].dims->size = size;
+      runtime_tensors[i].dims->data[0] = size;
+    }
   }
   return kTfLiteOk;
 }
@@ -347,16 +363,15 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
-  if (flatbuffer_tensor.shape() == nullptr) {
-    // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
-    // tensor.
-    result->dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
-  } else if (!FLATBUFFERS_LITTLEENDIAN) {
+  // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
+  // tensor with 1 element - in that case it will be allocated in
+  // AllocateScalarTensorDims().
+  if (flatbuffer_tensor.shape() != nullptr && !FLATBUFFERS_LITTLEENDIAN) {
     // Big-endian architecture. Copy and byte-swap the little-endian shape
     // data.
     TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
         allocator, error_reporter, flatbuffer_tensor.shape(), &(result->dims)));
-  } else {
+  } else if (flatbuffer_tensor.shape() != nullptr) {
     // On little-endian machines, TfLiteIntArray happens to have the same
     // memory layout as flatbuffers:Vector<int>, so we can reinterpret_cast the
     // tensor shape vector and avoid a copy.
@@ -508,14 +523,18 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(const Model* model,
     return kTfLiteError;
   }
 
+
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
   TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(subgraph, context));
   TF_LITE_ENSURE_STATUS(AllocateVariables(subgraph->tensors(), context->tensors,
                                           memory_allocator_));
+  TF_LITE_ENSURE_STATUS(AllocateScalarTensorDims(subgraph->tensors(), context_->tensors,
+                                                 memory_allocator_));
 
   model_is_allocating_ = false;
+
   return kTfLiteOk;
 }
 
