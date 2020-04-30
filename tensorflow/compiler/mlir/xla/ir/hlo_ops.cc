@@ -1447,11 +1447,8 @@ static void SliceElements(I values, ArrayRef<int64_t> sizes,
 
   for (; start < limit; start += stride) {
     auto begin = values + start * sizes.front();
-    SliceElements<I, E>(
-        // FloatElementIterator doesn't overload its type so these iterators
-        // are not recognized as the right types.
-        *reinterpret_cast<I*>(&begin), sizes.drop_front(), starts.drop_front(),
-        limits.drop_front(), strides.drop_front(), out_values);
+    SliceElements<I, E>(begin, sizes.drop_front(), starts.drop_front(),
+                        limits.drop_front(), strides.drop_front(), out_values);
   }
 }
 
@@ -1503,8 +1500,10 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
     return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
         this, elements.getIntValues().begin());
   } else if (etype.isa<FloatType>()) {
-    return FoldSlice<DenseElementsAttr::FloatElementIterator, APFloat>(
-        this, elements.getFloatValues().begin());
+    return FoldSlice<
+        llvm::mapped_iterator<DenseElementsAttr::IntElementIterator,
+                              std::function<APFloat(const APInt&)>>,
+        APFloat>(this, elements.getFloatValues().begin());
   }
 
   return {};
