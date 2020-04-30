@@ -4674,9 +4674,11 @@ struct ConcatenationOptionsT : public flatbuffers::NativeTable {
   typedef ConcatenationOptions TableType;
   int32_t axis;
   tflite::ActivationFunctionType fused_activation_function;
+  bool fixed_point_scaling;
   ConcatenationOptionsT()
       : axis(0),
-        fused_activation_function(tflite::ActivationFunctionType_NONE) {
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        fixed_point_scaling(false) {
   }
 };
 
@@ -4684,7 +4686,8 @@ struct ConcatenationOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   typedef ConcatenationOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_AXIS = 4,
-    VT_FUSED_ACTIVATION_FUNCTION = 6
+    VT_FUSED_ACTIVATION_FUNCTION = 6,
+    VT_FIXED_POINT_SCALING = 8
   };
   int32_t axis() const {
     return GetField<int32_t>(VT_AXIS, 0);
@@ -4692,10 +4695,14 @@ struct ConcatenationOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool fixed_point_scaling() const {
+    return GetField<uint8_t>(VT_FIXED_POINT_SCALING, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_AXIS) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_FIXED_POINT_SCALING) &&
            verifier.EndTable();
   }
   ConcatenationOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4712,6 +4719,9 @@ struct ConcatenationOptionsBuilder {
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(ConcatenationOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_fixed_point_scaling(bool fixed_point_scaling) {
+    fbb_.AddElement<uint8_t>(ConcatenationOptions::VT_FIXED_POINT_SCALING, static_cast<uint8_t>(fixed_point_scaling), 0);
+  }
   explicit ConcatenationOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4727,10 +4737,12 @@ struct ConcatenationOptionsBuilder {
 inline flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     int32_t axis = 0,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool fixed_point_scaling = false) {
   ConcatenationOptionsBuilder builder_(_fbb);
   builder_.add_axis(axis);
   builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_fixed_point_scaling(fixed_point_scaling);
   return builder_.Finish();
 }
 
@@ -11347,6 +11359,7 @@ inline void ConcatenationOptions::UnPackTo(ConcatenationOptionsT *_o, const flat
   (void)_resolver;
   { auto _e = axis(); _o->axis = _e; }
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = fixed_point_scaling(); _o->fixed_point_scaling = _e; }
 }
 
 inline flatbuffers::Offset<ConcatenationOptions> ConcatenationOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ConcatenationOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11359,10 +11372,12 @@ inline flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(flat
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ConcatenationOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _axis = _o->axis;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _fixed_point_scaling = _o->fixed_point_scaling;
   return tflite::CreateConcatenationOptions(
       _fbb,
       _axis,
-      _fused_activation_function);
+      _fused_activation_function,
+      _fixed_point_scaling);
 }
 
 inline AddOptionsT *AddOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

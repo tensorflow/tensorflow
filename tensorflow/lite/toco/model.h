@@ -882,6 +882,7 @@ struct AddNOperator : Operator {
 struct ConcatenationOperator : Operator {
   ConcatenationOperator() : Operator(OperatorType::kConcatenation) {}
   int axis = 0;
+  bool fixed_point_scaling = true;
 };
 
 // Reordering dimensions. Used only during tooling to transform graphs from

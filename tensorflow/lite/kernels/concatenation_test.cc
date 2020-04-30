@@ -26,12 +26,11 @@ namespace {
 using ::testing::ElementsAreArray;
 
 class BaseConcatenationOpModel : public SingleOpModel {
- public:
+ protected:
   // TODO(ahentz): Also test different activation types, axis, input
   // dimensions.
-  BaseConcatenationOpModel() {}
   BaseConcatenationOpModel(const std::vector<TensorData>& input_template,
-                           int axis, int num_inputs,
+                           int axis, bool fixed_point_scaling, int num_inputs,
                            const TensorData& output_template) {
     std::vector<std::vector<int>> all_input_shapes;
     CHECK_EQ(input_template.size(), num_inputs);
@@ -43,15 +42,11 @@ class BaseConcatenationOpModel : public SingleOpModel {
                          output_template.min, output_template.max});
     SetBuiltinOp(
         BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
-        CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
+        CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE,
+                                   fixed_point_scaling)
             .Union());
     BuildInterpreter(all_input_shapes);
   }
-  BaseConcatenationOpModel(const TensorData& input_template, int axis,
-                           int num_inputs)
-      : BaseConcatenationOpModel(
-            std::vector<TensorData>(num_inputs, input_template), axis,
-            num_inputs, input_template) {}
 
  protected:
   int output_;
@@ -59,7 +54,16 @@ class BaseConcatenationOpModel : public SingleOpModel {
 
 class ConcatenationOpModel : public BaseConcatenationOpModel {
  public:
-  using BaseConcatenationOpModel::BaseConcatenationOpModel;
+  ConcatenationOpModel(const std::vector<TensorData>& input_template, int axis,
+                       int num_inputs, const TensorData& output_template)
+      : BaseConcatenationOpModel(input_template, axis,
+                                 /*fixed_point_scaling=*/false, num_inputs,
+                                 output_template) {}
+  ConcatenationOpModel(const TensorData& input_template, int axis,
+                       int num_inputs)
+      : ConcatenationOpModel(
+            std::vector<TensorData>(num_inputs, input_template), axis,
+            num_inputs, input_template) {}
   void SetInput(int index, std::initializer_list<float> data) {
     PopulateTensor(index, data);
   }
@@ -68,8 +72,17 @@ class ConcatenationOpModel : public BaseConcatenationOpModel {
 
 class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
  public:
-  using BaseConcatenationOpModel::BaseConcatenationOpModel;
-
+  QuantizedConcatenationOpModel(const std::vector<TensorData>& input_template,
+                                int axis, bool fixed_point_scaling,
+                                int num_inputs,
+                                const TensorData& output_template)
+      : BaseConcatenationOpModel(input_template, axis, fixed_point_scaling,
+                                 num_inputs, output_template) {}
+  QuantizedConcatenationOpModel(const TensorData& input_template, int axis,
+                                bool fixed_point_scaling, int num_inputs)
+      : QuantizedConcatenationOpModel(
+            std::vector<TensorData>(num_inputs, input_template), axis,
+            fixed_point_scaling, num_inputs, input_template) {}
   template <typename T>
   void SetInput(int index, std::initializer_list<float> data) {
     QuantizeAndPopulate<T>(index, data);
@@ -134,6 +147,7 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
   QuantizedConcatenationOpModel m0(
       {TensorType_UINT8, {2, 1, 2, 1, 3}, -12.7, 12.8},
       /*axis=*/0,
+      /*fixed_point=*/false,
       /*num_inputs=*/2);
 
   m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
@@ -249,6 +263,7 @@ TEST(ConcatenationOpTest, FourInputs) {
 TEST(ConcatenationOpTest, FourInputsQuantizedUint8) {
   QuantizedConcatenationOpModel m0({TensorType_UINT8, {2, 1, 2}, -12.7, 12.8},
                                    /*axis=*/2,
+                                   /*fixed_point=*/false,
                                    /*num_inputs=*/4);
 
   m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
@@ -285,6 +300,7 @@ TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
   QuantizedConcatenationOpModel m0(
       {TestFixture::tensor_type, {2, 1, 2}, -12.7, 12.8},
       /*axis=*/2,
+      /*fixed_point=*/false,
       /*num_inputs=*/4);
 
   m0.SetInput<TestType>(0, {1.0f, 3.0f, 4.0f, 7.0f});
@@ -313,12 +329,16 @@ TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
   }
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
+class ConcatenationOpTestFPScParametrized
+    : public ::testing::TestWithParam<bool> {};
+TEST_P(ConcatenationOpTestFPScParametrized, FourInputsQuantizedMixedRange) {
+  const bool fixed_point_scaling = GetParam();
   QuantizedConcatenationOpModel m0({{TensorType_UINT8, {2, 1, 2}, -10.7, 10.8},
                                     {TensorType_UINT8, {2, 1, 2}, 0, 12.8},
                                     {TensorType_UINT8, {2, 1, 2}, -11, 11.8},
                                     {TensorType_UINT8, {2, 1, 2}, 0, 7.4}},
-                                   /*axis=*/2, /*num_inputs=*/4,
+                                   /*axis=*/2, fixed_point_scaling,
+                                   /*num_inputs=*/4,
                                    {TensorType_UINT8, {2, 1, 2}, -12.7, 12.8});
 
   m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
@@ -338,12 +358,15 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
               }));
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
+TEST_P(ConcatenationOpTestFPScParametrized,
+       FourInputsQuantizedMixedRangeClampingLogic) {
+  const bool fixed_point_scaling = GetParam();
   QuantizedConcatenationOpModel m0({{TensorType_UINT8, {2, 1, 2}, -10.7, 10.8},
                                     {TensorType_UINT8, {2, 1, 2}, 0, 12.8},
                                     {TensorType_UINT8, {2, 1, 2}, -11, 11.8},
                                     {TensorType_UINT8, {2, 1, 2}, 0, 7.4}},
-                                   /*axis=*/2, /*num_inputs=*/4,
+                                   /*axis=*/2, fixed_point_scaling,
+                                   /*num_inputs=*/4,
                                    {TensorType_UINT8, {2, 1, 2}, -1., 1.});
 
   m0.SetInput<uint8_t>(0, {1.0f, -3.0f, -4.0f, -7.0f});
@@ -364,11 +387,15 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
                   0, 0, 255, 255, 0, 255, 255, 255,    //
               }));
 }
+INSTANTIATE_TEST_CASE_P(ConcatenationOpTestFPScParametrized,
+                        ConcatenationOpTestFPScParametrized,
+                        ::testing::Values(true, false));
 
 TEST(ConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
   QuantizedConcatenationOpModel m0(
       {TensorType_UINT8, {2, 1, 2}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/1,
+      /*fixed_point=*/false,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
   m0.Invoke();
@@ -380,6 +407,7 @@ TEST(ConcatenationOpTest, OneTrivialNonQuantizedInput) {
   QuantizedConcatenationOpModel m0(
       {TensorType_UINT8, {1}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/0,
+      /*fixed_point=*/false,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {5.0f});
   m0.Invoke();
@@ -390,6 +418,7 @@ TEST(ConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
   QuantizedConcatenationOpModel m0(
       {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/0,
+      /*fixed_point=*/false,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   m0.Invoke();
@@ -404,6 +433,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   QuantizedConcatenationOpModel m0(
       {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/0,
+      /*fixed_point=*/false,
       /*num_inputs=*/2);
   m0.SetInput<uint8_t>(0, tensor0);
   m0.SetInput<uint8_t>(1, tensor1);
@@ -414,6 +444,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   QuantizedConcatenationOpModel m0_negative(
       {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/-2,
+      /*fixed_point=*/false,
       /*num_inputs=*/2);
   m0_negative.SetInput<uint8_t>(0, tensor0);
   m0_negative.SetInput<uint8_t>(1, tensor1);
@@ -424,6 +455,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   QuantizedConcatenationOpModel m1(
       {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/1,
+      /*fixed_point=*/false,
       /*num_inputs=*/2);
   m1.SetInput<uint8_t>(0, tensor0);
   m1.SetInput<uint8_t>(1, tensor1);
@@ -434,6 +466,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   QuantizedConcatenationOpModel m1_negative(
       {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
       /*axis=*/-1,
+      /*fixed_point=*/false,
       /*num_inputs=*/2);
   m1_negative.SetInput<uint8_t>(0, tensor0);
   m1_negative.SetInput<uint8_t>(1, tensor1);

@@ -81,6 +81,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   int inputs_count = params.inputs_count;
   const int32 output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
+  const bool fixed_point_scaling = params.fixed_point_scaling;
   const int32* effective_scale_multiplier = params.effective_scale_multiplier;
   const int* effective_scale_shift = params.effective_scale_shift;
 
@@ -109,6 +110,10 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
     base_inner_size *= output_shape.Dims(i);
   }
 
+  // Not used when using fixed point scaling, set it to 0.f to avoid a
+  // calculation
+  const float inverse_output_scale =
+      fixed_point_scaling ? 0.f : 1.f / output_scale;
   uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
@@ -117,13 +122,23 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
       if (input_zeropoint[i] == output_zeropoint &&
           input_scale[i] == output_scale) {
         memcpy(output_ptr, input_ptr, copy_size);
-      } else {
+      } else if (fixed_point_scaling) {
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
               MultiplyByQuantizedMultiplier(input_ptr[j] - input_zeropoint[i],
                                             effective_scale_multiplier[i],
                                             effective_scale_shift[i]) +
               output_zeropoint;
+          output_ptr[j] = static_cast<uint8_t>(
+              std::max<int32_t>(std::min<int32_t>(255, value), 0));
+        }
+      } else {
+        const float scale = input_scale[i] * inverse_output_scale;
+        const float bias = -input_zeropoint[i] * scale;
+        for (int j = 0; j < copy_size; ++j) {
+          const int32_t value = static_cast<int32_t>(tflite::TfLiteRound(
+                                    input_ptr[j] * scale + bias)) +
+                                output_zeropoint;
           output_ptr[j] = static_cast<uint8_t>(
               std::max<int32_t>(std::min<int32_t>(255, value), 0));
         }

@@ -192,8 +192,14 @@ typedef struct {
 } TfLiteSoftmaxParams;
 
 typedef struct {
+  // Parameters for Concatenation version 1 or above.
   int axis;
   TfLiteFusedActivation activation;
+
+  // Parameters for Concatenation version 4 or above.
+  // If set to true, then fixed-point arithmetic is used for the rescaling of
+  // the output. Otherwise floating-point arithmetic is used.
+  bool fixed_point_scaling;
 } TfLiteConcatenationParams;
 
 typedef struct {

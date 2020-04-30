@@ -135,10 +135,11 @@ inline void GetAllQuantizedEffectiveScale(
     const TfLiteTensor& output_tensor,
     int32 effective_scale_multiplier[kMaxInputNum],
     int effective_scale_shift[kMaxInputNum]) {
+  const float inverse_output_scale = 1.f / output_tensor.params.scale;
   for (int i = 0; i < input_tensor_list.size; ++i) {
     const TfLiteTensor* input_tensor =
         &context.tensors[input_tensor_list.data[i]];
-    QuantizeMultiplier(input_tensor->params.scale / output_tensor.params.scale,
+    QuantizeMultiplier(input_tensor->params.scale * inverse_output_scale,
                        &effective_scale_multiplier[i],
                        &effective_scale_shift[i]);
   }
@@ -169,6 +170,8 @@ void EvalUnquantized(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteConcatenationParams* params =
+      reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Collect the shapes and data pointer of input tensors
@@ -184,12 +187,11 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   GetAllTensorData(*context, *node->inputs, inputs_data);
   GetAllQuantizationParam(*context, *node->inputs, inputs_scale,
                           inputs_zero_point);
-  GetAllQuantizedEffectiveScale(*context, *node->inputs, *output,
-                                effective_scale_multiplier,
-                                effective_scale_shift);
-
-  const TfLiteConcatenationParams* params =
-      reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
+  if (params->fixed_point_scaling) {
+    GetAllQuantizedEffectiveScale(*context, *node->inputs, *output,
+                                  effective_scale_multiplier,
+                                  effective_scale_shift);
+  }
 
   ConcatenationParams op_params;
   op_params.axis = CalculatePositiveAxis(params->axis, output);
@@ -198,6 +200,7 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   op_params.input_scale = inputs_scale;
   op_params.output_zeropoint = output->params.zero_point;
   op_params.output_scale = output->params.scale;
+  op_params.fixed_point_scaling = params->fixed_point_scaling;
   op_params.effective_scale_multiplier = effective_scale_multiplier;
   op_params.effective_scale_shift = effective_scale_shift;
 

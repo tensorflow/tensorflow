@@ -313,6 +313,12 @@ TEST(OpVersionTest, VersioningPadV2Test) {
 
 TEST(OpVersionTest, VersioningConcatenationTest) {
   SimpleVersioningTest(BuiltinOperator_CONCATENATION);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_CONCATENATION,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
+  };
+  fake_op_sig.options.concatenation.fixed_point_scaling = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningSelectTest) {

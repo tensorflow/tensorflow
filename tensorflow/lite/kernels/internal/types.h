@@ -791,6 +791,7 @@ struct ConcatenationParams {
   uint16 inputs_count;
   int32 output_zeropoint;
   float output_scale;
+  bool fixed_point_scaling;
   const int32* effective_scale_multiplier;
   const int* effective_scale_shift;
 };

@@ -380,6 +380,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(concatenation_params->fused_activation_function());
         params->axis = concatenation_params->axis();
+        params->fixed_point_scaling =
+            concatenation_params->fixed_point_scaling();
       }
       *builtin_data = params.release();
       return kTfLiteOk;

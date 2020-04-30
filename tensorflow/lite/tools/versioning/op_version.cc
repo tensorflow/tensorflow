@@ -407,8 +407,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
+      if (op_sig.options.concatenation.fixed_point_scaling) {
+        return 4;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_ADD:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
@@ -558,6 +566,14 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
           !HaveSameShapes(subgraph, op, 0, 1);
       op_sig.options.broadcast.num_dims =
           std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
+    } break;
+
+    case BuiltinOperator_CONCATENATION: {
+      auto concatenation_option = op->builtin_options_as_ConcatenationOptions();
+      if (concatenation_option) {
+        op_sig.options.concatenation.fixed_point_scaling =
+            concatenation_option->fixed_point_scaling();
+      }
     } break;
 
     default:

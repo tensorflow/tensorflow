@@ -576,8 +576,14 @@ table SoftmaxOptions {
 
 // An implementation of TensorFlow concat.
 table ConcatenationOptions {
+  // Parameters for Concatenation version 1 or above.
   axis:int;
   fused_activation_function:ActivationFunctionType;
+
+  // Parameters for Concatenation version 4 or above.
+  // If set to true, then fixed-point arithmetic is used for the rescaling of
+  // the output. Otherwise floating-point arithmetic is used.
+  fixed_point_scaling:bool = false;
 }
 
 table AddOptions {

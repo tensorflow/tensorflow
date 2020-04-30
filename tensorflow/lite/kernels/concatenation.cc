@@ -133,12 +133,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #define TF_LITE_CONCATENATION_QUANTIZED()                                     \
   {                                                                           \
     VectorOfQuantizedTensors all_inputs(*context, *node->inputs);             \
-    std::vector<int32> effective_scale_multiplier(node->inputs->size);        \
-    std::vector<int> effective_scale_shift(node->inputs->size);               \
-    for (int i = 0; i < node->inputs->size; i++) {                            \
-      QuantizeMultiplier(all_inputs.scale()[i] / output->params.scale,        \
-                         &effective_scale_multiplier[i],                      \
-                         &effective_scale_shift[i]);                          \
+    std::vector<int32> effective_scale_multiplier;                            \
+    std::vector<int> effective_scale_shift;                                   \
+    if (params->fixed_point_scaling) {                                        \
+      effective_scale_multiplier.resize(node->inputs->size);                  \
+      effective_scale_shift.resize(node->inputs->size);                       \
+      const float inverse_output_scale = 1.f / output->params.scale;          \
+      for (int i = 0; i < node->inputs->size; i++) {                          \
+        QuantizeMultiplier(all_inputs.scale()[i] * inverse_output_scale,      \
+                           &effective_scale_multiplier[i],                    \
+                           &effective_scale_shift[i]);                        \
+      }                                                                       \
     }                                                                         \
     tflite::ConcatenationParams op_params;                                    \
     op_params.axis = axis;                                                    \
@@ -147,6 +152,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     op_params.inputs_count = node->inputs->size;                              \
     op_params.output_zeropoint = output->params.zero_point;                   \
     op_params.output_scale = output->params.scale;                            \
+    op_params.fixed_point_scaling = params->fixed_point_scaling;              \
     op_params.effective_scale_multiplier = effective_scale_multiplier.data(); \
     op_params.effective_scale_shift = effective_scale_shift.data();           \
     if (kernel_type == kReference) {                                          \

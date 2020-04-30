@@ -377,12 +377,15 @@ class Concatenation
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateConcatenationOptions(*builder, op.axis);
+    return ::tflite::CreateConcatenationOptions(
+        *builder, op.axis, ::tflite::ActivationFunctionType_NONE,
+        op.fixed_point_scaling);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->axis = options.axis();
+    op->fixed_point_scaling = options.fixed_point_scaling();
   }
 };
 
