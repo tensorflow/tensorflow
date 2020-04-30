@@ -243,6 +243,7 @@ filegroup(
         "memory_types.h",
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
+        "mkl_tfconversion_pass.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
