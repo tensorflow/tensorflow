@@ -345,6 +345,9 @@ tf_cuda_cc_test(
         "c_api_remote_test.cc",
     ],
     extra_copts = tfe_xla_copts(),
+    tags = [
+        "noasan",  # TODO(b/155406516): flaky
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
