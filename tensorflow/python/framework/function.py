@@ -31,7 +31,6 @@ from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import func_graph as _func_graph
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -1274,8 +1273,6 @@ def get_extra_vars():
   g = ops.get_default_graph()
   if isinstance(g, _FuncGraph):
     return g.extra_vars
-  elif isinstance(g, _func_graph.FuncGraph):
-    return g.variable_captures
   else:
     return []
 
@@ -1292,8 +1289,6 @@ def get_extra_inputs():
   g = ops.get_default_graph()
   if isinstance(g, _FuncGraph):
     return g.extra_inputs
-  elif isinstance(g, _func_graph.FuncGraph):
-    return g.external_captures
   else:
     return []
 
@@ -1310,8 +1305,6 @@ def get_extra_args():
   g = ops.get_default_graph()
   if isinstance(g, _FuncGraph):
     return g.extra_args
-  elif isinstance(g, _func_graph.FuncGraph):
-    return g.internal_captures
   else:
     return []
 
