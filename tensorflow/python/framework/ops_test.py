@@ -1312,6 +1312,18 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("bar_2", g.unique_name("bar", mark_as_used=False))
     self.assertEqual("bar_2", g.unique_name("bar"))
 
+  def testBackslashAndDashRegex(self):
+    # GitHub issue 39019, all should pass
+    g = ops.Graph()
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      pass
+    with g.name_scope("foo"):
+      with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+        pass
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      with g.name_scope("foo"):
+        pass
+
   @test_util.run_deprecated_v1
   def testNameAndVariableScope(self):
     with self.cached_session() as sess:
