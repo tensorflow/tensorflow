@@ -37,6 +37,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
@@ -830,7 +831,6 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    self._supports_ragged_inputs = True
     self._output_shape = output_shape
 
     # Warning on every invocation will be quite irksome in Eager mode.
@@ -1177,6 +1177,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
+    base_layer_utils.no_ragged_support(inputs, self.name)
     rank = inputs.shape.rank
     if rank is not None and rank > 2:
       # Broadcasting is required for the inputs.

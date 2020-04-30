@@ -302,7 +302,6 @@ class TextVectorization(CombinerPreprocessingLayer):
         combiner=_TextVectorizationCombiner(
             self._max_vocab_size, compute_idf=output_mode == TFIDF),
         **kwargs)
-    self._supports_ragged_inputs = True
 
     reserve_zero = output_mode in [None, INT]
     self._index_lookup_layer = self._get_index_lookup_class()(
