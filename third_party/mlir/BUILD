@@ -1129,6 +1129,10 @@ cc_library(
         "lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h",
         "lib/Conversion/GPUCommon/OpToFuncCallLowering.h",
     ],
+    # TODO(b/155492113): Move back to hdrs once fixed.
+    textual_hdrs = [
+        "lib/Conversion/GPUCommon/GPUOpsLowering.h",
+    ],
     deps = [
         ":GPUDialect",
         ":IR",
@@ -1195,10 +1199,14 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUTransforms",
         ":LLVMTransforms",
         ":Pass",
         ":ROCDLDialect",
         ":Transforms",
+        ":VectorOps",
+        ":VectorToLLVM",
+        "@llvm-project//llvm:support",
     ],
 )
 
