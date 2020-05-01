@@ -272,12 +272,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "gles",
-    define_values = {"gles": "true"},
-    visibility = ["//visibility:public"]
-)
-
 # Features that are default ON are handled differently below.
 #
 config_setting(
