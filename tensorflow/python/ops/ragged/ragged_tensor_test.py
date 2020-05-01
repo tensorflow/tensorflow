@@ -141,10 +141,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
     rp = RowPartition.from_row_splits(row_splits)
-    rt = RaggedTensor(
-        values=values,
-        row_partition=rp,
-        internal=ragged_tensor._ragged_factory_key)
+    rt = RaggedTensor(values=values, row_partition=rp, internal=True)
 
     self.assertAllEqual(rt,
                         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
@@ -160,17 +157,12 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(TypeError,
                                  'values must be a Tensor or RaggedTensor'):
-      RaggedTensor(
-          values=range(7),
-          row_partition=rp,
-          internal=ragged_tensor._ragged_factory_key)
+      RaggedTensor(values=range(7), row_partition=rp, internal=True)
 
     with self.assertRaisesRegexp(TypeError,
                                  'row_partition must be a RowPartition'):
-      RaggedTensor(
-          values=values,
-          row_partition=[0, 2, 2, 5, 6, 7],
-          internal=ragged_tensor._ragged_factory_key)
+      RaggedTensor(values=values, row_partition=[0, 2, 2, 5, 6, 7],
+                   internal=True)
 
   #=============================================================================
   # RaggedTensor Factory Ops
