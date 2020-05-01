@@ -167,6 +167,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:platform_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 

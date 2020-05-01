@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 
@@ -40,8 +41,12 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
 
   std::vector<std::unique_ptr<Device>> devices;
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutorConfig config;
+    config.ordinal = i;
+    config.device_options.non_portable_tags["host_thread_stack_size_in_bytes"] =
+        absl::StrCat(2048 * 1024);
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                        platform->GetExecutor(config));
     auto device_state = absl::make_unique<LocalDeviceState>(
         executor, client, LocalDeviceState::kSynchronous, asynchronous,
         /*allow_event_reuse=*/false);
