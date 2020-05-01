@@ -247,8 +247,9 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       values: A potentially ragged tensor of any dtype and shape `[nvals, ...]`.
       row_partition: A `RowPartition` object, representing the arrangement of
         the lists at the top level.
-      internal: True if the constructor is being called by one of the factory
-        methods.  If false, an exception will be raised.
+      internal: Must contain a private "key" value to validate that this
+        constructor is not called from user code.  Otherwise, an exception will
+        be raised.
 
     Raises:
       ValueError: If internal = False. Note that this method is intended only
@@ -257,7 +258,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
                  row_partition is not a `RowPartition`.
     """
 
-    if not internal:
+    if internal is not _ragged_factory_key:
       raise ValueError("RaggedTensor constructor is private; please use one "
                        "of the factory methods instead (e.g., "
                        "RaggedTensor.from_row_lengths())")
@@ -326,7 +327,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       row_partition = row_partition.with_dependencies(checks)
     return cls(
         values=values,
-        internal=True,
+        internal=_ragged_factory_key,
         row_partition=row_partition)
 
   @classmethod
@@ -1275,7 +1276,9 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       new_values = new_values.with_row_splits_dtype(dtypes.int64)
       return self.with_row_splits_dtype(dtypes.int64).with_values(new_values)
     return RaggedTensor(
-        values=new_values, row_partition=self._row_partition, internal=True)
+        values=new_values,
+        row_partition=self._row_partition,
+        internal=_ragged_factory_key)
 
   def with_flat_values(self, new_values):
     """Returns a copy of `self` with `flat_values` replaced by `new_value`.
@@ -1321,12 +1324,12 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       return RaggedTensor(
           values=current_values.with_row_splits_dtype(dtype),
           row_partition=self._row_partition.with_row_splits_dtype(dtype),
-          internal=True)
+          internal=_ragged_factory_key)
     else:
       return RaggedTensor(
           values=current_values,
           row_partition=self._row_partition.with_row_splits_dtype(dtype),
-          internal=True)
+          internal=_ragged_factory_key)
 
   def merge_dims(self, outer_axis, inner_axis):
     """Merges outer_axis...inner_axis into a single dimension.
@@ -2204,7 +2207,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
         result = RaggedTensor(
             result,
             RowPartition.from_row_splits(row_splits, validate=False),
-            internal=True)
+            internal=_ragged_factory_key)
     return result
 
   # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops
@@ -2664,3 +2667,6 @@ def _get_optional_partition_dtype(values):
 
 
 ops.no_gradient("RaggedTensorToVariant")
+
+
+_ragged_factory_key = object()  # unique private object
