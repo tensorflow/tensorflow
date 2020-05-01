@@ -816,6 +816,10 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     case BuiltinOperator_LEAKY_RELU:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
       property.inputs = {{0, {}}};
