@@ -121,7 +121,7 @@ cuda_py_test(
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
     tags = [
-        "notsan",  # TODO(b/155406705): flaky
+        "noasan",  # TODO(b/155406705): flaky
     ],
     deps = [
         "//tensorflow/python:array_ops",
