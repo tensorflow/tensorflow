@@ -22,7 +22,6 @@ from absl.testing import parameterized
 
 from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -178,40 +177,6 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(new_layer._feature_columns, 1)
     self.assertEqual(new_layer._feature_columns[0].name, 'a_X_b_indicator')
-
-
-@test_util.run_all_in_graph_and_eager_modes
-class SequenceFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(('default', None, None),
-                                  ('trainable', True, 'trainable'),
-                                  ('not_trainable', False, 'frozen'))
-  def test_get_config(self, trainable, name):
-    cols = [sfc.sequence_numeric_column('a')]
-    orig_layer = sfc.SequenceFeatures(cols, trainable=trainable, name=name)
-    config = orig_layer.get_config()
-
-    self.assertEqual(config['name'], orig_layer.name)
-    self.assertEqual(config['trainable'], trainable)
-    self.assertLen(config['feature_columns'], 1)
-    self.assertEqual(config['feature_columns'][0]['class_name'],
-                     'SequenceNumericColumn')
-    self.assertEqual(config['feature_columns'][0]['config']['shape'], (1,))
-
-  @parameterized.named_parameters(('default', None, None),
-                                  ('trainable', True, 'trainable'),
-                                  ('not_trainable', False, 'frozen'))
-  def test_from_config(self, trainable, name):
-    cols = [sfc.sequence_numeric_column('a')]
-    orig_layer = sfc.SequenceFeatures(cols, trainable=trainable, name=name)
-    config = orig_layer.get_config()
-
-    new_layer = sfc.SequenceFeatures.from_config(config)
-
-    self.assertEqual(new_layer.name, orig_layer.name)
-    self.assertEqual(new_layer.trainable, trainable)
-    self.assertLen(new_layer._feature_columns, 1)
-    self.assertEqual(new_layer._feature_columns[0].name, 'a')
 
 
 @test_util.run_all_in_graph_and_eager_modes
