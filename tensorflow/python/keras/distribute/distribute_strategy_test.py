@@ -259,14 +259,6 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-def all_strategy_combinations_plus_run_distributed():
-  return (combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph', 'eager']) + combinations.combine(
-          distribution=tpu_strategies,
-          mode=['graph', 'eager']))
-
-
 def all_strategy_minus_default_and_tpu_combinations():
   return combinations.combine(
       distribution=[
@@ -460,7 +452,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         distributed_training_utils.get_input_params(
             distribution, 64, steps=10, batch_size=13)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_calling_model_with_numpy_arrays(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -494,7 +486,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         model.predict(inputs)
         model.predict(inputs, batch_size=8)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_calling_model_with_mixed_precision(self, distribution):
     if isinstance(distribution.extended,
                   parameter_server_strategy.ParameterServerStrategyExtended):
@@ -540,7 +532,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.predict(inputs)
       model.predict(inputs, batch_size=8)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_operator_overload_mixed_precision(self, distribution):
     # Regression test that tests a fixed bug does not reoccur. Adding an
     # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
@@ -600,7 +592,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                   'cannot be called in cross-replica context'):
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -672,7 +664,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       result = model.evaluate(inputs, targets, batch_size=2, verbose=1)
       self.assertAllClose(result, 13.5)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_flatten_predict_outputs(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -839,7 +831,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-4,
           rtol=1e-4)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_gradients_are_none(self, distribution):
 
     if not context.executing_eagerly():
@@ -870,7 +862,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_calling_model_on_same_dataset(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -903,7 +895,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           validation_steps=2)
       model.predict(get_predict_dataset(distribution), steps=2)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_model_interleaved_eval_same_as_direct_eval(
       self, distribution):
     with self.cached_session():
@@ -954,7 +946,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
                        [x[2] for x in user_controlled_output])
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -991,9 +983,13 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_fit_with_dictionary_in_the_dataset_b135161171(
       self, distribution):
+
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest('b/142805125')
 
     def custom_loss(predict, label, weight):
       bce = keras.losses.binary_crossentropy(label, predict)
@@ -1035,7 +1031,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(data)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset_without_steps(
       self, distribution):
     with self.cached_session():
@@ -1071,11 +1067,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
-  @combinations.generate(
-      combinations.times(
-          strategy_minus_tpu_combinations()))
+  @combinations.generate(all_strategy_combinations())
   def test_on_dataset_with_unknown_cardinality_without_steps(
       self, distribution, mode):
+
+    if mode == 'graph' and isinstance(
+        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest('partial batch not supported with TPU in graph mode.')
+
     with self.cached_session():
       with distribution.scope():
         optimizer_fn = gradient_descent_keras.SGD
@@ -1126,9 +1125,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           atol=1e-4,
           rtol=1e-4)
 
-  @combinations.generate(
-      combinations.times(
-          tpu_strategy_combinations()))
+  @combinations.generate(tpu_strategy_combinations_graph_only())
   def test_on_dataset_with_unknown_cardinality(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -1169,7 +1166,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                                    'Number of steps could not be inferred'):
         model.fit(dataset, epochs=1)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(
       self, distribution):
     with self.cached_session():
@@ -1321,7 +1318,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       ref_output = np.ones((160, 1), dtype=np.float32)
       self.assertArrayNear(output, ref_output, 1e-1)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def testOptimizerWithCallbacks(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -1605,7 +1602,7 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
 class TestDistributionStrategyWithKerasModels(test.TestCase,
                                               parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_distribution_strategy_on_sequential_model(
       self, distribution):
     with distribution.scope():
@@ -1624,7 +1621,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(inputs, batch_size=10)
     model.evaluate(inputs, targets, batch_size=10)
 
-  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  @combinations.generate(all_strategy_combinations())
   def test_distribution_strategy_on_functional_model(
       self, distribution):
     with distribution.scope():
