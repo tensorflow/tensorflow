@@ -555,9 +555,23 @@ class Conv2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/1, /*outputs=*/1));
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    const int runtime_inputs =
+        GetNumberOfRuntimeInputsForNode(context, tflite_node);
+    if (runtime_inputs > 2) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 or 2 input tensor(s), but node has ",
+                       runtime_inputs, " runtime inputs."));
+    }
+    const int runtime_outputs =
+        GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+    if (runtime_outputs != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 output tensor(s), but node has ",
+                       runtime_outputs, " runtime outputs."));
+    }
+    if (runtime_inputs == 1) {
+      RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    }
     TfLiteConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
@@ -575,7 +589,12 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     Convolution2DAttributes attr;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 2) {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+    } else {  // runtime_inputs == 1;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    }
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
 
     const auto* tf_options =
