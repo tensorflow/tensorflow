@@ -53,7 +53,6 @@
 #     nogcp:        Disable GCS support.
 #     nohdfs:       Disable hadoop hdfs support.
 #     nonccl:       Disable nccl support.
-#     gles:         Build with OpenGL ES support (TF Lite only).
 #
 #
 # Remote build execution options (only configured to work with TF team projects for now.)
@@ -193,8 +192,6 @@ build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
 build:nohdfs --define=no_hdfs_support=true
 build:nonccl --define=no_nccl_support=true
-
-build:gles --define=gles=true --copt -DMESA_EGL_NO_X11_HEADERS --copt -DEGL_NO_X11
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
