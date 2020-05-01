@@ -348,6 +348,7 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "noasan",  # TODO(b/155406516): flaky
+        "notsan",  # TODO(b/155406516): flaky
     ],
     deps = [
         ":c_api",
