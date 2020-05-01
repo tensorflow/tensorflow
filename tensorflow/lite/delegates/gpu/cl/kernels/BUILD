@@ -133,6 +133,7 @@ cc_library(
     srcs = ["conv_buffer_1x1.cc"],
     hdrs = ["conv_buffer_1x1.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
