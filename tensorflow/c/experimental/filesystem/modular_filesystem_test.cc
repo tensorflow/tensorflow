@@ -85,15 +85,18 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     const std::string test_name = tensorflow::str_util::StringReplace(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(), "/",
         "_", /*replace_all=*/true);
-    // Since we need the tests for cloud filesystem to run on all OSs (Windows, MacOS, Linux, ...)
-    // The path to temp directory must not be dependent on the OS which runs the tests
-    const std::string tmp_dir_ = cloud_path_.empty() ? ::testing::TempDir() : "/tmp/";
+    // Since we need the tests for cloud filesystem to run on all OSs (Windows,
+    // MacOS, Linux, ...) The path to temp directory must not be dependent on
+    // the OS which runs the tests.
+    const std::string tmp_dir_ =
+        cloud_path_.empty() ? ::testing::TempDir() : "/tmp/";
     root_dir_ = tensorflow::io::JoinPath(
         tmp_dir_,
         tensorflow::strings::StrCat("tf_fs_", rng_val_, "_", test_name));
-    if(!GetParam().empty()) {
-      if(!cloud_path_.empty()) {
-        root_dir_ = tensorflow::strings::StrCat(GetParam(), "://", cloud_path_, root_dir_, "/");
+    if (!GetParam().empty()) {
+      if (!cloud_path_.empty()) {
+        root_dir_ = tensorflow::strings::StrCat(GetParam(), "://", cloud_path_,
+                                                root_dir_, "/");
       } else {
         root_dir_ = tensorflow::strings::StrCat(GetParam(), "://", root_dir_);
       }
@@ -104,12 +107,12 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   void SetUp() override {
     FileSystem* fs = nullptr;
     Status s = env_->GetFileSystemForFile(root_dir_, &fs);
-    if (fs == nullptr || !s.ok()) 
+    if (fs == nullptr || !s.ok())
       GTEST_SKIP() << "No filesystem registered: " << s;
 
     s = fs->CreateDir(root_dir_);
-    if (!s.ok()) { 
-      GTEST_SKIP() << "Cannot create working directory: " << s; 
+    if (!s.ok()) {
+      GTEST_SKIP() << "Cannot create working directory: " << s;
     }
   }
 
@@ -129,8 +132,9 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   std::string GetURIForPath(StringPiece path) {
     const std::string translated_name =
         tensorflow::io::JoinPath(root_dir_, path);
-    // We have already checked `GetParam().empty()` in `ModularFileSystemTest()`
-    // root_dir_ should contain `GetParam() + "://"` if it isn't empty
+    // We have already checked `GetParam().empty()` in
+    // `ModularFileSystemTest()`. root_dir_ should contain `GetParam() + "://"`
+    // if it isn't empty.
     return translated_name;
   }
 
@@ -1751,7 +1755,7 @@ static bool GetURIScheme(const std::string& scheme) {
 
 // This function is used for cloud filesystem
 // `S3` and `GCS` require the `root_dir_` to have bucket name
-// `HDFS` requires the `root_dir` to have node name
+// `HDFS` requires the `root_dir` to have namenode
 // `root_dir_ = scheme + "://" cloud_path_ + root_dir_`
 static bool SetCloudPath(const std::string& cloud_path_) {
   ModularFileSystemTest::SetCloudPath(cloud_path_);
@@ -1772,7 +1776,8 @@ GTEST_API_ int main(int argc, char** argv) {
       tensorflow::Flag("scheme", tensorflow::GetURIScheme, "",
                        "URI scheme to test"),
       tensorflow::Flag("cloud_path", tensorflow::SetCloudPath, "",
-                       "Path for cloud filesystem (nodename for hdfs, bucketname for s3/gcs)")};
+                       "Path for cloud filesystem (namenode for hdfs, "
+                       "bucketname for s3/gcs)")};
   if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
     std::cout << tensorflow::Flags::Usage(argv[0], flag_list);
     return -1;
