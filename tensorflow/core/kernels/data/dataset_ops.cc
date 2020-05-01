@@ -115,21 +115,6 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
   result->scalar<int64>()() = dataset->Cardinality();
 }
 
-void DatasetCardinalityV2Op::Compute(OpKernelContext* ctx) {
-  DatasetBase* dataset;
-  OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  Tensor* result;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-  int64 cardinality = dataset->Cardinality();
-  if (cardinality == data::kUnknownCardinality) {
-    result->scalar<double>()() = std::nan("");
-  } else if (cardinality == data::kInfiniteCardinality) {
-    result->scalar<double>()() = std::numeric_limits<double>::infinity();
-  } else {
-    result->scalar<double>()() = cardinality;
-  }
-}
-
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   tstring graph_def_string;
   OP_REQUIRES_OK(ctx,
@@ -177,9 +162,6 @@ REGISTER_KERNEL_BUILDER(Name("DatasetCardinality").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDatasetCardinality").Device(DEVICE_CPU),
     DatasetCardinalityOp);
-
-REGISTER_KERNEL_BUILDER(Name("DatasetCardinalityV2").Device(DEVICE_CPU),
-                        DatasetCardinalityV2Op);
 
 REGISTER_KERNEL_BUILDER(Name("DatasetFromGraph").Device(DEVICE_CPU),
                         DatasetFromGraphOp);

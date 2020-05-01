@@ -47,17 +47,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "cardinality_test",
-    srcs = ["cardinality_test.py"],
-    deps = [
-        "//tensorflow/python/data/experimental/ops:cardinality",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "checkpoint_test",
     size = "medium",
     srcs = ["checkpoint_test.py"],

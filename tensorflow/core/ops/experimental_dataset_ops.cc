@@ -221,11 +221,6 @@ REGISTER_OP("DatasetCardinality")
     .Output("cardinality: int64")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("DatasetCardinalityV2")
-    .Input("input_dataset: variant")
-    .Output("cardinality: float64")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("ExperimentalDatasetCardinality")
     .Input("input_dataset: variant")
     .Output("cardinality: int64")
