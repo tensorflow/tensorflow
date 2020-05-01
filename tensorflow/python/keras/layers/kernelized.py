@@ -191,7 +191,7 @@ class RandomFourierFeatures(base_layer.Layer):
     kernel_initializer = _get_random_features_initializer(
         self.kernel_initializer, shape=(input_dim, self.output_dim))
 
-    unscaled_kernel = self.add_weight(
+    self.unscaled_kernel = self.add_weight(
         name='unscaled_random_features',
         shape=(input_dim, self.output_dim),
         dtype=dtypes.float32,
@@ -208,20 +208,20 @@ class RandomFourierFeatures(base_layer.Layer):
 
     if self.scale is None:
       self.scale = _get_default_scale(self.kernel_initializer, input_dim)
-    scale = self.add_weight(
+    self.inv_kernel_scale = self.add_weight(
         name='random_features_scale',
         shape=(1,),
         dtype=dtypes.float32,
         initializer=init_ops.constant_initializer(self.scale),
         trainable=True,
         constraint='NonNeg')
-    self.kernel = (1.0 / scale) * unscaled_kernel
     super(RandomFourierFeatures, self).build(input_shape)
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor_v2(inputs, dtype=self.dtype)
     inputs = gen_math_ops.cast(inputs, dtypes.float32)
-    outputs = gen_math_ops.mat_mul(inputs, self.kernel)
+    kernel = (1.0 / self.inv_kernel_scale) * self.unscaled_kernel
+    outputs = gen_math_ops.mat_mul(inputs, kernel)
     outputs = nn.bias_add(outputs, self.bias)
     return gen_math_ops.cos(outputs)
 

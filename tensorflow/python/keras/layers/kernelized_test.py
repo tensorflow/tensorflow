@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -42,7 +43,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-
+from tensorflow.python.training import gradient_descent
 
 def _exact_gaussian(stddev):
   return functools.partial(
@@ -370,6 +371,19 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     approx_kernel_matrix = kernelized_utils.inner_product(output_x, output_y)
     exact_kernel_matrix = exact_kernel_fn(x, y)
     self._assert_all_close(approx_kernel_matrix, exact_kernel_matrix, atol=0.05)
+
+  def testTrainLayer(self):
+    """Ensure the layer may be trained as part of a model."""
+    rff_layer = kernel_layers.RandomFourierFeatures(
+        output_dim=1,
+        kernel_initializer='gaussian',
+        scale=1.0,
+        trainable=True,
+        name='random_fourier_features')
+    model = keras.models.Sequential()
+    model.add(rff_layer)
+    model.compile(gradient_descent.GradientDescentOptimizer(0.001), 'mse')
+    model.train_on_batch(np.array([1.0]), np.array([1.0]))
 
 
 if __name__ == '__main__':
