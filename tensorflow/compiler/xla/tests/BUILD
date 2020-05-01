@@ -1500,6 +1500,7 @@ xla_test(
     srcs = ["select_and_scatter_test.cc"],
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = [
