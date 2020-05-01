@@ -520,6 +520,13 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
     return DistributedIteratorSpec(value._input_workers, value._element_spec,
                                    value._strategy)
 
+  def _with_tensor_ranks_only(self):
+    element_spec = nest.map_structure(
+        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
+        self._element_spec)
+    return DistributedIteratorSpec(self._input_workers, element_spec,
+                                   self._strategy)
+
 
 class DistributedIterator(DistributedIteratorBase,
                           composite_tensor.CompositeTensor):
