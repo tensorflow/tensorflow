@@ -1702,22 +1702,37 @@ class SliceOperationParser : public TFLiteOperationParser {
     if (starts.data.size() != sizes.data.size()) {
       return absl::InvalidArgumentError("Starts amount != sizes amount.");
     }
+    const auto& in_shape = input->tensor.shape;
     if (starts.data.size() == 4) {
+      sizes.data[0] =
+          sizes.data[0] != -1 ? sizes.data[0] : in_shape.b - starts.data[0];
+      sizes.data[1] =
+          sizes.data[1] != -1 ? sizes.data[1] : in_shape.h - starts.data[1];
+      sizes.data[2] =
+          sizes.data[2] != -1 ? sizes.data[2] : in_shape.w - starts.data[2];
+      sizes.data[3] =
+          sizes.data[3] != -1 ? sizes.data[3] : in_shape.c - starts.data[3];
       attr.starts =
           BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
       attr.ends =
           BHWC(starts.data[0] + sizes.data[0], starts.data[1] + sizes.data[1],
                starts.data[2] + sizes.data[2], starts.data[3] + sizes.data[3]);
     } else if (starts.data.size() == 3) {
+      sizes.data[0] =
+          sizes.data[0] != -1 ? sizes.data[0] : in_shape.h - starts.data[0];
+      sizes.data[1] =
+          sizes.data[1] != -1 ? sizes.data[1] : in_shape.w - starts.data[1];
+      sizes.data[2] =
+          sizes.data[2] != -1 ? sizes.data[2] : in_shape.c - starts.data[2];
       attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
       attr.ends =
-          BHWC(input->tensor.shape.b, starts.data[0] + sizes.data[0],
+          BHWC(in_shape.b, starts.data[0] + sizes.data[0],
                starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
     } else {
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
-    RETURN_IF_ERROR(UpdateIfNegative(input->tensor.shape, &attr));
+    RETURN_IF_ERROR(UpdateIfNegative(in_shape, &attr));
 
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
     if ((attr.ends.b - attr.starts.b) != out_shape.b) {
