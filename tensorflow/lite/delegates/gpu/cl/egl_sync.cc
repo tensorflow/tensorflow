@@ -29,7 +29,7 @@ PFNEGLWAITSYNCKHRPROC g_eglWaitSyncKHR = nullptr;
 PFNEGLCLIENTWAITSYNCKHRPROC g_eglClientWaitSyncKHR = nullptr;
 
 absl::Status IsEglSyncSupported(EGLDisplay display) {
-  static bool isAvailable = [display]() -> bool {
+  static bool supported = [display]() -> bool {
     // EGL_KHR_fence_sync is apparently a display extension
     const char* extensions = eglQueryString(display, EGL_EXTENSIONS);
     if (!extensions) {
@@ -48,7 +48,7 @@ absl::Status IsEglSyncSupported(EGLDisplay display) {
     return g_eglCreateSyncKHR && g_eglDestroySyncKHR && g_eglWaitSyncKHR &&
            g_eglClientWaitSyncKHR;
   }();
-  if (!isAvailable) {
+  if (!supported) {
     return absl::InternalError("EGL_KHR_fence_sync unsupported");
   }
   return absl::OkStatus();
