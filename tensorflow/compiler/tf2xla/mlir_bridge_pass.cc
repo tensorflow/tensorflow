@@ -31,11 +31,11 @@ namespace tensorflow {
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
                            mlir::ModuleOp module) {
   if (!config_proto.experimental().enable_mlir_bridge()) {
-    VLOG(1) << "Skipping MLIR Bridge Pass, session flag not enabled";
+    VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
     return Status::OK();
   }
 
-  VLOG(1) << "Running MLIR Bridge Pass";
+  VLOG(0) << "Running MLIR TPU Bridge";
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
 
@@ -47,11 +47,11 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   if (options.is_function_graph) return Status::OK();
 
   if (!options.session_options->config.experimental().enable_mlir_bridge()) {
-    VLOG(1) << "Skipping MLIR Bridge V1 Compat Pass, session flag not enabled";
+    VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     return Status::OK();
   }
 
-  VLOG(1) << "Running MLIR Bridge V1 Compat Pass";
+  VLOG(0) << "Running MLIR TPU Bridge V1 Compat";
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridgeV1Compat(module, /*enable_logging=*/VLOG_IS_ON(1)));
 
