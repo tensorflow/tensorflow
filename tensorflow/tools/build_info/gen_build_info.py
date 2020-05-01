@@ -107,7 +107,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.raw_generate:
-  print(args.key_value)
   write_build_info(args.raw_generate, args.key_value)
 else:
   raise RuntimeError(
