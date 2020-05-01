@@ -89,7 +89,7 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
+        opts={'iterate_names': 'i'})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_range_tensor_explicit_limit_delta(self):
@@ -109,7 +109,7 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
+        opts={'iterate_names': 'i'})
     self.assertEqual(self.evaluate(s), (-171207,))
 
   def test_range_tensor_explicit_limit_negative_delta(self):
@@ -129,7 +129,7 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
+        opts={'iterate_names': 'i'})
     self.assertEqual(self.evaluate(s), (171207,))
 
   def test_range_tensor_random_delta(self):
@@ -150,7 +150,7 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
+        opts={'iterate_names': 'i'})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_range_tensor_random_negative_delta(self):
@@ -171,7 +171,7 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
+        opts={'iterate_names': 'i'})
     self.assertEqual(self.evaluate(s), (171207,))
 
   def test_tensor_with_extra_test_object_vars(self):

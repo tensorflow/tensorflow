@@ -33,7 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
 typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
 // Represents the ephemeral "edge state" associated with one invocation of

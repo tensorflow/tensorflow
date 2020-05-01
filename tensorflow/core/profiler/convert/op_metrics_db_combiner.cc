@@ -28,6 +28,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   DCHECK_EQ(src.name(), dst->name());
   dst->set_category(src.category());
   dst->set_provenance(src.provenance());
+  dst->set_is_eager(dst->is_eager() || src.is_eager());
   dst->set_deduplicated_name(src.deduplicated_name());
   if (!dst->has_layout() && src.has_layout()) {
     *dst->mutable_layout() = src.layout();

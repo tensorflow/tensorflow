@@ -94,7 +94,7 @@ endif
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
-MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -name Makefile.inc)
 
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
@@ -159,7 +159,9 @@ tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
@@ -170,6 +172,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/sub.h \

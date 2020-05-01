@@ -224,8 +224,8 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 absl::Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, biases_, IntegralDivideRoundUp(src_channels_, 4),
-      IntegralDivideRoundUp(dst_channels_, 4), *creation_context.device,
+      definition_, biases_, DivideRoundUp(src_channels_, 4),
+      DivideRoundUp(dst_channels_, 4), *creation_context.device,
       linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

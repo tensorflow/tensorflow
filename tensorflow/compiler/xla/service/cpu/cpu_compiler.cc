@@ -402,8 +402,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to 16-byte boundaries.
-constexpr int64 kMemoryAlignment = 16;
-auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
+int64 memory_alignment(LogicalBuffer::Color) {
+  return cpu_function_runtime::kMinAlign;
+}
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
@@ -519,6 +520,33 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get()));
   return std::move(module);
+}
+
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+CpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  TF_ASSIGN_OR_RETURN(
+      module, RunHloPasses(std::move(module), executor, device_allocator));
+
+  // Select an order for emitting the HLO instructions for each computation.
+  // Using this sequence enables tighter buffer liveness analysis and reduced
+  // memory usage (as compared to using DependencyHloOrdering).
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
+
+  // Run buffer allocation on the HLO graph.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(module.get(),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          BufferSizeBytesFunction(), memory_alignment,
+                          /*allocate_buffers_for_constants=*/true));
+
+  return std::make_tuple(std::move(module), std::move(assignment));
 }
 
 namespace {

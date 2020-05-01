@@ -209,7 +209,7 @@ OperationType OperationTypeFromString(const std::string& name) {
 namespace {
 
 template <typename T>
-T IntegralDivideRoundUp(T n, T divisor) {
+T DivideRoundUp(T n, T divisor) {
   return (n - 1) / divisor + 1;
 }
 
@@ -272,7 +272,7 @@ int32_t CalculateOutput(const BHWDC& input,
 }
 
 inline int32_t StridedSize(int32_t size, int32_t stride) {
-  return stride == 0 ? -1 : IntegralDivideRoundUp(size, stride);
+  return stride == 0 ? -1 : DivideRoundUp(size, stride);
 }
 
 template <Axis AxisT, typename AttrT>

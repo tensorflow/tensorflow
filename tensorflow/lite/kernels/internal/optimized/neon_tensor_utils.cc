@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "ruy/detect_arm.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
-#include "ruy/size_util.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -40,7 +39,8 @@ limitations under the License.
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+// Neither Apple nor Windows provide aligned_alloc.
+#if !defined(__APPLE__) && !defined(_WIN32)
 #define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
@@ -111,8 +111,8 @@ bool UseCpuBackendGemm(int rows, int cols, int batch) {
   int row_rect = rows / cols;
   int col_rect = cols / rows;
   int rectangularness_lg2 =
-      row_rect > 0 ? ruy::floor_log2(row_rect) : ruy::floor_log2(col_rect);
-  int batch_lg2 = ruy::floor_log2(batch);
+      row_rect > 0 ? FloorLog2(row_rect) : FloorLog2(col_rect);
+  int batch_lg2 = FloorLog2(batch);
   // Large batch sizes move us above the threshold, but can be offset
   // by significant rectangularness.
   int batch_lg2_minus_rect_lg2 = batch_lg2 - rectangularness_lg2;
@@ -1042,7 +1042,7 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = n_output;
   lhs_params.cols = n_input;
-  lhs_params.cacheable = true;
+  lhs_params.cache_policy = cpu_backend_gemm::CachePolicy::kCacheIfLargeSpeedup;
 
   MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -1436,7 +1436,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 #else
   const bool use_cpu_backend_gemm = UseCpuBackendGemm(m_rows, m_cols, n_batch);
 #endif
-
   if (input_offset == nullptr) {
     if (use_cpu_backend_gemm && context) {
       NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,

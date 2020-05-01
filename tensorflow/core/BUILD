@@ -619,6 +619,7 @@ tf_gen_op_libs(
         "clustering_ops",
         "collective_ops",
         "control_flow_ops",
+        "count_ops",
         "ctc_ops",
         "data_flow_ops",
         "dataset_ops",
@@ -847,6 +848,7 @@ cc_library(
         ":clustering_ops_op_lib",
         ":collective_ops_op_lib",
         ":control_flow_ops_op_lib",
+        ":count_ops_op_lib",
         ":ctc_ops_op_lib",
         ":cudnn_rnn_ops_op_lib",
         ":data_flow_ops_op_lib",
@@ -1006,6 +1008,7 @@ cc_library(
         "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:count_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
@@ -1289,6 +1292,7 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
+        "//tensorflow/c/experimental/saved_model/core:mobile_srcs_only_runtime",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -2065,7 +2069,13 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-ldl",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
@@ -2295,6 +2305,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/example:feature_util",
@@ -2788,7 +2799,6 @@ tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
-        "//tensorflow/core/graph:mkl_related_tests",
         "//tensorflow/core/util:mkl_util_test_srcs",
     ],
     linkstatic = 1,

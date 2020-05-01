@@ -105,10 +105,9 @@ absl::Status GenerateMultiplyScalarCode(
         /*shared_variables=*/{},
         // Declare workload explicitly because shader depends on gid.z.
         /*workload=*/
-        uint3(
-            static_cast<int>(ctx.input_shapes[0][2]),
-            static_cast<int>(ctx.input_shapes[0][1]),
-            IntegralDivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+        uint3(static_cast<int>(ctx.input_shapes[0][2]),
+              static_cast<int>(ctx.input_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
         /*workgroup=*/uint3(),
         /*source_code=*/"value_0 *= $mul_buffer[gid.z]$;",
         /*input=*/IOStructure::AUTO,

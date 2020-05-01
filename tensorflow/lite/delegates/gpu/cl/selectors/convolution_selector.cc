@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -55,6 +56,19 @@ absl::Status SelectConvolutionWinogradAdreno(
   RETURN_IF_ERROR(
       CreateConvTextureWino4x4To6x6(creation_context, op_def, attr, &conv));
   *ptr = absl::make_unique<ConvTexture>(std::move(conv));
+  return absl::OkStatus();
+}
+
+absl::Status SelectConvolutionDynamicWeightsAdreno(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const CreationContext& creation_context,
+    const OperationDef& op_def, ModelHints hints,
+    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+  ConvPowerVR conv;
+  RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
+      creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+  *weights_desc = conv.GetConvWeightsDescription();
+  *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   return absl::OkStatus();
 }
 
@@ -171,6 +185,37 @@ absl::Status SelectConvolutionForWinograd(
       return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
                                              op_def, hints, ptr);
   }
+}
+
+absl::Status SelectConvolutionWithDynamicWeights(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const CreationContext& creation_context,
+    const OperationDef& op_def, ModelHints hints,
+    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+  switch (creation_context.device->vendor()) {
+    case Vendor::QUALCOMM:
+      return SelectConvolutionDynamicWeightsAdreno(
+          attr, weights_shape, dst_shape, creation_context, op_def, hints, ptr,
+          weights_desc);
+    default: {
+      ConvPowerVR conv;
+      RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
+          creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+      *weights_desc = conv.GetConvWeightsDescription();
+      *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+      return absl::OkStatus();
+    }
+  }
+}
+
+absl::Status SelectConverterToConvWeights(
+    const ConvWeightsDescription& weights_desc,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
+  ConverterToConvWeights converter =
+      ConverterToConvWeights(op_def, weights_desc);
+  *ptr = absl::make_unique<ConverterToConvWeights>(std::move(converter));
+  return absl::OkStatus();
 }
 
 }  // namespace cl

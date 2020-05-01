@@ -1304,6 +1304,7 @@ xla_test(
 
 xla_test(
     name = "slice_test",
+    timeout = "long",
     srcs = ["slice_test.cc"],
     shard_count = 40,
     deps = [
@@ -2541,6 +2542,7 @@ xla_test(
         "noasan",  # sometimes times out, http://b/78650012
         "nomsan",  # sometimes times out, http://b/78650012
         "notsan",  # sometimes times out, http://b/78650012
+        "optonly",
     ],
     deps = [
         ":test_macros_header",

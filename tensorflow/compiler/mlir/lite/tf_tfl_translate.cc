@@ -130,6 +130,8 @@ int main(int argc, char **argv) {
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
   mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
@@ -173,6 +175,7 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   mlir::PassManager pm(&context);
+  applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
   mlir::TFL::QuantizationSpecs quant_specs;

@@ -77,6 +77,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kCeil:
       func_builder.create<lhlo::CeilOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kComplex:
+      func_builder.create<lhlo::ComplexOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kCopy:
       func_builder.create<lhlo::CopyOp>(loc, rets, args, attrs);
       break;
@@ -88,6 +91,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kExp:
       func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kImag:
+      func_builder.create<lhlo::ImagOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kLog:
       func_builder.create<lhlo::LogOp>(loc, rets, args, attrs);
@@ -103,6 +109,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kNegate:
       func_builder.create<lhlo::NegOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kReal:
+      func_builder.create<lhlo::RealOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kRemainder:
       func_builder.create<lhlo::RemOp>(loc, rets, args, attrs);

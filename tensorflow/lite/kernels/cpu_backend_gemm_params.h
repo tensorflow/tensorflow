@@ -29,6 +29,17 @@ namespace cpu_backend_gemm {
 // Matrix storage order: column-major or row-major.
 enum class Order { kColMajor, kRowMajor };
 
+enum class CachePolicy : std::uint8_t {
+  kNeverCache,
+  kCacheIfLargeSpeedup,
+  kAlwaysCache,
+};
+
+inline CachePolicy DefaultCachePolicy(bool is_constant_data) {
+  return is_constant_data ? CachePolicy::kCacheIfLargeSpeedup
+                          : CachePolicy::kNeverCache;
+}
+
 // MatrixParams encapsulates the parameters that Gemm needs about each
 // matrix, besides the buffer data pointer.
 // Compare to ruy::Matrix, which also encapsulates the data pointer.
@@ -47,10 +58,13 @@ struct MatrixParams {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
-  // Indicate whether the underlying data will remain unchanged for
-  // some period of time. Defaults to false, but should be set to true
-  // for unchanging data (e.g. weights buffers in many cases)
-  bool cacheable = false;
+  // When the data pointed to by this matrix is constant data, so that it is
+  // valid to assume that equality of pointers implies equality of data,
+  // a CachePolicy may be used instead of the default kNeverCache,
+  // which will enable ruy to take advantage of this constancy of the data to
+  // cache the packing work, which can be a large speedup in matrix*vector
+  // and other narrow shapes.
+  CachePolicy cache_policy = CachePolicy::kNeverCache;
 };
 
 // Enumeration of broad categories of Gemm.

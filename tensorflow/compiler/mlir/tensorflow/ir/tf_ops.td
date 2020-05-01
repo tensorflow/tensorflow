@@ -28,7 +28,9 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -39,6 +41,9 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{
+    // This is required to populate derived attributes during export in a
+    // meaningful way. Else during export to GraphDef element_type() query
+    // will result in out of bounds access/assert.
     if (handle_dtype().getSubtypes().size() != 1) {
       return emitOpError(
           "must have exactly one subtype in the result variant type");
@@ -64,7 +69,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
-def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
+def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -79,12 +85,18 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState &result, Attribute value">,
+      "OpBuilder &builder, OperationState &result, Attribute value">,
     OpBuilder<
-      "Builder *builder, OperationState &result, Type type, Attribute value">,
+      "OpBuilder &builder, OperationState &result, Type type, Attribute value">,
   ];
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return BroadcastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
@@ -176,7 +188,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     FlatSymbolRefAttr:$then_branch,
     FlatSymbolRefAttr:$else_branch,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -279,6 +291,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
 
     Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    TF_ShapeAttrArray:$dense_shapes,
     I32ElementsAttr:$result_segment_sizes
   );
 
@@ -479,7 +492,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -665,6 +678,67 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+  let summary = [{
+An op which shards the input based on the given sharding attribute.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
+  let summary = "Fetches multiple values from infeed as an XLA tuple.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
+  let summary = "Formats a string template using a list of tensors.";
+
+  let description = [{
+Formats a string template using a list of tensors, pretty-printing tensor summaries.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
 #endif // TF_OPS

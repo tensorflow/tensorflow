@@ -192,6 +192,14 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr) {
     return false;
   }
 
+  // We can emit DUS in-place, horizontally fusing it makes the emitter no
+  // longer recognize that it can be done in-place. This creates much slower
+  // code. This restriction could be lifted if buffer assignment would recognize
+  // that the DUS can be done in-place even inside of a horizontal fusion.
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return false;
+  }
+
   return true;
 }
 

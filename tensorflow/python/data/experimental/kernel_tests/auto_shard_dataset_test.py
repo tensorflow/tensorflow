@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import interleave_ops
@@ -428,6 +429,21 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = distribute._AutoShardDataset(dataset, 2, 2)
       self.evaluate(self.getNext(dataset)())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAssertCardinality(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = dataset.apply(cardinality.assert_cardinality(42))
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
 
 
 class AutoShardTextLineDatasetTest(

@@ -41,7 +41,11 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef enum TfLiteStatus { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
+typedef enum TfLiteStatus {
+  kTfLiteOk = 0,
+  kTfLiteError = 1,
+  kTfLiteDelegateError = 2
+} TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
@@ -151,8 +155,16 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
   do {                                              \
     (context)->ReportError((context), __VA_ARGS__); \
   } while (false)
+
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)        \
+  do {                                                \
+    if ((context) != nullptr) {                       \
+      (context)->ReportError((context), __VA_ARGS__); \
+    }                                                 \
+  } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define TF_LITE_KERNEL_LOG(context, ...)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from
@@ -178,8 +190,9 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 #define TF_LITE_ENSURE_STATUS(a) \
   do {                           \
-    if ((a) != kTfLiteOk) {      \
-      return kTfLiteError;       \
+    const TfLiteStatus s = (a);  \
+    if (s != kTfLiteOk) {        \
+      return s;                  \
     }                            \
   } while (0)
 
@@ -208,8 +221,9 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
-    if ((status) != kTfLiteOk) {           \
-      return kTfLiteError;                 \
+    const TfLiteStatus s = (status);       \
+    if ((s) != kTfLiteOk) {                \
+      return s;                            \
     }                                      \
   } while (0)
 

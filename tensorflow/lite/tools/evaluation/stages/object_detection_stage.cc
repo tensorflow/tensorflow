@@ -157,7 +157,7 @@ EvaluationStageMetrics ObjectDetectionStage::LatestMetrics() {
 }
 
 TfLiteStatus PopulateGroundTruth(
-    const std::string& grouth_truth_pbtxt_file,
+    const std::string& grouth_truth_proto_file,
     absl::flat_hash_map<std::string, ObjectDetectionResult>*
         ground_truth_mapping) {
   if (ground_truth_mapping == nullptr) {
@@ -166,7 +166,7 @@ TfLiteStatus PopulateGroundTruth(
   ground_truth_mapping->clear();
 
   // Read the ground truth dump.
-  std::ifstream t(grouth_truth_pbtxt_file);
+  std::ifstream t(grouth_truth_proto_file);
   std::string proto_str((std::istreambuf_iterator<char>(t)),
                         std::istreambuf_iterator<char>());
   ObjectDetectionGroundTruth ground_truth_proto;

@@ -52,7 +52,7 @@ limitations under the License.
 // host-to-device transfers, device-to-host transfers, and compute. This allows
 // us to overlap transfers on and off the device with computation.
 //
-// Synchronization between streams occurs via BufferDefinitionEvents that
+// Synchronization between streams occurs via BufferSequencingEvents that
 // describe when the contents of a logical buffer are known to be valid on
 // a particular stream, and when a buffer's uses have all completed.
 //
@@ -79,13 +79,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/distributed/protocol.pb.h"
 #include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/local_device_state.h"
-#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/python/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
 
@@ -152,7 +154,7 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
   return xla_assignment;
 }
 
-PyLocalClient::PyLocalClient(
+PjRtClient::PjRtClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<Device>> devices, int host_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
@@ -191,15 +193,14 @@ PyLocalClient::PyLocalClient(
   }
 }
 
-StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
+StatusOr<DeviceAssignment> PjRtClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return client_->backend().computation_placer()->AssignDevices(num_replicas,
                                                                 num_partitions);
 }
 
-StatusOr<absl::flat_hash_set<int>>
-PyLocalClient::GetParametersThatMustBeDonated(const LocalExecutable& executable,
-                                              bool tuple_inputs) const {
+StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
+    const LocalExecutable& executable, bool tuple_inputs) const {
   // TODO(b/149489114) support buffer donation on CPU/GPU when XLA supports it.
   const HloInputOutputAliasConfig& config =
       executable.executable()->module().input_output_alias_config();
@@ -274,10 +275,10 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 // a reference to the buffer until the copy completes or serialize the compute
 // stream behind the copy. It is often better to retain a reference since while
 // that keeps memory alive longer, it avoids stalling the compute stream.
-void RecordUsage(PyLocalBuffer::ScopedHold device_buffer,
+void RecordUsage(PjRtBuffer::ScopedHold device_buffer,
                  LocalDeviceState* buffer_local_device,
                  LocalDeviceState* stream_local_device,
-                 std::shared_ptr<BufferDefinitionEvent> event,
+                 std::shared_ptr<BufferSequencingEvent> event,
                  se::Stream* usage_stream, bool prefer_to_retain_reference) {
   bool retain_buffer_until_completion =
       // If the buffer wasn't allocated on the same device as the stream, always
@@ -303,11 +304,11 @@ void RecordUsage(PyLocalBuffer::ScopedHold device_buffer,
 // buffer is a tuple then the tuple tables are allocated, and all necessary
 // synchronization for them is dealt with, before the buffer is returned.
 //
-// It is safe to delete the returned PyLocalBuffer without further
+// It is safe to delete the returned PjRtBuffer without further
 // synchronization if an error occurs before the buffer is used.
-StatusOr<std::unique_ptr<PyLocalBuffer>> AllocateDestinationBuffer(
+StatusOr<std::unique_ptr<PjRtBuffer>> AllocateDestinationBuffer(
     const Shape& on_host_shape, Device* device, LocalDeviceState* local_device,
-    se::Stream* copy_stream, PyLocalClient* client) {
+    se::Stream* copy_stream, PjRtClient* client) {
   if (on_host_shape.IsTuple() && on_host_shape.tuple_shapes_size() == 0) {
     return InvalidArgument("Can't make a buffer from an empty tuple");
   }
@@ -328,11 +329,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> AllocateDestinationBuffer(
   }
   Shape on_device_shape = dst_buffer.on_device_shape();
 
-  absl::InlinedVector<std::shared_ptr<BufferDefinitionEvent>, 2>
+  absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 2>
       definition_events;
   // We always have at least one definition event, for the copy completing to
   // the device buffers.
-  definition_events.emplace_back(std::make_shared<BufferDefinitionEvent>());
+  definition_events.emplace_back(std::make_shared<BufferSequencingEvent>());
   se::Stream* tuple_table_stream = local_device->host_to_device_stream();
   if (on_device_shape.IsTuple()) {
     // We also need to copy the tuple tables, so we'll have a second defintion
@@ -353,7 +354,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> AllocateDestinationBuffer(
     // from error cases because we have started a transfer and must not allow
     // dst_buffer to be freed too soon in the non-async allocation models.
 
-    definition_events.emplace_back(std::make_shared<BufferDefinitionEvent>());
+    definition_events.emplace_back(std::make_shared<BufferSequencingEvent>());
     StatusOr<EventPool::Handle> event_or =
         local_device->event_pool().ThenAllocateAndRecordEvent(
             tuple_table_stream);
@@ -361,16 +362,16 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> AllocateDestinationBuffer(
       StallStreamOnError(local_device, tuple_table_stream);
       return event_or.status();
     }
-    definition_events[1]->SetDefinitionEvent(event_or.ConsumeValueOrDie(),
+    definition_events[1]->SetSequencingEvent(event_or.ConsumeValueOrDie(),
                                              tuple_table_stream);
   }
-  std::shared_ptr<SharedDeviceBuffer> dst_device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
-                                                 definition_events);
+  std::shared_ptr<TrackedDeviceBuffer> dst_device_buffer =
+      TrackedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
+                                                  definition_events);
 
-  auto py_buffer = absl::make_unique<PyLocalBuffer>(
-      on_host_shape, on_device_shape, std::move(dst_device_buffer), client,
-      device);
+  auto py_buffer = absl::make_unique<PjRtBuffer>(on_host_shape, on_device_shape,
+                                                 std::move(dst_device_buffer),
+                                                 client, device);
 
   if (on_device_shape.IsTuple()) {
     // Add a usage hold for the tuple table write and immediately convert it to
@@ -393,8 +394,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> AllocateDestinationBuffer(
 // definition_event was added when the buffer was allocated, but has not yet
 // had an event recorded.
 Status AddDestinationBufferSynchronization(
-    LocalDeviceState* local_device, PyLocalBuffer::ScopedHold device_buffer,
-    std::shared_ptr<BufferDefinitionEvent> definition_event,
+    LocalDeviceState* local_device, PjRtBuffer::ScopedHold device_buffer,
+    std::shared_ptr<BufferSequencingEvent> definition_event,
     se::Stream* copy_stream) {
   StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().ThenAllocateAndRecordEvent(copy_stream);
@@ -402,7 +403,7 @@ Status AddDestinationBufferSynchronization(
     StallStreamOnError(local_device, copy_stream);
     return event_or.status();
   }
-  definition_event->SetDefinitionEvent(event_or.ConsumeValueOrDie(),
+  definition_event->SetSequencingEvent(event_or.ConsumeValueOrDie(),
                                        copy_stream);
   // prefer_to_retain_reference=false means don't retain a memory reference
   // until the transfer is complete when using the ComputeSynchronized
@@ -418,13 +419,13 @@ Status AddDestinationBufferSynchronization(
 
 }  // namespace
 
-PyLocalBuffer::ScopedHold::~ScopedHold() {
+PjRtBuffer::ScopedHold::~ScopedHold() {
   if (ok()) {
     parent_->DropHold(type_, buffer().get());
   }
 }
 
-PyLocalBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
+PjRtBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
     : parent_(other.parent_),
       type_(other.type_),
       buffer_or_(std::move(other.buffer_or_)) {
@@ -432,23 +433,23 @@ PyLocalBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
   other.SetError(InvalidArgument("Buffer has been moved."));
 }
 
-void PyLocalBuffer::ScopedHold::Acquire(
-    StatusOr<std::shared_ptr<SharedDeviceBuffer>>&& buffer_or) {
+void PjRtBuffer::ScopedHold::Acquire(
+    StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
   buffer_or_ = std::move(buffer_or);
   // Check the invariant holds.
   CHECK(!ok() || buffer_or_.ValueOrDie() != nullptr);
 }
 
-PyLocalBuffer::ScopedHold::ForClosure PyLocalBuffer::ScopedHold::ToClosure() {
+PjRtBuffer::ScopedHold::ForClosure PjRtBuffer::ScopedHold::ToClosure() {
   CHECK(ok());
   ForClosure for_closure(parent_, type_, std::move(buffer_or_));
   SetError(InvalidArgument("Buffer has been released"));
   return for_closure;
 }
 
-void PyLocalBuffer::ScopedHold::ConvertUsageHold(
-    se::Stream* usage_stream, std::shared_ptr<BufferDefinitionEvent> event,
+void PjRtBuffer::ScopedHold::ConvertUsageHold(
+    se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
   CHECK(ok());
   CHECK(type_ == kUsage);
@@ -457,14 +458,14 @@ void PyLocalBuffer::ScopedHold::ConvertUsageHold(
   SetError(InvalidArgument("Buffer has been converted"));
 }
 
-void PyLocalBuffer::ScopedHold::ConfirmDonation() {
+void PjRtBuffer::ScopedHold::ConfirmDonation() {
   CHECK(ok());
   CHECK(type_ == kDonation);
   parent_->ConfirmDonation(buffer().get());
   SetError(InvalidArgument("Buffer has been donated"));
 }
 
-void PyLocalBuffer::ScopedHold::AddToInput(
+void PjRtBuffer::ScopedHold::AddToInput(
     ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
     ExecutionInput* execution_input,
@@ -479,12 +480,12 @@ void PyLocalBuffer::ScopedHold::AddToInput(
 }
 
 /* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
     const void* data, const Shape& shape, bool force_copy,
-    std::shared_ptr<void> buffer_reference, PyLocalClient* client,
+    std::shared_ptr<void> buffer_reference, PjRtClient* client,
     Device* device) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromHostBuffer");
-  VLOG(2) << "PyLocalBuffer::FromHostBuffer: shape: " << shape.ToString()
+  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostBuffer");
+  VLOG(2) << "PjRtBuffer::FromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
   if (shape.IsTuple()) {
     return InvalidArgument("Use FromHostLiteral to transfer a tuple");
@@ -494,27 +495,25 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
 
   // If we are on the host platform and the input buffer is sufficiently
   // aligned, we can simply point to the input array's data without any further
-  // copies. We require a 64-byte alignment because XLA may generate AVX512
-  // code which requires it. If the client allocator doesn't align quite as
-  // aggressively, (e.g., NumPy doesn't) there's a high chance this test will
-  // fail.
-  static constexpr int kMinimumAlignment = 64;
+  // copies. At the time of writing we require a 16-byte alignment because XLA
+  // may generate code which requires it.
   if (!force_copy &&
-      ((absl::bit_cast<std::uintptr_t>(data) & (kMinimumAlignment - 1)) == 0) &&
-      local_device->executor()->platform_kind() == se::PlatformKind::kHost) {
+      ((absl::bit_cast<std::uintptr_t>(data) &
+        (cpu_function_runtime::kMinAlign - 1)) == 0) &&
+      local_device->executor()->platform()->id() == se::host::kHostPlatformId) {
     std::function<void()> on_delete_callback =
         [buffer_reference{std::move(buffer_reference)}]() {
           // Frees buffer_reference.
         };
     se::DeviceMemoryBase buffer(const_cast<void*>(data),
                                 ShapeUtil::ByteSizeOf(shape));
-    absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events;
-    auto device_buffer = std::make_shared<SharedDeviceBuffer>(
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+    auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
         /*allocator=*/nullptr, local_device->device_ordinal(),
         std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
         std::move(on_delete_callback));
-    return absl::make_unique<PyLocalBuffer>(
-        shape, shape, std::move(device_buffer), client, device);
+    return absl::make_unique<PjRtBuffer>(shape, shape, std::move(device_buffer),
+                                         client, device);
   }
 
   TransferManager* transfer_manager =
@@ -522,7 +521,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PyLocalBuffer> py_buffer,
+      std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(), client));
 
@@ -574,7 +573,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
           local_device->host_to_device_stream(), literal, buffer));
     }
 
-    std::shared_ptr<BufferDefinitionEvent> event =
+    std::shared_ptr<BufferSequencingEvent> event =
         device_buffer->definition_events()[0];
     TF_CHECK_OK(AddDestinationBufferSynchronization(
         local_device, std::move(device_buffer), event,
@@ -589,10 +588,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
 }
 
 /* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
-    const LiteralSlice& literal, PyLocalClient* client, Device* device) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromHostLiteral");
-  VLOG(2) << "PyLocalBuffer::FromHostLiteral: shape: "
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
+    const LiteralSlice& literal, PjRtClient* client, Device* device) {
+  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostLiteral");
+  VLOG(2) << "PjRtBuffer::FromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
@@ -603,7 +602,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
       Shape compact_shape,
       transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PyLocalBuffer> py_buffer,
+      std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(), client));
 
@@ -632,7 +631,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         local_device->host_to_device_stream(), literal, buffer));
 
-    std::shared_ptr<BufferDefinitionEvent> event =
+    std::shared_ptr<BufferSequencingEvent> event =
         device_buffer->definition_events()[0];
     TF_CHECK_OK(AddDestinationBufferSynchronization(
         local_device, std::move(device_buffer), event,
@@ -642,9 +641,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
   return py_buffer;
 }
 
-/*static*/ void PyLocalBuffer::MakeCrossHostReceiveBuffers(
-    absl::Span<const Shape> shapes, PyLocalClient* client, Device* device,
-    PyLocalCrossHostRecvNotifier&& notifier) {
+/*static*/ void PjRtBuffer::MakeCrossHostReceiveBuffers(
+    absl::Span<const Shape> shapes, PjRtClient* client, Device* device,
+    PjRtCrossHostRecvNotifier&& notifier) {
   if (shapes.empty()) {
     notifier(InvalidArgument(
         "shapes parameter empty in MakeCrossHostReceiveBuffers"));
@@ -658,10 +657,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
   }
   LocalDeviceState* local_device = local_device_or.ConsumeValueOrDie();
 
-  std::vector<std::unique_ptr<PyLocalBuffer>> buffers;
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    StatusOr<std::unique_ptr<PyLocalBuffer>> buffer_or =
+    StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or =
         AllocateDestinationBuffer(shape, device, local_device,
                                   /*copy_stream=*/nullptr, client);
     if (!buffer_or.ok()) {
@@ -674,9 +673,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
   client->EnqueueCrossHostReceive(std::move(buffers), std::move(notifier));
 }
 
-PyLocalBuffer::PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
-                             std::shared_ptr<SharedDeviceBuffer> device_buffer,
-                             PyLocalClient* client, Device* device)
+PjRtBuffer::PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
+                       std::shared_ptr<TrackedDeviceBuffer> device_buffer,
+                       PjRtClient* client, Device* device)
     : client_(client),
       on_host_shape_(std::move(on_host_shape)),
       on_device_shape_(std::move(on_device_shape)),
@@ -688,14 +687,14 @@ PyLocalBuffer::PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
   }
 }
 
-PyLocalBuffer::~PyLocalBuffer() {
+PjRtBuffer::~PjRtBuffer() {
   Delete();
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     CHECK_EQ(holds_[i], 0);
   }
 }
 
-void PyLocalBuffer::WaitForOutstandingUsageHolds() {
+void PjRtBuffer::WaitForOutstandingUsageHolds() {
   auto not_in_usage_hold = [&]() {
     mu_.AssertHeld();
     return holds_[ScopedHold::kUsage] == 0;
@@ -703,7 +702,7 @@ void PyLocalBuffer::WaitForOutstandingUsageHolds() {
   mu_.Await(absl::Condition(&not_in_usage_hold));
 }
 
-void PyLocalBuffer::WaitForOutstandingDonationHold() {
+void PjRtBuffer::WaitForOutstandingDonationHold() {
   auto not_in_donation_hold = [&]() {
     mu_.AssertHeld();
     return holds_[ScopedHold::kDonation] == 0;
@@ -711,10 +710,10 @@ void PyLocalBuffer::WaitForOutstandingDonationHold() {
   mu_.Await(absl::Condition(&not_in_donation_hold));
 }
 
-StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
+StatusOr<std::shared_ptr<TrackedDeviceBuffer>> PjRtBuffer::Release(
     bool wait_for_operations_to_complete) {
-  std::shared_ptr<SharedDeviceBuffer> device_buffer;
-  SharedDeviceBuffer::StreamAndEventContainer events;
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
+  TrackedDeviceBuffer::StreamAndEventContainer events;
   {
     absl::MutexLock lock(&mu_);
     // We first wait for a donation hold to complete if there is one in
@@ -722,7 +721,7 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
     // set device_buffer_ to nullptr before returning to this thread.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      return std::shared_ptr<SharedDeviceBuffer>();
+      return std::shared_ptr<TrackedDeviceBuffer>();
     }
     // Set host_value_ and device_buffer_ to null now so that no other thread
     // can add a hold while we are in WaitForOutstandingUsageHolds()
@@ -774,10 +773,10 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
         }
       }
       if (block_stream != nullptr) {
+        se::Stream* block_stream_ptr = block_stream.release();
         local_device_state->ThenExecuteOnCallbackThread(
-            block_stream.get(),
-            [device_buffer, block_stream_ptr{block_stream.release()},
-             local_device_state]() {
+            block_stream_ptr,
+            [device_buffer, block_stream_ptr, local_device_state]() {
               local_device_state->ReturnStreamToPool(
                   std::unique_ptr<se::Stream>(block_stream_ptr));
             });
@@ -787,18 +786,18 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
   return device_buffer;
 }
 
-void PyLocalBuffer::Delete() {
+void PjRtBuffer::Delete() {
   // When wait_for_reads_to_complete is false, Release should never fail.
   TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
 }
 
-bool PyLocalBuffer::IsDeleted() {
+bool PjRtBuffer::IsDeleted() {
   absl::MutexLock lock(&mu_);
   return device_buffer_ == nullptr;
 }
 
-StatusOr<std::shared_ptr<SharedDeviceBuffer>>
-PyLocalBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
+StatusOr<std::shared_ptr<TrackedDeviceBuffer>>
+PjRtBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
   if (type == ScopedHold::kDonation) {
     if (device_buffer_ == nullptr) {
       return InvalidArgument("Donation requested for invalid buffer");
@@ -832,13 +831,14 @@ PyLocalBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
   return device_buffer_;
 }
 
-void PyLocalBuffer::AcquireHoldLocked(ScopedHold* hold) {
+void PjRtBuffer::AcquireHoldLocked(ScopedHold* hold) {
   hold->Acquire(GetBufferForHoldLocked(hold->type()));
 }
 
-void PyLocalBuffer::ConvertUsageHold(
-    SharedDeviceBuffer* buffer, se::Stream* usage_stream,
-    std::shared_ptr<BufferDefinitionEvent> event, bool reference_held) {
+void PjRtBuffer::ConvertUsageHold(TrackedDeviceBuffer* buffer,
+                                  se::Stream* usage_stream,
+                                  std::shared_ptr<BufferSequencingEvent> event,
+                                  bool reference_held) {
   absl::MutexLock lock(&mu_);
   CHECK(device_buffer_.get() == buffer || device_buffer_ == nullptr);
   buffer->AddUsageEvent(usage_stream, std::move(event), reference_held);
@@ -846,7 +846,7 @@ void PyLocalBuffer::ConvertUsageHold(
   --holds_[ScopedHold::kUsage];
 }
 
-void PyLocalBuffer::ConfirmDonation(SharedDeviceBuffer* device_buffer) {
+void PjRtBuffer::ConfirmDonation(TrackedDeviceBuffer* device_buffer) {
   {
     absl::MutexLock lock(&mu_);
     CHECK_EQ(holds_[ScopedHold::kUsage], 0);
@@ -868,8 +868,7 @@ void PyLocalBuffer::ConfirmDonation(SharedDeviceBuffer* device_buffer) {
   donation_semaphore_.Release(1);
 }
 
-void PyLocalBuffer::DropHold(ScopedHold::Type type,
-                             SharedDeviceBuffer* buffer) {
+void PjRtBuffer::DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer) {
   absl::MutexLock lock(&mu_);
   CHECK(device_buffer_.get() == buffer || device_buffer_ == nullptr);
   CHECK_GT(holds_[type], 0);
@@ -882,7 +881,7 @@ void PyLocalBuffer::DropHold(ScopedHold::Type type,
   }
 }
 
-Status PyLocalBuffer::CopyToHostAsync() {
+Status PjRtBuffer::CopyToHostAsync() {
   if (IsEmptyTuple()) {
     return InvalidArgument("CopyToHostAsync called on empty tuple");
   }
@@ -915,7 +914,7 @@ Status PyLocalBuffer::CopyToHostAsync() {
         host_value->ready.Notify();
       });
 
-  auto usage_event = std::make_shared<BufferDefinitionEvent>();
+  auto usage_event = std::make_shared<BufferSequencingEvent>();
   StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().ThenAllocateAndRecordEvent(stream);
   if (!event_or.ok()) {
@@ -924,7 +923,7 @@ Status PyLocalBuffer::CopyToHostAsync() {
     StallStreamOnError(local_device, stream);
     return event_or.status();
   }
-  usage_event->SetDefinitionEvent(event_or.ConsumeValueOrDie(), stream);
+  usage_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
   // When using the ComputeSynchronized allocation model, retain a reference to
   // the device_buffer until the copy completes, to ensure that the buffer isn't
   // deleted or donated while it is still in use. The choice of retaining a
@@ -940,8 +939,8 @@ Status PyLocalBuffer::CopyToHostAsync() {
   return Status::OK();
 }
 
-StatusOr<std::shared_ptr<Literal>> PyLocalBuffer::ToLiteral() {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToLiteral");
+StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
+  tensorflow::profiler::TraceMe traceme("PjRtBuffer::ToLiteral");
   TF_RETURN_IF_ERROR(CopyToHostAsync());
   std::shared_ptr<HostValue> host_value;
   {
@@ -956,7 +955,7 @@ StatusOr<std::shared_ptr<Literal>> PyLocalBuffer::ToLiteral() {
   return host_value->value;
 }
 
-StatusOr<ShapedBuffer> PyLocalBuffer::AsShapedBuffer() const {
+StatusOr<ShapedBuffer> PjRtBuffer::AsShapedBuffer() const {
   absl::MutexLock lock(&mu_);
   if (device_buffer_ == nullptr) {
     return InvalidArgument(
@@ -966,8 +965,7 @@ StatusOr<ShapedBuffer> PyLocalBuffer::AsShapedBuffer() const {
                                         client_->client()->platform());
 }
 
-PyLocalBuffer::ScopedHold PyLocalBuffer::GetBufferWithHold(
-    ScopedHold::Type type) {
+PjRtBuffer::ScopedHold PjRtBuffer::GetBufferWithHold(ScopedHold::Type type) {
   if (type == ScopedHold::kDonation) {
     // Ensure that at most one donation hold can be in progress at a time.
     donation_semaphore_.Acquire(1);
@@ -981,14 +979,14 @@ PyLocalBuffer::ScopedHold PyLocalBuffer::GetBufferWithHold(
   return hold;
 }
 
-StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
-                   std::shared_ptr<BufferDefinitionEvent>>>
-PyLocalBuffer::CopyToDeviceHelper(
+StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
+                   std::shared_ptr<BufferSequencingEvent>>>
+PjRtBuffer::CopyToDeviceHelper(
     Device* dst_device, LocalDeviceState* dst_local_device,
     LocalDeviceState* transfer_local_device, se::Stream* transfer_stream,
-    std::shared_ptr<SharedDeviceBuffer> src_device_buffer) {
+    std::shared_ptr<TrackedDeviceBuffer> src_device_buffer) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PyLocalBuffer> py_buffer,
+      std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(on_host_shape_, dst_device, dst_local_device,
                                 transfer_stream, client_));
 
@@ -1002,8 +1000,8 @@ PyLocalBuffer::CopyToDeviceHelper(
       on_host_shape_, on_device_shape_, client_->client()->platform());
 
   // Copy the leaf buffers.
-  StatusOr<std::shared_ptr<BufferDefinitionEvent>> copy_event_or =
-      [&]() -> StatusOr<std::shared_ptr<BufferDefinitionEvent>> {
+  StatusOr<std::shared_ptr<BufferSequencingEvent>> copy_event_or =
+      [&]() -> StatusOr<std::shared_ptr<BufferSequencingEvent>> {
     for (const auto& leaf : src_buffer.buffers().leaves()) {
       const ShapeIndex& index = leaf.first;
       const se::DeviceMemoryBase& input_buffer = leaf.second;
@@ -1017,7 +1015,7 @@ PyLocalBuffer::CopyToDeviceHelper(
             output_buffer));
       }
     }
-    std::shared_ptr<BufferDefinitionEvent> event =
+    std::shared_ptr<BufferSequencingEvent> event =
         dst_device_buffer->definition_events()[0];
     TF_RETURN_IF_ERROR(AddDestinationBufferSynchronization(
         transfer_local_device, std::move(dst_device_buffer), event,
@@ -1037,14 +1035,14 @@ PyLocalBuffer::CopyToDeviceHelper(
     return copy_event_or.status();
   }
 
-  return std::pair<std::unique_ptr<PyLocalBuffer>,
-                   std::shared_ptr<BufferDefinitionEvent>>(
+  return std::pair<std::unique_ptr<PjRtBuffer>,
+                   std::shared_ptr<BufferSequencingEvent>>(
       std::move(py_buffer), copy_event_or.ConsumeValueOrDie());
 }
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
     Device* dst_device) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::CopyToDevice");
+  tensorflow::profiler::TraceMe traceme("PjRtBuffer::CopyToDevice");
   if (dst_device == device_) {
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
@@ -1072,8 +1070,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     AcquireHoldLocked(&src_device_buffer);
   }
 
-  StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
-                     std::shared_ptr<BufferDefinitionEvent>>>
+  StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
+                     std::shared_ptr<BufferSequencingEvent>>>
       buffer_and_event_or = CopyToDeviceHelper(
           dst_device, dst_local_device, transfer_local_device, transfer_stream,
           src_device_buffer.buffer());
@@ -1082,8 +1080,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
   }
 
   auto& buffer_and_event = buffer_and_event_or.ValueOrDie();
-  std::unique_ptr<PyLocalBuffer>& buffer = buffer_and_event.first;
-  std::shared_ptr<BufferDefinitionEvent>& event = buffer_and_event.second;
+  std::unique_ptr<PjRtBuffer>& buffer = buffer_and_event.first;
+  std::shared_ptr<BufferSequencingEvent>& event = buffer_and_event.second;
 
   // prefer_to_retain_reference=*/true means that, when using the
   // ComputeSynchronized allocation model, retain a reference to the
@@ -1098,14 +1096,13 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
   return std::move(buffer);
 }
 
-Status PyLocalBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor) {
+Status PjRtBuffer::CopyToRemoteDevice(absl::string_view serialized_descriptor) {
   return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
-Status PyLocalBuffer::BlockHostUntilReady() {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::BlockHostUntilReady");
-  std::shared_ptr<SharedDeviceBuffer> device_buffer;
+Status PjRtBuffer::BlockHostUntilReady() {
+  tensorflow::profiler::TraceMe traceme("PjRtBuffer::BlockHostUntilReady");
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer_ == nullptr) {
@@ -1141,20 +1138,20 @@ struct TupleHandle {
   ExecutionInput execution_input;
   // A definition event that has been recorded on the host_to_device stream
   // after the tuple table transfer.
-  std::shared_ptr<BufferDefinitionEvent> event;
+  std::shared_ptr<BufferSequencingEvent> event;
 };
 
 // Makes a tuple from the arguments to an execution.
 StatusOr<TupleHandle> MakeTupleHelper(
-    PyLocalClient* client, LocalDeviceState* local_device,
-    absl::Span<PyLocalBuffer* const> py_buffers,
-    absl::Span<const PyLocalBuffer::ScopedHold> device_buffers,
+    PjRtClient* client, LocalDeviceState* local_device,
+    absl::Span<PjRtBuffer* const> py_buffers,
+    absl::Span<const PjRtBuffer::ScopedHold> device_buffers,
     int device_ordinal) {
   std::vector<Shape> host_shapes;
   std::vector<Shape> device_shapes;
   host_shapes.reserve(py_buffers.size());
   device_shapes.reserve(py_buffers.size());
-  for (const PyLocalBuffer* buffer : py_buffers) {
+  for (const PjRtBuffer* buffer : py_buffers) {
     host_shapes.push_back(buffer->on_host_shape());
     device_shapes.push_back(buffer->on_device_shape());
   }
@@ -1190,7 +1187,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
       MaybeOwningDeviceMemory(std::move(root_table_memory)));
   ++input_iterator;
   // Then set each sub-tuple in turn from the parameters.
-  for (const PyLocalBuffer::ScopedHold& device_buffer : device_buffers) {
+  for (const PjRtBuffer::ScopedHold& device_buffer : device_buffers) {
     device_buffer.AddToInput(&input_iterator, iterator_end, &execution_input,
                              allocator);
   }
@@ -1205,22 +1202,22 @@ StatusOr<TupleHandle> MakeTupleHelper(
     return event_or.status();
   }
 
-  auto transfer_event = std::make_shared<BufferDefinitionEvent>();
-  transfer_event->SetDefinitionEvent(event_or.ConsumeValueOrDie(), stream);
+  auto transfer_event = std::make_shared<BufferSequencingEvent>();
+  transfer_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
   return TupleHandle({std::move(on_host_shape), std::move(execution_input),
                       std::move(transfer_event)});
 }
 
 // Converts a ScopedShapedBuffer returned from an execution into a
-// PyLocalBuffer.
-std::unique_ptr<PyLocalBuffer> OutputBufferHelper(
+// PjRtBuffer.
+std::unique_ptr<PjRtBuffer> OutputBufferHelper(
     ScopedShapedBuffer* result_buffer,
-    std::shared_ptr<BufferDefinitionEvent> definition_event,
-    PyLocalClient* client, Device* device, LocalDeviceState* local_device) {
-  std::shared_ptr<SharedDeviceBuffer> out_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
-                                                 {definition_event});
-  auto py_buffer = absl::make_unique<PyLocalBuffer>(
+    std::shared_ptr<BufferSequencingEvent> definition_event, PjRtClient* client,
+    Device* device, LocalDeviceState* local_device) {
+  std::shared_ptr<TrackedDeviceBuffer> out_buffer =
+      TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
+                                                  {definition_event});
+  auto py_buffer = absl::make_unique<PjRtBuffer>(
       result_buffer->on_host_shape(), result_buffer->on_device_shape(),
       std::move(out_buffer), client, device);
   RecordUsage(py_buffer->GetBufferWithUsageHold(), local_device, local_device,
@@ -1229,7 +1226,7 @@ std::unique_ptr<PyLocalBuffer> OutputBufferHelper(
   return py_buffer;
 }
 
-static Device* LookupDevice(const PyLocalClient& client, int device_id) {
+static Device* LookupDevice(const PjRtClient& client, int device_id) {
   auto it = client.id_to_device().find(device_id);
   CHECK(it != client.id_to_device().end())
       << "Unknown device id: " << device_id;
@@ -1238,14 +1235,14 @@ static Device* LookupDevice(const PyLocalClient& client, int device_id) {
 
 }  // namespace
 
-PyLocalExecutable::PyLocalExecutable(
+PjRtExecutable::PjRtExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
-    bool tuple_arguments, DeviceAssignment device_assignment,
+    bool parameter_is_tupled_arguments, DeviceAssignment device_assignment,
     std::vector<std::pair<int, int>> local_logical_device_ids,
-    std::vector<Device*> local_devices, PyLocalClient* client)
+    std::vector<Device*> local_devices, PjRtClient* client)
     : client_(client),
       device_assignment_(std::make_shared<DeviceAssignment>(device_assignment)),
-      tuple_arguments_(tuple_arguments),
+      parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
       local_logical_device_ids_(std::move(local_logical_device_ids)),
       local_devices_(std::move(local_devices)) {
   executables_.reserve(executables.size());
@@ -1254,7 +1251,7 @@ PyLocalExecutable::PyLocalExecutable(
   }
 
   // This must go after `executables_` is initialized.
-  VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
+  VLOG(1) << "PjRtExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
 
   const int num_partitions = device_assignment_->computation_count();
@@ -1271,8 +1268,7 @@ PyLocalExecutable::PyLocalExecutable(
       << "Inconsistent local device count.";
 }
 
-Status PyLocalExecutable::SetUpDonation(PyLocalClient* client,
-                                        bool tuple_inputs) {
+Status PjRtExecutable::SetUpDonation(PjRtClient* client, bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
     TF_ASSIGN_OR_RETURN(
@@ -1284,7 +1280,7 @@ Status PyLocalExecutable::SetUpDonation(PyLocalClient* client,
   return Status::OK();
 }
 
-const std::string& PyLocalExecutable::name() const {
+const std::string& PjRtExecutable::name() const {
   Executable* executable = executables_[0]->executable();
   if (executable->has_module()) {
     return executable->module().name();
@@ -1298,11 +1294,10 @@ const std::string& PyLocalExecutable::name() const {
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
-StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
-    absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-    int partition, int executable_idx, const RunId& run_id,
-    const ExecuteOptions& options, Device* device,
-    std::vector<PyLocalBuffer::ScopedHold>* device_buffers) const {
+StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    int executable_idx, const RunId& run_id, const ExecuteOptions& options,
+    Device* device, std::vector<PjRtBuffer::ScopedHold>* device_buffers) const {
   int device_ordinal = device->local_device_state()->device_ordinal();
   tensorflow::profiler::TraceMe traceme([&] {
     return absl::StrCat("LocalExecutable::Execute#run_id=", run_id.ToInt(),
@@ -1311,14 +1306,14 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
-  absl::flat_hash_set<BufferDefinitionEvent*> events;
+  absl::flat_hash_set<BufferSequencingEvent*> events;
   std::vector<const Shape*> argument_host_shapes;
   std::vector<ExecutionInput> execution_inputs;
   device_buffers->reserve(argument_handles.size());
   const absl::flat_hash_set<int>& parameters_that_must_be_donated =
       parameters_that_must_be_donated_[executable_idx];
   for (int i = 0; i < argument_handles.size(); ++i) {
-    PyLocalBuffer* handle = argument_handles[i];
+    PjRtBuffer* handle = argument_handles[i];
     if (handle->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -1328,9 +1323,9 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
     bool must_donate = parameters_that_must_be_donated.find(i) !=
                        parameters_that_must_be_donated.end();
     device_buffers->emplace_back(handle->GetBufferWithHold(
-        must_donate ? PyLocalBuffer::ScopedHold::kDonation
-                    : PyLocalBuffer::ScopedHold::kUsage));
-    PyLocalBuffer::ScopedHold& device_buffer = device_buffers->back();
+        must_donate ? PjRtBuffer::ScopedHold::kDonation
+                    : PjRtBuffer::ScopedHold::kUsage));
+    PjRtBuffer::ScopedHold& device_buffer = device_buffers->back();
     if (!device_buffer.ok()) {
       return InvalidArgument(
           "Invalid buffer passed to Execute() as argument %d to replica %d: "
@@ -1346,9 +1341,23 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
                           &events);
   }
 
+  if (options.arguments_are_tupled) {
+    if (!parameter_is_tupled_arguments_) {
+      return InvalidArgument(
+          "Arguments may only be supplied as a tuple when the executable was "
+          "compiled with a single tupled parameter");
+    }
+    if (argument_handles.size() != 1) {
+      return InvalidArgument(
+          "Option arguments_are_tupled was true but %d buffers were passed to "
+          "execution",
+          argument_handles.size());
+    }
+  }
+
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
   TupleHandle tuple_handle;
-  if (tuple_arguments_) {
+  if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(tuple_handle,
                         MakeTupleHelper(client_, device_state, argument_handles,
                                         *device_buffers, device_ordinal));
@@ -1359,10 +1368,10 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
     argument_host_shapes.reserve(argument_handles.size());
     execution_inputs.reserve(argument_handles.size());
     for (int i = 0; i < argument_handles.size(); ++i) {
-      PyLocalBuffer* handle = argument_handles[i];
+      PjRtBuffer* handle = argument_handles[i];
       argument_host_shapes.push_back(&handle->on_host_shape());
 
-      const PyLocalBuffer::ScopedHold& device_buffer = (*device_buffers)[i];
+      const PjRtBuffer::ScopedHold& device_buffer = (*device_buffers)[i];
       // Make an ExecutionInput from the device buffer.
       execution_inputs.emplace_back(handle->on_device_shape());
       ExecutionInput& execution_input = execution_inputs.back();
@@ -1376,7 +1385,7 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
     }
   }
 
-  for (BufferDefinitionEvent* event : events) {
+  for (BufferSequencingEvent* event : events) {
     event->WaitForEventOnStream(device_state->compute_stream());
   }
 
@@ -1449,10 +1458,10 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
   return result_buffer_or_status.ConsumeValueOrDie().ConsumeResult();
 }
 
-StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalExecutable::ExecuteHelper(
-    absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-    int partition, const RunId& run_id, const ExecuteOptions& options) const {
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtExecutable::ExecuteHelper(absl::Span<PjRtBuffer* const> argument_handles,
+                              int replica, int partition, const RunId& run_id,
+                              const ExecuteOptions& options) const {
   const int device_id = (*device_assignment_)(replica, partition);
   Device* device = LookupDevice(*client_, device_id);
 
@@ -1465,7 +1474,7 @@ PyLocalExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
-  std::vector<PyLocalBuffer::ScopedHold> device_buffers;
+  std::vector<PjRtBuffer::ScopedHold> device_buffers;
   device_buffers.reserve(argument_handles.size());
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
       EnqueueExecution(argument_handles, replica, partition, executable_idx,
@@ -1485,8 +1494,8 @@ PyLocalExecutable::ExecuteHelper(
       device_state->event_pool().ThenAllocateAndRecordEvent(stream);
   if (!event_or.ok()) {
     StallStreamOnError(device_state, stream);
-    for (PyLocalBuffer::ScopedHold& b : device_buffers) {
-      if (b.type() == PyLocalBuffer::ScopedHold::kDonation) {
+    for (PjRtBuffer::ScopedHold& b : device_buffers) {
+      if (b.type() == PjRtBuffer::ScopedHold::kDonation) {
         // Even though there was an error we need to call ConfirmDonation, which
         // renders b invalid, since the computation has been enqueued and b has
         // been donated.
@@ -1495,9 +1504,9 @@ PyLocalExecutable::ExecuteHelper(
     }
     return event_or.status();
   }
-  auto definition_event = std::make_shared<BufferDefinitionEvent>();
-  definition_event->SetDefinitionEvent(event_or.ConsumeValueOrDie(), stream);
-  std::vector<std::unique_ptr<PyLocalBuffer>> outputs;
+  auto definition_event = std::make_shared<BufferSequencingEvent>();
+  definition_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
+  std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   if (options.untuple_result && result_buffer.on_host_shape().IsTuple()) {
     int tuple_count = result_buffer.on_host_shape().tuple_shapes_size();
     outputs.reserve(tuple_count);
@@ -1523,17 +1532,17 @@ PyLocalExecutable::ExecuteHelper(
                                          client_, device, device_state));
   }
 
-  for (PyLocalBuffer::ScopedHold& b : device_buffers) {
+  for (PjRtBuffer::ScopedHold& b : device_buffers) {
     // prefer_to_retain_reference=false because when using the
     // ComputeSynchronized allocation model we don't need to retain a reference
     // to the device_buffer during execution because by definition the compute
     // stream is synchronized past the execution.
-    if (b.type() == PyLocalBuffer::ScopedHold::kUsage) {
+    if (b.type() == PjRtBuffer::ScopedHold::kUsage) {
       RecordUsage(std::move(b), device_state, device_state, definition_event,
                   stream,
                   /*prefer_to_retain_reference=*/false);
     } else {
-      CHECK(b.type() == PyLocalBuffer::ScopedHold::kDonation);
+      CHECK(b.type() == PjRtBuffer::ScopedHold::kDonation);
       b.ConfirmDonation();
     }
   }
@@ -1541,9 +1550,9 @@ PyLocalExecutable::ExecuteHelper(
   return outputs;
 }
 
-StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalExecutable::Execute(absl::Span<PyLocalBuffer* const> argument_handles,
-                           const ExecuteOptions& options) const {
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> PjRtExecutable::Execute(
+    absl::Span<PjRtBuffer* const> argument_handles,
+    const ExecuteOptions& options) const {
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute()",
@@ -1559,9 +1568,9 @@ PyLocalExecutable::Execute(absl::Span<PyLocalBuffer* const> argument_handles,
                        RunId(), options);
 }
 
-StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalExecutable::ExecuteOnLocalDevice(
-    absl::Span<PyLocalBuffer* const> argument_handles, Device* device,
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtExecutable::ExecuteOnLocalDevice(
+    absl::Span<PjRtBuffer* const> argument_handles, Device* device,
     const ExecuteOptions& options) const {
   for (int i = 0; i < local_devices_.size(); ++i) {
     if (local_devices_[i] == device) {
@@ -1577,9 +1586,9 @@ PyLocalExecutable::ExecuteOnLocalDevice(
       device->id());
 }
 
-StatusOr<std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>>
-PyLocalExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles,
+StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+PjRtExecutable::ExecuteOnLocalDevices(
+    absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options) const {
   RunId run_id;
   tensorflow::profiler::TraceMe traceme([&] {
@@ -1601,7 +1610,7 @@ PyLocalExecutable::ExecuteOnLocalDevices(
           << "; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()
           << " num_local_devices=" << num_local_devices;
-  std::vector<StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>> results(
+  std::vector<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>> results(
       num_local_devices);
   if (num_local_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
@@ -1664,7 +1673,7 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   }
   VLOG(1) << "Replicated execution complete.";
 
-  std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>> wrapped_results(
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
       num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
     const int replica = local_logical_device_ids_[i].first;
@@ -1683,9 +1692,96 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   return wrapped_results;
 }
 
-/*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
-PyLocalExecutable::Compile(const XlaComputation& computation,
-                           PyLocalClient* client, CompileOptions options) {
+namespace {
+
+StatusOr<Shape> GetShardedShape(const Shape& shape,
+                                const OpSharding& sharding) {
+  if (sharding.type() == OpSharding::TUPLE) {
+    if (!shape.IsTuple()) {
+      return InvalidArgument(
+          "Got tuple OpSharding (%s) for non-tuple shape (%s)",
+          sharding.DebugString(), shape.ToString());
+    }
+    if (sharding.tuple_shardings_size() != shape.tuple_shapes_size()) {
+      return InvalidArgument(
+          "Got mismatched OpSharding tuple size (%d) and shape tuple size (%d)."
+          " (OpSharding: %s, shape: %s)",
+          sharding.tuple_shardings_size(), shape.tuple_shapes_size(),
+          sharding.DebugString(), shape.ToString());
+    }
+    std::vector<Shape> sharded_subshapes;
+    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+      TF_ASSIGN_OR_RETURN(
+          Shape sharded_subshape,
+          GetShardedShape(shape.tuple_shapes(i), sharding.tuple_shardings(i)));
+      sharded_subshapes.emplace_back(std::move(sharded_subshape));
+    }
+    return ShapeUtil::MakeTupleShape(sharded_subshapes);
+  }
+  TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                      HloSharding::FromProto(sharding));
+  return hlo_sharding.TileShape(shape);
+}
+
+StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
+  const Shape unsharded_shape(instr.shape());
+  Shape sharded_shape;
+  if (instr.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(sharded_shape,
+                        GetShardedShape(unsharded_shape, instr.sharding()));
+  } else {
+    sharded_shape = unsharded_shape;
+  }
+  LayoutUtil::ClearLayout(&sharded_shape);
+  return sharded_shape;
+}
+
+// Returns sharded (argument shapes, result shape) without layouts.
+StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  std::vector<Shape> arg_shapes;
+  arg_shapes.resize(program_shape.parameters_size());
+  Shape result_shape;
+  for (const HloComputationProto& comp : computation.proto().computations()) {
+    if (comp.id() != computation.proto().entry_computation_id()) {
+      continue;
+    }
+    for (const HloInstructionProto& instr : comp.instructions()) {
+      if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter)) {
+        if (instr.parameter_number() >= program_shape.parameters_size()) {
+          return InvalidArgument(
+              "Got invalid parameter number %d, expected %d parameters",
+              instr.parameter_number(), program_shape.parameters_size());
+        }
+        TF_ASSIGN_OR_RETURN(arg_shapes[instr.parameter_number()],
+                            GetShardedShape(instr));
+      }
+      if (instr.id() == comp.root_id()) {
+        if (result_shape.element_type() != PRIMITIVE_TYPE_INVALID) {
+          return InvalidArgument("Found multiple root instructions");
+        }
+        TF_ASSIGN_OR_RETURN(result_shape, GetShardedShape(instr));
+      }
+    }
+  }
+  for (int i = 0; i < arg_shapes.size(); ++i) {
+    if (arg_shapes[i].element_type() == PRIMITIVE_TYPE_INVALID) {
+      return InvalidArgument("Couldn't find parameter %d", i);
+    }
+  }
+  if (result_shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+    return InvalidArgument("Couldn't find root instruction");
+  }
+  return std::make_pair(arg_shapes, result_shape);
+}
+
+}  // namespace
+
+/*static*/ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtExecutable::Compile(
+    const XlaComputation& computation, PjRtClient* client,
+    CompileOptions options) {
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
 
   ExecutableBuildOptions& build_options = options.executable_build_options;
@@ -1694,58 +1790,71 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   }
 
   if (!build_options.has_device_assignment()) {
-    VLOG(2) << "PyLocalExecutable::Compile using default device_assignment.";
+    VLOG(2) << "PjRtExecutable::Compile using default device_assignment.";
     TF_ASSIGN_OR_RETURN(
         DeviceAssignment device_assignment,
         client->GetDefaultDeviceAssignment(build_options.num_replicas(),
                                            build_options.num_partitions()));
     build_options.set_device_assignment(device_assignment);
   }
-  VLOG(2) << "PyLocalExecutable::Compile device_assignment:\n"
+  VLOG(2) << "PjRtExecutable::Compile device_assignment:\n"
           << build_options.device_assignment().ToString();
 
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
   if (!options.argument_layouts) {
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        computation.GetProgramShape());
     options.argument_layouts = program_shape.parameters();
     for (Shape& shape : *options.argument_layouts) {
       LayoutUtil::ClearLayout(&shape);
     }
+  } else if (options.argument_layouts->size() !=
+             program_shape.parameters_size()) {
+    return InvalidArgument(
+        "CompileOptions specify %d argument layouts, but computation has %d "
+        "arguments",
+        options.argument_layouts->size(), program_shape.parameters_size());
   }
   std::vector<const Shape*> argument_layout_pointers;
   argument_layout_pointers.reserve(options.argument_layouts->size());
 
-  // Assign a default layout to any array subshapes that are missing layouts.
-  auto assign_layouts = [client](Shape* shape) {
+  // Assign a default layout based on `sharded_shape` to any array subshapes in
+  // `dst_shape` that are missing layouts.
+  auto assign_layouts = [client](const Shape& sharded_shape, Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
-        shape, [&](Shape* subshape, const ShapeIndex&) {
+        dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
           if (subshape->IsArray() && !subshape->has_layout()) {
+            CHECK(ShapeUtil::IndexIsValid(sharded_shape, idx));
+            const Shape& sharded_subshape =
+                ShapeUtil::GetSubshape(sharded_shape, idx);
             LayoutUtil::SetToDefaultLayout(subshape);
-            TF_ASSIGN_OR_RETURN(*subshape,
-                                client->client()
-                                    ->backend()
-                                    .transfer_manager()
-                                    ->ChooseCompactLayoutForShape(*subshape));
+            TF_ASSIGN_OR_RETURN(Shape layout, client->client()
+                                                  ->backend()
+                                                  .transfer_manager()
+                                                  ->ChooseCompactLayoutForShape(
+                                                      sharded_subshape));
+            *subshape->mutable_layout() = layout.layout();
           }
           return Status::OK();
         });
   };
+  TF_ASSIGN_OR_RETURN(auto sharded_shapes,
+                      GetShardedProgramShapes(computation));
 
-  for (Shape& layout : *options.argument_layouts) {
-    argument_layout_pointers.push_back(&layout);
-    TF_RETURN_IF_ERROR(assign_layouts(&layout));
+  CHECK_EQ(sharded_shapes.first.size(), options.argument_layouts->size());
+  for (int i = 0; i < options.argument_layouts->size(); ++i) {
+    Shape* layout = &(*options.argument_layouts)[i];
+    argument_layout_pointers.push_back(layout);
+    TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.first[i], layout));
   }
 
   Shape result_layout;
   if (build_options.result_layout()) {
     result_layout = *build_options.result_layout();
   } else {
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        computation.GetProgramShape());
     result_layout = program_shape.result();
     LayoutUtil::ClearLayout(&result_layout);
   }
-  TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
+  TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options.set_result_layout(result_layout);
 
   const int num_replicas = build_options.device_assignment().replica_count();
@@ -1782,12 +1891,12 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
       client->client()->Compile(computation, argument_layout_pointers,
                                 build_options));
 
-  auto py_executable = absl::make_unique<PyLocalExecutable>(
-      std::move(local_executables), options.tuple_arguments,
+  auto py_executable = absl::make_unique<PjRtExecutable>(
+      std::move(local_executables), options.parameter_is_tupled_arguments,
       build_options.device_assignment(), std::move(local_logical_device_ids),
       std::move(local_devices), client);
-  TF_RETURN_IF_ERROR(
-      py_executable->SetUpDonation(client, options.tuple_arguments));
+  TF_RETURN_IF_ERROR(py_executable->SetUpDonation(
+      client, options.parameter_is_tupled_arguments));
   return py_executable;
 }
 

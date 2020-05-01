@@ -733,7 +733,8 @@ class MinMaxOpTest(test.TestCase):
   def testBasic(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(1, 3, 2) * 100.
-    for t in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for t in [np.float16, np.float32, np.float64, np.uint8, np.int16, np.int32,
+              np.int64]:
       self._compare(x.astype(t), y.astype(t), use_gpu=False)
       self._compare(x.astype(t), y.astype(t), use_gpu=True)
 

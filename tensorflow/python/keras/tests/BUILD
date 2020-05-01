@@ -14,6 +14,22 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
+    name = "get_config_test",
+    srcs = ["get_config_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":get_config_samples",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "add_loss_correctness_test",
     srcs = ["add_loss_correctness_test.py"],
     python_version = "PY3",
@@ -271,4 +287,11 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "get_config_samples",
+    srcs = ["get_config_samples.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )

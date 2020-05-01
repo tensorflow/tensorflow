@@ -87,6 +87,16 @@ std::string NnApiErrorDescription(int error_code) {
       return "ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE";
     case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
       return "ANEURALNETWORKS_UNAVAILABLE_DEVICE";
+    case ANEURALNETWORKS_MISSED_DEADLINE_TRANSIENT:
+      return "ANEURALNETWORKS_MISSED_DEADLINE_TRANSIENT";
+    case ANEURALNETWORKS_MISSED_DEADLINE_PERSISTENT:
+      return "ANEURALNETWORKS_MISSED_DEADLINE_PERSISTENT";
+    case ANEURALNETWORKS_RESOURCE_EXHAUSTED_TRANSIENT:
+      return "ANEURALNETWORKS_RESOURCE_EXHAUSTED_TRANSIENT";
+    case ANEURALNETWORKS_RESOURCE_EXHAUSTED_PERSISTENT:
+      return "ANEURALNETWORKS_RESOURCE_EXHAUSTED_PERSISTENT";
+    case ANEURALNETWORKS_DEAD_OBJECT:
+      return "ANEURALNETWORKS_DEAD_OBJECT";
     default:
       return "Unknown NNAPI error code: " + std::to_string(error_code);
   }
@@ -1789,7 +1799,7 @@ bool NNAPIDelegateKernel::Validate(
              " NNAPI only support float tanh.", &val_ctx);
     } break;
     case kTfLiteBuiltinSub: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
       Expect((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
@@ -1798,6 +1808,13 @@ bool NNAPIDelegateKernel::Validate(
                   IsQuantized(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinDiv: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -2317,7 +2334,7 @@ bool NNAPIDelegateKernel::Validate(
                            "Unsupported operation type.", &val_ctx);
   }
   return val_ctx.is_valid;
-}
+}  // NOLINT(readability/fn_size)
 
 TfLiteStatus NNAPIDelegateKernel::Map(
     TfLiteContext* context, int builtin_code, int version,

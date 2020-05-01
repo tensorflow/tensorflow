@@ -253,8 +253,9 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
   *overview_page.mutable_input_analysis() =
       ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  BottleneckAnalysis bottleneck = ComputeBottleneckAnalysis(
+      overview_page.input_analysis().input_time_breakdown(),
+      overview_page.input_analysis().step_details());
   *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(bottleneck.input_classification(),

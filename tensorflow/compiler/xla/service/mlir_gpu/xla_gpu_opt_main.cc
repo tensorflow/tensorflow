@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
@@ -61,6 +62,7 @@ static llvm::cl::opt<xla::mlir_gpu::MlirCompiler::IRHook::LoweringStage>
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
+  mlir::registerPassManagerCLOptions();
 
   llvm::cl::ParseCommandLineOptions(argc, argv,
                                     "XLA GPU modular optimizer driver\n");
@@ -80,8 +82,7 @@ int main(int argc, char **argv) {
                     : opt.CompileAndOutputIr(file->getBuffer().str(),
                                              output->os(), lowering_stage);
   if (!status.ok()) {
-    output->os() << status.error_message();
-    output->keep();
+    LOG(ERROR) << status.error_message();
     return 1;
   }
   output->keep();

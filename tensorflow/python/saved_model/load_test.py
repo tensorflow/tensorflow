@@ -30,6 +30,7 @@ from absl.testing import parameterized
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
@@ -104,14 +105,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
-    imported = cycle(root, cycles)
-    self.assertEqual(imported.v1.numpy(), 1.0)
+    self.evaluate([root.v1.initializer, root.v2.initializer])
+
+    for _ in range(cycles):
+      imported = cycle(root, 1)
+      self.evaluate([imported.v1.initializer, imported.v2.initializer])
+
+    if not context.executing_eagerly():
+      self.assertIsInstance(imported.v1.initializer, ops.Operation)
+      self.assertIsInstance(imported.v2.initializer, ops.Operation)
+
+    self.assertEqual(self.evaluate(imported.v1), 1.0)
     self.assertTrue(imported.v1.trainable)
-    self.assertEqual(imported.v2.numpy(), 2.0)
+    self.assertEqual(self.evaluate(imported.v2), 2.0)
     self.assertFalse(imported.v2.trainable)
 
   def test_variables_name(self, cycles):

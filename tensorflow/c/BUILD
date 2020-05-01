@@ -118,6 +118,13 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "c_api_macros",
+    hdrs = ["c_api_macros.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api",
     hdrs = [
@@ -327,6 +334,9 @@ tf_cuda_library(
         ":checkpoint_reader",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -517,12 +527,12 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    kernels = [":test_op_kernel"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = [
+        "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
@@ -531,6 +541,7 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":c_test_util",
+        ":test_op_kernel",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
@@ -597,6 +608,7 @@ tf_cc_test(
         ":c_api",
         ":c_api_internal",
         ":c_test_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -720,4 +732,12 @@ tf_cuda_library(
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "conversion_macros",
+    hdrs = [
+        "conversion_macros.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )

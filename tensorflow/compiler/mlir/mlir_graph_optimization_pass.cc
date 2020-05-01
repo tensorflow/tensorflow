@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -127,6 +127,7 @@ Status MlirFunctionOptimizationPass::Run(
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
+  import_config.upgrade_legacy = true;
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
@@ -149,7 +150,6 @@ Status MlirFunctionOptimizationPass::Run(
   }
 
   GraphExportConfig export_config;
-  export_config.graph_as_function = true;
   absl::flat_hash_set<Node*> control_ret_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,

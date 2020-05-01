@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
+#include "ruy/matrix.h"  // from @ruy
 #include "ruy/path.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -24,6 +25,20 @@ limitations under the License.
 namespace tflite {
 namespace cpu_backend_gemm {
 namespace detail {
+
+inline ruy::CachePolicy ToRuyCachePolicy(CachePolicy cache_policy) {
+  switch (cache_policy) {
+    case CachePolicy::kNeverCache:
+      return ruy::CachePolicy::kNeverCache;
+    case CachePolicy::kCacheIfLargeSpeedup:
+      return ruy::CachePolicy::kCacheIfLargeSpeedup;
+    case CachePolicy::kAlwaysCache:
+      return ruy::CachePolicy::kAlwaysCache;
+    default:
+      TFLITE_DCHECK(false);
+      return ruy::CachePolicy::kNeverCache;
+  }
+}
 
 template <typename Scalar, typename DataPointer>
 void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
@@ -37,7 +52,9 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   // It does care whether we assign to it a Scalar* or a const Scalar*.
   dst->set_data(data_ptr);
   dst->set_zero_point(params.zero_point);
-  dst->set_cacheable(params.cacheable);
+#ifdef TFLITE_WITH_RUY_GEMV
+  dst->set_cache_policy(ToRuyCachePolicy(params.cache_policy));
+#endif
 }
 
 template <typename GemmParamsType, typename RuySpecType>
@@ -78,19 +95,8 @@ struct GemmImplUsingRuy {
     ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
     MakeRuyMulParams(params, &ruy_mul_params);
 
-// If Ruy is not selected intentionally (TFLITE_WITH_RUY not defined)
-// and GEMMLOWP_NEON is absent, we fall back to Ruy for some quantized
-// kernels. Some Ruy paths are still experimental, so we restrict to reference
-// code in that case.
-#if !defined(TFLITE_WITH_RUY) && !defined(GEMMLOWP_NEON)
-    constexpr ruy::Path kRuyPath =
-        ruy::Path::kReference | ruy::Path::kStandardCpp;
-#else
-    constexpr ruy::Path kRuyPath = ruy::kAllPaths;
-#endif
-
-    ruy::Mul<kRuyPath>(ruy_lhs, ruy_rhs, ruy_mul_params, context->ruy_context(),
-                       &ruy_dst);
+    ruy::Mul(ruy_lhs, ruy_rhs, ruy_mul_params, context->ruy_context(),
+             &ruy_dst);
   }
 };
 

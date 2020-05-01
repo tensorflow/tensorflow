@@ -28,7 +28,7 @@ class CpuDevice : public Device {
   CpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state);
 };
 
-StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous);
+StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
 
 }  // namespace xla
 

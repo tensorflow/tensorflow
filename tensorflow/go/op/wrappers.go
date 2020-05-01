@@ -2576,6 +2576,15 @@ func CheckNumerics(scope *Scope, tensor tf.Output, message string) (output tf.Ou
 // In the above example, the input Tensor with the shape of `[1, 3]`
 // is broadcasted to output Tensor with shape of `[3, 3]`.
 //
+// When doing broadcasted operations such as multiplying a tensor
+// by a scalar, broadcasting (usually) confers some time or space
+// benefit, as the broadcasted tensor is never materialized.
+//
+// However, `broadcast_to` does not carry with it any such benefits.
+// The newly-created tensor takes the full memory of the broadcasted
+// shape. (In a graph context, `broadcast_to` might be fused to
+// subsequent operation and then be optimized away, however.)
+//
 // Arguments:
 //	input: A Tensor to broadcast.
 //	shape: An 1-D `int` Tensor. The shape of the desired output.
@@ -4699,6 +4708,66 @@ func Enter(scope *Scope, data tf.Output, frame_name string, optional ...EnterAtt
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// DenseCountSparseOutputAttr is an optional argument to DenseCountSparseOutput.
+type DenseCountSparseOutputAttr func(optionalAttr)
+
+// DenseCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func DenseCountSparseOutputMinlength(value int64) DenseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// DenseCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func DenseCountSparseOutputMaxlength(value int64) DenseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a tf.tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	values: int32 or int64; Tensor containing data to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//	output_dense_shape: int64; shape tensor for the resulting sparse tensor object.
+func DenseCountSparseOutput(scope *Scope, values tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...DenseCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DenseCountSparseOutput",
+		Input: []tf.Input{
+			values, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // CTCBeamSearchDecoderAttr is an optional argument to CTCBeamSearchDecoder.
@@ -6915,9 +6984,7 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 	return op.Output(0)
 }
 
-// Copy a tensor setting everything outside a central band in each innermost matrix
-//
-// to zero.
+// Copy a tensor setting everything outside a central band in each innermost matrix to zero.
 //
 // The `band` part is computed as follows:
 // Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
@@ -8535,6 +8602,79 @@ func IteratorGetNextSync(scope *Scope, iterator tf.Output, output_types []tf.Dat
 	return components
 }
 
+// RaggedCountSparseOutputAttr is an optional argument to RaggedCountSparseOutput.
+type RaggedCountSparseOutputAttr func(optionalAttr)
+
+// RaggedCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMinlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// RaggedCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMaxlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a ragged tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	splits: int64; Tensor containing the row splits of the ragged tensor to count.
+//	values: int32 or int64; Tensor containing values of the sparse tensor to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//   END
+//   }
+//   out_arg {
+//     name: "output_dense_shape"
+//     description: <<END
+// int64; shape tensor for the resulting sparse tensor object.
+//   END
+//   }
+//   attr {
+//     name: "T"
+//     description: <<END
+// dtype; dtype of the input values tensor.
+//	output_dense_shape
+func RaggedCountSparseOutput(scope *Scope, splits tf.Output, values tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...RaggedCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RaggedCountSparseOutput",
+		Input: []tf.Input{
+			splits, values, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Gets the next output from the given iterator .
 func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
 	if scope.Err() != nil {
@@ -9845,22 +9985,6 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
-// Creates an iterator for reading from the tf.data service.
-//
-// Returns the created operation.
-func MakeDataServiceIterator(scope *Scope, dataset tf.Output, job_token tf.Output, iterator tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MakeDataServiceIterator",
-		Input: []tf.Input{
-			dataset, job_token, iterator,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Registers a dataset with the tf.data service.
 func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
 	if scope.Err() != nil {
@@ -9878,16 +10002,30 @@ func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protoco
 	return op.Output(0)
 }
 
+// DataServiceDatasetAttr is an optional argument to DataServiceDataset.
+type DataServiceDatasetAttr func(optionalAttr)
+
+// DataServiceDatasetTaskRefreshIntervalHintMs sets the optional task_refresh_interval_hint_ms attribute to value.
+// If not specified, defaults to -1
+func DataServiceDatasetTaskRefreshIntervalHintMs(value int64) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["task_refresh_interval_hint_ms"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
-func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DataServiceDataset",
 		Input: []tf.Input{
-			address, protocol, max_outstanding_requests,
+			dataset_id, processing_mode, address, protocol, max_outstanding_requests,
 		},
 		Attrs: attrs,
 	}
@@ -11879,75 +12017,6 @@ func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Ou
 	return op.Output(0)
 }
 
-// Converts one or more images from RGB to HSV.
-//
-// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
-// value of the pixels. The output is only well defined if the value in `images`
-// are in `[0,1]`.
-//
-// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
-// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
-// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
-//
-// Usage Example:
-//
-// >>> blue_image = tf.stack([
-// ...    tf.zeros([5,5]),
-// ...    tf.zeros([5,5]),
-// ...    tf.ones([5,5])],
-// ...    axis=-1)
-// >>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
-// >>> blue_hsv_image[0,0].numpy()
-// array([0.6666667, 1. , 1. ], dtype=float32)
-//
-//
-// Arguments:
-//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
-//
-// Returns `images` converted to HSV.
-func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RGBToHSV",
-		Input: []tf.Input{
-			images,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
-//
-// GIF images with frame or transparency compression are not supported.
-// On Linux and MacOS systems, convert animated GIFs from compressed to
-// uncompressed by running:
-//
-//     convert $src.gif -coalesce $dst.gif
-//
-// This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-// `tf.io.decode_image`.
-//
-// Arguments:
-//	contents: 0-D.  The GIF-encoded image.
-//
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
-func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeGif",
-		Input: []tf.Input{
-			contents,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SampleDistortedBoundingBoxAttr is an optional argument to SampleDistortedBoundingBox.
 type SampleDistortedBoundingBoxAttr func(optionalAttr)
 
@@ -11990,7 +12059,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75  f:1.33}
+// If not specified, defaults to {f:0.75 f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12001,7 +12070,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05  f:1}
+// If not specified, defaults to {f:0.05 f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -12102,6 +12171,75 @@ func SampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bounding_box
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Converts one or more images from RGB to HSV.
+//
+// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
+// value of the pixels. The output is only well defined if the value in `images`
+// are in `[0,1]`.
+//
+// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
+// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
+// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+//
+// Usage Example:
+//
+// >>> blue_image = tf.stack([
+// ...    tf.zeros([5,5]),
+// ...    tf.zeros([5,5]),
+// ...    tf.ones([5,5])],
+// ...    axis=-1)
+// >>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
+// >>> blue_hsv_image[0,0].numpy()
+// array([0.6666667, 1. , 1. ], dtype=float32)
+//
+//
+// Arguments:
+//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
+//
+// Returns `images` converted to HSV.
+func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RGBToHSV",
+		Input: []tf.Input{
+			images,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
+//
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
+//
+//     convert $src.gif -coalesce $dst.gif
+//
+// This op also supports decoding JPEGs and PNGs, though it is cleaner to use
+// `tf.io.decode_image`.
+//
+// Arguments:
+//	contents: 0-D.  The GIF-encoded image.
+//
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
+func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeGif",
+		Input: []tf.Input{
+			contents,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // DecodeBmpAttr is an optional argument to DecodeBmp.
@@ -13464,6 +13602,68 @@ func SaveV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and_sl
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// SparseCountSparseOutputAttr is an optional argument to SparseCountSparseOutput.
+type SparseCountSparseOutputAttr func(optionalAttr)
+
+// SparseCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func SparseCountSparseOutputMinlength(value int64) SparseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// SparseCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func SparseCountSparseOutputMaxlength(value int64) SparseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a sparse tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	indices: int64; Tensor containing the indices of the sparse tensor to count.
+//	values: int32 or int64; Tensor containing values of the sparse tensor to count.
+//	dense_shape: int64; Tensor containing the dense shape of the sparse tensor to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//	output_dense_shape: int64; shape tensor for the resulting sparse tensor object.
+func SparseCountSparseOutput(scope *Scope, indices tf.Output, values tf.Output, dense_shape tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...SparseCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseCountSparseOutput",
+		Input: []tf.Input{
+			indices, values, dense_shape, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // DebugNumericSummaryV2Attr is an optional argument to DebugNumericSummaryV2.
@@ -16968,6 +17168,17 @@ func QuantizedAdd(scope *Scope, x tf.Output, y tf.Output, min_x tf.Output, max_x
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// ShuffleAndRepeatDatasetAttr is an optional argument to ShuffleAndRepeatDataset.
+type ShuffleAndRepeatDatasetAttr func(optionalAttr)
+
+// ShuffleAndRepeatDatasetReshuffleEachIteration sets the optional reshuffle_each_iteration attribute to value.
+// If not specified, defaults to true
+func ShuffleAndRepeatDatasetReshuffleEachIteration(value bool) ShuffleAndRepeatDatasetAttr {
+	return func(m optionalAttr) {
+		m["reshuffle_each_iteration"] = value
+	}
+}
+
 // Creates a dataset that shuffles and repeats elements from `input_dataset`
 //
 // pseudorandomly.
@@ -16985,11 +17196,14 @@ func QuantizedAdd(scope *Scope, x tf.Output, y tf.Output, min_x tf.Output, max_x
 // should be repeated. The default is `-1`, which results in infinite repetition.
 //
 //
-func ShuffleAndRepeatDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ShuffleAndRepeatDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShuffleAndRepeatDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ShuffleAndRepeatDataset",
 		Input: []tf.Input{
@@ -18608,7 +18822,7 @@ func SampleDistortedBoundingBoxV2Seed2(value int64) SampleDistortedBoundingBoxV2
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75  f:1.33}
+// If not specified, defaults to {f:0.75 f:1.33}
 func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -18619,7 +18833,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05  f:1}
+// If not specified, defaults to {f:0.05 f:1}
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -19023,7 +19237,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to {dtype:DT_UINT8  tensor_shape:{dim:{size:4}}  int_val:255  int_val:0  int_val:0  int_val:255}
+// If not specified, defaults to {dtype:DT_UINT8 tensor_shape:{dim:{size:4}} int_val:255 int_val:0 int_val:0 int_val:255}
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -20094,7 +20308,7 @@ func Conv3DBackpropFilterV2DataFormat(value string) Conv3DBackpropFilterV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
 func Conv3DBackpropFilterV2Dilations(value []int64) Conv3DBackpropFilterV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -21266,7 +21480,7 @@ func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func Conv2DBackpropInputDilations(value []int64) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -21974,7 +22188,7 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func Conv2DDilations(value []int64) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22170,7 +22384,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataTy
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22239,7 +22453,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) Quantized
 // QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22354,7 +22568,7 @@ func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwi
 // QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22413,7 +22627,7 @@ func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2D
 // QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22587,7 +22801,7 @@ func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChann
 // QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
 //
 // value: list of dilation values.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22964,7 +23178,7 @@ func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
 func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25284,7 +25498,7 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 type Conv3DBackpropFilterAttr func(optionalAttr)
 
 // Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
 func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25347,7 +25561,7 @@ func Conv3DDataFormat(value string) Conv3DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
 func Conv3DDilations(value []int64) Conv3DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25598,7 +25812,7 @@ func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dN
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func DepthwiseConv2dNativeBackpropInputDilations(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26082,7 +26296,7 @@ func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func QuantizedConv2DDilations(value []int64) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26793,7 +27007,7 @@ func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) 
 //
 // @tf.function
 // def foo(x, y):
-//   return = mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
+//   return mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
 //
 // graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.TensorSpec([10], tf.float32)).graph.as_graph_def()
 // ```
@@ -40130,9 +40344,9 @@ func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
 	}
 }
 
-// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
+// Update '*var' according to the momentum scheme.
 //
-// want to use Nesterov momentum.
+// Set use_nesterov = True if you want to use Nesterov momentum.
 //
 // accum = accum * momentum + grad
 // var -= lr * accum
@@ -40335,7 +40549,7 @@ func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2d
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -45832,7 +46046,7 @@ func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -46805,26 +47019,11 @@ func LoadTPUEmbeddingFTRLParameters(scope *Scope, parameters tf.Output, accumula
 	return scope.AddOperation(opspec)
 }
 
-// Creates a tf.data service job.
-func CreateJob(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output, processing_mode tf.Output) (job_token tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CreateJob",
-		Input: []tf.Input{
-			dataset_id, address, protocol, processing_mode,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
 type Conv3DBackpropInputAttr func(optionalAttr)
 
 // Conv3DBackpropInputDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
 func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -46895,7 +47094,7 @@ func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1  i:1  i:1  i:1}
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
 func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -47085,7 +47284,7 @@ func ResourceApplyAdagradV2UpdateSlots(value bool) ResourceApplyAdagradV2Attr {
 // Update '*var' according to the adagrad scheme.
 //
 // accum += grad * grad
-// var -= lr * grad * (1 / sqrt(accum))
+// var -= lr * grad * (1 / (sqrt(accum) + epsilon))
 //
 // Arguments:
 //	var_: Should be from a Variable().

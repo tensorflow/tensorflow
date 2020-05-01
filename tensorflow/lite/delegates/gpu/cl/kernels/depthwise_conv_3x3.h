@@ -83,7 +83,7 @@ template <DataType T>
 absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
     const tflite::gpu::Tensor<OHWI, T>& weights,
     const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   int texture_width = 10;  // 3x3 kernel + 1 bias
   int texture_height = src_depth;
   const int elements_count = texture_width * texture_height;
@@ -129,7 +129,7 @@ template <DataType S, typename T>
 void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
     const tflite::gpu::Tensor<OHWI, S>& weights,
     const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
 
   int counter = 0;
   for (int s = 0; s < src_depth; ++s) {

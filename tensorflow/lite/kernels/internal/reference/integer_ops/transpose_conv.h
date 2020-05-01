@@ -25,8 +25,9 @@ inline void TransposeConv(
     const ConvParams& params, const int32* output_multiplier,
     const int32* output_shift, const RuntimeShape& input_shape,
     const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& output_shape,
-    int8* output_data, const RuntimeShape& im2col_shape, int8* im2col_data,
+    const int8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
+    const RuntimeShape& im2col_shape, int8* im2col_data,
     int32* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -41,6 +42,9 @@ inline void TransposeConv(
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
@@ -99,6 +103,9 @@ inline void TransposeConv(
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
           int32 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
                                             out_channel)];
+          if (bias_data) {
+            acc += bias_data[out_channel];
+          }
           acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
           acc += output_offset;

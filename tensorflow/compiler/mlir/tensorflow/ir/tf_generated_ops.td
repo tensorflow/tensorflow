@@ -253,6 +253,26 @@ retained with length 1.
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
+  let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
+
+    DefaultValuedAttr<F32Attr, "1e-05f">:$tolerance
+  );
+
+  let results = (outs
+    I1Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
   let summary = [{
 Returns the index with the largest value across dimensions of a tensor.
@@ -594,6 +614,29 @@ window in `value`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AvgPoolGradOp : TF_Op<"AvgPoolGrad", [NoSideEffect]> {
+  let summary = "Computes gradients of the average pooling function.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$orig_input_shape,
+    TF_FpTensor:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [NoSideEffect]> {
@@ -1064,6 +1107,15 @@ tf.Tensor(
 
 In the above example, the input Tensor with the shape of `[1, 3]`
 is broadcasted to output Tensor with shape of `[3, 3]`.
+
+When doing broadcasted operations such as multiplying a tensor
+by a scalar, broadcasting (usually) confers some time or space
+benefit, as the broadcasted tensor is never materialized.
+
+However, `broadcast_to` does not carry with it any such benefits.
+The newly-created tensor takes the full memory of the broadcasted
+shape. (In a graph context, `broadcast_to` might be fused to
+subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
@@ -2162,8 +2214,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -2175,7 +2227,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
               "Value  y, BoolAttr incompatible_shape_error">
   ];
 
@@ -2331,7 +2383,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  condition, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, "
               "Value  dim">
   ];
 }
@@ -2539,6 +2591,10 @@ fill([2, 3], 9) ==> [[9, 9, 9]
   let verifier = [{
     return Verify(*this);
   }];
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, Value dims, Value value"
+  >];
 }
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2621,6 +2677,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     F32Tensor:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
@@ -2760,6 +2817,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     F32Tensor:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
@@ -3250,22 +3308,6 @@ tf.imag(input) ==> [4.75, 5.75]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
-  let summary = "Fetches multiple values from infeed as an XLA tuple.";
-
-  let description = [{
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    Variadic<TF_Tensor>:$outputs
-  );
-
-  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
-  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3948,8 +3990,7 @@ cublas.
 
 def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [AllTypesMatch<["input", "band"]>, NoSideEffect]> {
   let summary = [{
-Copy a tensor setting everything outside a central band in each innermost matrix
-to zero.
+Copy a tensor setting everything outside a central band in each innermost matrix to zero.
   }];
 
   let description = [{
@@ -4584,7 +4625,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value input, "
+    "OpBuilder &builder, OperationState &result, Value input, "
     "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
@@ -4703,12 +4744,12 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x,
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4751,12 +4792,12 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x,
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -5117,8 +5158,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -5130,7 +5171,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
               "Value  y, BoolAttr incompatible_shape_error">
   ];
 
@@ -5249,7 +5290,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  indices, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  indices, "
               "Value  depth, Value  on_value, Value  off_value, "
               "IntegerAttr axis">
   ];
@@ -5510,6 +5551,40 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_QrOp : TF_Op<"Qr", [NoSideEffect]> {
+  let summary = "Computes the QR decompositions of one or more matrices.";
+
+  let description = [{
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```python
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$input,
+
+    DefaultValuedAttr<BoolAttr, "false">:$full_matrices
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$q,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$r
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5797,7 +5872,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  start, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  start, "
               "Value  limit, Value  delta">
   ];
 }
@@ -5832,8 +5907,10 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  input">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input">
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
@@ -6090,7 +6167,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value  tensor, Value  shape">
+      "OpBuilder& builder, OperationState& result, Value  tensor, Value  shape">
   ];
 
   let verifier = [{
@@ -6614,6 +6691,106 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ScatterNdOp : TF_Op<"ScatterNd", [NoSideEffect]> {
+  let summary = "Scatter `updates` into a new tensor according to `indices`.";
+
+  let description = [{
+Creates a new tensor by applying sparse `updates` to individual values or
+slices within a tensor (initially zero for numeric, empty for string) of
+the given `shape` according to indices.  This operator is the inverse of the
+`tf.gather_nd` operator which extracts values or slices from a given tensor.
+
+This operation is similar to tensor_scatter_add, except that the tensor is
+zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
+to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+
+If `indices` contains duplicates, then their updates are accumulated (summed).
+
+**WARNING**: The order in which updates are applied is nondeterministic, so the
+output will be nondeterministic if `indices` contains duplicates -- because
+of some numerical approximation issues, numbers summed in different order
+may yield different results.
+
+`indices` is an integer tensor containing indices into a new tensor of shape
+`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+
+    indices.shape[-1] <= shape.rank
+
+The last dimension of `indices` corresponds to indices into elements
+(if `indices.shape[-1] = shape.rank`) or slices
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.  `updates` is a tensor with shape
+
+    indices.shape[:-1] + shape[indices.shape[-1]:]
+
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    shape = tf.constant([8])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    print(scatter)
+```
+
+The resulting tensor would look like this:
+
+    [0, 11, 0, 10, 9, 0, 0, 12]
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    shape = tf.constant([4, 4, 4])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    print(scatter)
+```
+
+The resulting tensor would look like this:
+
+    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates,
+    TF_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_SegmentMaxOp : TF_Op<"SegmentMax", [NoSideEffect]> {
   let summary = "Computes the maximum along segments of a tensor.";
 
@@ -6896,7 +7073,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  condition, Value  e, Value  t">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, Value  e, Value  t">
   ];
 }
 
@@ -6930,7 +7107,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  input, BoolAttr use32Bit">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -7898,28 +8075,6 @@ shape of `StridedSlice`'s `input`.
   }];
 }
 
-def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
-  let summary = "Formats a string template using a list of tensors.";
-
-  let description = [{
-Formats a string template using a list of tensors, pretty-printing tensor summaries.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
-
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
-    DefaultValuedAttr<I64Attr, "3">:$summarize
-  );
-
-  let results = (outs
-    TF_StrTensor:$output
-  );
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-}
-
 def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
@@ -7968,7 +8123,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value input, "
+    "OpBuilder &builder, OperationState &result, Value input, "
     "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
@@ -8287,7 +8442,7 @@ All elements must have the same shape (excepting the first dimension).
     TF_ResourceTensor:$handle,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape_except0
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
   );
 
   let results = (outs
@@ -8312,7 +8467,7 @@ All elements selected by `indices` must have the same shape.
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape
   );
 
   let results = (outs
@@ -8487,7 +8642,7 @@ Write data via Write and read via Read or Pack.
     I32Tensor:$size,
 
     TypeAttr:$dtype,
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape,
     DefaultValuedAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedAttr<BoolAttr, "false">:$identical_element_shapes,
@@ -8729,6 +8884,32 @@ size: size of the output list
   );
 }
 
+def TF_TensorListScatterIntoExistingListOp : TF_Op<"TensorListScatterIntoExistingList", [NoSideEffect]> {
+  let summary = "Scatters tensor at indices in an input list.";
+
+  let description = [{
+Each member of the TensorList corresponds to one row of the input tensor,
+specified by the given index (see `tf.gather`).
+
+input_handle: The list to scatter into.
+tensor: The input tensor.
+indices: The indices used to index into the list.
+output_handle: The TensorList.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor,
+    I32Tensor:$indices
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 
@@ -8875,7 +9056,7 @@ On GPU, if an out of bound index is found, the index is ignored.
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, "
+      "OpBuilder& builder, OperationState& result, "
       "Value tensor, Value indices, Value updates",
       [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
     >
@@ -8960,8 +9141,8 @@ as true/false for a branch condition.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value value", [{
-      build(builder, result, RankedTensorType::get({}, builder->getI1Type()),
+    "OpBuilder &builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
             value);
     }]>];
 
@@ -9025,7 +9206,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value  x, Value  perm">
+      "OpBuilder& builder, OperationState& result, Value  x, Value  perm">
   ];
 
   let verifier = [{
@@ -9396,6 +9577,30 @@ shape(t) ==> [2, 2, 3]
   let hasFolder = 1;
 }
 
+def TF_VariableV2Op : TF_Op<"VariableV2", []> {
+  let summary = [{
+Holds state in the form of a tensor that persists across steps.
+  }];
+
+  let description = [{
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
   let summary = "Returns locations of nonzero / true values in a tensor.";
 
@@ -9757,25 +9962,6 @@ i=0...N-1.
   let results = (outs
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$w,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$v
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
-  let summary = [{
-An op which shards the input based on the given sharding attribute.
-  }];
-
-  let description = [{
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$input
-  );
-
-  let results = (outs
-    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

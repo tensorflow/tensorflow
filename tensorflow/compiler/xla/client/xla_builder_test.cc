@@ -407,11 +407,23 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
 
 TEST_F(XlaBuilderTest, GetDimensionSize) {
   XlaBuilder b(TestName());
-  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
   GetDimensionSize(x, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
+}
+
+TEST_F(XlaBuilderTest, GetDimensionSizeConstant) {
+  XlaBuilder b(TestName());
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
+  // Get dimension size from a contant dimension gives us a constant.
+  GetDimensionSize(x, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
 }
 
 TEST_F(XlaBuilderTest, ReportError) {

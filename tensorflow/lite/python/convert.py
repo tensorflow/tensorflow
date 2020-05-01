@@ -122,6 +122,18 @@ def mlir_quantize(input_data_str):
   return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str)
 
 
+def mlir_sparsify(input_data_str):
+  """Sparsify `input_data_str` to encode sparse tensor with proper format.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model).
+
+  Returns:
+    Sparsified model in serialized form (e.g. a TFLITE model).
+  """
+  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+
+
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,

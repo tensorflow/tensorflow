@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 
+#include <math.h>
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
@@ -25,6 +28,13 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
+
+TEST(uKernels, FloorLog2Test) {
+  for (int i = 1; i < 257; ++i) {
+    EXPECT_EQ(::tflite::FloorLog2(i),
+              static_cast<int>(std::floor(std::log2(i))));
+  }
+}
 
 TEST(uKernels, ClipTest) {
   constexpr int kVectorSize = 10;

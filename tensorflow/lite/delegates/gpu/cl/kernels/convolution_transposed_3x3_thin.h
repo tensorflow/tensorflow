@@ -82,8 +82,8 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 template <DataType T>
 absl::Status ConvolutionTransposed3x3Thin::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
-  const int dst_depth = IntegralDivideRoundUp(dst_channels_, 4);
+  const int src_depth = DivideRoundUp(src_channels_, 4);
+  const int dst_depth = DivideRoundUp(dst_channels_, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
   const int kernel_y = 3;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
@@ -108,8 +108,8 @@ absl::Status ConvolutionTransposed3x3Thin::UploadWeights(
 template <DataType S, typename T>
 void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
-  const int dst_depth = IntegralDivideRoundUp(dst_channels_, 4);
+  const int src_depth = DivideRoundUp(src_channels_, 4);
+  const int dst_depth = DivideRoundUp(dst_channels_, 4);
   const int kernel_x = 3;
   const int kernel_y = 3;
 

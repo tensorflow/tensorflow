@@ -63,12 +63,15 @@ class PresetAssignments {
     return assignment_info_;
   }
 
-  // Remove the chunks_ entry that corresponds to instruction.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+  // Get debugging information.
+  std::string buffer_info_str() const { return buffer_info_str_; }
+  std::string allocation_info_str() const { return allocation_info_str_; }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, AssignmentInformation>> assignment_info_;
+  std::string buffer_info_str_;
+  std::string allocation_info_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -168,6 +171,14 @@ class PrefetchIntervalPicker {
   virtual std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
                                           int64 end_time) const = 0;
 
+  // Prefetch interval pickers may return a value corresponding to the benefit
+  // of placing the BufferInterval in the alternate memory. The larger value,
+  // the more beneficial.
+  virtual absl::optional<float> BufferIntervalAlternateMemoryBenefit(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    return absl::nullopt;
+  }
+
  protected:
   const absl::flat_hash_map<const HloInstruction*, int64>*
       instruction_schedule_ = nullptr;
@@ -241,6 +252,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   std::string ToDebugString() const override;
   std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
                                   int64 end_time) const override;
+
+  absl::optional<float> BufferIntervalAlternateMemoryBenefit(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval)
+      const override;
 
  private:
   // Returns the elapsed time in seconds between the logical interval that
@@ -320,6 +335,11 @@ class MemorySpaceAssignment {
     // buffers.
     bool verify = false;
 
+    // If not nullptr, this function is called to dump debugging information.
+    // The first argument is appended to the file name and the second argument
+    // is the contents of the file.
+    std::function<void(absl::string_view, absl::string_view)> dump_fn = nullptr;
+
     // Enable prefetching buffers into preferred memory across program
     // boundaries
     bool enable_cross_program_prefetch = true;
@@ -398,6 +418,8 @@ class MemorySpaceAssignment {
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
 
+    virtual std::string ToString() const;
+
    protected:
     // Descend to the shape_index element of the tuple and replace that with
     // new_instruction.
@@ -466,6 +488,8 @@ class MemorySpaceAssignment {
     void set_copy_start_schedule_after(int64 copy_start_schedule_after) {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
+
+    std::string ToString() const override;
 
    private:
     const Allocation& prev_allocation_;
@@ -580,6 +604,8 @@ class MemorySpaceAssignment {
     AllocationSequence allocation_sequence_;
   };
 
+  virtual ~MemorySpaceAssignment() = default;
+
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
@@ -597,13 +623,19 @@ class MemorySpaceAssignment {
   Status VerifyAndExportHeapSimulatorTrace();
 
  protected:
+  // Main driver of the memory space assignment pass.
+  virtual StatusOr<std::unique_ptr<PresetAssignments>> RunMemorySpaceAssignment(
+      const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis);
+
   // Finds an AllocationSequence for placing buffers in alternate memory using
   // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
   // called.
-  Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
-                                const HloAliasAnalysis& alias_analysis);
+  virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
+                                        const HloAliasAnalysis& alias_analysis);
 
- private:
+  Options options() const { return options_; }
+
   MemorySpaceAssignment(HloModule* module, Options options,
                         const HloLiveRange& hlo_live_range)
       : module_(module),
@@ -622,6 +654,9 @@ class MemorySpaceAssignment {
     }
   }
 
+  AllocationSequence allocations_;
+
+ private:
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   Status Process();
@@ -635,6 +670,10 @@ class MemorySpaceAssignment {
   // FixSchedule inserts asynchronous copies in the schedule.
   Status FixSchedule();
 
+  // Export the alternate memory assignments to the PresetAssignments and color
+  // the HLO graph with the determined memory spaces.
+  Status ExportAndColorBuffers();
+
   // Insert an instruction to the schedule, and make sure its dependencies
   // (operands) are already in the schedule. If not, insert these operands
   // before the instruction.
@@ -646,12 +685,17 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
+  // Remove the positions and chunks associated with the instruction from
+  // alternate_memory_assignments_.
+  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+
   HloModule* module_;
   Options options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
-  AllocationSequence allocations_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
+  std::vector<std::pair<HloPosition, Chunk>> alternate_memory_assignments_;
+  int64 alternate_memory_size_ = 0;
 
   // These maps hold vectors of new instructions that need to be scheduled after
   // (or before) the instruction index in the key. FixSchedule uses these maps
@@ -887,6 +931,17 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // removes pending chunks and asynchronous copies in the respective pending
   // buffers from the interval trees.
   void UncommitPendingChunks();
+
+  // Append buffer and allocation infos for debugging and dump it into a file,
+  // if enabled.
+  void AppendBufferInfoDebugString(const BufferInterval& interval,
+                                   std::string* debug_str) const;
+  void AppendAllocationInfoDebugString(
+      const BufferInterval& interval,
+      const MemorySpaceAssignment::Allocation& allocation,
+      std::string* debug_str) const;
+  void DumpIfEnabled(absl::string_view buffer_info_str,
+                     absl::string_view allocation_info_str) const;
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

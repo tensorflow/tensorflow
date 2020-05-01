@@ -431,11 +431,6 @@ TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
 // A reference to an op's name -> attribute mapping
 typedef struct TFE_OpAttrs TFE_OpAttrs;
 
-// Fetch a struct with a reference to information about attributes of `op`.
-//
-// The `attrs` struct does not own any memory, and `op` must outlive it.
-TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
-
 // Add attributes in `attrs` to `op`.
 //
 // Does not overwrite or update existing attributes, but adds new ones.

@@ -40,6 +40,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation();
 
 // Returns the performance bottleneck of the program executed.
 BottleneckAnalysis ComputeBottleneckAnalysis(
+    const InputTimeBreakdown& input_time_breakdown,
     const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
         any_step_details);
 
@@ -57,6 +58,8 @@ void OutputAnalysis(double output_percent, string* output_classification,
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);
 
+void AddErrorMessages(const OpStats& op_stats,
+                      InputPipelineAnalysisResult* result);
 }  // namespace profiler
 }  // namespace tensorflow
 

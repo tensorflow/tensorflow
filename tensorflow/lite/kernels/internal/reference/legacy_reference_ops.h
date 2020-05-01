@@ -387,8 +387,20 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.stride_height = stride_height;
 
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
-                output_data, DimsToShape(im2col_dims), im2col_data);
+                DimsToShape(filter_dims), filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr,
+                DimsToShape(output_dims), output_data, DimsToShape(im2col_dims),
+                im2col_data);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  TransposeConv(params, input_shape, input_data, filter_shape, filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr, output_shape,
+                output_data, im2col_shape, im2col_data);
 }
 
 inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,

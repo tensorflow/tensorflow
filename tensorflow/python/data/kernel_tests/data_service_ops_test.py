@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -33,6 +35,13 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 PROTOCOL = "grpc"
+
+
+def _make_distributed_dataset(dataset, service):
+  """Creates a distributed dataset with a short task refresh interval."""
+  return dataset.apply(
+      data_service_ops._distribute(
+          "parallel_epochs", service, task_refresh_interval_hint_ms=20))
 
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -58,25 +67,33 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     return self._master.target
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testMultipleEpochs(self):
-    service = self.create_cluster(1)
-    ds = dataset_ops.Dataset.range(3)
-    ds = ds.apply(data_service_ops.distribute(service))
-    for _ in range(10):
-      token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-      it = data_service_ops.create_iterator(ds, token)
-      self.assertEqual(list(range(3)), [t.numpy() for t in it])
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeBasic(self):
     num_elements = 10
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
-    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-    it = data_service_ops.create_iterator(ds, token)
-    results = [t.numpy() for t in it]
+    ds = _make_distributed_dataset(ds, service)
+    results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testMultipleEpochs(self):
+    num_elements = 3
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(ds, service)
+    for _ in range(10):
+      self.assertEqual(list(range(num_elements)), [elem.numpy() for elem in ds])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRepeatedDataset(self):
+    num_elements = 10
+    num_repetitions = 5
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(ds, service)
+    ds = ds.repeat(num_repetitions)
+    self.assertDatasetProduces(
+        ds, expected_output=num_repetitions * list(range(num_elements)))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testConcurrentEpoch(self):
@@ -87,10 +104,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     results = []
     for _ in range(num_datasets):
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = ds.apply(data_service_ops.distribute(service))
-      token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-      it = data_service_ops.create_iterator(ds, token)
-      iterators.append(it)
+      ds = _make_distributed_dataset(ds, service)
+      iterators.append(iter(ds))
       results.append([])
 
     for _ in range(num_elements):
@@ -102,16 +117,16 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedEpoch(self):
+    self.skipTest("Not yet implemented")
     num_elements = 10
     num_iterators = 3
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     result = []
     iterators = []
-    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     for _ in range(num_iterators):
-      iterators.append(data_service_ops.create_iterator(ds, token))
+      iterators.append(iter(ds))
 
     # Alternate reading between the iterators.
     for _ in range(2):
@@ -131,11 +146,71 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_elements = 10
     service = self.create_cluster(num_workers)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
-    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-    iterator = data_service_ops.create_iterator(ds, token)
-    results = [elem.numpy() for elem in iterator]
+    ds = _make_distributed_dataset(ds, service)
+    results = [elem.numpy() for elem in ds]
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testAddWorkerMidJob(self):
+    self._master = server_lib.MasterServer(PROTOCOL)
+    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(ds, self._master.target)
+    iterator = iter(ds)
+    results = []
+    # Read halfway through the dataset.
+    for _ in range(num_elements // 2):
+      results.append(next(iterator).numpy())
+
+    self._new_worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+
+    # Wait for the new worker to register with the master.
+    while self._master.num_tasks() < 2:
+      time.sleep(10 / 1000)  # 10ms
+
+    for elem in iterator:
+      results.append(elem.numpy())
+
+    self.assertCountEqual(2 * list(range(num_elements)), results)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(use_same_port=[True, False])))
+  def testRestartWorker(self, use_same_port):
+    self._master = server_lib.MasterServer(PROTOCOL)
+    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(ds, self._master.target)
+    iterator = iter(ds)
+    # Read halfway through the dataset.
+    midpoint = num_elements // 2
+    for i in range(midpoint):
+      self.assertEqual(i, next(iterator).numpy())
+
+    # Stop the original worker and start a new one.
+    port = 0
+    if use_same_port:
+      worker_address = self._worker.target[len(PROTOCOL + "://"):]
+      port = int(worker_address.split(":")[1])
+    self._worker.stop()
+    self._new_worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address, port=port)
+
+    # The dataset starts over now that we read from the new worker.
+    for i in range(num_elements):
+      val = next(iterator).numpy()
+      if val == midpoint and i != midpoint:
+        # There may have been one last element prefetched from the first worker
+        # before it was stopped.
+        val = next(iterator).numpy()
+      self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):
@@ -146,13 +221,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     @def_function.function
     def f():
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = ds.apply(data_service_ops.distribute(service))
-      token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-      it = data_service_ops.create_iterator(ds, token)
+      ds = _make_distributed_dataset(ds, service)
       result = tensor_array_ops.TensorArray(
           dtypes.int64, size=num_workers * num_elements, dynamic_size=True)
       i = 0
-      for elem in it:
+      for elem in ds:
         result = result.write(i, elem)
         i += 1
       return result.stack()
@@ -170,10 +243,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = ds.with_options(options)
 
     service = self.create_cluster(3)
-    ds = ds.apply(data_service_ops.distribute(service))
-    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-    iterator = data_service_ops.create_iterator(ds, token)
-    next(iterator)
+    ds = _make_distributed_dataset(ds, service)
+    next(iter(ds))
 
   @combinations.generate(
       combinations.times(
@@ -191,34 +262,13 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.run_stateful(distribute_options.ExternalStatePolicy.FAIL)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testNoDistributeCalls(self):
-    ds = dataset_ops.Dataset.range(1)
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "Dataset does not contain any distribute() transformations"):
-      data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testMultipleDistributeCalls(self):
-    service = self.create_cluster(1)
-    ds1 = dataset_ops.Dataset.range(1)
-    ds1 = ds1.apply(data_service_ops.distribute(service))
-    ds2 = dataset_ops.Dataset.range(1)
-    ds2 = ds2.apply(data_service_ops.distribute(service))
-    ds = dataset_ops.Dataset.zip((ds1, ds2))
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, "Datasets containing multiple calls to .distribute(...) "
-        "are not supported"):
-      data_service_ops.create_job(ds, processing_mode="parallel_epochs")
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeFromInterleave(self):
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(2)
 
     def interleave_fn(_):
       ds = dataset_ops.Dataset.range(2)
-      ds = ds.apply(data_service_ops.distribute(service))
+      _make_distributed_dataset(ds, service)
       return ds
 
     with self.assertRaisesRegex(
@@ -230,14 +280,27 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testDistributeNonStringAddresses(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(ValueError, "service must be a string"):
-      ds = ds.apply(data_service_ops.distribute(service=1))
+      ds = ds.apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs", service=1))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeEmptyAddress(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesWithLiteralMatch(ValueError,
                                            "service must not be empty"):
-      ds = ds.apply(data_service_ops.distribute(service=""))
+      ds = ds.apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs", service=""))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeInvalidProcessingMode(self):
+    ds = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(ValueError,
+                                "invalid is not a valid processing mode"):
+      ds = ds.apply(
+          data_service_ops.distribute(
+              processing_mode="invalid", service="grpc://localhost:5000"))
 
 
 if __name__ == "__main__":

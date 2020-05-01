@@ -1366,15 +1366,11 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   auto reset_delegation_if_not_ok = [this](TfLiteStatus status) {
     if (status != kTfLiteOk) {
-      // This will undo all delegate nodes currently in the graph.
-      TF_LITE_ENSURE_STATUS(this->UndoAllDelegates());
-      // This will call AllocateTensors, thus-reapplying any (successfully
-      // applied) previous delegates.
-      TF_LITE_ENSURE_STATUS(this->EnsureMemoryAllocations());
+      TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
       ReportError(
-          "Restored previous execution plan after delegate application "
+          "Restored original execution plan after delegate application "
           "failure.");
-      return kTfLiteError;
+      return kTfLiteDelegateError;
     }
     return kTfLiteOk;
   };

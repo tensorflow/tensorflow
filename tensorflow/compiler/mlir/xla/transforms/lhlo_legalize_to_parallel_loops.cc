@@ -488,23 +488,27 @@ class SelectAndScatterOpConverter
   LogicalResult matchAndRewrite(
       xla_lhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
+    auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);
     loop::ParallelOp loop_over_src =
-        MakeLoopOverShape(s_and_s_op.getLoc(), s_and_s_op.source(), &rewriter);
+        MakeLoopOverShape(loc, s_and_s_op.source(), &rewriter);
     rewriter.setInsertionPointToStart(loop_over_src.getBody());
 
     // Compute indices of the selected element in the window.
     auto selected_ivs = SelectIvs(s_and_s_op, loop_over_src, &rewriter);
-    // Compute `acc_result` = scatter(out[selected_ivs], src_element)`.
-    Value acc_result =
-        Scatter(s_and_s_op, loop_over_src, selected_ivs, &rewriter);
 
-    // Updates `out[selected_ivs]`.
-    //
-    // TODO(pifon): This has to become AtomicRMWOp that updates an element of
-    // s_and_s_op.out().
-    rewriter.create<StoreOp>(s_and_s_op.getLoc(), acc_result, s_and_s_op.out(),
-                             selected_ivs);
+    // Load `source[selected_ivs]`.
+    auto src_elem = rewriter.create<LoadOp>(loc, s_and_s_op.source(),
+                                            loop_over_src.getInductionVars());
+
+    // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
+    auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
+                                                   selected_ivs);
+    OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
+    auto acc_result =
+        ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
+                                  &s_and_s_op.scatter().front(), &rmw_builder);
+    rmw_builder.create<AtomicYieldOp>(loc, acc_result);
 
     rewriter.replaceOp(s_and_s_op, llvm::None);
     return success();
@@ -600,7 +604,8 @@ class SelectAndScatterOpConverter
     auto loc = s_and_s_op.getLoc();
 
     WindowLoops window_loops = InsertWindowLoops(s_and_s_op, loop_over_src, b);
-    OpBuilder inner_loop_b = window_loops.inner_loop.getBodyBuilder();
+    auto inner_loop_b =
+        OpBuilder::atBlockEnd(window_loops.inner_loop.getBody());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in the pad area.
     MappedIvs mapped_ivs =
@@ -684,19 +689,6 @@ class SelectAndScatterOpConverter
           loc, IterArgs{operand_ivs, operand_elem, true_i1}.to_vector());
     }
     return if_init.getResults();
-  }
-
-  Value Scatter(xla_lhlo::SelectAndScatterOp s_and_s_op,
-                loop::ParallelOp loop_over_src, ValueRange selected_ivs,
-                OpBuilder* b) const {
-    auto loc = s_and_s_op.getLoc();
-
-    auto acc_current = b->create<LoadOp>(loc, s_and_s_op.out(), selected_ivs);
-    auto src_elem = b->create<LoadOp>(loc, s_and_s_op.source(),
-                                      loop_over_src.getInductionVars());
-
-    return ApplySingleResultLhloCode(loc, {src_elem, acc_current},
-                                     &s_and_s_op.scatter().front(), b);
   }
 };
 

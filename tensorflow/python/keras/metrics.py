@@ -279,15 +279,16 @@ class Metric(base_layer.Layer):
     if distributed_training_utils.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
-    return super(Metric, self).add_weight(
-        name=name,
-        shape=shape,
-        dtype=self._dtype if dtype is None else dtype,
-        trainable=False,
-        initializer=initializer,
-        collections=[],
-        synchronization=synchronization,
-        aggregation=aggregation)
+    with ops.init_scope():
+      return super(Metric, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=self._dtype if dtype is None else dtype,
+          trainable=False,
+          initializer=initializer,
+          collections=[],
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   ### End: For use by subclasses ###
 
@@ -308,13 +309,12 @@ class Reduce(Metric):
   def __init__(self, reduction, name, dtype=None):
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    with ops.init_scope():
-      self.total = self.add_weight(
-          'total', initializer=init_ops.zeros_initializer)
-      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                       metrics_utils.Reduction.WEIGHTED_MEAN]:
-        self.count = self.add_weight(
-            'count', initializer=init_ops.zeros_initializer)
+    self.total = self.add_weight(
+        'total', initializer=init_ops.zeros_initializer)
+    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+      self.count = self.add_weight(
+          'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the metric.
@@ -1925,7 +1925,8 @@ class AUC(Metric):
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+    self._thresholds = np.array([0.0 - K.epsilon()] + thresholds +
+                                [1.0 + K.epsilon()])
 
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
@@ -1958,6 +1959,11 @@ class AUC(Metric):
       self._num_labels = None
     else:
       self._build(None)
+
+  @property
+  def thresholds(self):
+    """The thresholds used for evaluating AUC."""
+    return list(self._thresholds)
 
   def _build(self, shape):
     """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
@@ -2056,7 +2062,7 @@ class AUC(Metric):
           },
           y_true,
           y_pred,
-          self.thresholds,
+          self._thresholds,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -3462,4 +3468,3 @@ def get(identifier):
 
 def is_built_in(cls):
   return cls.__module__ == Metric.__module__
-

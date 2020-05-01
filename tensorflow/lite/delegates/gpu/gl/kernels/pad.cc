@@ -98,8 +98,8 @@ class Pad : public NodeShader {
         source += "    value_0 = $input_data_0[src_x, src_y, gid.z]$;\n";
       } else if (attr.prepended.c % 4 == 0) {
         parameters.push_back(
-            {"src_slices", IntegralDivideRoundUp(
-                               static_cast<int>(ctx.input_shapes[0][3]), 4)});
+            {"src_slices",
+             DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)});
         source += R"(
     int src_z = gid.z - $prepended.z$ / 4;
     if (src_z >= 0 && src_z < $src_slices$) {

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -28,6 +27,7 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 class DeviceContext;
+class DeviceMgr;
 class Tensor;
 
 // EXPERIMENTAL: RDMA oriented producer/consumer rendezvous on a local

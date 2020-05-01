@@ -2,6 +2,7 @@
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
+load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
 
 licenses(["notice"])
 
@@ -51,6 +52,26 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "SymbolInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/IR/SymbolInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/IR/SymbolInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/SymbolInterfaces.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "IR",
     srcs = glob([
@@ -70,6 +91,7 @@ cc_library(
         ":OpAsmInterfacesIncGen",
         ":SideEffectInterfacesIncGen",
         ":Support",
+        ":SymbolInterfacesIncGen",
         "@llvm-project//llvm:support",
     ],
 )
@@ -105,7 +127,6 @@ cc_library(
     hdrs = [
         "include/mlir-c/Core.h",
         "include/mlir/EDSC/Builders.h",
-        "include/mlir/EDSC/Intrinsics.h",
     ],
     includes = ["include"],
     deps = [
@@ -135,6 +156,7 @@ cc_library(
 filegroup(
     name = "OpBaseTdFiles",
     srcs = [
+        "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/IR/OpBase.td",
     ],
 )
@@ -278,6 +300,7 @@ filegroup(
     name = "LoopOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/LoopOps/LoopOps.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
@@ -352,6 +375,7 @@ filegroup(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -578,6 +602,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":ControlFlowInterfaces",
         ":EDSC",
         ":IR",
         ":LoopLikeInterface",
@@ -597,6 +622,17 @@ cc_library(
     deps = [
         ":IR",
         ":LoopLikeInterfaceIncGen",
+    ],
+)
+
+cc_library(
+    name = "ViewLikeInterface",
+    srcs = ["lib/Interfaces/ViewLikeInterface.cpp"],
+    hdrs = ["include/mlir/Interfaces/ViewLikeInterface.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":ViewLikeInterfaceIncGen",
     ],
 )
 
@@ -639,6 +675,7 @@ cc_library(
     deps = [
         ":CallOpInterfaces",
         ":CommonFolders",
+        ":Dialect",
         ":IR",
         ":InferTypeOpInterface",
         ":ShapeOpsIncGen",
@@ -673,6 +710,7 @@ cc_library(
         ":SideEffects",
         ":StandardOpsIncGen",
         ":Support",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:support",
     ],
 )
@@ -946,6 +984,7 @@ filegroup(
         "include/mlir/Dialect/GPU/GPUBase.td",
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
@@ -1077,6 +1116,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/LLVMOps.td",
+        "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
@@ -1460,6 +1500,7 @@ gentbl(
 filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
+        "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffects.td",
@@ -1870,6 +1911,26 @@ gentbl(
 )
 
 gentbl(
+    name = "ViewLikeInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Interfaces/ViewLikeInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Interfaces/ViewLikeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Interfaces/ViewLikeInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "TransformsPassIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -1898,6 +1959,7 @@ cc_library(
     deps = [
         ":Affine",
         ":Analysis",
+        ":ControlFlowInterfaces",
         ":IR",
         ":LoopLikeInterface",
         ":LoopOps",
@@ -1907,7 +1969,6 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":TransformsPassIncGen",
-        ":VectorOps",
         "@llvm-project//llvm:support",
     ],
 )
@@ -2689,6 +2750,10 @@ cc_binary(
     srcs = glob([
         "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
     ]),
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":IR",
         ":Support",
@@ -2840,6 +2905,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -2869,11 +2935,29 @@ gentbl(
     ],
 )
 
+genlinalg(
+    name = "LinalgNamedStructuredOpsIncGen",
+    src = "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOpsSpec.tc",
+    linalg_outs = [
+        (
+            "-gen-impl",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.cpp.inc",
+        ),
+        (
+            "-gen-ods-decl",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
+        ),
+    ],
+    linalggen = ":mlir-linalg-ods-gen",
+)
+
 filegroup(
     name = "LinalgStructuredOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
         ":LinalgOpsTdFiles",
         ":OpBaseTdFiles",
@@ -2905,6 +2989,7 @@ gentbl(
     td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
     td_srcs = [
         ":LinalgStructuredOpsTdFiles",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
     ],
 )
 
@@ -2985,6 +3070,7 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
+        ":VectorToLoops",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
@@ -3020,20 +3106,25 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
     ],
     includes = ["include"],
     deps = [
+        ":Affine",
         ":DialectUtils",
+        ":EDSC",
         ":IR",
+        ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffects",
         ":StandardOps",
         ":Support",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:support",
     ],
 )
@@ -3068,7 +3159,6 @@ cc_library(
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
         "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
-        "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
@@ -3233,10 +3323,12 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/IR/OpBase.td",
+        "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = [":friends"],

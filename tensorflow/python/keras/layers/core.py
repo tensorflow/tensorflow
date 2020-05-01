@@ -37,6 +37,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
@@ -56,6 +57,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
+# pylint: disable=g-classes-have-attributes
 @keras_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
@@ -829,7 +831,6 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    self._supports_ragged_inputs = True
     self._output_shape = output_shape
 
     # Warning on every invocation will be quite irksome in Eager mode.
@@ -1072,17 +1073,17 @@ class Dense(Layer):
 
   Example:
 
-  ```python
-  # as first layer in a sequential model:
-  model = Sequential()
-  model.add(Dense(32, input_shape=(16,)))
-  # now the model will take as input arrays of shape (*, 16)
-  # and output arrays of shape (*, 32)
-
-  # after the first layer, you don't need to specify
-  # the size of the input anymore:
-  model.add(Dense(32))
-  ```
+  >>> # Create a `Sequential` model and add a Dense layer as the first layer.
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.Input(shape=(16,)))
+  >>> model.add(tf.keras.layers.Dense(32, activation='relu'))
+  >>> # Now the model will take as input arrays of shape (None, 16)
+  >>> # and output arrays of shape (None, 32).
+  >>> # Note that after the first layer, you don't need to specify
+  >>> # the size of the input anymore:
+  >>> model.add(tf.keras.layers.Dense(32))
+  >>> model.output_shape
+  (None, 32)
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -1176,6 +1177,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
+    base_layer_utils.no_ragged_support(inputs, self.name)
     rank = inputs.shape.rank
     if rank is not None and rank > 2:
       # Broadcasting is required for the inputs.
