@@ -1,4 +1,3 @@
-# Python support for TensorFlow.
 #
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
@@ -135,6 +134,7 @@ py_library(
         ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
+        ":bincount",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -2899,6 +2899,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "count_ops_gen",
+    visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "parsing_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -3460,6 +3465,28 @@ py_library(
         ":tensor_util",
         ":util",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "bincount",
+    srcs = ["ops/bincount.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":count_ops_gen",
+        ":framework",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "bincount_test",
+    size = "small",
+    srcs = ["ops/bincount_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":bincount",
+        ":platform_test",
     ],
 )
 
