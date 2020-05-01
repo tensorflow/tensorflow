@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import sys
 
 import six
@@ -494,12 +495,13 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = []
     worker_device_pairs = self._input_workers._worker_device_pairs  # pylint: disable=protected-access
-    for i in range(len(worker_device_pairs)):
-      input_device, compute_devices = worker_device_pairs[i]
+
+    for i, (input_device, compute_devices) in enumerate(worker_device_pairs):
+      element_spec = nest.map_structure(
+          functools.partial(_replace_per_replica_spec, i=i), self._element_spec)
       specs.append(_SingleWorkerDatasetIteratorSpec(input_device,
                                                     compute_devices,
-                                                    element_spec=
-                                                    self._element_spec))
+                                                    element_spec))
     return specs
 
   def _to_components(self, value):
@@ -1140,7 +1142,7 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
 
   def __init__(self, worker, devices, element_spec):
     self._worker = worker
-    self._devices = devices
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
     self._element_spec = element_spec
 
   @property
@@ -1148,7 +1150,7 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
     return _SingleWorkerOwnedDatasetIterator
 
   def _serialize(self):
-    return (self._worker, tuple(self._devices), self._element_spec)
+    return (self._worker, self._devices, self._element_spec)
 
   @property
   def _component_specs(self):
@@ -1579,3 +1581,11 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
     return values.PerReplicaSpec(*value_specs)
 
   return nest.map_structure(_get_value_per_replica, tensor_spec)
+
+
+def _replace_per_replica_spec(spec, i):
+  """If `spec` is a `PerReplicaSpec`, then return its `i`th value_spec."""
+  if isinstance(spec, values.PerReplicaSpec):
+    return spec._value_specs[i]  # pylint: disable=protected-access
+  else:
+    return spec
