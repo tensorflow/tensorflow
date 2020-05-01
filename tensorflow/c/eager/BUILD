@@ -342,7 +342,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_remote_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_remote_test.cc",
     ],
@@ -364,6 +364,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/strings",
     ],
 )
