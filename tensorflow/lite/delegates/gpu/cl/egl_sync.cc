@@ -28,7 +28,7 @@ PFNEGLDESTROYSYNCKHRPROC g_eglDestroySyncKHR = nullptr;
 PFNEGLWAITSYNCKHRPROC g_eglWaitSyncKHR = nullptr;
 PFNEGLCLIENTWAITSYNCKHRPROC g_eglClientWaitSyncKHR = nullptr;
 
-bool IsEglSyncSupported(EGLDisplay display) {
+absl::Status IsEglSyncSupported(EGLDisplay display) {
   static bool isAvailable = [display]() -> bool {
     // EGL_KHR_fence_sync is apparently a display extension
     const char* extensions = eglQueryString(display, EGL_EXTENSIONS);
@@ -48,21 +48,17 @@ bool IsEglSyncSupported(EGLDisplay display) {
     return g_eglCreateSyncKHR && g_eglDestroySyncKHR && g_eglWaitSyncKHR &&
            g_eglClientWaitSyncKHR;
   }();
-  return isAvailable;
-}
-
-#define ENSURE_SYNC_AVALIABLE_ON(display)                           \
-  {                                                                 \
-    if (!IsEglSyncSupported(display)) {                             \
-      return absl::InternalError("EGL_KHR_sync_fence unsupported"); \
-    }                                                               \
+  if (!isAvailable) {
+    return absl::InternalError("EGL_KHR_fence_sync unsupported");
   }
+  return absl::OkStatus();
+}
 
 }  // anonymous namespace
 
 absl::Status EglSync::NewFence(EGLDisplay display, EglSync* sync) {
   EGLSyncKHR egl_sync;
-  ENSURE_SYNC_AVALIABLE_ON(display);
+  RETURN_IF_ERROR(IsEglSyncSupported(display));
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(g_eglCreateSyncKHR, &egl_sync, display,
                                       EGL_SYNC_FENCE_KHR, nullptr));
   if (egl_sync == EGL_NO_SYNC_KHR) {
@@ -82,7 +78,7 @@ EglSync& EglSync::operator=(EglSync&& sync) {
 }
 
 void EglSync::Invalidate() {
-  if (!IsEglSyncSupported(display_)) return;
+  if (!IsEglSyncSupported(display_).ok()) return;
   if (sync_ != EGL_NO_SYNC_KHR) {
     g_eglDestroySyncKHR(display_, sync_);
     sync_ = EGL_NO_SYNC_KHR;
@@ -91,7 +87,7 @@ void EglSync::Invalidate() {
 
 absl::Status EglSync::ServerWait() {
   EGLint result;
-  ENSURE_SYNC_AVALIABLE_ON(display_);
+  RETURN_IF_ERROR(IsEglSyncSupported(display_));
   RETURN_IF_ERROR(
       TFLITE_GPU_CALL_EGL(g_eglWaitSyncKHR, &result, display_, sync_, 0));
   return result == EGL_TRUE ? absl::OkStatus()
@@ -100,7 +96,7 @@ absl::Status EglSync::ServerWait() {
 
 absl::Status EglSync::ClientWait() {
   EGLint result;
-  ENSURE_SYNC_AVALIABLE_ON(display_);
+  RETURN_IF_ERROR(IsEglSyncSupported(display_));
   // TODO(akulik): make it active wait for better performance
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(g_eglClientWaitSyncKHR, &result, display_,
                                       sync_, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
