@@ -891,23 +891,29 @@ cc_library(
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":string_ops_op_lib",
-        ":tpu_configuration_ops_op_lib",
-        ":tpu_cross_replica_ops_op_lib",
-        ":tpu_embedding_ops_op_lib",
-        ":tpu_embedding_load_retrieve_ops_op_lib",
-        ":tpu_functional_ops_op_lib",
-        ":tpu_heartbeat_ops_op_lib",
-        ":tpu_host_compute_ops_op_lib",
-        ":tpu_infeed_ops_op_lib",
-        ":tpu_outfeed_ops_op_lib",
-        ":tpu_ordinal_selector_ops_op_lib",
-        ":tpu_replication_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
-    ] + if_mkl([
+    ] + if_chromiumos(
+        [],
+        # Non-tpu platforms don't need tpu dependency. It would be best to guard
+        # them by if_tpu. But there is no such flag yet.
+        [
+            ":tpu_configuration_ops_op_lib",
+            ":tpu_cross_replica_ops_op_lib",
+            ":tpu_embedding_ops_op_lib",
+            ":tpu_embedding_load_retrieve_ops_op_lib",
+            ":tpu_functional_ops_op_lib",
+            ":tpu_heartbeat_ops_op_lib",
+            ":tpu_host_compute_ops_op_lib",
+            ":tpu_infeed_ops_op_lib",
+            ":tpu_outfeed_ops_op_lib",
+            ":tpu_ordinal_selector_ops_op_lib",
+            ":tpu_replication_ops_op_lib",
+        ],
+    ) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
     ]) + if_tensorrt([
