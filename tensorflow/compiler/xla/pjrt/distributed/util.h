@@ -13,19 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_UTIL_H_
 
-#include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "grpcpp/support/status.h"
+#include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
+inline Status FromGrpcStatus(const ::grpc::Status& s) {
+  if (s.ok()) {
+    return Status::OK();
+  } else {
+    return Status(static_cast<tensorflow::error::Code>(s.error_code()),
+                  s.error_message());
+  }
+}
 
-StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtClient* client);
+inline ::grpc::Status ToGrpcStatus(const Status& s) {
+  if (s.ok()) {
+    return ::grpc::Status::OK;
+  } else {
+    return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
+                          s.error_message());
+  }
+}
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_UTIL_H_

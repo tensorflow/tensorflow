@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 
-#include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "grpcpp/grpcpp.h"
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
+StatusOr<std::unique_ptr<DistributedRuntimeService>>
+GetDistributedRuntimeService(std::string address, int num_nodes) {
+  auto credentials = ::grpc::InsecureServerCredentials();
+  return DistributedRuntimeService::Get(address, credentials, num_nodes);
+}
 
-StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtClient* client);
+std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
+    std::string address) {
+  std::shared_ptr<::grpc::ChannelCredentials> creds =
+      ::grpc::InsecureChannelCredentials();
+  std::shared_ptr<::grpc::Channel> channel =
+      ::grpc::CreateChannel(address, creds);
+  return absl::make_unique<DistributedRuntimeClient>(channel);
+}
 
 }  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_

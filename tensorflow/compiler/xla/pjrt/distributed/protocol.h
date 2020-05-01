@@ -13,19 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
-
-#include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_PROTOCOL_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_PROTOCOL_H_
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
-
-StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtClient* client);
+static constexpr int kDistributedRuntimeProtocolVersion = 1;
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_PROTOCOL_H_

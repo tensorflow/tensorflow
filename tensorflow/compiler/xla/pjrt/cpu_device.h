@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_CPU_DEVICE_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_CPU_DEVICE_H_
 
-#include "pybind11/pybind11.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
+class CpuDevice : public Device {
+ public:
+  CpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state);
+};
 
-StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtClient* client);
+StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_CPU_DEVICE_H_
