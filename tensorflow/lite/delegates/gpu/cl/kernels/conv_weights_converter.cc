@@ -132,7 +132,8 @@ absl::Status ConverterToConvWeights::BindArguments() {
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
-  const int grid_x = DivideRoundUp(src_[0]->Batch(), 4);
+  const int grid_x = DivideRoundUp(
+      AlignByN(src_[0]->Batch(), 4 * conv_weights_desc_.output_group_size), 4);
   const int grid_y = src_[0]->Slices();
   const int grid_z = src_[0]->Width() * src_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
