@@ -130,6 +130,9 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
     deps = [
         ":distribute_strategy_test_lib",
     ],
