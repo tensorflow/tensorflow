@@ -85,16 +85,18 @@ REQUIRED_PACKAGES = [
     'scipy == 1.2.2;python_version<"3"',
 ]
 
+# Generate a footer describing the CUDA technology this release was built
+# against.
 GPU_DESCRIPTION = ''
 if build_info.build_info['is_cuda_build']:
   gpu_header = (f'\nTensorFlow {_VERSION} for NVIDIA GPUs was built with these '
                 'platform and library versions:\n\n  - ')
-  cbi = build_info.cuda_build_info
-  trt_ver = cbi['tensorrt_version']
-  nccl_ver = cbi['nccl_version']
+  bi = build_info.build_info
+  trt_ver = bi['tensorrt_version']
+  nccl_ver = bi['nccl_version']
   GPU_DESCRIPTION = gpu_header + '\n  - '.join([
-      'NVIDIA CUDA ' + cbi['cuda_version'],
-      'NVIDIA cuDNN ' + cbi['cudnn_version'],
+      'NVIDIA CUDA ' + bi['cuda_version'],
+      'NVIDIA cuDNN ' + bi['cudnn_version'],
       'NVIDIA NCCL ' + 'not enabled' if not nccl_ver else nccl_ver,
       'NVIDIA TensorRT ' + 'not enabled' if not trt_ver else trt_ver,
   ])
@@ -303,7 +305,7 @@ setup(
     zip_safe=False,
     # Accessible with importlib.metadata.metadata('tf-pkg-name').items()
     platforms=[
-        f'{key}:{value}' for key, value in build_info.cuda_build_info.items()
+        f'{key}:{value}' for key, value in build_info.build_info.items()
     ],
     distclass=BinaryDistribution,
     cmdclass={

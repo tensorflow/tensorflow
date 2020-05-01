@@ -84,7 +84,7 @@ def write_build_info(filename, key_value_list):
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-\"\"\"Auto-generated module providing information about the build.\"\"\""
+\"\"\"Auto-generated module providing information about the build.\"\"\"
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

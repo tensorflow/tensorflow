@@ -2608,7 +2608,7 @@ def tf_py_build_info_genrule(name, out):
                 + " is_rocm_build=" + if_rocm("True", "False")
                 + " is_cuda_build=" + if_cuda("True", "False")
                 # TODO(angerson) Can we reliably load CUDA compute capabilities here?
-                if_windows(dict_to_kv({
+                + if_windows(dict_to_kv({
                     "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll"
                 }), "") + if_windows_cuda(dict_to_kv({
                     "nvcuda_dll_name": "nvcuda.dll",
