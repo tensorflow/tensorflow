@@ -85,8 +85,11 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     const std::string test_name = tensorflow::str_util::StringReplace(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(), "/",
         "_", /*replace_all=*/true);
+    // Since we need the tests for cloud filesystem to run on all OSs (Windows, MacOS, Linux, ...)
+    // The path to temp directory must not be dependent on the OS which runs the tests
+    const std::string tmp_dir_ = cloud_path_.empty() ? ::testing::TempDir() : "/tmp/";
     root_dir_ = tensorflow::io::JoinPath(
-        ::testing::TempDir(),
+        tmp_dir_,
         tensorflow::strings::StrCat("tf_fs_", rng_val_, "_", test_name));
     if(!GetParam().empty()) {
       if(!cloud_path_.empty()) {
