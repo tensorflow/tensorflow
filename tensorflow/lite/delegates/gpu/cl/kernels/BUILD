@@ -222,6 +222,7 @@ cc_library(
     srcs = ["conv_powervr.cc"],
     hdrs = ["conv_powervr.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
