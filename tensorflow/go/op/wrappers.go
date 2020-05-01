@@ -4710,6 +4710,66 @@ func Enter(scope *Scope, data tf.Output, frame_name string, optional ...EnterAtt
 	return op.Output(0)
 }
 
+// DenseCountSparseOutputAttr is an optional argument to DenseCountSparseOutput.
+type DenseCountSparseOutputAttr func(optionalAttr)
+
+// DenseCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func DenseCountSparseOutputMinlength(value int64) DenseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// DenseCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func DenseCountSparseOutputMaxlength(value int64) DenseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a tf.tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	values: int32 or int64; Tensor containing data to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//	output_dense_shape: int64; shape tensor for the resulting sparse tensor object.
+func DenseCountSparseOutput(scope *Scope, values tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...DenseCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DenseCountSparseOutput",
+		Input: []tf.Input{
+			values, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // CTCBeamSearchDecoderAttr is an optional argument to CTCBeamSearchDecoder.
 type CTCBeamSearchDecoderAttr func(optionalAttr)
 
@@ -8540,6 +8600,79 @@ func IteratorGetNextSync(scope *Scope, iterator tf.Output, output_types []tf.Dat
 		return
 	}
 	return components
+}
+
+// RaggedCountSparseOutputAttr is an optional argument to RaggedCountSparseOutput.
+type RaggedCountSparseOutputAttr func(optionalAttr)
+
+// RaggedCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMinlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// RaggedCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMaxlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a ragged tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	splits: int64; Tensor containing the row splits of the ragged tensor to count.
+//	values: int32 or int64; Tensor containing values of the sparse tensor to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//   END
+//   }
+//   out_arg {
+//     name: "output_dense_shape"
+//     description: <<END
+// int64; shape tensor for the resulting sparse tensor object.
+//   END
+//   }
+//   attr {
+//     name: "T"
+//     description: <<END
+// dtype; dtype of the input values tensor.
+//	output_dense_shape
+func RaggedCountSparseOutput(scope *Scope, splits tf.Output, values tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...RaggedCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RaggedCountSparseOutput",
+		Input: []tf.Input{
+			splits, values, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // Gets the next output from the given iterator .
@@ -13469,6 +13602,68 @@ func SaveV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and_sl
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// SparseCountSparseOutputAttr is an optional argument to SparseCountSparseOutput.
+type SparseCountSparseOutputAttr func(optionalAttr)
+
+// SparseCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: int32; minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func SparseCountSparseOutputMinlength(value int64) SparseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// SparseCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: int32; maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func SparseCountSparseOutputMaxlength(value int64) SparseCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a sparse tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	indices: int64; Tensor containing the indices of the sparse tensor to count.
+//	values: int32 or int64; Tensor containing values of the sparse tensor to count.
+//	dense_shape: int64; Tensor containing the dense shape of the sparse tensor to count.
+//	weights: float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
+//	binary_count: bool; whether to output the number of occurrences of each value or 1.
+//	output_type: dtype; dtype of the output values tensor.
+//
+// Returns:
+//	output_indices: int64; indices tensor for the resulting sparse tensor object.
+//	output_values: int64 or float32; values tensor for the resulting sparse tensor object.
+//	output_dense_shape: int64; shape tensor for the resulting sparse tensor object.
+func SparseCountSparseOutput(scope *Scope, indices tf.Output, values tf.Output, dense_shape tf.Output, weights tf.Output, binary_count bool, output_type tf.DataType, optional ...SparseCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_count": binary_count, "output_type": output_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseCountSparseOutput",
+		Input: []tf.Input{
+			indices, values, dense_shape, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // DebugNumericSummaryV2Attr is an optional argument to DebugNumericSummaryV2.
