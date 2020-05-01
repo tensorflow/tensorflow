@@ -317,7 +317,8 @@ tf_cuda_cc_test(
     ],
     extra_copts = tfe_xla_copts(),
     tags = [
-        "guitar",
+        "noguitar",  # TODO(b/155445984): flaky
+        #"guitar",
         "multi_gpu",
     ],
     deps = [
