@@ -3571,6 +3571,9 @@ XlaOp Imag(const XlaOp operand) {
 XlaOp Sqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
 }
+XlaOp Cbrt(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand);
+}
 XlaOp Rsqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
 }
