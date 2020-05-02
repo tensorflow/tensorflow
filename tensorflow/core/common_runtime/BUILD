@@ -1237,6 +1237,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
