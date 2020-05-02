@@ -33,6 +33,7 @@ void EnableLogging(PassManager *pm) {
   pm->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
+  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
 }
 }  // namespace
 
