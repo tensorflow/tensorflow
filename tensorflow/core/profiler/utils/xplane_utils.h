@@ -63,14 +63,6 @@ XEventBuilder CreateXEventWithStringViewMetadataValue(
     const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
         stats);
 
-// Creates an XEvent with int64 and string stats.
-XEventBuilder CreateXEventWithIntAndStringViewMetadataValue(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& int_stats,
-    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
-        str_stats);
-
 void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
