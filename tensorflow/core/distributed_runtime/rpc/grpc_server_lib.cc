@@ -233,8 +233,11 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
 
   bool reuse_port = false;
-  ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port)
-      .IgnoreError();
+  const Status status = ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false,
+      &reuse_port);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
   auto server_build_option = reuse_port ?
       std::unique_ptr<::grpc::ServerBuilderOption>(new ReusePortOption) :
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption);
