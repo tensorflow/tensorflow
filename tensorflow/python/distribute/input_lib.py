@@ -48,6 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.types import distribute as distribute_types
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 
@@ -257,7 +258,7 @@ def _get_static_shape(iterators):
     return static_shape
 
 
-class DistributedIteratorBase(object):
+class DistributedIteratorBase(distribute_types.Iterator):
   """Common implementation for all input iterators."""
 
   def __init__(self, input_workers, iterators, strategy):
@@ -573,7 +574,7 @@ class DistributedIterator(DistributedIteratorBase,
                                    self._strategy)
 
 
-class _IterableInput(object):
+class _IterableInput(distribute_types.Iterable):
   """Base class for iterable inputs for distribution strategies."""
 
   def __init__(self, input_workers):
