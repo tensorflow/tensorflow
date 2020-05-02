@@ -284,7 +284,10 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 
 @tf_export("nn.ctc_greedy_decoder")
-def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
+def ctc_greedy_decoder(inputs,
+                       sequence_length,
+                       merge_repeated=True,
+                       blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
   Note: Regardless of the value of merge_repeated, if the maximum index of a
@@ -325,8 +328,12 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
+
+  if blank_index is None:
+    blank_index = _get_dim(inputs, 2)
+
   outputs = gen_ctc_ops.ctc_greedy_decoder(
-      inputs, sequence_length, merge_repeated=merge_repeated)
+      inputs, sequence_length, merge_repeated=merge_repeated, blank_index=blank_index)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val,
                                       decoded_shape)], log_probabilities)
