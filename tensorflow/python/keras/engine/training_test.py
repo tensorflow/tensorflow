@@ -1756,7 +1756,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
 class ModelClassWeight(keras_parameterized.TestCase):
 
-  
+
   @keras_parameterized.run_all_keras_modes
   def test_class_weights(self):
     num_classes = 5
@@ -1820,7 +1820,9 @@ class ModelClassWeight(keras_parameterized.TestCase):
 
     model.train_on_batch(
         x_train[:batch_size], y_train[:batch_size], class_weight=class_weight)
+    # pylint: disable= C0301
     ref_score = model.evaluate(x_test, y_test, class_weight=class_weight, verbose=0)
+    # pylint: disable= C0301
     score = model.evaluate(
         x_test[test_ids, :], y_test[test_ids, :], class_weight=class_weight, verbose=0)
     self.assertLess(score[0], ref_score[0])
