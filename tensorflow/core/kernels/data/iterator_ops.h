@@ -224,11 +224,13 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) override;
 };
 
-class DeleteIteratorOp : public OpKernel {
+class DeleteIteratorOp : public HybridAsyncOpKernel {
  public:
-  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
