@@ -116,7 +116,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           auto_tuner_(params.dataset->buffer_size_),
           legacy_autotune_(params.dataset->legacy_autotune_),
           buffer_size_(std::make_shared<model::SharedState>(
-              params.dataset->buffer_size_, mu_, cond_var_)) {
+              legacy_autotune_ ? 0 : params.dataset->buffer_size_, mu_,
+              cond_var_)) {
       slack_us_ = 0;
     }
 
