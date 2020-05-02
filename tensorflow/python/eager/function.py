@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
+import pprint
 import threading
 import types as types_lib
 import weakref
@@ -2221,7 +2222,8 @@ class ConcreteFunction(object):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)
-        result = "{}".format(structure)
+        # Ensure dictionaries are sorted by key (for determinism)
+        result = pprint.pformat(structure, width=10000)
         for (marker, piece) in zip(markers, pieces):
           result += "\n      {}: {}".format(marker, pretty_print_spec(piece))
         return result
