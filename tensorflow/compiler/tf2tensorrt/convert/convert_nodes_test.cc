@@ -1467,7 +1467,7 @@ class OpConverterTest : public ::testing::Test {
   // partial input shape.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims,
-      nvinfer1::DataType trt_dtype, TrtTestMode trt_mode, bool* skip_test,
+      nvinfer1::DataType trt_dtype, TrtTestMode trt_mode,
       const std::vector<int32>* partial_input_shape_dims = nullptr) {
     std::vector<int32> partial_shape;
     if (partial_input_shape_dims && !partial_input_shape_dims->empty()) {
@@ -1480,12 +1480,6 @@ class OpConverterTest : public ::testing::Test {
         // Use static (known) input shapes.
         partial_shape = dims;
       }
-    }
-    *skip_test = false;
-    if (!HasStaticShape(partial_shape) &&
-        trt_mode != TrtTestMode::kDynamicShape) {
-      VLOG(2) << "Skipping dynamic input for static input shape test";
-      *skip_test = true;
     }
     AddTestTensorWithExplicitBatchDim(name, partial_shape, trt_dtype);
   }
@@ -1645,9 +1639,6 @@ struct TestParamBase {
   // Concrete (static) output dimensions, including batch size as first dim
   std::vector<int> expected_output_dims;
 
-  // Expected output values. For input most of the test use {1, 2, 3, 4, 5, 6}.
-  std::vector<float> expected_values;
-
   // Parameter vector, has converter specific meaning.
   std::vector<int> param;
 
@@ -1681,6 +1672,24 @@ class ParameterizedOpConverterTest
     : public OpConverterTest,
       public ::testing::WithParamInterface<
           std::tuple<TrtTestMode, DataType, TrtPrecisionMode>> {};
+
+// Instantiate parameter combinations to test. For debugging purposes it might
+// make sense to run over all possible combinations, but normally a subset of
+// them would be sufficient:
+// - All valid options to TrtTestMode (implicit, explicit, dynamic shape)
+// - DataType: is the TF data type of the input tensors. This usually only
+//   influences the data type added by Converter::AddInputTensor. That function
+//   is tested separately for valid combinations of input data types, therefore
+//   for most of the converter its is sufficient to test for DT_FLOAT.
+// - TrtPrecisionMode: valid options are FP32, FP16 and INT8. This influences
+//   how TRT handles the precision inside the TRT network, but should not matter
+//   for the TF -> TRT conversion. Therefore it should be sufficient to test
+//   for FP32.
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, ParameterizedOpConverterTest,
+    ::testing::Combine(::testing::Values(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
 
 // Build and the converted network. Check output tensor shape. Check if the
 // output values agree with the output_vec argument.
@@ -1857,9 +1866,7 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
-class ParameterizedTransposeTest : public ParameterizedOpConverterTest {};
-
-TEST_P(ParameterizedTransposeTest, ConvertTranspose) {
+TEST_P(ParameterizedOpConverterTest, ConvertTranspose) {
   const auto& spec = GetParam();
   const TrtTestMode trt_mode = std::get<0>(spec);
   // Data type of TF input tensors
@@ -1876,39 +1883,33 @@ TEST_P(ParameterizedTransposeTest, ConvertTranspose) {
 
   std::vector<TestParamBase> test_params = {
       // For the first test we leave param empty. This signals to use a
-      // tensor as weight which will be invalid
-      TestParamBase{{1, 1, 2, 3}, {}, {}, {}, {}, Status(
+      // input as weight which will be invalid
+      TestParamBase{{1, 1, 2, 3}, {}, {}, {}, Status(
          error::UNIMPLEMENTED,
        "The input \"perm\" for Transpose must be a constant, at my_transpose")},
-      TestParamBase{{1, 1, 2, 3}, {}, {}, {}, {0, 1, 2}, Status(
+      TestParamBase{{1, 1, 2, 3}, {}, {}, {0, 1, 2}, Status(
        error::INVALID_ARGUMENT,
        "Rank of perm for transpose does not match with that of the input.")},
-      TestParamBase{{1, 1, 2, 3}, {}, {1, 3, 1, 2},
-                    {1, 4, 2, 5, 3, 6}, {0, 3, 1, 2}},
-      // Dynamic shape tests where some shapes are known
-      TestParamBase{{1, 1, 2, 3}, {-1, 1, 2, -1},
-                    {1, 3, 1, 2}, {1, 4, 2, 5, 3, 6}, {0, 3, 1, 2}},
-      // Transpose batch dim in explicit batch mode
+      // Transpose batch dim
       TestParamBase{{1, 1, 2, 3}, {},
-                    {3, 2, 1, 1}, {1, 4, 2, 5, 3, 6}, {3, 2, 1, 0}}
+                    {3, 2, 1, 1}, {3, 2, 1, 0},
+                    (trt_mode == TrtTestMode::kImplicitBatch)
+                        ? Status(error::UNIMPLEMENTED,
+                                 "Transpose at batch dimension is not supported")
+                        : Status::OK()},
+      TestParamBase{{1, 1, 2, 3}, {}, {1, 3, 1, 2}, {0, 3, 1, 2}},
   };
+  if (trt_mode == TrtTestMode::kDynamicShape) {
+  // Dynamic shape tests where some shapes are known
+    test_params.push_back(TestParamBase{{1, 1, 2, 3}, {-1, 1, 2, -1},
+                   {1, 3, 1, 2}, {0, 3, 1, 2}});
+  }
+  std::vector<float> expected_values{1, 4, 2, 5, 3, 6};
   for (auto p : test_params) {
     SCOPED_TRACE(p);
     Reset(converter_precision, trt_mode);
-    // Transposing batch dim is not allowed in implicit batch mode
-    bool invalid_batch_transpose =
-        (trt_mode == TrtTestMode::kImplicitBatch) && !p.param.empty() &&
-         p.param[0]!=0;
-    if (invalid_batch_transpose) {
-      p.status = Status(error::UNIMPLEMENTED,
-                        "Transpose at batch dimension is not supported");
-    }
-    bool skip_test;
     AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode,
-                  &skip_test, &p.partial_input_dims);
-    if (skip_test) {
-      continue;
-    }
+                  &p.partial_input_dims);
     if (p.param.empty()) {
       AddTestTensor("weights", {3});
     } else {
@@ -1919,25 +1920,15 @@ TEST_P(ParameterizedTransposeTest, ConvertTranspose) {
 
     if (tf_dtype == DT_FLOAT) {
       BuildAndRunConvertedNetwork<DT_FLOAT>(
-          "my_transpose", this, p, {1, 2, 3, 4, 5, 6}, p.expected_values);
+          "my_transpose", this, p, {1, 2, 3, 4, 5, 6}, expected_values);
     } else if (tf_dtype == DT_FLOAT) {
       // Note: we do not do arithmetics, therefore this test can be probably
       // omitted.
       BuildAndRunConvertedNetwork<DT_HALF>(
-          "my_transpose", this, p, {1, 2, 3, 4, 5, 6}, p.expected_values);
+          "my_transpose", this, p, {1, 2, 3, 4, 5, 6},expected_values);
     }
   }
 }
-
-INSTANTIATE_TEST_CASE_P(
-  ConvertTransposeInstantiation, ParameterizedTransposeTest,
-  ::testing::Combine(::testing::Values(TrtTestMode::kImplicitBatch,
-                                       TrtTestMode::kExplicitBatch,
-                                       TrtTestMode::kDynamicShape),
-                     ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
-                     ::testing::Values(TrtPrecisionMode::FP32)));
-// Changing TrtPrecision mode does not make sense because that would only matter
-// for the internal workings of TRT, and does not affect TF-TRT conversion.
 
 TEST_F(OpConverterTest, ConvertReshape) {
   // Get the NodeDef for Reshape.
@@ -3087,9 +3078,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   }
 }
 
-class ParameterizedSqueezeTest : public ParameterizedOpConverterTest {};
-
-TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
+TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
   const auto& spec = GetParam();
   const TrtTestMode trt_mode = std::get<0>(spec);
   const bool use_implicit_batch = (trt_mode == TrtTestMode::kImplicitBatch);
@@ -3118,7 +3107,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
           {1, 2, 1, 3},  // input dims
           {},            // input partial dims
           {2, 1, 3},     // expected output dims
-          {},            // expected output values
           {},            // axis
           Status{
               error::UNIMPLEMENTED,
@@ -3126,7 +3114,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
-                    {},
                     {0},
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
@@ -3136,7 +3123,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
-                    {},
                     {-4},
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
@@ -3147,7 +3133,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
           {1, 1, 2, 3},
           {},
           {},
-          {},
           {4},
           Status{error::INVALID_ARGUMENT,
                  "Axis value of 4 is out of bounds, must be in range [-4, 4), "
@@ -3156,57 +3141,52 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
           {1, 1, 2, 3},
           {},
           {},
-          {},
           {-5},
           Status{error::INVALID_ARGUMENT,
                  "Axis value of -5 is out of bounds, must be in range [-4, 4), "
                  "at my_squeeze"}},
-      TestParamBase{
-          {1, 1, 2, 3},
-          {},
-          {},
-          {},
-          {2},
-          Status{
-              error::INVALID_ARGUMENT,
-              "Dimension 2 with size 2 cannot be squeezed because it must be "
-              "size 1, at my_squeeze"}},
-      TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {}, {1}},
-      TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {}, {-3}},
-      TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {}, {3}},
-      TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {}, {-1}},
-      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {}, {1, 3, 5}},
-      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {}, {3, 1, 5}},
-      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {}, {-1, -3, -5}},
-      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {}, {1, -3, 5}},
-      TestParamBase{{1, 1, 6}, {}, {1, 6}, {}, {1}},
-      TestParamBase{{1, 6, 1}, {}, {1, 6}, {}, {2}},
-      // Dynamic shape tests with partially known input shape
-      TestParamBase{{2, 1, 3}, {2, -1, 3}, {2, 3}, {}, {1}},
-      TestParamBase{{2, 1, 3}, {2, 1, -1}, {2, 3}, {}, {1}},
+      TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {1}},
+      TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {-3}},
+      TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {3}},
+      TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {-1}},
+      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {1, 3, 5}},
+      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {3, 1, 5}},
+      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {-1, -3, -5}},
+      TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {1, -3, 5}},
+      TestParamBase{{1, 1, 6}, {}, {1, 6}, {1}},
+      TestParamBase{{1, 6, 1}, {}, {1, 6}, {2}},
   };
+  auto squeeze_non_singleton = TestParamBase{
+            {1, 1, 2, 3},
+            {},
+            {},
+            {2},
+            Status{
+                error::INVALID_ARGUMENT,
+                "Dimension 2 with size 2 cannot be squeezed because it must be "
+                "size 1, at my_squeeze"}};
+
+  if (trt_mode == TrtTestMode::kDynamicShape) {
+    // In this test we try to squeeze axis=2 which has size > 1. In dynamic
+    // shape mode the converter sees only -1, so it cannot catch this error.
+    squeeze_non_singleton.status = Status::OK();  // conversion status
+    squeeze_non_singleton.runtime_status =
+        errors::InvalidArgument("Negative number of dimensions -1");
+    // Dynamic shape tests with partially known input shape
+    test_params.push_back(TestParamBase{{2, 1, 3}, {2, -1, 3}, {2, 3}, {1}});
+    test_params.push_back(TestParamBase{{2, 1, 3}, {2, 1, -1}, {2, 3}, {1}});
+  }
+  test_params.push_back(squeeze_non_singleton);
+
   for (TestParamBase p : test_params) {
     SCOPED_TRACE(p);
     Reset(converter_precision, trt_mode);
     NodeDef node_def = get_squeeze_nodedef(p.param);
     bool skip_test;
     AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode,
-                  &skip_test, &p.partial_input_dims);
-    if (skip_test) {
-      continue;
-    }
-    if (trt_mode == TrtTestMode::kDynamicShape &&
-        p.status.code() == error::INVALID_ARGUMENT && p.param.at(0) == 2) {
-      // This is the test where we try to squeeze axis=2 where which has
-      // size > 1. In dynamic shape mode the converter sees only -1, so it
-      // cannot catch this error.
-      p.status = Status::OK();  // conversion status
-      p.runtime_status =
-          errors::InvalidArgument("Negative number of dimensions -1");
-    }
+                  &p.partial_input_dims);
     RunValidationAndConversion(node_def, p.status, "my_squeeze",
                                p.expected_output_dims);
-
     if (tf_dtype == DT_FLOAT) {
       BuildAndRunConvertedNetwork<DT_FLOAT>(
           "my_squeeze", this, p, {1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6});
@@ -3218,19 +3198,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
     }
   }
 }
-
-#if 0  // TODO(bixia): enable the test.
-INSTANTIATE_TEST_CASE_P(
-    ConvertSqueezeInstantiation, ParameterizedSqueezeTest,
-    ::testing::Combine(::testing::Values(TrtTestMode::kImplicitBatch,
-                                         TrtTestMode::kExplicitBatch,
-                                         TrtTestMode::kDynamicShape),
-                       ::testing::Values(DT_FLOAT, DT_HALF),
-                       ::testing::Values(TrtPrecisionMode::FP32,
-                                         TrtPrecisionMode::FP16)));
-#endif
-// TODO(tfeher): clarify which combination of precision mode / input type
-// test make sense.
 
 TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Get nodedef for StridedSlice layer.
