@@ -43,8 +43,10 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutorConfig config;
     config.ordinal = i;
+    // 8MiB stacks seem to be necessary for running LAPACK/OpenBLAS
+    // computations.
     config.device_options.non_portable_tags["host_thread_stack_size_in_bytes"] =
-        absl::StrCat(2048 * 1024);
+        absl::StrCat(8192 * 1024);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         platform->GetExecutor(config));
     auto device_state = absl::make_unique<LocalDeviceState>(
