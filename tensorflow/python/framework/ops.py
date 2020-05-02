@@ -519,8 +519,8 @@ class Tensor(internal.NativeObject):
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did not convert this function. Try"
-        " decorating it directly with @tf.function.".format(task))
+        "{} is not allowed: AutoGraph did convert this function. This might"
+        " indicate you are trying to use an unsupported feature.".format(task))
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
