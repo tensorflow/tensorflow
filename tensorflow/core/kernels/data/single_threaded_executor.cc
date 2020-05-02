@@ -29,6 +29,9 @@ namespace {
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
 typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
+static const string& kSingleThreadedExecutor =
+    *new string("SINGLE_THREADED_EXECUTOR");
+
 class SingleThreadedExecutorImpl : public Executor {
  public:
   explicit SingleThreadedExecutorImpl(const LocalExecutorParams& params)
@@ -300,6 +303,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.runner = &runner_copy;
     params.run_all_kernels_inline = args.run_all_kernels_inline;
     params.stats_collector = args.stats_collector;
+    params.executor_type = &kSingleThreadedExecutor;
 
     // NOTE(mrry): We are assuming that the graph is loopless and condless.
     params.frame_iter = FrameAndIter(0, 0);
@@ -505,7 +509,7 @@ class SingleThreadedExecutorImpl : public Executor {
 class SingleThreadedExecutorRegistrar {
  public:
   SingleThreadedExecutorRegistrar() {
-    ExecutorFactory::Register("SINGLE_THREADED_EXECUTOR", new Factory());
+    ExecutorFactory::Register(kSingleThreadedExecutor, new Factory());
   }
 
  private:

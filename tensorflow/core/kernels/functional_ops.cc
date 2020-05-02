@@ -43,6 +43,14 @@ Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
 }
 
+Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
+                   FunctionLibraryRuntime::Handle* handle) {
+  FunctionLibraryRuntime::InstantiateOptions opts;
+  opts.executor_type = ctx->executor_type();
+  return ctx->function_library()->Instantiate(
+      func.name(), AttrSlice(&func.attr()), opts, handle);
+}
+
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
 Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
   if (t.size() != 1) {
@@ -225,8 +233,8 @@ class IfOp : public AsyncOpKernel {
         *then_handle = iter->second.first;
         *else_handle = iter->second.second;
       } else {
-        TF_RETURN_IF_ERROR(Instantiate(lib, then_func_, then_handle));
-        TF_RETURN_IF_ERROR(Instantiate(lib, else_func_, else_handle));
+        TF_RETURN_IF_ERROR(Instantiate(ctx, then_func_, then_handle));
+        TF_RETURN_IF_ERROR(Instantiate(ctx, else_func_, else_handle));
         handles_[lib] = {*then_handle, *else_handle};
       }
     }
@@ -619,8 +627,8 @@ class WhileOp : public AsyncOpKernel {
         *cond_handle = iter->second.first;
         *body_handle = iter->second.second;
       } else {
-        TF_RETURN_IF_ERROR(Instantiate(lib, cond_func_, cond_handle));
-        TF_RETURN_IF_ERROR(Instantiate(lib, body_func_, body_handle));
+        TF_RETURN_IF_ERROR(Instantiate(ctx, cond_func_, cond_handle));
+        TF_RETURN_IF_ERROR(Instantiate(ctx, body_func_, body_handle));
         handles_[lib] = {*cond_handle, *body_handle};
       }
     }
