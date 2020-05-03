@@ -1489,7 +1489,7 @@ class OpConverterTest : public ::testing::Test {
   // AddTestTensorWithExplicitBatchDim is in the meaning of the dims parameter.
   // To define a tensor with NCHW shape, here we set dims = {C,H,W} and
   // batch_size = N. TODO(tfeher) remove this once all test specify batch dim
-  // explicitly. 
+  // explicitly.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
@@ -1699,7 +1699,7 @@ template <DataType dtype>
 void BuildAndRunConvertedNetwork(
     const string& name, OpConverterTest* test, const TestParamBase& p,
     const std::vector<float>& input_vec,
-    const Matcher<const std::vector<float>&>& matcher) {
+    const Matcher<std::vector<float>>& matcher) {
   if (!p.status.ok()) {
     // conversion was not successful, we cannot run the network
     return;
@@ -1735,7 +1735,7 @@ void BuildAndRunConvertedNetwork(
 void InstantiateBuildAndRun(DataType tf_dtype, const string& name,
                             OpConverterTest* test, const TestParamBase& p,
                             const std::vector<float>& input_vec,
-                            const Matcher<const std::vector<float>&>& matcher) {
+                            const Matcher<std::vector<float>>& matcher) {
   if (tf_dtype == DT_FLOAT) {
     BuildAndRunConvertedNetwork<DT_FLOAT>(name, test, p, input_vec, matcher);
   } else if (tf_dtype == DT_HALF) {
