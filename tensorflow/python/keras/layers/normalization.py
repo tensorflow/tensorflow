@@ -736,7 +736,9 @@ class BatchNormalizationBase(Layer):
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
-      original_shape = [-1] + inputs.shape.as_list()[1:]
+      original_shape = [
+          d if d is not None else -1 for d in inputs.shape.as_list()]
+      original_shape = [-1] + original_shape[1:]
       expanded_shape = [self.virtual_batch_size, -1] + original_shape[1:]
 
       # Will cause errors if virtual_batch_size does not divide the batch size
