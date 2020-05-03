@@ -31,8 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -57,6 +55,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -66,6 +66,7 @@ namespace convert {
 using absl::StrCat;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::Matcher;
 using ::testing::NanSensitiveFloatNear;
 
 // TensorRT modes for testing. We define the following three modes:
@@ -1687,17 +1688,17 @@ class ParameterizedOpConverterTest
 //   for FP32.
 INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, ParameterizedOpConverterTest,
-    ::testing::Combine(::testing::Values(ValidTrtModes),
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
-// Build and the converted network. Check output tensor shape. Check if the
-// output values agree with the output_vec argument.
+// Build and the converted network. Check output tensor shape. Test output
+// values using matcher.
 template <DataType dtype>
-void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
-                                 const TestParamBase& p,
-                                 const std::vector<float>& input_vec,
-                                 const std::vector<float>& output_vec) {
+void BuildAndRunConvertedNetwork(
+    const string& name, OpConverterTest* test, const TestParamBase& p,
+    const std::vector<float>& input_vec,
+    const Matcher<const std::vector<float>&>& matcher) {
   if (!p.status.ok()) {
     // conversion was not successful, we cannot run the network
     return;
@@ -1718,15 +1719,31 @@ void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
   const DataVec input_data{
       {"input", test->AsTensor<T>(CastTestVector<float, T>(input_vec), shape)}};
   DataVec output_data{{name, test->ConstructTensor<T>(6)}};
-  // we have to set the datatype arg correctly
   test->BuildAndRun(input_data, &output_data);
   // Check the shape of the actual output tensor
   TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.expected_output_dims, &shape));
   EXPECT_TRUE(output_data[0].tensor.shape() == shape)
       << "Expected shape: " << shape.DebugString() << ", actual shape"
       << output_data[0].tensor.shape().DebugString();
-  EXPECT_THAT(GetSpanForData<T>(output_data[0]),
-              ElementsAreArray(CastTestVector<float, T>(output_vec)));
+  // Cast the output to float and compare to expected output
+  auto out_span = GetSpanForData<T>(output_data[0]);
+  std::vector<float> casted_output(out_span.begin(), out_span.end());
+  EXPECT_THAT(casted_output, matcher);
+}
+
+void InstantiateBuildAndRun(DataType tf_dtype, const string& name,
+                            OpConverterTest* test, const TestParamBase& p,
+                            const std::vector<float>& input_vec,
+                            const Matcher<const std::vector<float>&>& matcher) {
+  if (tf_dtype == DT_FLOAT) {
+    BuildAndRunConvertedNetwork<DT_FLOAT>(name, test, p, input_vec, matcher);
+  } else if (tf_dtype == DT_HALF) {
+    BuildAndRunConvertedNetwork<DT_HALF>(name, test, p, input_vec, matcher);
+  } else if (tf_dtype == DT_INT32) {
+    BuildAndRunConvertedNetwork<DT_INT32>(name, test, p, input_vec, matcher);
+  } else {
+    FAIL() << "Test not supported for " << tf_dtype;
+  }
 }
 
 template <typename T>
@@ -1884,25 +1901,36 @@ TEST_P(ParameterizedOpConverterTest, ConvertTranspose) {
   std::vector<TestParamBase> test_params = {
       // For the first test we leave param empty. This signals to use a
       // input as weight which will be invalid
-      TestParamBase{{1, 1, 2, 3}, {}, {}, {}, Status(
-         error::UNIMPLEMENTED,
-       "The input \"perm\" for Transpose must be a constant, at my_transpose")},
-      TestParamBase{{1, 1, 2, 3}, {}, {}, {0, 1, 2}, Status(
-       error::INVALID_ARGUMENT,
-       "Rank of perm for transpose does not match with that of the input.")},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {},
+                    Status(error::UNIMPLEMENTED,
+                           "The input \"perm\" for Transpose must be a "
+                           "constant, at my_transpose")},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {0, 1, 2},
+                    Status(error::INVALID_ARGUMENT,
+                           "Rank of perm for transpose does not match with "
+                           "that of the input.")},
       // Transpose batch dim
-      TestParamBase{{1, 1, 2, 3}, {},
-                    {3, 2, 1, 1}, {3, 2, 1, 0},
-                    (trt_mode == TrtTestMode::kImplicitBatch)
-                        ? Status(error::UNIMPLEMENTED,
-                                 "Transpose at batch dimension is not supported")
-                        : Status::OK()},
+      TestParamBase{
+          {1, 1, 2, 3},
+          {},
+          {3, 2, 1, 1},
+          {3, 2, 1, 0},
+          (trt_mode == TrtTestMode::kImplicitBatch)
+              ? Status(error::UNIMPLEMENTED,
+                       "Transpose at batch dimension is not supported")
+              : Status::OK()},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 3, 1, 2}, {0, 3, 1, 2}},
   };
   if (trt_mode == TrtTestMode::kDynamicShape) {
-  // Dynamic shape tests where some shapes are known
-    test_params.push_back(TestParamBase{{1, 1, 2, 3}, {-1, 1, 2, -1},
-                   {1, 3, 1, 2}, {0, 3, 1, 2}});
+    // Dynamic shape tests where some shapes are known
+    test_params.push_back(TestParamBase{
+        {1, 1, 2, 3}, {-1, 1, 2, -1}, {1, 3, 1, 2}, {0, 3, 1, 2}});
   }
   std::vector<float> expected_values{1, 4, 2, 5, 3, 6};
   for (auto p : test_params) {
@@ -1917,16 +1945,9 @@ TEST_P(ParameterizedOpConverterTest, ConvertTranspose) {
     }
     RunValidationAndConversion(node_def, p.status, "my_transpose",
                                p.expected_output_dims);
-
-    if (tf_dtype == DT_FLOAT) {
-      BuildAndRunConvertedNetwork<DT_FLOAT>(
-          "my_transpose", this, p, {1, 2, 3, 4, 5, 6}, expected_values);
-    } else if (tf_dtype == DT_FLOAT) {
-      // Note: we do not do arithmetics, therefore this test can be probably
-      // omitted.
-      BuildAndRunConvertedNetwork<DT_HALF>(
-          "my_transpose", this, p, {1, 2, 3, 4, 5, 6},expected_values);
-    }
+    InstantiateBuildAndRun(tf_dtype, "my_transpose", this, p,
+                           {1, 2, 3, 4, 5, 6},
+                           ElementsAreArray(expected_values));
   }
 }
 
@@ -3157,14 +3178,13 @@ TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
       TestParamBase{{1, 6, 1}, {}, {1, 6}, {2}},
   };
   auto squeeze_non_singleton = TestParamBase{
-            {1, 1, 2, 3},
-            {},
-            {},
-            {2},
-            Status{
-                error::INVALID_ARGUMENT,
-                "Dimension 2 with size 2 cannot be squeezed because it must be "
-                "size 1, at my_squeeze"}};
+      {1, 1, 2, 3},
+      {},
+      {},
+      {2},
+      Status{error::INVALID_ARGUMENT,
+             "Dimension 2 with size 2 cannot be squeezed because it must be "
+             "size 1, at my_squeeze"}};
 
   if (trt_mode == TrtTestMode::kDynamicShape) {
     // In this test we try to squeeze axis=2 which has size > 1. In dynamic
@@ -3187,15 +3207,8 @@ TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
                   &p.partial_input_dims);
     RunValidationAndConversion(node_def, p.status, "my_squeeze",
                                p.expected_output_dims);
-    if (tf_dtype == DT_FLOAT) {
-      BuildAndRunConvertedNetwork<DT_FLOAT>(
-          "my_squeeze", this, p, {1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6});
-    } else if (tf_dtype == DT_FLOAT) {
-      // Note: we do not do arithmetics, therefore this test can be probably
-      // omitted.
-      BuildAndRunConvertedNetwork<DT_HALF>(
-          "my_squeeze", this, p, {1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6});
-    }
+    InstantiateBuildAndRun(tf_dtype, "my_squeeze", this, p, {1, 2, 3, 4, 5, 6},
+                           ElementsAreArray({1, 2, 3, 4, 5, 6}));
   }
 }
 
