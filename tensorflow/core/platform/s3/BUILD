@@ -107,6 +107,12 @@ tf_cc_test(
     tags = [
         "manual",
     ],
+    args = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "--dynamic_mode=off",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":s3_file_system",
         "//tensorflow/core:lib",
