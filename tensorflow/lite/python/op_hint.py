@@ -1168,7 +1168,6 @@ def _get_correct_mapping(original_index, nodes):
     return node_indices[-1]
   else:
     return original_index
-  return original_index
 
 
 def _convert_op_hints_to_stubs_helper(
