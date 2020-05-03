@@ -130,6 +130,6 @@ if __name__ == "__main__":
   if unparsed:
     parser.print_usage()
     print("\nGot the following unparsed args, %r please fix.\n" % unparsed)
-    exit(1)
+    sys.exit(1)
   else:
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
