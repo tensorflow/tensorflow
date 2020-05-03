@@ -1578,6 +1578,18 @@ class HuberLossTest(test.TestCase):
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
+  def test_all_correct(self):
+    # Test case for GitHub issue 39004.
+    self.setup()
+    h_obj = losses.Huber()
+    try:
+      backend.set_floatx('float64')
+      loss = h_obj(self.y_true, self.y_true)
+      self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+    finally:
+      backend.set_floatx('float32')
+
+
 
 if __name__ == '__main__':
   test.main()
