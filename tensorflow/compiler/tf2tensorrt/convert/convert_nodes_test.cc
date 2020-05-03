@@ -1488,7 +1488,8 @@ class OpConverterTest : public ::testing::Test {
   // Adds ITensor for both validation and conversion. The difference compared to
   // AddTestTensorWithExplicitBatchDim is in the meaning of the dims parameter.
   // To define a tensor with NCHW shape, here we set dims = {C,H,W} and
-  // batch_size = N.
+  // batch_size = N. TODO(tfeher) remove this once all test specify batch dim
+  // explicitly. 
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
