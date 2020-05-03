@@ -108,14 +108,18 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     if (event.source == RocmTracerEventSource::ApiCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("max callback event capacity reached", 1);
+        OnEventsDropped("max callback event capacity reached",
+                        event.correlation_id);
+        DumpRocmTracerEvent(event, 0, 0);
         return;
       }
       num_callback_events_++;
     }
     if (event.source == RocmTracerEventSource::Activity) {
       if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("max activity event capacity reached", 1);
+        OnEventsDropped("max activity event capacity reached",
+                        event.correlation_id);
+        DumpRocmTracerEvent(event, 0, 0);
         return;
       }
       num_activity_events_++;
@@ -169,13 +173,15 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           OnEventsDropped(
               "Activity event encountered before a corresponding API event",
               event.correlation_id);
+          DumpRocmTracerEvent(event, 0, 0);
           break;
       }
     }
   }
 
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
-    LOG(INFO) << "RocmTracerEvent(s) dropped (" << num_events
+  void OnEventsDropped(const std::string& reason,
+                       uint32 correlation_id) override {
+    LOG(INFO) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
               << ") : " << reason << ".";
   }
 
@@ -222,11 +228,22 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       }
 
       if (logical_id >= options_.num_gpus) {
-        OnEventsDropped("logical device id >= num gpus", 1);
+        OnEventsDropped("logical device id >= num gpus", event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0);
       } else if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
-        OnEventsDropped("invalid stream id", 1);
-        DumpRocmTracerEvent(event, 0, 0);
+        if (event.type == RocmTracerEventType::MemoryAlloc) {
+          // For hipMalloc/hipFree events, we never get a HCC activity record
+          // callback and hence we currently do not have a way of associating
+          // a valid stream_id with those events.
+          // set the stream_id to 0 for now
+          VLOG(kRocmTracerVlog) << "Explicitly setting stream_id to 0 for "
+                                   "MemoryAlloc event with correlation_id="
+                                << event.correlation_id;
+          event.stream_id = 0;
+        } else {
+          OnEventsDropped("invalid stream id", event.correlation_id);
+          DumpRocmTracerEvent(event, 0, 0);
+        }
       } else {
         event.device_id = logical_id;
         per_device_collector_[logical_id].AddEvent(event);
@@ -327,12 +344,21 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         ns->set_op_end_rel_micros(elapsed_ns / 1000);
         ns->set_all_end_rel_micros(elapsed_ns / 1000);
 
+        auto name_from_stack =
+            [](const std::vector<Annotation>& stack) -> std::string {
+          std::string name = std::string(stack[0].name);
+          for (int i = 1; i < stack.size(); i++) {
+            name.append(" - ");
+            name.append(std::string(stack[i].name));
+          }
+          return name;
+        };
+
         auto annotation_stack = ParseAnnotationStack(event.annotation);
         std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
-        std::string activity_name =
-            !annotation_stack.empty()
-                ? std::string(annotation_stack.back().name)
-                : kernel_name;
+        std::string activity_name = !annotation_stack.empty()
+                                        ? name_from_stack(annotation_stack)
+                                        : kernel_name;
         ns->set_node_name(activity_name);
 
         ns->set_thread_id(event.thread_id);

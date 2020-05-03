@@ -18,7 +18,13 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+// For HIP-VDI disable the roctracer flush bug workaround
+#define ROCTRACER_FLUSH_BUG_WORKAROUND 0
+#else  // TENSORFLOW_COMPILER_IS_HIP_CLANG
 #define ROCTRACER_FLUSH_BUG_WORKAROUND 1
+#endif  // TENSORFLOW_COMPILER_IS_HIP_CLANG
+
 #if ROCTRACER_FLUSH_BUG_WORKAROUND
 #include <chrono>
 #include <thread>
