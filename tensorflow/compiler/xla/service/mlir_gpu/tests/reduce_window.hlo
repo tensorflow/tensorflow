@@ -1,0 +1,35 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+HloModule ReduceWindow
+
+%max (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %max = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %ReduceWindow (x: f32[128,64,112,112], y: f32[]) -> f32[128,64,56,56] {
+  %x = f32[128,64,112,112] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %reduce-window = f32[128,64,56,56] reduce-window(
+    f32[128,64,112,112] %x,
+    f32[] %y
+  ),
+  window={size=1x1x3x3 stride=1x1x2x2 pad=0_0x0_0x0_1x0_1}, to_apply=%max
+}
+
+// CHECK: func @"reduce-window"(
+// CHECK-SAME: [[ARG:%.*]]: [[ARGT:.*]], [[CST:%.*]]: memref<f32>, [[RES:%.*]]: [[REST:.*]]) {
+// CHECK: "xla_lhlo.reduce_window"([[LHS:%.*]], [[RHS:%.*]], [[OUT:%.*]]) ( {
+// CHECK:   ^bb0([[LHS:%.*]]: memref<f32>, [[RHS:%.*]]: memref<f32>, [[OUT:%.*]]: memref<f32>):
+// CHECK:     [[LHS_TENSOR:%.*]] = tensor_load [[LHS]]
+// CHECK:     [[RHS_TENSOR:%.*]] = tensor_load [[RHS]]
+// CHECK:     [[OUT_TENSOR:%.*]] = xla_hlo.maximum [[LHS_TENSOR]], [[RHS_TENSOR]]
+// CHECK:     tensor_store [[OUT_TENSOR]], [[OUT]]
+// CHECK:     "xla_lhlo.terminator"() : () -> ()
+// CHECK:   }) {
+// CHECK-SAME: base_dilations = dense<1> : tensor<4xi64>
+// CHECK-SAME: padding = dense<{{\[}}[0, 0], [0, 0], [0, 1], [0, 1]]>
+// CHECK-SAME: window_dilations = dense<1> : tensor<4xi64>
+// CHECK-SAME: window_dimensions = dense<[1, 1, 3, 3]>
+// CHECK-SAME: window_strides = dense<[1, 1, 2, 2]>
+// CHECK: } : ([[ARGT]], memref<f32>, [[REST]]) -> ()

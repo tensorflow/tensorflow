@@ -1,0 +1,26 @@
+path: "tensorflow.test.Benchmark"
+tf_class {
+  is_instance: "<class \'tensorflow.python.platform.benchmark.TensorFlowBenchmark\'>"
+  is_instance: "<class \'tensorflow.python.platform.benchmark.Benchmark\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "evaluate"
+    argspec: "args=[\'self\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_abstract"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "report_benchmark"
+    argspec: "args=[\'self\', \'iters\', \'cpu_time\', \'wall_time\', \'throughput\', \'extras\', \'name\', \'metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "run_op_benchmark"
+    argspec: "args=[\'self\', \'sess\', \'op_or_tensor\', \'feed_dict\', \'burn_iters\', \'min_iters\', \'store_trace\', \'store_memory_usage\', \'name\', \'extras\', \'mbs\'], varargs=None, keywords=None, defaults=[\'None\', \'2\', \'10\', \'False\', \'True\', \'None\', \'None\', \'0\'], "
+  }
+}

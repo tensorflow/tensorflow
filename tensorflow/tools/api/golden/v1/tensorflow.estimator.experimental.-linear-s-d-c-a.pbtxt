@@ -1,0 +1,13 @@
+path: "tensorflow.estimator.experimental.LinearSDCA"
+tf_class {
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.linear.LinearSDCA\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'example_id_column\', \'num_loss_partitions\', \'num_table_shards\', \'symmetric_l1_regularization\', \'symmetric_l2_regularization\', \'adaptive\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'0.0\', \'1.0\', \'False\'], "
+  }
+  member_method {
+    name: "get_train_step"
+    argspec: "args=[\'self\', \'state_manager\', \'weight_column_name\', \'loss_type\', \'feature_columns\', \'features\', \'targets\', \'bias_var\', \'global_step\'], varargs=None, keywords=None, defaults=None"
+  }
+}

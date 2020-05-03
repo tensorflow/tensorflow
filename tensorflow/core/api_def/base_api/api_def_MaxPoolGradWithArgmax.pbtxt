@@ -1,0 +1,55 @@
+op {
+  graph_op_name: "MaxPoolGradWithArgmax"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+The original input.
+END
+  }
+  in_arg {
+    name: "grad"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
+output of `max_pool`.
+END
+  }
+  in_arg {
+    name: "argmax"
+    description: <<END
+The indices of the maximum values chosen for each output of `max_pool`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Gradients w.r.t. the input of `max_pool`.
+END
+  }
+  attr {
+    name: "ksize"
+    description: <<END
+The size of the window for each dimension of the input tensor.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the
+input tensor.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "include_batch_in_index"
+    description: <<END
+Whether to include batch dimension in flattened index of `argmax`.
+END
+  }
+  summary: "Computes gradients of the maxpooling function."
+}

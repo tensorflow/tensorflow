@@ -1,0 +1,29 @@
+path: "tensorflow.OpError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.OpError\'>"
+  is_instance: "<type \'exceptions.Exception\'>"
+  member {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "error_code"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "message"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "node_def"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'node_def\', \'op\', \'message\', \'error_code\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "BatchIFFT3D"
+  endpoint {
+    name: "signal.BatchIfft3d"
+  }
+}

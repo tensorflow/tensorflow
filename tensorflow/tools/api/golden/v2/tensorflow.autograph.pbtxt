@@ -1,0 +1,23 @@
+path: "tensorflow.autograph"
+tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "set_verbosity"
+    argspec: "args=[\'level\', \'alsologtostdout\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "to_code"
+    argspec: "args=[\'entity\', \'recursive\', \'experimental_optional_features\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "to_graph"
+    argspec: "args=[\'entity\', \'recursive\', \'experimental_optional_features\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "trace"
+    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+  }
+}

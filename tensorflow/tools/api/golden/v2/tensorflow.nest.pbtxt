@@ -1,0 +1,23 @@
+path: "tensorflow.nest"
+tf_module {
+  member_method {
+    name: "assert_same_structure"
+    argspec: "args=[\'nest1\', \'nest2\', \'check_types\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'structure\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "is_nested"
+    argspec: "args=[\'seq\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "map_structure"
+    argspec: "args=[\'func\'], varargs=structure, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "pack_sequence_as"
+    argspec: "args=[\'structure\', \'flat_sequence\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Conv2DBackpropInput"
+  endpoint {
+    name: "nn.Conv2dBackpropInput"
+  }
+}

@@ -1,0 +1,70 @@
+path: "tensorflow.data.experimental.OptimizationOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.optimization_options.OptimizationOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "apply_default_optimizations"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune_buffers"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune_cpu_budget"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "filter_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "filter_with_random_uniform_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "hoist_random_uniform"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "map_and_batch_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "map_and_filter_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "map_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "map_parallelization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "map_vectorization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "noop_elimination"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "parallel_batch"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shuffle_and_repeat_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

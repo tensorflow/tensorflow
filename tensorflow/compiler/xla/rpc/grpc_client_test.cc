@@ -1,0 +1,113 @@
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// Simple C++ test to exercise the GRPC capabilities of XLA.
+//
+// Launches an RPC service in a subprocess and connects to it over a socket
+// using an RPCStub.
+#include <memory>
+#include <vector>
+
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
+
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/rpc/grpc_stub.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/net.h"
+#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/platform/test.h"
+
+#if defined(PLATFORM_WINDOWS)
+// This is not used on windows, but we define it here to make the test simpler
+// to write below.
+#define SIGKILL -1
+#endif
+
+namespace xla {
+namespace {
+
+class GRPCClientTestBase : public ::testing::Test {
+ protected:
+  GRPCClientTestBase() {
+    string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
+    string service_main_path = tensorflow::io::JoinPath(
+        test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
+    int port = tensorflow::internal::PickUnusedPortOrDie();
+    subprocess_.SetProgram(
+        service_main_path,
+        {service_main_path, absl::StrFormat("--port=%d", port)});
+    subprocess_.SetChannelAction(tensorflow::CHAN_STDOUT,
+                                 tensorflow::ACTION_DUPPARENT);
+    subprocess_.SetChannelAction(tensorflow::CHAN_STDERR,
+                                 tensorflow::ACTION_DUPPARENT);
+    CHECK(subprocess_.Start());
+    LOG(INFO) << "Launched subprocess";
+
+    auto channel = ::grpc::CreateChannel(absl::StrFormat("localhost:%d", port),
+                                         ::grpc::InsecureChannelCredentials());
+    channel->WaitForConnected(gpr_time_add(
+        gpr_now(GPR_CLOCK_REALTIME), gpr_time_from_seconds(10, GPR_TIMESPAN)));
+    LOG(INFO) << "Channel to server is connected on port " << port;
+
+    xla_service_ = grpc::XlaService::NewStub(channel);
+    stub_.reset(new GRPCStub(xla_service_.get()));
+    client_.reset(new Client(stub_.get()));
+  }
+
+  ~GRPCClientTestBase() override {
+    LOG(INFO) << "Killing subprocess";
+    subprocess_.Kill(SIGKILL);
+  }
+
+  tensorflow::SubProcess subprocess_;
+  std::unique_ptr<grpc::XlaService::Stub> xla_service_;
+  std::unique_ptr<GRPCStub> stub_;
+  std::unique_ptr<Client> client_;
+};
+
+TEST_F(GRPCClientTestBase, ItsAlive) {
+  ASSERT_NE(xla_service_, nullptr);
+  ASSERT_NE(stub_, nullptr);
+  ASSERT_NE(client_, nullptr);
+}
+
+TEST_F(GRPCClientTestBase, AxpyTenValues) {
+  XlaBuilder builder("axpy_10");
+  auto alpha = ConstantR0<float>(&builder, 3.1415926535);
+  auto x = ConstantR1<float>(
+      &builder, {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});
+  auto y = ConstantR1<float>(
+      &builder, {5.0, -5.0, -4.0, 4.0, 3.0, -3.0, -2.0, 2.0, 1.0, -1.0});
+  auto ax = Mul(alpha, x);
+  Add(ax, y);
+
+  std::vector<float> expected = {
+      1.85840735, -1.85840735, 2.28318531,   -2.28318531,  -6.42477796,
+      6.42477796, 10.56637061, -10.56637061, -14.70796327, 14.70796327};
+  Literal expected_literal = LiteralUtil::CreateR1<float>(expected);
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_literal, client_->ExecuteAndTransfer(
+                                                   computation, {}, nullptr));
+  EXPECT_TRUE(LiteralTestUtil::Near(expected_literal, result_literal,
+                                    ErrorSpec(0.0001)));
+}
+
+}  // namespace
+}  // namespace xla

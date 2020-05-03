@@ -1,0 +1,39 @@
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
+
+LABEL maintainer="Jan Prach <jendap@google.com>"
+
+# In the Ubuntu 16.04 images, cudnn is placed in system paths. Move them to
+# /usr/local/cuda
+RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
+RUN cp -P /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64
+
+# Installs TensorRT, which is not included in NVIDIA Docker containers.
+RUN apt-get update \
+        && apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0 \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda10.0 libnvinfer-dev=5.0.2-1+cuda10.0
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+ARG DEBIAN_FRONTEND=noninteractive
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa && \
+    add-apt-repository -y ppa:george-edison55/cmake-3.x
+RUN /install/install_deb_packages.sh
+
+RUN /install/install_pip_packages.sh
+RUN /install/install_bazel.sh
+RUN /install/install_golang.sh
+
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+# Link NCCL libray and header where the build script expects them.
+RUN mkdir /usr/local/cuda/lib &&  \
+    ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
+    ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
+
+# Configure the build for our CUDA configuration.
+ENV TF_NEED_CUDA 1
+ENV TF_NEED_TENSORRT 1

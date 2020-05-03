@@ -1,0 +1,342 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "google/protobuf/any.proto";
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/op_def.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/protobuf/saved_object_graph.proto";
+import "tensorflow/core/protobuf/saver.proto";
+import "tensorflow/core/protobuf/struct.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "MetaGraphProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+
+// NOTE: This protocol buffer is evolving, and will go through revisions in the
+// coming months.
+//
+// Protocol buffer containing the following which are necessary to restart
+// training, run inference. It can be used to serialize/de-serialize memory
+// objects necessary for running computation in a graph when crossing the
+// process boundary. It can be used for long term storage of graphs,
+// cross-language execution of graphs, etc.
+//   MetaInfoDef
+//   GraphDef
+//   SaverDef
+//   CollectionDef
+//   TensorInfo
+//   SignatureDef
+message MetaGraphDef {
+  // Meta information regarding the graph to be exported.  To be used by users
+  // of this protocol buffer to encode information regarding their meta graph.
+  message MetaInfoDef {
+    // User specified Version string. Can be the name of the model and revision,
+    // steps this model has been trained to, etc.
+    string meta_graph_version = 1;
+
+    // A copy of the OpDefs used by the producer of this graph_def.
+    // Descriptions and Ops not used in graph_def are stripped out.
+    OpList stripped_op_list = 2;
+
+    // A serialized protobuf. Can be the time this meta graph is created, or
+    // modified, or name of the model.
+    google.protobuf.Any any_info = 3;
+
+    // User supplied tag(s) on the meta_graph and included graph_def.
+    //
+    // MetaGraphDefs should be tagged with their capabilities or use-cases.
+    // Examples: "train", "serve", "gpu", "tpu", etc.
+    // These tags enable loaders to access the MetaGraph(s) appropriate for a
+    // specific use-case or runtime environment.
+    repeated string tags = 4;
+
+    // The __version__ string of the tensorflow build used to write this graph.
+    // This will be populated by the framework, which will overwrite any user
+    // supplied value.
+    string tensorflow_version = 5;
+
+    // The __git_version__ string of the tensorflow build used to write this
+    // graph. This will be populated by the framework, which will overwrite any
+    // user supplied value.
+    string tensorflow_git_version = 6;
+
+    // A flag to denote whether default-valued attrs have been stripped from
+    // the nodes in this graph_def.
+    bool stripped_default_attrs = 7;
+
+    // FunctionDef name to aliases mapping.
+    map<string, string> function_aliases = 8;
+  }
+  MetaInfoDef meta_info_def = 1;
+
+  // GraphDef.
+  GraphDef graph_def = 2;
+
+  // SaverDef.
+  SaverDef saver_def = 3;
+
+  // collection_def: Map from collection name to collections.
+  // See CollectionDef section for details.
+  map<string, CollectionDef> collection_def = 4;
+
+  // signature_def: Map from user supplied key for a signature to a single
+  // SignatureDef.
+  map<string, SignatureDef> signature_def = 5;
+
+  // Asset file def to be used with the defined graph.
+  repeated AssetFileDef asset_file_def = 6;
+
+  // Extra information about the structure of functions and stateful objects.
+  SavedObjectGraph object_graph_def = 7;
+}
+
+// CollectionDef should cover most collections.
+// To add a user-defined collection, do one of the following:
+// 1. For simple data types, such as string, int, float:
+//      tf.add_to_collection("your_collection_name", your_simple_value)
+//    strings will be stored as bytes_list.
+//
+// 2. For Protobuf types, there are three ways to add them:
+//    1) tf.add_to_collection("your_collection_name",
+//         your_proto.SerializeToString())
+//
+//       collection_def {
+//         key: "user_defined_bytes_collection"
+//         value {
+//           bytes_list {
+//             value: "queue_name: \"test_queue\"\n"
+//           }
+//         }
+//       }
+//
+//  or
+//
+//    2) tf.add_to_collection("your_collection_name", str(your_proto))
+//
+//       collection_def {
+//         key: "user_defined_string_collection"
+//         value {
+//          bytes_list {
+//             value: "\n\ntest_queue"
+//           }
+//         }
+//       }
+//
+//  or
+//
+//    3) any_buf = any_pb2.Any()
+//       tf.add_to_collection("your_collection_name",
+//         any_buf.Pack(your_proto))
+//
+//       collection_def {
+//         key: "user_defined_any_collection"
+//         value {
+//           any_list {
+//             value {
+//               type_url: "type.googleapis.com/tensorflow.QueueRunnerDef"
+//               value: "\n\ntest_queue"
+//             }
+//           }
+//         }
+//       }
+//
+// 3. For Python objects, implement to_proto() and from_proto(), and register
+//    them in the following manner:
+//    ops.register_proto_function("your_collection_name",
+//                                proto_type,
+//                                to_proto=YourPythonObject.to_proto,
+//                                from_proto=YourPythonObject.from_proto)
+//    These functions will be invoked to serialize and de-serialize the
+//    collection. For example,
+//    ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
+//                                proto_type=variable_pb2.VariableDef,
+//                                to_proto=Variable.to_proto,
+//                                from_proto=Variable.from_proto)
+message CollectionDef {
+  // NodeList is used for collecting nodes in graph. For example
+  // collection_def {
+  //   key: "summaries"
+  //   value {
+  //     node_list {
+  //       value: "input_producer/ScalarSummary:0"
+  //       value: "shuffle_batch/ScalarSummary:0"
+  //       value: "ImageSummary:0"
+  //     }
+  //   }
+  message NodeList {
+    repeated string value = 1;
+  }
+
+  // BytesList is used for collecting strings and serialized protobufs. For
+  // example:
+  // collection_def {
+  //   key: "trainable_variables"
+  //   value {
+  //     bytes_list {
+  //       value: "\n\017conv1/weights:0\022\024conv1/weights/Assign
+  //              \032\024conv1/weights/read:0"
+  //       value: "\n\016conv1/biases:0\022\023conv1/biases/Assign\032
+  //              \023conv1/biases/read:0"
+  //     }
+  //   }
+  // }
+  message BytesList {
+    repeated bytes value = 1;
+  }
+
+  // Int64List is used for collecting int, int64 and long values.
+  message Int64List {
+    repeated int64 value = 1 [packed = true];
+  }
+
+  // FloatList is used for collecting float values.
+  message FloatList {
+    repeated float value = 1 [packed = true];
+  }
+
+  // AnyList is used for collecting Any protos.
+  message AnyList {
+    repeated google.protobuf.Any value = 1;
+  }
+
+  oneof kind {
+    NodeList node_list = 1;
+    BytesList bytes_list = 2;
+    Int64List int64_list = 3;
+    FloatList float_list = 4;
+    AnyList any_list = 5;
+  }
+}
+
+// Information about a Tensor necessary for feeding or retrieval.
+message TensorInfo {
+  // For sparse tensors, The COO encoding stores a triple of values, indices,
+  // and shape.
+  message CooSparse {
+    // The shape of the values Tensor is [?].  Its dtype must be the dtype of
+    // the SparseTensor as a whole, given in the enclosing TensorInfo.
+    string values_tensor_name = 1;
+
+    // The indices Tensor must have dtype int64 and shape [?, ?].
+    string indices_tensor_name = 2;
+
+    // The dynamic logical shape represented by the SparseTensor is recorded in
+    // the Tensor referenced here.  It must have dtype int64 and shape [?].
+    string dense_shape_tensor_name = 3;
+  }
+
+  // Generic encoding for composite tensors.
+  message CompositeTensor {
+    // The serialized TypeSpec for the composite tensor.
+    TypeSpecProto type_spec = 1;
+
+    // A TensorInfo for each flattened component tensor.
+    repeated TensorInfo components = 2;
+  }
+
+  oneof encoding {
+    // For dense `Tensor`s, the name of the tensor in the graph.
+    string name = 1;
+    // There are many possible encodings of sparse matrices
+    // (https://en.wikipedia.org/wiki/Sparse_matrix).  Currently, TensorFlow
+    // uses only the COO encoding.  This is supported and documented in the
+    // SparseTensor Python class.
+    CooSparse coo_sparse = 4;
+    // Generic encoding for CompositeTensors.
+    CompositeTensor composite_tensor = 5;
+  }
+  DataType dtype = 2;
+  // The static shape should be recorded here, to the extent that it can
+  // be known in advance.  In the case of a SparseTensor, this field describes
+  // the logical shape of the represented tensor (aka dense_shape).
+  TensorShapeProto tensor_shape = 3;
+}
+
+// SignatureDef defines the signature of a computation supported by a TensorFlow
+// graph.
+//
+// For example, a model with two loss computations, sharing a single input,
+// might have the following signature_def map.
+//
+// Note that across the two SignatureDefs "loss_A" and "loss_B", the input key,
+// output key, and method_name are identical, and will be used by system(s) that
+// implement or rely upon this particular loss method. The output tensor names
+// differ, demonstrating how different outputs can exist for the same method.
+//
+// signature_def {
+//   key: "loss_A"
+//   value {
+//     inputs {
+//       key: "input"
+//       value {
+//         name: "input:0"
+//         dtype: DT_STRING
+//         tensor_shape: ...
+//       }
+//     }
+//     outputs {
+//       key: "loss_output"
+//       value {
+//         name: "loss_output_A:0"
+//         dtype: DT_FLOAT
+//         tensor_shape: ...
+//       }
+//     }
+//   }
+//   ...
+//   method_name: "some/package/compute_loss"
+// }
+// signature_def {
+//   key: "loss_B"
+//   value {
+//     inputs {
+//       key: "input"
+//       value {
+//         name: "input:0"
+//         dtype: DT_STRING
+//         tensor_shape: ...
+//       }
+//     }
+//     outputs {
+//       key: "loss_output"
+//       value {
+//         name: "loss_output_B:0"
+//         dtype: DT_FLOAT
+//         tensor_shape: ...
+//       }
+//     }
+//   }
+//   ...
+//   method_name: "some/package/compute_loss"
+// }
+message SignatureDef {
+  // Named input parameters.
+  map<string, TensorInfo> inputs = 1;
+  // Named output parameters.
+  map<string, TensorInfo> outputs = 2;
+  // Extensible method_name information enabling third-party users to mark a
+  // SignatureDef as supporting a particular method. This enables producers and
+  // consumers of SignatureDefs, e.g. a model definition library and a serving
+  // library to have a clear hand-off regarding the semantics of a computation.
+  //
+  // Note that multiple SignatureDefs in a single MetaGraphDef may have the same
+  // method_name. This is commonly used to support multi-headed computation,
+  // where a single graph computation may return multiple results.
+  string method_name = 3;
+}
+
+// An asset file def for a single file or a set of sharded files with the same
+// name.
+message AssetFileDef {
+  // The tensor to bind the asset filename to.
+  TensorInfo tensor_info = 1;
+  // The filename within an assets directory. Note: does not include the path
+  // prefix, i.e. directories. For an asset at /tmp/path/vocab.txt, the filename
+  // would be "vocab.txt".
+  string filename = 2;
+}

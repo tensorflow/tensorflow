@@ -1,0 +1,38 @@
+path: "tensorflow.profiler.OpLogProto"
+tf_proto {
+  descriptor {
+    name: "OpLogProto"
+    field {
+      name: "log_entries"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.tfprof.OpLogEntry"
+    }
+    field {
+      name: "id_to_string"
+      number: 2
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.tfprof.OpLogProto.IdToStringEntry"
+    }
+    nested_type {
+      name: "IdToStringEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

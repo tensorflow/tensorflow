@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QueueSizeV2"
+  endpoint {
+    name: "io.QueueSize"
+  }
+}

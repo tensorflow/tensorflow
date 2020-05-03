@@ -1,0 +1,36 @@
+path: "tensorflow.GraphDef"
+tf_proto {
+  descriptor {
+    name: "GraphDef"
+    field {
+      name: "node"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.NodeDef"
+    }
+    field {
+      name: "versions"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.VersionDef"
+    }
+    field {
+      name: "version"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+      options {
+        deprecated: true
+      }
+    }
+    field {
+      name: "library"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.FunctionDefLibrary"
+    }
+  }
+}

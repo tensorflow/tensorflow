@@ -1,0 +1,35 @@
+path: "tensorflow.sets"
+tf_module {
+  member_method {
+    name: "difference"
+    argspec: "args=[\'a\', \'b\', \'aminusb\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
+  }
+  member_method {
+    name: "intersection"
+    argspec: "args=[\'a\', \'b\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "set_difference"
+    argspec: "args=[\'a\', \'b\', \'aminusb\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
+  }
+  member_method {
+    name: "set_intersection"
+    argspec: "args=[\'a\', \'b\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "set_size"
+    argspec: "args=[\'a\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "set_union"
+    argspec: "args=[\'a\', \'b\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "size"
+    argspec: "args=[\'a\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "union"
+    argspec: "args=[\'a\', \'b\', \'validate_indices\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+}

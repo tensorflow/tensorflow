@@ -1,0 +1,15 @@
+path: "tensorflow.train.FloatList"
+tf_proto {
+  descriptor {
+    name: "FloatList"
+    field {
+      name: "value"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_FLOAT
+      options {
+        packed: true
+      }
+    }
+  }
+}

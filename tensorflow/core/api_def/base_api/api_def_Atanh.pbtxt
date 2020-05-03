@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "Atanh"
+  summary: "Computes inverse hyperbolic tangent of x element-wise."
+  description: <<END
+  Given an input tensor, this function computes inverse hyperbolic tangent
+  for every element in the tensor. Input range is `[-1,1]` and output range is
+  `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
+  input is `1`, output will be `inf`. Values outside the range will have
+  `nan` as output.
+
+  ```python
+  x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
+  tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
+  ```
+END
+}

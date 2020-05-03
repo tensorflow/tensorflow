@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+
+message CppShapeInferenceResult {
+  message HandleShapeAndType {
+    TensorShapeProto shape = 1;
+    DataType dtype = 2;
+  }
+  message HandleData {
+    bool is_set = 1;
+
+    // Only valid if <is_set>.
+    repeated HandleShapeAndType shape_and_type = 2;
+  }
+  TensorShapeProto shape = 1;
+
+  reserved 2;  // was handle_shape
+  reserved 3;  // was handle_dtype
+  HandleData handle_data = 4;
+}
+
+message CppShapeInferenceInputsNeeded {
+  repeated int32 input_tensors_needed = 1;
+  repeated int32 input_tensors_as_shapes_needed = 2;
+}

@@ -1,0 +1,73 @@
+op {
+  graph_op_name: "UnicodeEncode"
+  visibility: HIDDEN
+  endpoint {
+    name: "UnicodeEncode"
+  }
+  in_arg {
+    name: "input_values"
+    description: <<END
+A 1D tensor containing the unicode codepoints that should be encoded.
+END
+  }
+  in_arg {
+    name: "input_splits"
+    description: <<END
+A 1D tensor specifying how the unicode codepoints should be split into strings.
+In particular, `output[i]` is constructed by encoding the codepoints in the
+slice `input_values[input_splits[i]:input_splits[i+1]]`.
+END
+  }
+  attr {
+    name: "output_encoding"
+    description: <<END
+Unicode encoding of the output strings. Valid encodings are: `"UTF-8",
+"UTF-16-BE", and "UTF-32-BE"`.
+END
+  }
+  attr {
+    name: "errors"
+    description: <<END
+Error handling policy when there is invalid formatting found in the input.
+The value of 'strict' will cause the operation to produce a InvalidArgument
+error on any invalid input formatting. A value of 'replace' (the default) will
+cause the operation to replace any invalid formatting in the input with the
+`replacement_char` codepoint. A value of 'ignore' will cause the operation to
+skip any invalid formatting in the input and produce no corresponding output
+character.
+END
+  }
+  attr {
+    name: "replacement_char"
+    description: <<END
+The replacement character codepoint to be used in place of any invalid
+formatting in the input when `errors='replace'`. Any valid unicode codepoint may
+be used. The default value is the default unicode replacement character is
+0xFFFD (U+65533).
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The 1-D Tensor of strings encoded from the provided unicode codepoints.
+END
+  }
+  summary: "Encode a tensor of ints into unicode strings."
+  description: <<END
+Returns a vector of strings, where `output[i]` is constructed by encoding the
+Unicode codepoints in `input_values[input_splits[i]:input_splits[i+1]]`
+using `output_encoding`.
+
+---
+
+Example:
+
+```
+input_values = [72, 101, 108, 108, 111, 87, 111, 114, 108, 100]
+input_splits = [0, 5, 10]
+output_encoding = 'UTF-8'
+
+output = ['Hello', 'World']
+```
+END
+}

@@ -1,0 +1,49 @@
+// Test messages used in compare_test.py.
+syntax = "proto2";
+
+package compare_test;
+option cc_enable_arenas = true;
+
+enum Enum {
+  A = 0;
+  B = 1;
+  C = 2;
+}
+
+message Small {
+  repeated string strings = 1;
+};
+
+message Medium {
+  repeated int32 int32s = 1;
+  repeated Small smalls = 2;
+  repeated group GroupA = 3 {
+    repeated group GroupB = 4 {
+      required string strings = 5;
+    }
+  }
+  repeated float floats = 6;
+};
+
+message Large {
+  optional string string_ = 1;
+  optional int64 int64_ = 2;
+  optional float float_ = 3;
+  optional bool bool_ = 4;
+  optional Enum enum_ = 5;
+  repeated int64 int64s = 6;
+  optional Medium medium = 7;
+  optional Small small = 8;
+  optional double double_ = 9;
+  optional WithMap with_map = 10;
+};
+
+message Labeled {
+  required int32 required = 1;
+  optional int32 optional = 2;
+}
+
+message WithMap {
+  map<int32, Small> value_message = 1;
+  map<string, string> value_string = 2;
+}

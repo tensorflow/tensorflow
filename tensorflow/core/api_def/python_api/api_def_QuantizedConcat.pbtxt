@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "QuantizedConcat"
+  endpoint {
+    name: "quantization.quantized_concat"
+  }
+  endpoint {
+    name: "quantized_concat"
+    deprecation_version: 2
+  }
+}

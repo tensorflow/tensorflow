@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "AttrValueProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/attr_value_go_proto";
+
+// Protocol buffer representing the value for an attr used to configure an Op.
+// Comment indicates the corresponding attr type.  Only the field matching the
+// attr type may be filled.
+message AttrValue {
+  // LINT.IfChange
+  message ListValue {
+    repeated bytes s = 2;                        // "list(string)"
+    repeated int64 i = 3 [packed = true];        // "list(int)"
+    repeated float f = 4 [packed = true];        // "list(float)"
+    repeated bool b = 5 [packed = true];         // "list(bool)"
+    repeated DataType type = 6 [packed = true];  // "list(type)"
+    repeated TensorShapeProto shape = 7;         // "list(shape)"
+    repeated TensorProto tensor = 8;             // "list(tensor)"
+    repeated NameAttrList func = 9;              // "list(attr)"
+  }
+  // LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.cc)
+
+  oneof value {
+    bytes s = 2;                 // "string"
+    int64 i = 3;                 // "int"
+    float f = 4;                 // "float"
+    bool b = 5;                  // "bool"
+    DataType type = 6;           // "type"
+    TensorShapeProto shape = 7;  // "shape"
+    TensorProto tensor = 8;      // "tensor"
+    ListValue list = 1;          // any "list(...)"
+
+    // "func" represents a function. func.name is a function's name or
+    // a primitive op's name. func.attr.first is the name of an attr
+    // defined for that function. func.attr.second is the value for
+    // that attr in the instantiation.
+    NameAttrList func = 10;
+
+    // This is a placeholder only used in nodes defined inside a
+    // function.  It indicates the attr value will be supplied when
+    // the function is instantiated.  For example, let us suppose a
+    // node "N" in function "FN". "N" has an attr "A" with value
+    // placeholder = "foo". When FN is instantiated with attr "foo"
+    // set to "bar", the instantiated node N's attr A will have been
+    // given the value "bar".
+    string placeholder = 9;
+  }
+}
+
+// A list of attr names and their values. The whole list is attached
+// with a string name.  E.g., MatMul[T=float].
+message NameAttrList {
+  string name = 1;
+  map<string, AttrValue> attr = 2;
+}

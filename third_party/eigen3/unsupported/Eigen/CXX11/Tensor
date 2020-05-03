@@ -1,0 +1,15 @@
+#include "unsupported/Eigen/CXX11/Tensor"
+
+#ifdef _WIN32
+#ifndef SLEEP_FUNC_HEADER_GUARD
+#define SLEEP_FUNC_HEADER_GUARD
+inline void sleep(unsigned int seconds) { Sleep(1000*seconds); }
+#endif
+
+// On Windows, Eigen will include Windows.h, which defines various
+// macros that conflict with TensorFlow symbols. Undefine them here to
+// prevent clashes.
+#undef DeleteFile
+#undef ERROR
+#undef LoadLibrary
+#endif  // _WIN32

@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "UnicodeScript"
+  endpoint {
+    name: "UnicodeScript"
+  }
+  in_arg {
+    name: "input"
+    description: <<END
+A Tensor of int32 Unicode code points.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor of int32 script codes corresponding to each input code point.
+END
+  }
+  summary: <<END
+Determine the script codes of a given tensor of Unicode integer code points.
+END
+  description: <<END
+This operation converts Unicode code points to script codes corresponding to
+each code point. Script codes correspond to International Components for
+Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
+Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
+match input shape.
+
+Examples:
+
+>>> tf.strings.unicode_script([1, 31, 38])
+<tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 0, 0], dtype=int32)>
+END
+}

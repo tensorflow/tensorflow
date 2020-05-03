@@ -1,0 +1,21 @@
+path: "tensorflow.ConfigProto.DeviceCountEntry"
+tf_proto {
+  descriptor {
+    name: "DeviceCountEntry"
+    field {
+      name: "key"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "value"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    options {
+      map_entry: true
+    }
+  }
+}

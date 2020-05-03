@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "WriteFile"
+  in_arg {
+    name: "filename"
+    description: <<END
+scalar. The name of the file to which we write the contents.
+END
+  }
+  in_arg {
+    name: "contents"
+    description: <<END
+scalar. The content to be written to the output file.
+END
+  }
+  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  description: <<END
+creates directory if not existing.
+END
+}

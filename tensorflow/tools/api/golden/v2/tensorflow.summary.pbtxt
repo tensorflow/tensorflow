@@ -1,0 +1,67 @@
+path: "tensorflow.summary"
+tf_module {
+  member {
+    name: "SummaryWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "audio"
+    argspec: "args=[\'name\', \'data\', \'sample_rate\', \'step\', \'max_outputs\', \'encoding\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'3\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "create_file_writer"
+    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "create_noop_writer"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flush"
+    argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "histogram"
+    argspec: "args=[\'name\', \'data\', \'step\', \'buckets\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "image"
+    argspec: "args=[\'name\', \'data\', \'step\', \'max_outputs\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'3\', \'None\'], "
+  }
+  member_method {
+    name: "record_if"
+    argspec: "args=[\'condition\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "scalar"
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "should_record_summaries"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "text"
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "trace_export"
+    argspec: "args=[\'name\', \'step\', \'profiler_outdir\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "trace_off"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "trace_on"
+    argspec: "args=[\'graph\', \'profiler\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'tag\', \'tensor\', \'step\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

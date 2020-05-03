@@ -1,0 +1,38 @@
+path: "tensorflow.train.SingularMonitoredSession"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.monitored_session.SingularMonitoredSession\'>"
+  is_instance: "<class \'tensorflow.python.training.monitored_session._MonitoredSession\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "StepContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'hooks\', \'scaffold\', \'master\', \'config\', \'checkpoint_dir\', \'stop_grace_period_secs\', \'checkpoint_filename_with_path\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'None\', \'None\', \'120\', \'None\'], "
+  }
+  member_method {
+    name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "raw_session"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'fetches\', \'feed_dict\', \'options\', \'run_metadata\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "run_step_fn"
+    argspec: "args=[\'self\', \'step_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "should_stop"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

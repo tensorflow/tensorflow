@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "RaggedRange"
+  visibility: HIDDEN
+  in_arg{
+    name: "starts"
+    description: "The starts of each range."
+  }
+  in_arg{
+    name: "limits"
+    description: "The limits of each range."
+  }
+  in_arg{
+    name: "deltas"
+    description: "The deltas of each range."
+  }
+  out_arg{
+    name: "rt_nested_splits"
+    description: "The `row_splits` for the returned `RaggedTensor`."
+  }
+  out_arg{
+    name: "rt_dense_values"
+    description: "The `flat_values` for the returned `RaggedTensor`."
+  }
+  summary: <<END
+Returns a `RaggedTensor` containing the specified sequences of numbers.
+END
+  description: <<END
+
+Returns a `RaggedTensor` `result` composed from `rt_dense_values` and
+`rt_nested_splits`, such that
+`result[i] = range(starts[i], limits[i], deltas[i])`.
+
+```python
+(rt_nested_splits, rt_dense_values) = ragged_range(
+      starts=[2, 5, 8], limits=[3, 5, 12], deltas=1)
+result = tf.ragged.from_row_splits(rt_dense_values, rt_nested_splits)
+print(result)
+<tf.RaggedTensor [[2], [], [8, 9, 10, 11]] >
+```
+
+The input tensors `starts`, `limits`, and `deltas` may be scalars or vectors.
+The vector inputs must all have the same size.  Scalar inputs are broadcast
+to match the size of the vector inputs.
+END
+}

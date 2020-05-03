@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Fact"
+  endpoint {
+    name: "math.Fact"
+  }
+}

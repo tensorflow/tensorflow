@@ -1,0 +1,57 @@
+op {
+  graph_op_name: "ImageProjectiveTransformV2"
+  visibility: HIDDEN
+  in_arg {
+    name: "images"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.
+END
+  }
+  in_arg {
+    name: "transforms"
+    description: <<END
+2-D Tensor, `[batch, 8]` or `[1, 8]` matrix, where each row corresponds to a 3 x 3
+projective transformation matrix, with the last entry assumed to be 1. If there
+is one row, the same transformation will be applied to all images.
+END
+  }
+  in_arg {
+    name: "output_shape"
+    description: <<END
+1-D Tensor [new_height, new_width].
+END
+  }
+  out_arg {
+    name: "transformed_images"
+    description: <<END
+4-D with shape
+`[batch, new_height, new_width, channels]`.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+Input dtype.
+END
+  }
+  attr {
+    name: "interpolation"
+    description: <<END
+Interpolation method, "NEAREST" or "BILINEAR".
+END
+  }
+  attr {
+    name: "fill_mode"
+    description: <<END
+Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+END
+  }
+  summary: "Applies the given transform to each of the images."
+  description: <<END
+If one row of `transforms` is `[a0, a1, a2, b0, b1, b2, c0, c1]`, then it maps
+the *output* point `(x, y)` to a transformed *input* point
+`(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`, where
+`k = c0 x + c1 y + 1`. If the transformed point lays outside of the input
+image, the output pixel is set to 0.
+END
+}

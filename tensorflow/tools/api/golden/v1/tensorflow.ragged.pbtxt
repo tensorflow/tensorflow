@@ -1,0 +1,55 @@
+path: "tensorflow.ragged"
+tf_module {
+  member {
+    name: "RaggedTensorValue"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "boolean_mask"
+    argspec: "args=[\'data\', \'mask\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "constant"
+    argspec: "args=[\'pylist\', \'dtype\', \'ragged_rank\', \'inner_shape\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "constant_value"
+    argspec: "args=[\'pylist\', \'dtype\', \'ragged_rank\', \'inner_shape\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'int64\'], "
+  }
+  member_method {
+    name: "cross"
+    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "cross_hashed"
+    argspec: "args=[\'inputs\', \'num_buckets\', \'hash_key\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "map_flat_values"
+    argspec: "args=[\'op\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "placeholder"
+    argspec: "args=[\'dtype\', \'ragged_rank\', \'value_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "range"
+    argspec: "args=[\'starts\', \'limits\', \'deltas\', \'dtype\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "row_splits_to_segment_ids"
+    argspec: "args=[\'splits\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "segment_ids_to_row_splits"
+    argspec: "args=[\'segment_ids\', \'num_segments\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "stack"
+    argspec: "args=[\'values\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "stack_dynamic_partitions"
+    argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

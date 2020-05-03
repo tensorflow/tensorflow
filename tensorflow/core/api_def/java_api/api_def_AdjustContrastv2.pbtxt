@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "AdjustContrastv2"
+  endpoint {
+    name: "image.AdjustContrast"
+  }
+}

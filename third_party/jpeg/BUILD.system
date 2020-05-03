@@ -1,0 +1,12 @@
+licenses(["notice"])  # custom notice-style license, see LICENSE.md
+
+filegroup(
+    name = "LICENSE.md",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "jpeg",
+    linkopts = ["-ljpeg"],
+    visibility = ["//visibility:public"],
+)

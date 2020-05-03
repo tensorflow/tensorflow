@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "CountUpTo"
+  in_arg {
+    name: "ref"
+    description: <<END
+Should be from a scalar `Variable` node.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A copy of the input before increment. If nothing else modifies the
+input, the values produced will all be distinct.
+END
+  }
+  attr {
+    name: "limit"
+    description: <<END
+If incrementing ref would bring it above limit, instead generates an
+'OutOfRange' error.
+END
+  }
+  summary: "Increments \'ref\' until it reaches \'limit\'."
+}

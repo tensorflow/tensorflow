@@ -1,0 +1,39 @@
+op {
+  graph_op_name: "SparseDenseCwiseDiv"
+  in_arg {
+    name: "sp_indices"
+    description: <<END
+2-D.  `N x R` matrix with the indices of non-empty values in a
+SparseTensor, possibly not in canonical ordering.
+END
+  }
+  in_arg {
+    name: "sp_values"
+    description: <<END
+1-D.  `N` non-empty values corresponding to `sp_indices`.
+END
+  }
+  in_arg {
+    name: "sp_shape"
+    description: <<END
+1-D.  Shape of the input SparseTensor.
+END
+  }
+  in_arg {
+    name: "dense"
+    description: <<END
+`R`-D.  The dense Tensor operand.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+1-D.  The `N` values that are operated on.
+END
+  }
+  summary: "Component-wise divides a SparseTensor by a dense Tensor."
+  description: <<END
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+END
+}

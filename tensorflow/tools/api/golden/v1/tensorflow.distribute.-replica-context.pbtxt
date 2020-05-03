@@ -1,0 +1,33 @@
+path: "tensorflow.distribute.ReplicaContext"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContext\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "devices"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_replicas_in_sync"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "replica_id_in_sync_group"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "strategy"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'strategy\', \'replica_id_in_sync_group\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "all_reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'experimental_hints\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "merge_call"
+    argspec: "args=[\'self\', \'merge_fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
+  }
+}

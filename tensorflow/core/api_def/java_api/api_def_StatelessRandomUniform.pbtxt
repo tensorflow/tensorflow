@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "StatelessRandomUniform"
+  endpoint {
+    name: "random.StatelessRandomUniform"
+  }
+}

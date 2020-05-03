@@ -1,0 +1,20 @@
+path: "tensorflow.VariableAggregation"
+tf_class {
+  is_instance: "<enum \'VariableAggregationV2\'>"
+  member {
+    name: "MEAN"
+    mtype: "<enum \'VariableAggregationV2\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<enum \'VariableAggregationV2\'>"
+  }
+  member {
+    name: "ONLY_FIRST_REPLICA"
+    mtype: "<enum \'VariableAggregationV2\'>"
+  }
+  member {
+    name: "SUM"
+    mtype: "<enum \'VariableAggregationV2\'>"
+  }
+}

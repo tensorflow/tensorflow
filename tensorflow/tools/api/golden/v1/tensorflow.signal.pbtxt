@@ -1,0 +1,123 @@
+path: "tensorflow.signal"
+tf_module {
+  member_method {
+    name: "dct"
+    argspec: "args=[\'input\', \'type\', \'n\', \'axis\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'2\', \'None\', \'-1\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "fft"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fft2d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fft3d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fftshift"
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "frame"
+    argspec: "args=[\'signal\', \'frame_length\', \'frame_step\', \'pad_end\', \'pad_value\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "hamming_window"
+    argspec: "args=[\'window_length\', \'periodic\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "hann_window"
+    argspec: "args=[\'window_length\', \'periodic\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "idct"
+    argspec: "args=[\'input\', \'type\', \'n\', \'axis\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'2\', \'None\', \'-1\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "ifft"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifft2d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifft3d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifftshift"
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "inverse_mdct"
+    argspec: "args=[\'mdcts\', \'window_fn\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'<function vorbis_window instance>\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "inverse_stft"
+    argspec: "args=[\'stfts\', \'frame_length\', \'frame_step\', \'fft_length\', \'window_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'<function hann_window instance>\', \'None\'], "
+  }
+  member_method {
+    name: "inverse_stft_window_fn"
+    argspec: "args=[\'frame_step\', \'forward_window_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'<function hann_window instance>\', \'None\'], "
+  }
+  member_method {
+    name: "irfft"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "irfft2d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "irfft3d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "kaiser_bessel_derived_window"
+    argspec: "args=[\'window_length\', \'beta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'12.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "kaiser_window"
+    argspec: "args=[\'window_length\', \'beta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'12.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "linear_to_mel_weight_matrix"
+    argspec: "args=[\'num_mel_bins\', \'num_spectrogram_bins\', \'sample_rate\', \'lower_edge_hertz\', \'upper_edge_hertz\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'20\', \'129\', \'8000\', \'125.0\', \'3800.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "mdct"
+    argspec: "args=[\'signals\', \'frame_length\', \'window_fn\', \'pad_end\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'<function vorbis_window instance>\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "mfccs_from_log_mel_spectrograms"
+    argspec: "args=[\'log_mel_spectrograms\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "overlap_and_add"
+    argspec: "args=[\'signal\', \'frame_step\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rfft"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "rfft2d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "rfft3d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "stft"
+    argspec: "args=[\'signals\', \'frame_length\', \'frame_step\', \'fft_length\', \'window_fn\', \'pad_end\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'<function hann_window instance>\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "vorbis_window"
+    argspec: "args=[\'window_length\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+}

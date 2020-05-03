@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ResizeNearestNeighbor"
+  endpoint {
+    name: "image.ResizeNearestNeighbor"
+  }
+}
