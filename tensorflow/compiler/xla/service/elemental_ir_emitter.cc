@@ -1292,6 +1292,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
                     llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
                                             EmitExtractImag(lhs_value),
                                             EmitExtractImag(rhs_value), b_));
+	case ComparisonDirection::kGt:
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
+				            EmitExtractReal(lhs_value),
+					    EmitExtractReal(rhs_value), b_),
+                    And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+				                EmitExtractReal(lhs_value),
+						EmitExtractReal(rhs_value), b_),
+                        llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
+                                 EmitExtractImag(lhs_value),
+				 EmitExtractImag(rhs_value), b_)));
         default:
           return Unimplemented(
               "complex comparison '%s'",
