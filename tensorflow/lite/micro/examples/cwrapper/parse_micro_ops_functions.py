@@ -57,7 +57,7 @@ def gen_model_functions(function_list, all_ops_code):
     #template = "  resolver.AddBuiltin(tflite::BuiltinOperator_{0}, tflite::ops::micro::Register_{0}());"
     template = "    resolver.{0}"
     for function in sorted(list(function_list)): # sort so always in same order
-        M.append(template.format(all_ops_code[function]))
+        M.append(template.format(all_ops_code[function].replace('BuiltinOperator','tflite::BuiltinOperator').replace('Register_','tflite::ops::micro::Register_')))
 
     return M
 
