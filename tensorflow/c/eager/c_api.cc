@@ -1483,9 +1483,14 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
   context->EndStep();
 }
 
+const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+  return tensorflow::wrap(
+      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
+}
+
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   tensorflow::AttrValueMap m;
-  attrs->attributes->FillAttrValueMap(&m);
+  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
@@ -1497,8 +1502,8 @@ void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  attrs->attributes->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(attrs->attributes->op_name());
+  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
+  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
@@ -1619,9 +1624,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    TFE_OpAttrs attributes(&op->Attrs());
     device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    &attributes, num_retvals, outputs.data(), &status, info_);
+                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+                    info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
         retvals[i] = tensorflow::TensorHandleFromInterface(

@@ -1591,15 +1591,11 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   TFE_Op* var_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  // There is currently no API to fetch attributes from an operation, fetching
-  // happens only as an implementation detail of custom devices.
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(var_op));
-  TFE_OpAttrs attributes{&operation->Attrs()};
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TFE_Op* copy_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(copy_op, "dtype", TF_FLOAT);
-  TFE_OpAddAttrs(copy_op, &attributes);
+  TFE_OpAddAttrs(copy_op, attributes);
   unsigned char is_list = 0;
   ASSERT_EQ(TF_ATTR_TYPE,
             TFE_OpGetAttrType(copy_op, "dtype", &is_list, status));
@@ -1631,14 +1627,10 @@ TEST(CAPI, TestTFE_OpAttrsSerialize) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  // There is currently no API to fetch attributes from an operation, fetching
-  // happens only as an implementation detail of custom devices.
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(var_op));
-  TFE_OpAttrs attributes{&operation->Attrs()};
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TF_Buffer* serialized_attr_values = TF_NewBuffer();
-  TFE_OpAttrsSerialize(&attributes, serialized_attr_values, status);
+  TFE_OpAttrsSerialize(attributes, serialized_attr_values, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   tensorflow::NameAttrList name_and_attrs;
   ASSERT_TRUE(name_and_attrs.ParseFromArray(serialized_attr_values->data,
