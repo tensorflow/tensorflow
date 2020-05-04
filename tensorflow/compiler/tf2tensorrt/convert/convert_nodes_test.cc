@@ -1356,10 +1356,8 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // TODO(laigd): test fp16 and int8 support for more converters.
   void BuildAndRun(const DataVec& input_data, DataVec* output_data,
                    const int batch_size = 1) {
-    // TODO(tamas) the precision_mode arg is not used anymore, remove it
     // Mark the output tensor as TRT engine output.
     std::vector<Converter::EngineOutputInfo> output_info;
     for (const auto& data : *output_data) {
@@ -1693,8 +1691,8 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Values(DT_FLOAT),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
-// Build and the converted network. Check output tensor shape. Test output
-// values using matcher.
+// Builds and runs the converted network. Checks output tensor shape. Tests
+// output values using a matcher.
 template <DataType dtype>
 void BuildAndRunConvertedNetwork(
     const string& name, OpConverterTest* test, const TestParamBase& p,
