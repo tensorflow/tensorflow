@@ -838,35 +838,33 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       gpusparseDnMatDescr_t matB, matC;
 
       // NOTE: the following APIs are not available in ROCM
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(&matA, m, k, nnz,
-                                  const_cast<int*>(a.row_ptr.data()),
-                                  const_cast<int*>(a.col_ind.data()),
-                                  const_cast<T*>(a.values.data()),
-                                  CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                  CUSPARSE_INDEX_BASE_ZERO, CUDADataType<T>::type));
+      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(
+          &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
+          const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
+          CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
+          CUDADataType<T>::type));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnMat(&matB, n, k, ldb,
-                                  const_cast<T*>(b.data()),
-                                  CUDADataType<T>::type, CUSPARSE_ORDER_COL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          cusparseCreateDnMat(&matB, n, k, ldb, const_cast<T*>(b.data()),
+                              CUDADataType<T>::type, CUSPARSE_ORDER_COL));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnMat(&matC, m, n, ldc, c.data(),
-                                  CUDADataType<T>::type, CUSPARSE_ORDER_COL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          cusparseCreateDnMat(&matC, m, n, ldc, c.data(), CUDADataType<T>::type,
+                              CUSPARSE_ORDER_COL));
 
       size_t bufferSize = 0;
-      TF_RETURN_IF_ERROR(
-          cuda_sparse.SpMMBufferSize(transA, transB, &alpha, matA, matB, &beta,
-                                     matC, CUSPARSE_MM_ALG_DEFAULT,
-                                     &bufferSize));
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
+          transA, transB, &alpha, matA, matB, &beta, matC,
+          CUSPARSE_MM_ALG_DEFAULT, &bufferSize));
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
-      TF_RETURN_IF_ERROR(
-          cuda_sparse.SpMM(transA, transB, &alpha, matA, matB, &beta,
-                           matC, CUSPARSE_MM_ALG_DEFAULT,
-                           buffer.flat<int8>().data()));
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
+                                          &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
+                                          buffer.flat<int8>().data()));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matC));
@@ -897,14 +895,12 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA
 
-
       TF_RETURN_IF_ERROR(
           cuda_sparse.Csrmm(transA, transB, m, n, k, nnz, &alpha, descrA,
                             a.values.data(), a.row_ptr.data(), a.col_ind.data(),
                             b.data(), ldb, &beta, c.data(), ldc));
 
 #endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
-
     }
 
     return Status::OK();

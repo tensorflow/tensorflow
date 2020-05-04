@@ -26,8 +26,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "third_party/gpus/cuda/include/cusparse.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cusparse.h"
 
 using gpusparseStatus_t = cusparseStatus_t;
 using gpusparseOperation_t = cusparseOperation_t;
@@ -253,7 +253,6 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-coo2csr.
   Status Coo2csr(const int* cooRowInd, int nnz, int m, int* csrRowPtr) const;
 
-
 #if CUDA_VERSION < 10020
   // Sparse-dense matrix multiplication C = alpha * op(A) * op(B)  + beta * C,
   // where A is a sparse matrix in CSR format, B and C are dense tall
@@ -275,13 +274,14 @@ class GpuSparse {
                const Scalar* B, int ldb, const Scalar* beta_host, Scalar* C,
                int ldc) const;
 #else
-  // Workspace size query for sparse-dense matrix multiplication. Helper function
-  // for SpMM which computes y = alpha * op(A) * op(B) + beta * C, where A is
-  // a sparse matrix in CSR format, B and C are dense matricies in column-major
-  // format. Returns needed workspace size in bytes.
+  // Workspace size query for sparse-dense matrix multiplication. Helper
+  // function for SpMM which computes y = alpha * op(A) * op(B) + beta * C,
+  // where A is a sparse matrix in CSR format, B and C are dense matricies in
+  // column-major format. Returns needed workspace size in bytes.
   template <typename Scalar>
-  Status SpMMBufferSize(gpusparseOperation_t transA, gpusparseOperation_t transB,
-                        const Scalar* alpha, const gpusparseSpMatDescr_t matA,
+  Status SpMMBufferSize(gpusparseOperation_t transA,
+                        gpusparseOperation_t transB, const Scalar* alpha,
+                        const gpusparseSpMatDescr_t matA,
                         const gpusparseDnMatDescr_t matB, const Scalar* beta,
                         gpusparseDnMatDescr_t matC, gpusparseSpMMAlg_t alg,
                         size_t* bufferSize) const;
@@ -323,15 +323,14 @@ class GpuSparse {
   // Computes workspace size for sparse - sparse matrix addition of matrices
   // stored in CSR format.
   template <typename Scalar>
-  Status CsrgeamBufferSizeExt(int m, int n, const Scalar* alpha,
-                 const gpusparseMatDescr_t descrA, int nnzA,
-                 const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
-                 const int* csrSortedColIndA, const Scalar* beta,
-                 const gpusparseMatDescr_t descrB, int nnzB,
-                 const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
-                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
-                 Scalar* csrSortedValC, int* csrSortedRowPtrC,
-                 int* csrSortedColIndC, size_t* bufferSize);
+  Status CsrgeamBufferSizeExt(
+      int m, int n, const Scalar* alpha, const gpusparseMatDescr_t descrA,
+      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+      const int* csrSortedColIndA, const Scalar* beta,
+      const gpusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+      const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+      const gpusparseMatDescr_t descrC, Scalar* csrSortedValC,
+      int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize);
 
   // Computes sparse-sparse matrix addition of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
@@ -365,15 +364,12 @@ class GpuSparse {
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.  This is part zero: calculate required workspace
   // size.
-  template<typename Scalar>
-  Status CsrgemmBufferSize(int m, int n, int k,
-                           const gpusparseMatDescr_t descrA, int nnzA,
-                           const int* csrSortedRowPtrA,
-                           const int* csrSortedColIndA,
-                           const gpusparseMatDescr_t descrB, int nnzB,
-                           const int* csrSortedRowPtrB,
-                           const int* csrSortedColIndB,
-                           csrgemm2Info_t info, size_t* workspaceBytes);
+  template <typename Scalar>
+  Status CsrgemmBufferSize(
+      int m, int n, int k, const gpusparseMatDescr_t descrA, int nnzA,
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+      const gpusparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
+      const int* csrSortedColIndB, csrgemm2Info_t info, size_t* workspaceBytes);
 #endif
 
   // Computes sparse-sparse matrix multiplication of matrices
@@ -419,13 +415,12 @@ class GpuSparse {
                  int* csrSortedColIndC);
 #else
   template <typename Scalar>
-  Status Csrgemm(int m, int n, int k,
-                 const gpusparseMatDescr_t descrA, int nnzA,
-                 const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
-                 const int* csrSortedColIndA, const gpusparseMatDescr_t descrB,
-                 int nnzB, const Scalar* csrSortedValB,
-                 const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-                 const gpusparseMatDescr_t descrC,
+  Status Csrgemm(int m, int n, int k, const gpusparseMatDescr_t descrA,
+                 int nnzA, const Scalar* csrSortedValA,
+                 const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+                 const gpusparseMatDescr_t descrB, int nnzB,
+                 const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
+                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, const csrgemm2Info_t info,
                  void* workspace);

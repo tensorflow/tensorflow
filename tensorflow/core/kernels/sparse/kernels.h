@@ -174,8 +174,7 @@ struct CSRStructureModifyingFunctor {
   virtual Status GetOutputStructure(const ConstCSRComponent<T>& a,
                                     const ConstCSRComponent<T>& b,
                                     TTypes<int32>::UnalignedVec c_row_ptr,
-                                    int* output_nnz,
-                                    void* workspace) = 0;
+                                    int* output_nnz, void* workspace) = 0;
 
   virtual Status Compute(const ConstCSRComponent<T>& a,
                          const ConstCSRComponent<T>& b, CSRComponent<T>* c,

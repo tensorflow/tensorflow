@@ -462,9 +462,9 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                                               rows + 1);
 
       int c_nnz_i;
-      OP_REQUIRES_OK(ctx, csr_gemm.GetOutputStructure(a_comp, b_comp,
-                                                      c_row_ptr_i, &c_nnz_i,
-                                                      workspace));
+      OP_REQUIRES_OK(ctx,
+                     csr_gemm.GetOutputStructure(a_comp, b_comp, c_row_ptr_i,
+                                                 &c_nnz_i, workspace));
       c_batch_ptr(i + 1) = c_batch_ptr(i) + c_nnz_i;
     }
 
@@ -604,8 +604,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
   }
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
-                          const ConstCSRComponent<T>& b,
-                          size_t* bufferSize) {
+                          const ConstCSRComponent<T>& b, size_t* bufferSize) {
     DCHECK(initialized_);
     const int m =
         a.dense_shape_host(a.dense_shape_host.size() - (transpose_a_ ? 1 : 2));
@@ -624,9 +623,9 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         b.dense_shape_host(b.dense_shape_host.size() - (transpose_b_ ? 2 : 1));
 
     TF_RETURN_IF_ERROR(cuda_sparse_.CsrgemmBufferSize<T>(
-        m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(),
-        a.col_ind.data(), descrB_.descr(), nnzB, b.row_ptr.data(),
-        b.col_ind.data(), info_, bufferSize));
+        m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(), a.col_ind.data(),
+        descrB_.descr(), nnzB, b.row_ptr.data(), b.col_ind.data(), info_,
+        bufferSize));
 
     return Status::OK();
   }
@@ -663,10 +662,9 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         b.col_ind.data(), descrC_.descr(), c_row_ptr.data(), output_nnz));
 #else
     TF_RETURN_IF_ERROR(cuda_sparse_.CsrgemmNnz(
-        m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(),
-        a.col_ind.data(), descrB_.descr(), nnzB, b.row_ptr.data(),
-        b.col_ind.data(), descrC_.descr(), c_row_ptr.data(), output_nnz,
-        info_, workspace));
+        m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(), a.col_ind.data(),
+        descrB_.descr(), nnzB, b.row_ptr.data(), b.col_ind.data(),
+        descrC_.descr(), c_row_ptr.data(), output_nnz, info_, workspace));
 #endif
 
     if (*output_nnz < 0) {
@@ -708,11 +706,10 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         c->values.data(), c->row_ptr.data(), c->col_ind.data()));
 #else
     TF_RETURN_IF_ERROR(cuda_sparse_.Csrgemm(
-        m, n, k, descrA_.descr(), nnzA, a.values.data(),
-        a.row_ptr.data(), a.col_ind.data(), descrB_.descr(), nnzB,
-        b.values.data(), b.row_ptr.data(), b.col_ind.data(),
-        descrC_.descr(), c->values.data(), c->row_ptr.data(), c->col_ind.data(),
-        info_, workspace));
+        m, n, k, descrA_.descr(), nnzA, a.values.data(), a.row_ptr.data(),
+        a.col_ind.data(), descrB_.descr(), nnzB, b.values.data(),
+        b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), c->values.data(),
+        c->row_ptr.data(), c->col_ind.data(), info_, workspace));
 #endif
 
     // TODO(ebrevdo): Add a flag to CSRSparseMatrix whether matrix

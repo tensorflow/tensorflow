@@ -108,7 +108,7 @@ class CSRSparseMatrixAddFunctor {
     set_zero(d, c_row_ptr_t.flat<int32>());
 
     size_t maxWorkspaceSize = 0;
-    for (int i=0; i < batch_size; ++i) {
+    for (int i = 0; i < batch_size; ++i) {
       ConstCSRComponent<T> a_comp{a.row_pointers_vec(i), a.col_indices_vec(i),
                                   a.values_vec<T>(i), a_dense_shape};
       ConstCSRComponent<T> b_comp{b.row_pointers_vec(i), b.col_indices_vec(i),
@@ -140,9 +140,8 @@ class CSRSparseMatrixAddFunctor {
       TTypes<int32>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
                                               rows + 1);
       int c_nnz_i;
-      TF_RETURN_IF_ERROR(
-          csr_geam.GetOutputStructure(a_comp, b_comp, c_row_ptr_i, &c_nnz_i,
-                                      workspace));
+      TF_RETURN_IF_ERROR(csr_geam.GetOutputStructure(
+          a_comp, b_comp, c_row_ptr_i, &c_nnz_i, workspace));
       c_batch_ptr(i + 1) = c_batch_ptr(i) + c_nnz_i;
     }
 
@@ -290,8 +289,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   }
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
-                          const ConstCSRComponent<T>& b,
-                          size_t* bufferSize) {
+                          const ConstCSRComponent<T>& b, size_t* bufferSize) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -310,12 +308,11 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
     TF_RETURN_IF_ERROR(cuda_sparse_.CsrgeamBufferSizeExt(
         m, n, &alpha_, descrA_.descr(), nnzA, a.values.data(), a.row_ptr.data(),
         a.col_ind.data(), &beta_, descrB_.descr(), nnzB, b.values.data(),
-        b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), null_T,
-        null_int, null_int, bufferSize));
+        b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), null_T, null_int,
+        null_int, bufferSize));
 
     return Status::OK();
   }
-
 
   Status GetOutputStructure(const ConstCSRComponent<T>& a,
                             const ConstCSRComponent<T>& b,
