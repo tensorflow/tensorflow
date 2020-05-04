@@ -188,6 +188,18 @@ TF_LITE_MICRO_TEST(Cos) {
       output_data);
 }
 
+TF_LITE_MICRO_TEST(Tanh) {
+  constexpr int output_dims_count = 4;
+  float output_data[output_dims_count];
+  tflite::testing::TestElementwiseFloat(
+      tflite::BuiltinOperator_TANH,   // TANH operator
+      {2, 2, 2},                      // Input shape
+      {0, 3.1415926, -3.1415926, 1},  // Input values
+      {2, 2, 2},                      // Output shape
+      {0, 0.99627, -0.99627, 0.76159},// Output values
+      output_data);
+}
+
 TF_LITE_MICRO_TEST(Log) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
