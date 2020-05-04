@@ -1578,8 +1578,9 @@ class HuberLossTest(test.TestCase):
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
-  def test_all_correct(self):
-    # Test case for GitHub issue 39004.
+  def test_loss_with_non_default_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/39004
     self.setup()
     h_obj = losses.Huber()
     try:
