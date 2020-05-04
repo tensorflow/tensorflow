@@ -34,7 +34,7 @@ tflite::MicroInterpreter* interpreter = nullptr;
 TfLiteTensor* input = nullptr;
 
 // An area of memory to use for input, output, and intermediate arrays.
-constexpr int kTensorArenaSize = 73 * 1024;
+constexpr int kTensorArenaSize = 93 * 1024;
 static uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
