@@ -438,7 +438,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
   def __repr__(self):
     return '<StructuredTensor(fields={%s}, shape=%s)>' % (', '.join(
-        '%s: %s' % (k, v) for k, v in sorted(self._fields.items())),
+        '"%s": %s' % (k, v) for k, v in sorted(self._fields.items())),
         self._shape)
 
   #=============================================================================
