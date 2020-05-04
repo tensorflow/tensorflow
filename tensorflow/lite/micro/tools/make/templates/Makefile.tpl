@@ -42,9 +42,9 @@ MICROLITE_LIB = libtensorflow-microlite.a
 
 
 # Creates a tensorflow-litemicro.a which excludes any example code.
-$(MICROLITE_LIB): tensorflow/lite/schema/schema_generated.h $(LIBRARY_OBJS)
+$(MICROLITE_LIB): tensorflow/lite/schema/schema_generated.h $(OBJS)
 	@mkdir -p $(dir $@)
-	$(AR) $(ARFLAGS) $(MICROLITE_LIB) $(LIBRARY_OBJS)
+	$(AR) $(ARFLAGS) $(MICROLITE_LIB) $(OBJS)
 
 all: %{EXECUTABLE}%
 

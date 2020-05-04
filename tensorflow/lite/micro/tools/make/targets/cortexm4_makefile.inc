@@ -1,7 +1,7 @@
 # Settings for CortexM4 generic.
 ifeq ($(TARGET), cortexm4)
   TARGET_ARCH := cortex-m4
-  TARGET_TOOLCHAIN_ROOT := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
+  TARGET_TOOLCHAIN_ROOT := ${TENSORFLOW_ROOT}/$(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
   # These are microcontroller-specific rules for converting the ELF output
