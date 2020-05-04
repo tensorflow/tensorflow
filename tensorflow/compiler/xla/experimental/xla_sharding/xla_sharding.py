@@ -243,3 +243,54 @@ def split(tensor,
       tensor, split_dimension, num_devices, input_shape).apply_to_tensor(
           tensor, assign_tuple_sharding=assign_tuple_sharding)
   return tensor
+
+
+def get_op_sharding(op):
+  """Returns sharding attribute of an op.
+
+  Args:
+    op: a TensorFlow op.
+
+  Returns:
+    The attribute representing XLA sharding on this op.
+  """
+  return op.get_attr('_XlaSharding')
+
+
+def auto_to_manual_spmd_partition(tensor, manual_sharding):
+  """Switches from automatic SPMD partitioning to manual partitioning.
+
+  Converts a full-shaped tensor (to be automatically partitioned by SPMD
+  partitioner) to a shard-shaped tensor to be consumed by manually partitioned
+  ops.
+
+  Args:
+    tensor: A tf.Tensor in full shape.
+    manual_sharding: a serialized string of OpSharding to be used in manual
+      partitioning.
+
+  Returns:
+    A shard-shaped tensor to be consumed by manually partitioned ops.
+  """
+  return tf2xla.spmd_full_to_shard_shape(
+      tensor, manual_sharding=manual_sharding)
+
+
+def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
+  """Switches from manual partitioning to automatic SPMD partitioning.
+
+  Converts a shard-shaped tensor (manually partitioned in SPMD-style) to a
+  full-shaped tensor to be partitioned automatically by the SPMD partitioner.
+
+  Args:
+    tensor: A tf.Tensor in shard shape.
+    manual_sharding: a serialized string of OpSharding to be used in manual
+      partitioning.
+    full_shape: the shape of tensor before partitioning.
+
+  Returns:
+    A full-shaped tensor to be partitioned automatically by the SPMD
+    partitioner.
+  """
+  return tf2xla.spmd_shard_to_full_shape(
+      tensor, manual_sharding=manual_sharding, full_shape=full_shape)
