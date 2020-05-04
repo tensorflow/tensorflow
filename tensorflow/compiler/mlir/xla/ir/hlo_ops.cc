@@ -842,6 +842,51 @@ void ConcatenateOp::getCanonicalizationPatterns(
   results.insert<ConcatenateOperandRemoval>(context);
 }
 
+template <typename T>
+static Attribute foldConcatenateHelper(ConcatenateOp* op,
+                                       ArrayRef<Attribute> operands) {
+  auto axis = op->dimension().getLimitedValue();
+  auto type = op->getType().cast<ShapedType>();
+
+  SmallVector<T, 6> values;
+  auto shape = type.getShape();
+
+  size_t top_size = 1;
+  for (int i = 0; i < axis; i++) {
+    top_size = top_size * shape[i];
+  }
+
+  for (size_t i = 0; i < top_size; i++) {
+    for (auto operand : operands) {
+      DenseElementsAttr attr = operand.cast<DenseElementsAttr>();
+      size_t bottom_size = attr.getNumElements() / top_size;
+      auto iter = attr.getValues<T>().begin() + i * bottom_size;
+      values.append(iter, iter + bottom_size);
+    }
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+static Attribute foldConcatenate(ConcatenateOp* op,
+                                 ArrayRef<Attribute> operands) {
+  for (auto operand : operands) {
+    if (!operand) return {};
+  }
+
+  auto type = op->getResult().getType().cast<ShapedType>();
+  auto etype = type.getElementType();
+  if (etype.isa<IntegerType>()) {
+    return foldConcatenateHelper<APInt>(op, operands);
+  }
+
+  if (etype.isa<FloatType>()) {
+    return foldConcatenateHelper<APFloat>(op, operands);
+  }
+
+  return {};
+}
+
 OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (getNumOperands() == 1) return getOperand(0);
 
@@ -849,6 +894,10 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (!type.hasStaticShape()) return {};
 
   auto axis = dimension().getLimitedValue();
+  if (auto attr = foldConcatenate(this, operands)) {
+    return attr;
+  }
+
   llvm::SmallVector<Value, 6> new_operands;
   for (auto operand : getOperands()) {
     auto ty = operand.getType().cast<ShapedType>();

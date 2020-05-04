@@ -43,6 +43,54 @@ func @concatenate_empty_float(%arg0: tensor<0xf32>, %arg1: tensor<0xf32>) -> ten
   return %0 : tensor<0xf32>
 }
 
+// CHECK-LABEL: concatenate_const_1D
+func @concatenate_const_1D() -> tensor<4xi32> {
+  // CHECK: [[VAL:%.+]]= xla_hlo.constant dense<[0, 1, 2, 3]>
+  %0 = xla_hlo.constant dense<[0, 1]> : tensor<2xi32>
+  %1 = xla_hlo.constant dense<[2, 3]> : tensor<2xi32>
+  %2 = "xla_hlo.concatenate"(%0, %1) { dimension = 0 : i64 } : (tensor<2xi32>, tensor<2xi32>) -> tensor<4xi32>
+
+  // CHECK: return [[VAL]]
+  return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: concatenate_const_1D_float
+func @concatenate_const_1D_float() -> tensor<4xf32> {
+  // CHECK: [[VAL:%.+]] = xla_hlo.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]>
+
+  %0 = xla_hlo.constant dense<[0.0, 1.0]> : tensor<2xf32>
+  %1 = xla_hlo.constant dense<[2.0, 3.0]> : tensor<2xf32>
+  %2 = "xla_hlo.concatenate"(%0, %1) { dimension = 0 : i64 } : (tensor<2xf32>, tensor<2xf32>) -> tensor<4xf32>
+
+  // CHECK: return [[VAL]]
+  return %2 : tensor<4xf32>
+}
+
+// CHECK-LABEL: concatenate_const_2D_vertical
+func @concatenate_const_2D_vertical() -> tensor<2x2xi32> {
+  // CHECK: [[VAL:%.+]]= xla_hlo.constant dense<[
+  // CHECK-SAME: [0, 1], [2, 3]
+  // CHECK-SAME: ]>
+  %0 = xla_hlo.constant dense<[[0, 1]]> : tensor<1x2xi32>
+  %1 = xla_hlo.constant dense<[[2, 3]]> : tensor<1x2xi32>
+  %2 = "xla_hlo.concatenate"(%0, %1) { dimension = 0 : i64 } : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
+
+  // CHECK: return [[VAL]]
+  return %2 : tensor<2x2xi32>
+}
+
+// CHECK-LABEL: concatenate_const_2D_horizontal
+func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
+  // CHECK: [[VAL:%.+]]= xla_hlo.constant dense<[
+  // CHECK-SAME: [0, 2], [1, 3]
+  // CHECK-SAME: ]>
+  %0 = xla_hlo.constant dense<[[0], [1]]> : tensor<2x1xi32>
+  %1 = xla_hlo.constant dense<[[2], [3]]> : tensor<2x1xi32>
+  %2 = "xla_hlo.concatenate"(%0, %1) { dimension = 1 : i64 } : (tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
+
+  // CHECK: return [[VAL]]
+  return %2 : tensor<2x2xi32>
+}
 
 // CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
