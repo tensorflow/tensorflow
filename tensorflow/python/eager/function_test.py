@@ -3743,8 +3743,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'      <1>: int32 Tensor, shape=\(\)\n'
                   r'      <2>: RaggedTensorSpec\(.*\)\n'
                   r'      <3>: RaggedTensorSpec\(.*\)')
-    self.assertRegexpMatches(c3.pretty_printed_signature(),
-                             c3_summary + '\n' + c3_details)
+
+    # python 3.5 does not gurantee deterministic iteration of dict contents
+    # which can lead mismatch on pretty_printed_signature output for "Args"
+    if sys.version_info >= (3, 6):
+      self.assertRegexpMatches(c3.pretty_printed_signature(),
+                               c3_summary + '\n' + c3_details)
 
     # pylint: disable=keyword-arg-before-vararg
     @def_function.function
