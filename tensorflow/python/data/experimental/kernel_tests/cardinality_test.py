@@ -134,6 +134,15 @@ def _test_combinations():
        lambda: dataset_ops.Dataset.range(5).filter(lambda _: True).take(2),
        cardinality.UNKNOWN),
       ("Take4", lambda: dataset_ops.Dataset.range(5).repeat().take(2), 2),
+      ("Unbatch1",
+       lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True).unbatch(), 4),
+      ("Unbatch2",
+       lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=False).unbatch(), cardinality.UNKNOWN),
+      ("Unbatch3",
+       lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True).filter(lambda _: True).unbatch(),
+       cardinality.UNKNOWN),
+      ("Unbatch4", lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True).repeat().unbatch(),
+       cardinality.INFINITE),
       ("Window1", lambda: dataset_ops.Dataset.range(5).window(
           size=2, shift=2, drop_remainder=True), 2),
       ("Window2", lambda: dataset_ops.Dataset.range(5).window(
