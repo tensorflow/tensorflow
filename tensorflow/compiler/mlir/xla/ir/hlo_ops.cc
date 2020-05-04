@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/APFloat.h"
@@ -1460,6 +1461,53 @@ BINARY_BUILDER(SubOp);
 BINARY_BUILDER(XorOp);
 
 #undef BINARY_BUILDER
+
+template <typename Op, typename ElementType = Type, typename ValType,
+          typename Convert>
+static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0] || !attrs[1]) return {};
+  if (op->broadcast_dimensions().hasValue()) return {};
+
+  DenseElementsAttr lhs = attrs[0].dyn_cast<DenseElementsAttr>();
+  DenseElementsAttr rhs = attrs[1].dyn_cast<DenseElementsAttr>();
+  if (!lhs || !rhs) return {};
+
+  ShapedType type = op->getType().template cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return {};
+  }
+
+  Type etype = type.getElementType();
+
+  // Evaluate for integer values.
+  if (!etype.isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<ValType, 6> values;
+  values.reserve(lhs.getNumElements());
+  for (const auto zip :
+       llvm::zip(lhs.getValues<ValType>(), rhs.getValues<ValType>())) {
+    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+#define BINARY_FOLDER(Op, Func)                                                \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
+      return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
+      return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return {};                                                                 \
+  }
+
+BINARY_FOLDER(AddOp, std::plus);
+BINARY_FOLDER(SubOp, std::minus);
+BINARY_FOLDER(MulOp, std::multiplies);
+
+#undef BINARY_FOLDER
 
 //===----------------------------------------------------------------------===//
 // SliceOp

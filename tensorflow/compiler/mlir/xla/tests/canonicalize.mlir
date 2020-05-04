@@ -1,5 +1,50 @@
 // RUN: xla-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input-on-failure
 
+// CHECK-LABEL: add_fold
+func @add_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<[1, 2, 3, 4]> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<[5, 6, 7, 8]> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<[6, 8, 10, 12]>
+  %2 = "xla_hlo.add"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: add_scalar_fold
+func @add_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<1> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<6>
+  %2 = "xla_hlo.add"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: add_fold_float
+func @add_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 6.0, 7.0, 8.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[6.000000e+00, 8.000000e+00, 1.000000e+01, 1.200000e+01]>
+  %2 = "xla_hlo.add"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: sub_scalar_fold
+func @sub_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<5> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<1> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<4>
+  %2 = "xla_hlo.subtract"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: multiply_scalar_fold
+func @multiply_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<5> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<3> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<15>
+  %2 = "xla_hlo.multiply"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
 // CHECK-LABEL: concatenate_noop
 func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG:%.+]]: tensor<4xi32>
