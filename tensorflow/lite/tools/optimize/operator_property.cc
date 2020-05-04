@@ -807,6 +807,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_MUL:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
+      property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_PACK:
