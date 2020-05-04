@@ -73,7 +73,7 @@ input(s) and output(s) which remain float.* -->
 
 *We strongly recommend trying this approach first.*
 
-| Run in Google Colab | <a target="_blank" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/train/train_micro_speech_model.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png"/>train_micro_speech_model.ipynb</a> |
+| Run in Google Colaboratory | <a target="_blank" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/train/train_micro_speech_model.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png"/>train_micro_speech_model.ipynb</a> |
 | ------------- |-------------|
 
 **Estimated Training Time:** ~2 hours.
