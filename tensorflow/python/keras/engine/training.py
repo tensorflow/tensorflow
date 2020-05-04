@@ -1149,6 +1149,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             epochs=1,
             steps=data_handler.inferred_steps)
 
+      logs = {}
       test_function = self.make_test_function()
       self._test_counter.assign(0)
       callbacks.on_test_begin()
