@@ -47,6 +47,7 @@ const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
 const absl::string_view kMemoryProfile = "memory_profile";
+const absl::string_view kXPlane = "xplane";
 
 HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
   if (run_env.device_type() == "GPU") return HardwareType::GPU;
@@ -75,6 +76,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                       ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
+  AddToolData(ToolName(kXPlane), xspace, response);
   if (tools.empty()) return Status::OK();
   if (tools.contains(kTraceViewer)) {
     Trace trace;
