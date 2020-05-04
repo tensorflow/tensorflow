@@ -631,6 +631,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":composite_device",
         ":device",
         ":device_mgr",
         ":device_set",
@@ -651,6 +652,7 @@ cc_library(
         ":process_util",
         ":rendezvous_mgr",
         ":rendezvous_util",
+        ":replicate_per_replica_nodes",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -658,6 +660,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
