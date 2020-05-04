@@ -186,7 +186,7 @@ LogicalResult Verify(ParallelExecuteOp op) {
 }  // namespace
 
 // static
-void ParallelExecuteOp::build(Builder* builder, OperationState& state,
+void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions,
                               llvm::ArrayRef<Type> output_types) {
   DCHECK_GE(num_regions, 2);
@@ -462,22 +462,22 @@ void BuildReplicateOp(
 }  // anonymous namespace
 
 void ReplicateOp::build(
-    Builder* builder, OperationState& state, int n,
+    OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
     llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
-  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
 }
 
 void ReplicateOp::build(
-    Builder* builder, OperationState& state, int n,
+    OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
     llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
     Operation::result_type_range replica_output_types) {
-  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
 }
 

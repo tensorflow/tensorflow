@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -34,9 +37,10 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    op_to_reset->operation->Clear();
-    status->status =
-        op_to_reset->operation->Reset(op_or_function_name, raw_device_name);
+    tensorflow::AbstractOperationInterface* op =
+        tensorflow::unwrap(op_to_reset);
+    op->Clear();
+    status->status = op->Reset(op_or_function_name, raw_device_name);
   } else {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "op_to_reset should not be nullptr");
@@ -45,13 +49,13 @@ void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetShouldStoreGraphs(false);
 }
 
@@ -483,7 +487,7 @@ void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
 void TFE_ContextSetThreadLocalMirroringPolicy(
     TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetThreadLocalMirroringPolicy(
       static_cast<tensorflow::ContextMirroringPolicy>(policy));
 }
@@ -494,7 +498,7 @@ void TFE_ContextSetThreadLocalMirroringPolicy(
 extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
     TFE_Context* ctx) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   return static_cast<TFE_ContextMirroringPolicy>(context->GetMirroringPolicy());
 }
 
@@ -530,7 +534,7 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
   tensorflow::EagerOperation* operation =
-      tensorflow::OperationFromInterface(op->operation);
+      tensorflow::OperationFromInterface(tensorflow::unwrap(op));
   operation->SetCancellationManager(
       &cancellation_manager->cancellation_manager);
   status->status = tensorflow::Status::OK();
@@ -557,19 +561,19 @@ void TFE_ExecutorClearError(TFE_Executor* executor) {
 
 void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetExecutorForThread(executor->executor());
 }
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   return new TFE_Executor(&context->Executor());
 }
 
 void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto address_space = tensorflow::DeviceNameUtils::AddressSpace(
       context->HostCPU()->parsed_name());
   auto str = tensorflow::DeviceNameUtils::ParsedNameToString(address_space);
@@ -585,7 +589,7 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto* function_def = context->FindFunctionDef(function_name);
   if (function_def == nullptr) {
     status->status = tensorflow::errors::NotFound(
@@ -611,13 +615,14 @@ TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
     dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
   }
 
-  if (ctx == nullptr || ctx->context == nullptr) {
+  if (ctx == nullptr) {
     status->status = tensorflow::errors::InvalidArgument("Invalid Context");
     return nullptr;
   }
 
-  tensorflow::AbstractTensorInterface* t = ctx->context->CreateTensor(
-      static_cast<tensorflow::DataType>(dtype), dimvec);
+  tensorflow::AbstractTensorInterface* t =
+      tensorflow::unwrap(ctx)->CreateTensor(
+          static_cast<tensorflow::DataType>(dtype), dimvec);
 
   if (t == nullptr) {
     status->status =
@@ -630,5 +635,6 @@ TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
 
 TFE_TensorHandle* TFE_NewTensorHandleFromTensor(TFE_Context* ctx, TF_Tensor* t,
                                                 TF_Status* status) {
-  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(t->tensor)};
+  return tensorflow::wrap(
+      tensorflow::unwrap(ctx)->CreateLocalHandle(t->tensor));
 }

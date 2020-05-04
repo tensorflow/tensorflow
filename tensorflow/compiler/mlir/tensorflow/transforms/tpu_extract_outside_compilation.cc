@@ -103,6 +103,18 @@ tf_device::LaunchOp CreateLaunchOpForCluster(OpBuilder* builder,
   return launch_op;
 }
 
+// Propagates the return from `parallel_execute_op` to parent replicate
+// op if it exists.
+void PropagateParallelExecuteReturnToReplicate(
+    tf_device::ParallelExecuteOp parallel_execute_op) {
+  // Update the return for the parallel_execute op parent.
+  auto replicate = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
+      parallel_execute_op.getParentOp());
+  if (replicate)
+    replicate.GetBody().getTerminator()->setOperands(
+        parallel_execute_op.execute_outputs());
+}
+
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
 // 'launch` as regions.
 void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
@@ -111,14 +123,8 @@ void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
   // Create parallel_execute regions.  The original TPU cluster computation
   // is the extra region.
   int num_regions = 1 + clusters.size();
-  // TODO(b/154363171): Correctly determine output_types. Add tests to confirm
-  // that the types for parallel_execute_op match the concatenated output
-  // types of the contained regions.
-  // TODO(b/154363171): Remap the results of the `launch` op to use the
-  // results of the `parallel_execute` op.
-  llvm::SmallVector<Type, 8> concatenated_output_types;
   auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
-      launch.getLoc(), num_regions, concatenated_output_types);
+      launch.getLoc(), num_regions, launch.results().getTypes());
 
   // Move outside compilation clusters to parallel_execute regions.
   for (const auto& cluster : llvm::enumerate(clusters)) {
@@ -131,7 +137,10 @@ void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
         CreateLaunchOpForCluster(&builder, cluster_ops.back());
     MoveClusterOpsToLaunchOp(launch_op, cluster_ops);
     builder.setInsertionPointToEnd(&outside_block);
-    builder.create<tf_device::ReturnOp>(launch.getLoc(), launch.getResults());
+    // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
+    // regions either through communication with TPU parallel_execute regions
+    // or modifying parallel_execute returns.
+    builder.create<tf_device::ReturnOp>(launch.getLoc(), ArrayRef<Value>{});
   }
 
   // Move the launch body to last parallel_execute block.
@@ -140,6 +149,11 @@ void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
   builder.setInsertionPointToEnd(&inside_block);
   builder.create<tf_device::ReturnOp>(launch.getLoc(), launch.getResults());
   launch.getOperation()->moveBefore(inside_block.getTerminator());
+
+  PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
+  // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
+  // regions either through communication with TPU parallel_execute regions
+  // or modifying parallel_execute returns.
 }
 
 void TPUExtractOutsideCompilation::runOnFunction() {

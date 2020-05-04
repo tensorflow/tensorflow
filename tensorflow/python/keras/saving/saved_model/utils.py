@@ -69,7 +69,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     inputs = args[inputs_arg_index]
     args = args[inputs_arg_index + 1:]
     outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs)
+    layer.add_loss(losses, inputs=inputs)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This

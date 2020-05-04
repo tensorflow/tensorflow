@@ -19,6 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import pathlib
+import shutil
+import subprocess
+import tempfile
 
 from absl import app
 from absl import flags
@@ -42,15 +45,31 @@ flags.DEFINE_bool(
     'search_hints', True,
     '[UNUSED] Include metadata search hints in the generated files')
 
+# Use this flag to disable bazel generation if you're not setup for it.
+flags.DEFINE_bool('gen_ops', True, 'enable/disable bazel-generated ops')
+
 # __file__ is the path to this file
 DOCS_TOOLS_DIR = pathlib.Path(__file__).resolve().parent
-TENSORFLOW_ROOT = DOCS_TOOLS_DIR.parent.parent
-SOURCE_PATH = TENSORFLOW_ROOT / 'java/src/main/java'
+TENSORFLOW_ROOT = DOCS_TOOLS_DIR.parents[2]
+SOURCE_PATH = TENSORFLOW_ROOT / 'tensorflow/java/src/main/java'
+OP_SOURCE_PATH = (
+    TENSORFLOW_ROOT /
+    'bazel-bin/tensorflow/java/ops/src/main/java/org/tensorflow/op')
 
 
 def main(unused_argv):
+  merged_source = pathlib.Path(tempfile.mkdtemp())
+  shutil.copytree(SOURCE_PATH, merged_source / 'java')
+
+  if FLAGS.gen_ops:
+    subprocess.check_call(
+        ['bazel', 'build', '//tensorflow/java:java_op_gen_sources'],
+        cwd=TENSORFLOW_ROOT)
+    shutil.copytree(OP_SOURCE_PATH, merged_source / 'java/org/tensorflow/ops')
+
   gen_java.gen_java_docs(
-      source_path=SOURCE_PATH,
+      package='org.tensorflow',
+      source_path=merged_source / 'java',
       output_dir=pathlib.Path(FLAGS.output_dir),
       site_path=pathlib.Path(FLAGS.site_path))
 

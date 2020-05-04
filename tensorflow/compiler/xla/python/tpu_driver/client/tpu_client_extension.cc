@@ -32,6 +32,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
 
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
+      .def_property_readonly("platform", &PyTpuClient::platform_name)
       .def("device_count", &PyTpuClient::device_count)
       .def("local_device_count", &PyTpuClient::local_device_count)
       .def("devices", &PyTpuClient::devices)
@@ -91,16 +92,16 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
-           });
-
-  py::class_<PyTpuBuffer>(m, "PyTpuBuffer")
-      .def_static(
-          "from_python",
-          [](const pybind11::object& argument,
-             std::shared_ptr<PyTpuClient> client,
-             std::shared_ptr<Device> device)
-              -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
-            CHECK(device != nullptr);
+           })
+      .def(
+          "buffer_from_pyval",
+          [](std::shared_ptr<PyTpuClient> client,
+             const pybind11::object& argument, std::shared_ptr<Device> device,
+             bool force_copy) -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
+            if (device == nullptr) {
+              TF_RET_CHECK(!client->local_devices().empty());
+              device = client->local_devices().front();
+            }
             auto iter = client->id_to_device().find(device->id());
             if (iter->second != device) {
               return InvalidArgument(
@@ -124,7 +125,25 @@ PYBIND11_MODULE(tpu_client_extension, m) {
             return PyTpuBuffer::FromLiterals(
                 std::move(leaves), tree.shape, std::move(py_buffer_ref),
                 std::move(client), std::move(device));
-          })
+          },
+          py::arg("argument"), py::arg("device") = nullptr,
+          py::arg("force_copy") = false)
+      .def(
+          "compile",
+          [](std::shared_ptr<PyTpuClient> client,
+             const XlaComputation& computation, CompileOptions options)
+              -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
+            py::gil_scoped_release gil_release;
+            return PyTpuExecutable::Compile(
+                computation, options.argument_layouts,
+                &options.executable_build_options, client,
+                options.parameter_is_tupled_arguments);
+          },
+          py::arg("computation"),
+          py::arg("compile_options") = CompileOptions());
+
+  py::class_<PyTpuBuffer>(m, "PyTpuBuffer")
+      .def_property_readonly("client", &PyTpuBuffer::client)
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
@@ -159,31 +178,10 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       });
 
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
-      .def_static("compile", &PyTpuExecutable::Compile,
-                  py::call_guard<py::gil_scoped_release>())
-      .def_static("compile",
-                  [](const XlaComputation& computation,
-                     absl::optional<std::vector<Shape>> argument_layouts,
-                     const ExecutableBuildOptions* build_options,
-                     std::shared_ptr<PyTpuClient> client,
-                     absl::optional<std::vector<std::vector<Device*>>>
-                         device_assignment,
-                     bool tuple_arguments)
-                      -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
-                    py::gil_scoped_release gil_release;
-                    absl::optional<DeviceAssignment> xla_device_assignment;
-                    if (device_assignment) {
-                      TF_ASSIGN_OR_RETURN(
-                          xla_device_assignment,
-                          DevicesToDeviceAssignment(*device_assignment));
-                    }
-                    return PyTpuExecutable::Compile(
-                        computation, argument_layouts, build_options, client,
-                        std::move(xla_device_assignment), tuple_arguments);
-                  })
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
+      .def_property_readonly("client", &PyTpuExecutable::client)
       .def("size_of_generated_code_in_bytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)

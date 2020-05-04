@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_TFLITE_MODEL_READER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_TFLITE_MODEL_READER_H_
 
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/model_builder.h"
@@ -25,6 +26,7 @@ namespace gpu {
 // Generates GraphFloat32 basing on the FlatBufferModel without specifying a
 // delegate.
 absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
+                                 const tflite::OpResolver& op_resolver,
                                  GraphFloat32* graph);
 }  // namespace gpu
 }  // namespace tflite

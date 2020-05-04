@@ -91,6 +91,22 @@ class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating tflite graphs.
 
   Some optimizations may come at the cost of accuracy.
+
+  DEFAULT
+      Default optimization strategy.
+
+      Converter will do its best to improve size and latency based on the
+      information provided.
+      Enhanced optimizations are gained by providing a representative_dataset.
+      This is recommended, and is currently equivalent to the modes below.
+      Currently, weights will be quantized and if representative_dataset is
+      provided, activations for quantizable operations will also be quantized.
+
+  OPTIMIZE_FOR_SIZE
+      Deprecated. Does the same as DEFAULT.
+
+  OPTIMIZE_FOR_LATENCY
+      Deprecated. Does the same as DEFAULT.
   """
 
   # Default optimization strategy.
@@ -103,19 +119,10 @@ class Optimize(enum.Enum):
   # provided, activations for quantizable operations will also be quantized.
   DEFAULT = "DEFAULT"
 
-  # Optimize for size.
-  #
-  # Optimizations that reduce the size of the model.
-  # The model size will be reduced.
-  # Currently, weights will be quantized and if representative_dataset is
-  # provided, activations for quantizable operations will also be quantized.
+  # Deprecated. Does the same as DEFAULT.
   OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
 
-  # Optimize for latency.
-  #
-  # Optimizations that reduce the latency of the model.
-  # Currently, weights will be quantized and if representative_dataset is
-  # provided, activations for quantizable operations will also be quantized.
+  # Deprecated. Does the same as DEFAULT.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):

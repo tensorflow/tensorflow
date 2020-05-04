@@ -72,6 +72,9 @@ class ArrayOpTest(test.TestCase):
             math_ops.cast(array_ops.shape(x), dtypes.float32), dtypes.int32))
     self.assertAllEqual(c.shape.as_list(), [None, None, None])
 
+  def testEmptyMeshgrid(self):
+    self.assertEqual(array_ops.meshgrid(), [])
+
 
 if __name__ == "__main__":
   test.main()

@@ -21,17 +21,21 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -42,6 +46,7 @@ const absl::string_view kTensorflowStats = "tensorflow_stats";
 const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
+const absl::string_view kMemoryProfile = "memory_profile";
 
 HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
   if (run_env.device_type() == "GPU") return HardwareType::GPU;
@@ -106,6 +111,12 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   }
   if (tools.contains(kKernelStats)) {
     AddToolData(ToolName(kKernelStats), op_stats.kernel_stats_db(), response);
+  }
+  if (tools.contains(kMemoryProfile)) {
+    if (const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreads)) {
+      MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
+      AddToolData(ToolName(kMemoryProfile), memory_profile, response);
+    }
   }
   return Status::OK();
 }

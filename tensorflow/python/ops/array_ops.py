@@ -3404,6 +3404,9 @@ def meshgrid(*args, **kwargs):
     ndim = len(args)
     s0 = (1,) * ndim
 
+    if not ndim:
+      return []
+
     # Prepare reshape by inserting dimensions with size 1 where needed
     output = []
     for i, x in enumerate(args):

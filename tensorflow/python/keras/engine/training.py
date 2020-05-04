@@ -509,30 +509,19 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     Returns:
       Boolean, whether the model should run eagerly.
     """
-    if self._run_eagerly is True and not context.executing_eagerly():
-      raise ValueError('You can only set `run_eagerly=True` if eager execution '
-                       'is enabled.')
-    if not self.dynamic:
-      if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
-        # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
-      else:
-        return self._run_eagerly
-    else:
-      if not context.executing_eagerly():
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You must enable eager execution with '
-                         '`tf.enable_eager_execution()`.')
-      if self._run_eagerly is False:
-        # TODO(fchollet): consider using py_func to enable this.
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You cannot set `run_eagerly=False`.')
-      return context.executing_eagerly()
+    if self.dynamic and self._run_eagerly is False:  # pylint:disable=g-bool-id-comparison
+      # TODO(fchollet): consider using py_func to enable this.
+      raise ValueError('Your model contains layers that can only be '
+                       'successfully run in eager execution (layers '
+                       'constructed with `dynamic=True`). '
+                       'You cannot set `run_eagerly=False`.')
+
+    # Run eagerly logic, by priority:
+    # (1) Dynamic models must be run eagerly.
+    # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
+    # (3) Not explicitly setting run_eagerly defaults to TF's global setting.
+    return (self.dynamic or self._run_eagerly or
+            (def_function.RUN_FUNCTIONS_EAGERLY and self._run_eagerly is None))
 
   @run_eagerly.setter
   def run_eagerly(self, value):
@@ -666,8 +655,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           validation_freq=1,
           max_queue_size=10,
           workers=1,
-          use_multiprocessing=False,
-          **kwargs):
+          use_multiprocessing=False):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
@@ -736,7 +724,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               - dataset
               - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
             or `(inputs, targets, sample_weights)`.
-
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
             Note that `validation_data` does not support all the data types that
@@ -816,7 +803,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             `False`. Note that because this implementation relies on
             multiprocessing, you should not pass non-picklable arguments to
             the generator as they can't be passed easily to children processes.
-        **kwargs: Used for backwards compatibility.
 
     Unpacking behavior for iterator-like inputs:
         A common pattern is to pass a tf.data.Dataset, generator, or
@@ -1752,6 +1738,20 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               'automatically be created in the correct distribution '
               'strategy scope.' % (metric, strategy)
           )
+
+    # Model metrics must be created in the same distribution strategy scope
+    # as the model.
+    for opt in nest.flatten(optimizer):
+      for v in getattr(opt, '_weights', []):
+        if not strategy.extended.variable_created_in_scope(v):
+          raise ValueError(
+              'Optimizer (%s) passed to model.compile was created inside of a '
+              'different distribution strategy scope than the model. All '
+              'optimizers must be created in the same distribution strategy '
+              'scope as the model (in this case %s). If you pass in a string '
+              'identifier for an optimizer to compile the optimizer will '
+              'automatically be created in the correct distribution '
+              'strategy scope.' % (opt, strategy))
 
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

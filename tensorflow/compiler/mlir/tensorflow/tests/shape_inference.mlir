@@ -291,6 +291,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %0 : tensor<?x?x?xf32>
   }
 
+  // Tests that tensor_cast result shapes are refined.
+  // CHECK-LABEL: func @tensor_cast_refine
+  func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+    // CHECK: tensor_cast
+    // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
+    %0 = tensor_cast %arg0 : tensor<4xi32> to tensor<*xi32>
+    return %0 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @fold_cast
   func @fold_cast(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK-NOT: Cast
@@ -379,6 +388,17 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       }
       tf_executor.fetch
     }
+    return
+  }
+
+  // CHECK-LABEL: dont_update_for_ref
+  func @dont_update_for_ref() -> () {
+    // CHECK: () -> tensor<4x!tf.f32ref>
+    %11 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<4>, shared_name = ""} : () -> tensor<4x!tf.f32ref>
+    // CHECK: (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    %12 = "tf.Identity"(%11) {device = ""} : (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    // CHECK: (tensor<4xf32>) -> tensor<4xf32>
+    %13 = "tf.Neg"(%12) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
     return
   }
 }

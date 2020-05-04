@@ -231,6 +231,13 @@ inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
 
+struct LowerFunctionalOpsConstants {
+  static constexpr const char* const kLowerUsingSwitchMergeAttr =
+      "_lower_using_switch_merge";
+  static constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
+      "_lower_as_multi_device_function";
+};
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_INLINE_FUNCTION_UTILS_H_

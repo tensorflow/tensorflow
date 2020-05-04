@@ -1488,6 +1488,33 @@ void ProcessFunctionLibraryRuntime::Run(
       });
 }
 
+Status ProcessFunctionLibraryRuntime::RunSync(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    std::vector<Tensor>* rets) const {
+  Notification n;
+  Status s;
+  Run(opts, handle, args, rets, [&n, &s](const Status& status) {
+    s.Update(status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return s;
+}
+
+Status ProcessFunctionLibraryRuntime::RunSync(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame) const {
+  Notification n;
+  Status s;
+  Run(opts, handle, frame, [&n, &s](const Status& status) {
+    s.Update(status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return s;
+}
+
 void ProcessFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,

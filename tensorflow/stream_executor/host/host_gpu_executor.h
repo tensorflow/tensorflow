@@ -46,9 +46,9 @@ class HostExecutor : public internal::StreamExecutorInterface {
   explicit HostExecutor(const PluginConfig &plugin_config);
   ~HostExecutor() override;
 
-  port::Status Init(int device_ordinal, DeviceOptions device_options) override {
-    return port::Status::OK();
-  }
+  // The stack size used for host streams can be set via
+  // device_options.non_portable_tags["host_stack_size"].
+  port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   port::Status GetKernel(const MultiKernelLoaderSpec &spec,
                          KernelBase *kernel) override {
@@ -184,10 +184,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return nullptr;
   }
 
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
-      override {
-    return std::unique_ptr<internal::StreamInterface>(new HostStream());
-  }
+  std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
     return std::unique_ptr<internal::TimerInterface>(new HostTimer());
@@ -197,6 +194,8 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
  private:
   const PluginConfig plugin_config_;
+  // Size of thread stacks for streams in bytes. '0' means "the default size".
+  size_t thread_stack_size_in_bytes_ = 0;
 };
 
 }  // namespace host

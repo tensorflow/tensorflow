@@ -116,6 +116,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
                                           llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
+                                          llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
                                            llvm::Value* value);
 
@@ -156,6 +159,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       PrimitiveType prim_type, llvm::Value* operand_value);
 
   virtual StatusOr<llvm::Value*> EmitComplexSqrt(const HloInstruction* op,
+                                                 PrimitiveType prim_type,
+                                                 llvm::Value* operand_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexCbrt(const HloInstruction* op,
                                                  PrimitiveType prim_type,
                                                  llvm::Value* operand_value);
 

@@ -38,6 +38,7 @@ class EagerClient : public core::RefCounted {
   CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
+  CLIENT_METHOD(RunComponentFunction);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 

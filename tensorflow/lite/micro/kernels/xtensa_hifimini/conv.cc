@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -66,7 +65,7 @@ void ConvPerChannel(const ConvParams& params, const int32* output_multiplier,
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
 
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_p24x2s input_offset_24x2 = AE_MOVPA24(input_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(output_activation_min);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(output_activation_max);
@@ -150,9 +149,6 @@ void ConvPerChannel(const ConvParams& params, const int32* output_multiplier,
               acc_24x2, output_multiplier[out_channel],
               output_shift[out_channel]);
 
-          // Shift from 48bit aligned to 32bit:
-          acc_56 = AE_Q56S_SLAI(acc_56, 16);
-
           // Add output offset, cap activation, and assign to the output:
           acc_56 = AE_ADDQ56(acc_56, output_offset_56);
           acc_56 = AE_MINQ56S(acc_56, output_activation_max_56);
@@ -178,7 +174,7 @@ inline void Conv1x32Input32x32Filter(
     const RuntimeShape& filter_shape, const int8* filter_data,
     const RuntimeShape& bias_shape, const int32* bias_data,
     const RuntimeShape& output_shape, int8* output_data) {
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_p24x2s input_offset_24x2 = AE_MOVPA24(input_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(quantized_activation_max);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(quantized_activation_min);
@@ -227,13 +223,10 @@ inline void Conv1x32Input32x32Filter(
     acc_56 = AE_Q56S_SLAI(acc_56, 8);
     ae_p24x2s acc_24x2 = AE_TRUNCP24Q48(acc_56);
 
-    // Apply quantized multiplier and accumulate result at 48bit
-    // alignment:
+    // Apply quantized multiplier and accumulate result at 48bit alignment.
+    // Convert the (unsigned) 32-bit multiplier down to a 24-bit multiplier.
     acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2, output_multiplier[ch], output_shift[ch]);
-
-    // Shift from 48bit aligned to 32bit:
-    acc_56 = AE_Q56S_SLAI(acc_56, 16);
+        acc_24x2, output_multiplier[ch] >> 8, output_shift[ch]);
 
     // Add output offset, cap activation, and assign to the output:
     acc_56 = AE_ADDQ56(acc_56, output_offset_56);

@@ -197,11 +197,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
             !TensorTypeMatch(node->inputs->data[i], context, kTfLiteInt8))
           return false;
       }
-      // Hexagon only supports concatenation at axis 3.
-      const TfLiteConcatenationParams* concat_params =
-          reinterpret_cast<const TfLiteConcatenationParams*>(
-              node->builtin_data);
-      return (concat_params->axis == 3);
+      return true;
     }
     case kTfLiteBuiltinMaxPool2d: {
       if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
@@ -289,6 +285,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (
           InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}));
     }
+    case kTfLiteBuiltinHardSwish:
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:

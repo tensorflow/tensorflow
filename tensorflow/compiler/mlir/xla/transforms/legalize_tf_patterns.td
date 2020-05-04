@@ -52,7 +52,8 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                               $data_format, FalseBoolAttr:$is_training),
+                         $exponential_avg_factor, $data_format,
+                         FalseBoolAttr:$is_training),
     [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
                                $epsilon, (FeatureDimension $data_format, $x)),
      // We already guaranteed that the last four results has no use so it

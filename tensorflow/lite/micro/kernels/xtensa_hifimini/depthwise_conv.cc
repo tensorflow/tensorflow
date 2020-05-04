@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -69,7 +68,7 @@ inline void DepthwiseConvPerChannel(
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
 
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_p24x2s input_offset_24x2 = AE_MOVPA24(input_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(output_activation_min);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(output_activation_max);
@@ -114,14 +113,14 @@ inline void DepthwiseConvPerChannel(
                   // shift into 24bit space. Note: value is duplicated in the HH
                   // and LL register - but all calculations are done on the HH
                   // side.
-                  ae_p24x2s input_val_24x2 = AE_CONVERT_INT32_24x2(input_val);
+                  ae_p24x2s input_val_24x2 = AE_MOVPA24(input_val);
 
                   // Add input offset (24bit aligned):
                   input_val_24x2 =
                       AE_P24S_ADDS_P24X2S(input_val_24x2, input_offset_24x2);
 
                   // Load filter 8bit value into 24bit alignment:
-                  ae_p24x2s filter_val_24x2 = AE_CONVERT_INT32_24x2(filter_val);
+                  ae_p24x2s filter_val_24x2 = AE_MOVPA24(filter_val);
 
                   // Multiply and accumulate the HH side of each 24x24 PR
                   // register:
@@ -149,9 +148,6 @@ inline void DepthwiseConvPerChannel(
             acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
                 acc_24x2, output_multiplier[output_channel],
                 output_shift[output_channel]);
-
-            // Shift from 48bit aligned to 32bit:
-            acc_56 = AE_Q56S_SLAI(acc_56, 16);
 
             // Add output offset, cap activation, and assign to the output:
             acc_56 = AE_ADDQ56(acc_56, output_offset_56);
@@ -181,9 +177,10 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
     const RuntimeShape& filter_shape, const int8* filter_data,
     const RuntimeShape& bias_shape, const int32* bias_data,
     const RuntimeShape& output_shape, int8* output_data) {
-  const int32_t mult = output_multiplier[0];
+  // Convert the (unsigned) 32-bit multiplier down to a 24-bit multiplier.
+  const int32_t mult = output_multiplier[0] >> 8;
   const int32_t shift = output_shift[0];
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_p24x2s input_offset_24x2 = AE_MOVPA24(input_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(quantized_activation_min);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(quantized_activation_max);
@@ -269,10 +266,6 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
     // alignment:
     block_1_acc = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
         acc_24x2_1, mult, shift);
-
-    // Shift from 48bit aligned to 32bit:
-    block_0_acc = AE_Q56S_SLAI(block_0_acc, 16);
-    block_1_acc = AE_Q56S_SLAI(block_1_acc, 16);
 
     // Add output offset, cap activation, and assign to the output:
     block_0_acc = AE_ADDQ56(block_0_acc, output_offset_56);
