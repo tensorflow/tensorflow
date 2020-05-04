@@ -1185,6 +1185,23 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "GPUToROCDLTGen",
+    strip_include_prefix = "lib/Conversion/GPUToROCDL",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToROCDL/GPUToROCDL.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToROCDL/GPUToROCDL.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":ROCDLOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUToROCDLTransforms",
     srcs = [
@@ -1199,6 +1216,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUToROCDLTGen",
         ":GPUTransforms",
         ":LLVMTransforms",
         ":Pass",
