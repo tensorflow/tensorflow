@@ -1472,15 +1472,11 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }  // namespace
 
 void TFE_ContextStartStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->StartStep();
+  tensorflow::unwrap(ctx)->StartStep();
 }
 
 void TFE_ContextEndStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->EndStep();
+  tensorflow::unwrap(ctx)->EndStep();
 }
 
 const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
