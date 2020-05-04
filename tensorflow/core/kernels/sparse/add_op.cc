@@ -122,8 +122,8 @@ class CSRSparseMatrixAddFunctor {
     }
 
     Tensor temp;
-    TF_RETURN_IF_ERROR(ctx_->allocate_temp(DT_INT8, {maxWorkspaceSize},
-                       &temp));
+    TF_RETURN_IF_ERROR(ctx_->allocate_temp(
+        DT_INT8, TensorShape({static_cast<int64>(maxWorkspaceSize)}), &temp));
     void* workspace = temp.flat<int8>().data();
 
     for (int i = 0; i < batch_size; ++i) {

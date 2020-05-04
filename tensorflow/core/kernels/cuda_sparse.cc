@@ -537,7 +537,8 @@ static inline Status CsrmvExImpl(
       &bufferSize));
 
   Tensor buffer;
-  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT8, {bufferSize}, &buffer));
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
@@ -578,7 +579,8 @@ static inline Status SpMVImpl(
       beta_host, vecY, dtype, CUSPARSE_CSRMV_ALG1, &bufferSize));
 
   Tensor buffer;
-  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT8, {bufferSize}, &buffer));
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
@@ -1013,8 +1015,9 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
                          CUSPARSE_CSR2CSC_ALG2, &bufferSize));
 
   Tensor buffer;
-  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Scalar>::value,
-                                           {bufferSize}, &buffer));
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DataTypeToEnum<Scalar>::value,
+      TensorShape({static_cast<int64>(bufferSize)}), &buffer));
 
   DCHECK(buffer.flat<Scalar>().data() != nullptr);
 

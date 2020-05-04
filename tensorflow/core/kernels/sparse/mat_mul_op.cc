@@ -859,7 +859,8 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
                                      &bufferSize));
 
       Tensor buffer;
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(DT_INT8, {bufferSize}, &buffer));
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(
+          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(

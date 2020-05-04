@@ -437,8 +437,10 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     }
 
     Tensor temp;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_INT8, {maxWorkspaceSize},
-                                           &temp));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(
+                 DT_INT8, TensorShape({static_cast<int64>(maxWorkspaceSize)}),
+                 &temp));
     void* workspace = temp.flat<int8>().data();
 #else
     void* workspace = nullptr;
