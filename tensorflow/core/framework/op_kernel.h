@@ -689,6 +689,7 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
+    const string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -829,6 +830,10 @@ class OpKernelContext {
   bool run_all_kernels_inline() const {
     return params_->run_all_kernels_inline;
   }
+
+  // Returns the registered name for the executor type that is executing the
+  // current kernel. If empty, the default executor is used.
+  const string& executor_type() const;
 
   // Input to output forwarding.
 

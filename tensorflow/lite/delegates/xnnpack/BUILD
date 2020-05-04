@@ -252,6 +252,9 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
+    tags = [
+        "notsan",  # TODO(b/155404603)
+    ],
     deps = [
         ":pool_2d_tester",
         ":test_main",
@@ -267,7 +270,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = ["notsan"],  # b/154966885
     deps = [
         ":test_main",
         ":unary_elementwise_tester",

@@ -313,7 +313,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
-    self._supports_ragged_inputs = False
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
@@ -905,12 +904,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
-        if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
-            and not self._supports_ragged_inputs):
-          raise ValueError('Layer %s does not support RaggedTensors as input. '
-                           'Inputs received: %s. You can try converting your '
-                           'input to an uniform tensor.' % (self.name, inputs))
-
         graph = backend.get_graph()
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
@@ -1213,7 +1206,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           collected_losses.append(loss_tensor)
     return collected_losses
 
-  def add_loss(self, losses, inputs=None):
+  def add_loss(self, losses, **kwargs):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
@@ -1230,7 +1223,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     ```python
     class MyLayer(tf.keras.layers.Layer):
       def call(self, inputs):
-        self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
+        self.add_loss(tf.abs(tf.reduce_mean(inputs)))
         return inputs
     ```
 
@@ -1270,14 +1263,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
-      inputs: Ignored when executing eagerly. If anything other than None is
-        passed, it signals the losses are conditional on some of the layer's
-        inputs, and thus they should only be run where these inputs are
-        available. This is the case for activity regularization losses, for
-        instance. If `None` is passed, the losses are assumed
-        to be unconditional, and will apply across all dataflows of the layer
-        (e.g. weight regularization losses).
+      **kwargs: Additional keyword arguments for backward compatibility.
+        Accepted values:
+          inputs - Deprecated, will be automatically inferred.
     """
+    kwargs.pop('inputs', None)
+    if kwargs:
+      raise TypeError('Unknown keyword arguments: %s' % (kwargs.keys(),))
 
     def _tag_callable(loss):
       """Tags callable loss tensor as `_unconditional_loss`."""
@@ -1685,9 +1677,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.updates` instead.')
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
-    """Retrieves updates relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves updates relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
@@ -1697,9 +1693,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     return self.updates
 
-  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.losses` instead.')
+  @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
-    """Retrieves losses relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves losses relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.

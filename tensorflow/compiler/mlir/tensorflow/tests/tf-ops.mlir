@@ -82,7 +82,7 @@ func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x
 // -----
 
 func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
-  // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
+  // expected-error @+1 {{all operands and results to have compatible element}}
   %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
   return %0 : tensor<4x2x!tf.stringref>
 }

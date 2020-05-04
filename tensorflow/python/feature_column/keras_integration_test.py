@@ -316,14 +316,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
       self.assertIsInstance(revived, fc.DenseFeatures)
       self.assertNotIsInstance(revived, dense_features_v2.DenseFeatures)
 
-  def test_serialization_sequence_features(self):
-    rating = fc.sequence_numeric_column('rating')
-    sequence_feature = fc.SequenceFeatures([rating])
-    config = keras.layers.serialize(sequence_feature)
-
-    revived = keras.layers.deserialize(config)
-    self.assertIsInstance(revived, fc.SequenceFeatures)
-
   # This test is an example for a regression on categorical inputs, i.e.,
   # the output is 0.4, 0.6, 0.9 when input is 'alpha', 'beta', 'gamma'
   # separately.

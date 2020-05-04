@@ -20,6 +20,7 @@ limitations under the License.
 #define TF_EXECUTOR_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -141,7 +142,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -222,7 +223,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -234,9 +235,9 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to true result",
-                 TCOpIsBroadcastableToRes<0, 0>>,
+                 TF_OpIsBroadcastableToRes<0, 0>>,
      PredOpTrait<"data operand must be broadcastable to false result",
-                 TCOpIsBroadcastableToRes<0, 1>>]>{
+                 TF_OpIsBroadcastableToRes<0, 1>>]>{
   let summary = [{
     The "tf_executor.Switch" operation takes a data operand and a boolean
     predicate condition, and returns two values matching the type of the data
@@ -356,7 +357,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
   let summary = [{
     The "tf_executor.Enter" operation forwards its input to Tensorflow while
     loop.
@@ -449,11 +450,11 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Type result_type, "
+    "OpBuilder &builder, OperationState &result, Type result_type, "
     "ArrayRef<NamedAttribute> attributes = {}",
     [{
-      Type token_type = TokenType::get(builder->getContext());
-      Type control_type = ControlType::get(builder->getContext());
+      Type token_type = TokenType::get(builder.getContext());
+      Type control_type = ControlType::get(builder.getContext());
       result.types = { result_type, token_type, control_type };
       result.attributes.append(attributes.begin(), attributes.end());
     }]>
@@ -515,7 +516,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value token, "
+    "OpBuilder &builder, OperationState &result, Value token, "
     "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
@@ -531,7 +532,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
     [HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
 
   let summary = [{
     The "tf_executor.Exit" operation forwards a value from an while loop to its
@@ -594,14 +595,14 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   let hasCanonicalizer = 1;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, "
+    "OpBuilder &builder, OperationState &result, "
     "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
       result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
-      Type control_type = ControlType::get(builder->getContext());
+      Type control_type = ControlType::get(builder.getContext());
       result.types = {control_type};
       result.attributes.append(attributes.begin(), attributes.end());
     }]>

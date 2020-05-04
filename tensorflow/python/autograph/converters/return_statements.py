@@ -23,7 +23,9 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -396,7 +398,13 @@ def transform(node, ctx, default_to_null_return=True):
   # Note: Technically, these two could be merged into a single walk, but
   # keeping them separate helps with readability.
 
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
+
   node = ConditionalReturnRewriter(ctx).visit(node)
+
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
 
   transformer = ReturnStatementsTransformer(
       ctx, default_to_null_return=default_to_null_return)

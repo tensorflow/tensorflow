@@ -92,9 +92,6 @@ class TensorFlowDialect : public Dialect {
 // both mutex.h and this header file.
 #undef mutex_lock
 
-// Returns whether two arrays of Type are broadcast compatible.
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
-
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"

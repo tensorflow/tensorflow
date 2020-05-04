@@ -1,0 +1,11 @@
+op {
+  name: "DatasetCardinalityV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "cardinality"
+    type: DT_DOUBLE
+  }
+}

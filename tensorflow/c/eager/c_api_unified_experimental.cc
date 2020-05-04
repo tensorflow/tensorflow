@@ -13,24 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/types/variant.h"
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_private.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/c/eager/c_api_unified_experimental.h"
+
+#include <vector>
+
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/platform/types.h"
 
 using tensorflow::string;
 using tensorflow::internal::OutputList;
 using tensorflow::internal::unwrap;
-using tensorflow::internal::wrap;
+
+// =============================================================================
+// Public C API entry points
+//
+// These are only the generic entry points for the C API. This file does not
+// have any visibility into the graph/eager implementation and is only providing
+// C bindings to the abstract classes defined in the
+// c_api_unified_experimental_internal.h header.
+//
+// =============================================================================
 
 void TF_DeleteExecutionContext(TF_ExecutionContext* c) { delete unwrap(c); }
 

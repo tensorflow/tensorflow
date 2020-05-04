@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -279,6 +279,13 @@ class FunctionOptimizerContext {
   }
 
   const GraphView& graph_view() const { return graph_view_; }
+
+  bool IsFeedNode(const string& node_name) const {
+    return absl::c_any_of(
+        item_->feed, [&](const std::pair<std::string, Tensor>& feed) {
+          return ParseTensorName(feed.first).node() == node_name;
+        });
+  }
 
   bool IsFetchNode(const string& node_name) const {
     return absl::c_any_of(item_->fetch, [&](const string& fetch) {
@@ -821,7 +828,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce",
+       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -1445,9 +1452,9 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Do not specialize if function has custom gradient or marked nospecialize.
     const string grad_func = ctx.function_library().FindGradient(func_name);
-    const bool no_specialize = !grad_func.empty() ||
-                               MarkedNoSpecialize(*func) ||
-                               MarkedForXlaCompilation(node);
+    const bool no_specialize =
+        !grad_func.empty() || ctx.IsFeedNode(node.name()) ||
+        MarkedNoSpecialize(*func) || MarkedForXlaCompilation(node);
 
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.

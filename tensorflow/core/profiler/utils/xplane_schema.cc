@@ -67,6 +67,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"SessionRun", kSessionRun},
       {"FunctionRun", kFunctionRun},
       {"RunGraph", kRunGraph},
+      {"RunGraphDone", kRunGraphDone},
       {"TfOpRun", kTfOpRun},
       {"EagerKernelExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
@@ -103,6 +104,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
@@ -162,6 +164,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_module", kHloModule},
       {"equation", kEquation},
       {"is_eager", kIsEager},
+      {"tf_function_call", kTfFunctionCall},
+      {"tracing_count", kTfFunctionTracingCount},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

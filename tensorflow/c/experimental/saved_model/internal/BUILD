@@ -23,13 +23,6 @@ package(
 )
 
 cc_library(
-    name = "conversion_macros",
-    hdrs = [
-        "conversion_macros.h",
-    ],
-)
-
-cc_library(
     name = "concrete_function",
     srcs = [
         "concrete_function.cc",
@@ -51,6 +44,7 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
@@ -93,7 +87,7 @@ cc_library(
         "concrete_function_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
     ],
 )
@@ -123,7 +117,7 @@ cc_library(
         "function_metadata_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
 )

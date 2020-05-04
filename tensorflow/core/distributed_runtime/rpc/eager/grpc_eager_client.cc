@@ -134,6 +134,7 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
+  CLIENT_METHOD(RunComponentFunction);
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD

@@ -291,6 +291,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %0 : tensor<?x?x?xf32>
   }
 
+  // Tests that tensor_cast result shapes are refined.
+  // CHECK-LABEL: func @tensor_cast_refine
+  func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+    // CHECK: tensor_cast
+    // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
+    %0 = tensor_cast %arg0 : tensor<4xi32> to tensor<*xi32>
+    return %0 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @fold_cast
   func @fold_cast(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK-NOT: Cast
@@ -356,5 +365,40 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
     // CHECK: return %[[CONST]]
     return %arg0 : tensor<2xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_list_refine
+  func @tensor_list_refine() {
+    tf_executor.graph {
+      %control = tf_executor.island {
+        %0 = "tf.Const"() {device = "", value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+        %1 = "tf.Const"() {device = "", value = dense<3> : tensor<i32>} : () -> tensor<i32>
+        // CHECK: TensorListReserve{{.*}}-> tensor<!tf.variant<tensor<2x2x!tf.variant>>>
+        %2 = "tf.TensorListReserve"(%0, %1) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+        // CHECK: TensorListReserve{{.*}}-> tensor<!tf.variant<tensor<2x2xf32>>>
+        %3 = "tf.TensorListReserve"(%0, %1) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
+        %4 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+        %5 = "tf.Const"() {device = "", value = dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+        // CHECK: tf.TensorListSetItem{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<!tf.variant<tensor<2x2xf32>>>
+        %6 = "tf.TensorListSetItem"(%3, %4, %5) {device = ""} : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf.variant>
+        %7 = "tf.Const"() {device = "", value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+        // CHECK: tf.TensorListStack{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>) -> tensor<?x2x2xf32>
+        %8 = "tf.TensorListStack"(%6, %7) {device = "", num_elements = -1 : i64} : (tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>
+        tf_executor.yield
+      }
+      tf_executor.fetch
+    }
+    return
+  }
+
+  // CHECK-LABEL: dont_update_for_ref
+  func @dont_update_for_ref() -> () {
+    // CHECK: () -> tensor<4x!tf.f32ref>
+    %11 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<4>, shared_name = ""} : () -> tensor<4x!tf.f32ref>
+    // CHECK: (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    %12 = "tf.Identity"(%11) {device = ""} : (tensor<4x!tf.f32ref>) -> tensor<4xf32>
+    // CHECK: (tensor<4xf32>) -> tensor<4xf32>
+    %13 = "tf.Neg"(%12) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
+    return
   }
 }

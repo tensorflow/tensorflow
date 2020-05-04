@@ -511,6 +511,10 @@ EagerContext::~EagerContext() {
   // don't send RPCs and block in destructor.
   WaitForAndCloseRemoteContexts();
 
+  // Custom devices may have obtained references to various context components
+  // (executors, thread pool). It's safer to run their destructors early.
+  custom_devices_.clear();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
@@ -880,6 +884,29 @@ Status EagerContext::RegisterCustomDevice(
     return errors::AlreadyExists(device_name,
                                  " already registered as a custom device.");
   }
+  return Status::OK();
+}
+
+Status EagerContext::FindOrCreateCompositeDevice(
+    const std::vector<string>& underlying_devices,
+    CompositeDevice** composite_device) {
+  const uint64 hash_key = Fingerprint64(absl::StrJoin(underlying_devices, ","));
+
+  mutex_lock l(composite_devices_mu_);
+  auto iter = composite_devices_.find(hash_key);
+  if (iter != composite_devices_.end()) {
+    *composite_device = iter->second.get();
+    return Status::OK();
+  }
+
+  Status s;
+  auto device = CompositeDevice::MakeDevice(underlying_devices,
+                                            composite_devices_.size(), &s);
+  TF_RETURN_IF_ERROR(s);
+  *composite_device = device.get();
+  // TODO(b/145922293): Add the composite device to the device set of pflr in
+  // order to make placer recognize it.
+  composite_devices_.emplace(hash_key, std::move(device));
   return Status::OK();
 }
 

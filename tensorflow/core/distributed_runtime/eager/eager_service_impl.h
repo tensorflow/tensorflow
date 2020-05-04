@@ -96,6 +96,10 @@ class EagerServiceImpl {
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
 
+  void RunComponentFunction(const RunComponentFunctionRequest* request,
+                            RunComponentFunctionResponse* response,
+                            StatusCallback done);
+
   Status KeepAlive(const KeepAliveRequest* request,
                    KeepAliveResponse* response);
 

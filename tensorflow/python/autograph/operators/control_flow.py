@@ -83,15 +83,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
 
-
-# TODO(b/145618471): Remove this dependency.
-# Lazy import to work around circular dependencies
-input_lib = lazy_loader.LazyLoader(
-    'input_lib', globals(),
-    'tensorflow.python.distribute.input_lib')
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
@@ -361,13 +355,12 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
     _tf_ragged_for_stmt(
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
-  elif isinstance(iter_, input_lib.DistributedIterator):
+  elif isinstance(iter_, distribute.Iterator):
     raise NotImplementedError(
         'distributed iterators not supported yet, use the distributed dataset'
         ' directly')
 
-  # TODO(mdan): Resolve the private access issue.
-  elif isinstance(iter_, input_lib._IterableInput):  # pylint:disable=protected-access
+  elif isinstance(iter_, distribute.Iterable):
     _tf_distributed_iterable_for_stmt(
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
@@ -501,8 +494,18 @@ def _tf_range_for_stmt(
 
   iterate = compat_util.BasicRef(start)
 
+  def _value_or(name, var, default):
+    if (name == opts['iterate_names']
+        and isinstance(var, special_values.Undefined)):
+      return default
+    return var
+
   def aug_get_state():
-    return (iterate.value,) + get_state()
+    state_vars = get_state()
+    state_vars = tuple(
+        _value_or(name, var, iterate.value)
+        for name, var in zip(symbol_names, state_vars))
+    return (iterate.value,) + state_vars
 
   def aug_set_state(aug_loop_vars):
     # TOOD(mdan): Use starred assignment once we can switch to Py3-only syntax.
@@ -876,16 +879,19 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
         init_vars, loop_vars, new_loop_vars, symbol_names, opts)
     return new_loop_vars
 
-  # Non-v2 while_loop unpacks the results when there is only one return value.
-  # This enforces consistency across versions.
-  opts['return_same_structure'] = True
-
   if 'shape_invariants' in opts:
     opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
         opts['shape_invariants'], init_vars)
 
+  while_loop_opts = dict(opts)
+  while_loop_opts.pop('iterate_names', None)
+
+  # Non-v2 while_loop unpacks the results when there is only one return value.
+  # This enforces consistency across versions.
+  while_loop_opts['return_same_structure'] = True
+
   final_loop_vars = control_flow_ops.while_loop(
-      aug_test, aug_body, init_vars, **opts)
+      aug_test, aug_body, init_vars, **while_loop_opts)
   set_state(final_loop_vars)
 
 

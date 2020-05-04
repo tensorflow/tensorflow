@@ -1103,6 +1103,7 @@ xla_test(
     shard_count = 40,
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1499,6 +1500,7 @@ xla_test(
     srcs = ["select_and_scatter_test.cc"],
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = [

@@ -1620,6 +1620,24 @@ Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
   return Status::OK();
 }
 
+bool DynamicDimensionInference::HasDynamicDimension(
+    HloInstruction* inst) const {
+  bool has_dynamic_dim = false;
+  ShapeUtil::ForEachSubshape(
+      inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
+          HloInstruction* operand_dynamic_size = GetDynamicSize(inst, index, i);
+          if (operand_dynamic_size != nullptr) {
+            has_dynamic_dim = true;
+          }
+        }
+      });
+  return has_dynamic_dim;
+}
+
 HloInstruction* DynamicDimensionInference::GetDynamicSize(
     HloInstruction* inst, const ShapeIndex& index, int64 dim) const {
   auto iter = dynamic_mapping_.find(DynamicDimension{inst, index, dim});

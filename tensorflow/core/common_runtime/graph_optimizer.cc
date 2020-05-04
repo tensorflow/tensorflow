@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
@@ -142,6 +143,21 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
            options.inline_multi_device_functions,
            options.inline_impl_selection_group_functions,
            options.inline_with_single_device_body_placer);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options) {
+  OptimizerOptions opts;
+  opts.set_do_common_subexpression_elimination(true);
+  opts.set_do_function_inlining(true);
+  opts.set_do_constant_folding(true);
+  GraphOptimizer optimizer(opts);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g,
+                     graph_optimizer_options);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+  OptimizeGraph(lib, g, GraphOptimizer::Options());
 }
 
 }  // end namespace tensorflow

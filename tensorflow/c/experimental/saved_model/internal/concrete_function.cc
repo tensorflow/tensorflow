@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
@@ -24,7 +25,8 @@ limitations under the License.
 extern "C" {
 
 TF_FunctionMetadata* TF_ConcreteFunctionGetMetadata(TF_ConcreteFunction* func) {
-  return tensorflow::wrap(&tensorflow::unwrap(func)->GetFunctionMetadata());
+  return tensorflow::wrap(const_cast<tensorflow::FunctionMetadata*>(
+      &tensorflow::unwrap(func)->GetFunctionMetadata()));
 }
 
 TF_OutputList* TF_ConcreteFunctionGetCaptures(TF_ConcreteFunction* func) {
@@ -34,7 +36,7 @@ TF_OutputList* TF_ConcreteFunctionGetCaptures(TF_ConcreteFunction* func) {
 }
 
 TFE_Op* TF_ConcreteFunctionGetCallOp(TF_ConcreteFunction* func) {
-  return new TFE_Op{tensorflow::unwrap(func)->GetCallOp()};
+  return tensorflow::wrap(tensorflow::unwrap(func)->GetCallOp());
 }
 
 }  // end extern "C"

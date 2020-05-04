@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TFE_CONTEXT_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_TFE_CONTEXT_INTERNAL_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/eager/context_interface.h"
 
 // Wraps a pointer to a context implementation.
@@ -23,8 +24,12 @@ limitations under the License.
 // interface cannot destruct the underlying context object. Instead, call
 // TFE_DeleteContext who calls Release() on the context pointer and deletes
 // the TFE_Context structure.
-struct TFE_Context {
-  tensorflow::AbstractContextInterface* context;
-};
+typedef struct TFE_Context TFE_Context;
+
+namespace tensorflow {
+
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractContextInterface, TFE_Context);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_TFE_CONTEXT_INTERNAL_H_

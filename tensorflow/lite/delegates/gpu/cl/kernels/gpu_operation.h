@@ -158,6 +158,9 @@ class ElementwiseOperation : public GPUOperation {
     return absl::OkStatus();
   }
 
+  // ovveride to return false if for any reason operation can not be linked.
+  virtual bool IsLinkable() const { return true; }
+
  protected:
   absl::Status BindArguments();
   int3 GetGridSize() const;
