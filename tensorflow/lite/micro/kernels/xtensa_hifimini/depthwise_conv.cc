@@ -40,8 +40,7 @@ inline void DepthwiseConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     int8* output_data) {
-  // Get parameters.
-  // TODO(b/141565753): Re-introduce ScopedProfilingLabel on Micro.
+  // TODO(b/154032858): Investigate removing extra copies.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -289,7 +288,6 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 32;
 
 // Depthwise conv is quantized along dimension 3:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -304,20 +302,14 @@ struct OpData {
 
   // Per channel output multiplier and shift.
   // TODO(b/141139247): Allocate these dynamically when possible.
-  int32_t per_channel_output_multiplier[kMaxChannels];
-  int32_t per_channel_output_shift[kMaxChannels];
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
   int32_t output_activation_max;
 };
-
-// These constants represent constants specific to the music detect model.
-// They exist until (b/132070898) is fixed.
-static const int kMaxOpDataSize = 6;
-static int op_data_counter = 0;
-static OpData kStaticOpData[kMaxOpDataSize];
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params, int width,
@@ -358,25 +350,43 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
 }  // namespace
 
-void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
-  // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[op_data_counter++];
-  node->user_data = op_data;
+  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteType data_type = input->type;
   int width = SizeOfDimension(input, 2);
   int height = SizeOfDimension(input, 1);
   int filter_width = SizeOfDimension(filter, 2);
   int filter_height = SizeOfDimension(filter, 1);
+
+  // Per channel quantization is only needed for int8 inference. For other
+  // quantized types, only a single scale and zero point is needed.
+  const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
+  // Dynimically allocate per-channel quantization parameters.
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&op_data->per_channel_output_multiplier)));
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&op_data->per_channel_output_shift)));
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
@@ -397,10 +407,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       affine_quantization->zero_point->size);
   }
 
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,
-                                        filter_width, filter_height, data_type,
-                                        op_data));
-  return kTfLiteOk;
+  return CalculateOpData(context, node, params, width, height, filter_width,
+                         filter_height, data_type, op_data);
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
@@ -434,6 +442,8 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
@@ -477,8 +487,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/depthwise_conv::Free,
+  static TfLiteRegistration r = {/*init=*/depthwise_conv::Init,
+                                 /*free=*/nullptr,
                                  /*prepare=*/depthwise_conv::Prepare,
                                  /*invoke=*/depthwise_conv::Eval,
                                  /*profiling_string=*/nullptr,
