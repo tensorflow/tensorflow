@@ -1699,6 +1699,9 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
+    axis_value = tensor_util.constant_value(axis)
+    if axis_value is not None:
+      axis = axis_value
     shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
     leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
