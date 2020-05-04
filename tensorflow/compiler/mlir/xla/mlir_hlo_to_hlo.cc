@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using ::stream_executor::port::StatusOr;
@@ -907,6 +908,10 @@ namespace mlir {
 namespace {
 
 StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
+  if (attr.isa<OpaqueElementsAttr>())
+    return tensorflow::errors::Unimplemented(
+        "Opaque elements attr not supported");
+
   xla::Shape shape = xla::TypeToShape(attr.getType());
 
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
@@ -982,7 +987,8 @@ LogicalResult ConvertToHloModule::Lower(
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
     auto literal_or = CreateLiteralFromAttr(const_attr);
-    if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
+    if (!literal_or.ok())
+      return inst->emitError(literal_or.status().ToString());
     value_map[inst->getResult(0)] =
         xla::ConstantLiteral(builder, literal_or.ValueOrDie());
     return success();
