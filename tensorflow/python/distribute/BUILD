@@ -856,7 +856,6 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1101,7 +1100,6 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # Target too big to run serially reliably.
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1496,7 +1494,6 @@ distribute_py_test(
     shard_count = 20,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
         "noguitar",  # b/140755528
     ],
     deps = [
