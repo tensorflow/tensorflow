@@ -1486,8 +1486,8 @@ class OpConverterTest : public ::testing::Test {
   // Adds ITensor for both validation and conversion. The difference compared to
   // AddTestTensorWithExplicitBatchDim is in the meaning of the dims parameter.
   // To define a tensor with NCHW shape, here we set dims = {C,H,W} and
-  // batch_size = N. TODO(tfeher) remove this once all test specify batch dim
-  // explicitly.
+  // batch_size = N. TODO(tfeher) remove this function once all test are updated
+  // to use the other version of AddTestTensor which has the trt_mode arg.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
@@ -1678,9 +1678,9 @@ class ParameterizedOpConverterTest
 // them would be sufficient:
 // - All valid options to TrtTestMode (implicit, explicit, dynamic shape)
 // - DataType: is the TF data type of the input tensors. This usually only
-//   influences the data type added by Converter::AddInputTensor. That function
-//   is tested separately for valid combinations of input data types, therefore
-//   for most of the converter its is sufficient to test for DT_FLOAT.
+//   influences the data type added by Converter::AddInputTensor. We test the
+//   valid combinations of input data types in AddAndGetInputs, therefore
+//   for most of the OpConverterTest its is sufficient to test for DT_FLOAT.
 // - TrtPrecisionMode: valid options are FP32, FP16 and INT8. This influences
 //   how TRT handles the precision inside the TRT network, but should not matter
 //   for the TF -> TRT conversion. Therefore it should be sufficient to test
@@ -1940,7 +1940,8 @@ TEST_P(ParameterizedOpConverterTest, ConvertTranspose) {
     if (p.param.empty()) {
       AddTestTensor("weights", {3});
     } else {
-      AddTestWeights<int32>("weights", {p.param.size()}, p.param);
+      AddTestWeights<int32>("weights", {static_cast<int>(p.param.size())},
+                            p.param);
     }
     RunValidationAndConversion(node_def, p.status, "my_transpose",
                                p.expected_output_dims);
@@ -3201,7 +3202,6 @@ TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
     SCOPED_TRACE(p);
     Reset(converter_precision, trt_mode);
     NodeDef node_def = get_squeeze_nodedef(p.param);
-    bool skip_test;
     AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode,
                   &p.partial_input_dims);
     RunValidationAndConversion(node_def, p.status, "my_squeeze",
