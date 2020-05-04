@@ -127,37 +127,6 @@ filegroup(
 )
 
 filegroup(
-<<<<<<< HEAD
-    name = "core_cpu_lib_headers",
-    srcs = [
-        "gradients.h",
-        "quantize_training.h",
-    ],
-)
-
-# Both of these files depend on common_runtime.
-filegroup(
-    name = "core_cpu_base_no_ops_srcs",
-    srcs = [
-        "graph_constructor.cc",
-        "graph_def_builder_util.cc",
-    ],
-)
-
-filegroup(
-    name = "core_cpu_impl_srcs",
-    srcs = [
-        "gpu_fusion_pass.cc",
-        "gradients.cc",
-        "mkl_layout_pass.cc",
-        "mkl_tfconversion_pass.cc",
-        "quantize_training.cc",
-    ],
-)
-
-filegroup(
-=======
->>>>>>> upstream/master
     name = "testlib_headers",
     srcs = [
         "benchmark_testlib.h",
