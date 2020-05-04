@@ -101,6 +101,12 @@ class MlirHloBuilder : public XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
+  // Creates the given op at the current location.
+  template <typename OpTy, typename... Args>
+  OpTy create(Args&&... args) {
+    return builder_.create<OpTy>(loc_, std::forward<Args>(args)...);
+  }
+
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
 

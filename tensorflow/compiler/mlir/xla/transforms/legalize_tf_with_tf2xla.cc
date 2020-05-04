@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -388,7 +389,12 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
       return op->emitError(
           "expects XlaExpression of kind kXlaOp in compiled output");
     auto value = hlo_builder_.GetValue(expr->handle());
-    op->getResult(i).replaceAllUsesWith(value);
+    mlir::OpResult old_result = op->getResult(i);
+    if (value.getType() != old_result.getType()) {
+      value =
+          hlo_builder_.create<mlir::TensorCastOp>(value, old_result.getType());
+    }
+    old_result.replaceAllUsesWith(value);
   }
 
   op->erase();
