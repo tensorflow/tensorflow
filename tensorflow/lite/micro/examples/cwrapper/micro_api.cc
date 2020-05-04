@@ -4,7 +4,7 @@
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
 
 
@@ -35,8 +35,12 @@ void tf_micro_model_setup(const void* model_data, uint8_t* tensor_arena,
     return;
   }
 
-// All functions are included in the library
- static tflite::ops::micro::AllOpsResolver resolver;
+  // Only Pull in functions that are needed by the model
+  static tflite::MicroMutableOpResolver resolver;
+    resolver.AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(), 1, 4);
+
+    resolver.AddBuiltin(BuiltinOperator_RELU, Register_RELU());
+
 
   static tflite::MicroInterpreter static_interpreter(
       model, resolver, tensor_arena, kTensorArenaSize, error_reporter);

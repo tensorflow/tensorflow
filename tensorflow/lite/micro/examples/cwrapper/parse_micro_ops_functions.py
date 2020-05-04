@@ -36,26 +36,28 @@ def parse_all_ops(path):
         raise Exception("cannot find all_ops_resolver.cc at path {}".format(path))
 
     function_list = []
+    register_function = {}
     with open(path, "r") as fid:
         for line in fid.readlines():
             if "BuiltinOperator" in line:
                 s = line.lstrip()[27:].split(",")
                 function_list.extend([s[0]])
+                register_function[s[0]] = line.lstrip()
 
-    return function_list
+    return function_list, register_function
 
 
-def gen_model_functions(function_list):
+def gen_model_functions(function_list, all_ops_code):
 
     M = [
         "  // Only Pull in functions that are needed by the model",
         "  static tflite::MicroMutableOpResolver resolver;",
     ]
 
-    template = "  resolver.AddBuiltin(tflite::BuiltinOperator_{0}, tflite::ops::micro::Register_{0}());"
-
+    #template = "  resolver.AddBuiltin(tflite::BuiltinOperator_{0}, tflite::ops::micro::Register_{0}());"
+    template = "    resolver.{0}"
     for function in sorted(list(function_list)): # sort so always in same order
-        M.append(template.format(function))
+        M.append(template.format(all_ops_code[function]))
 
     return M
 
@@ -83,6 +85,9 @@ def get_activation_interpreter(activation):
         "TRANSPOSE",
         "IDENTITY",
         "CONV2D_BIAS",
+        "SHAPE",
+        "READVARIABLEOP",
+        "MAXPOOL",
     ]
 
     if any(x in activation.upper() for x in ignored_functions):
@@ -104,7 +109,6 @@ def parse_tensorflow_binary_model(model_binary):
         if name:
             used_functions.add(name)
 
-        """
         for index in op["inputs"]:
             activation = get_activation_interpreter(
                 tf_model._get_tensor_details(index)["name"]
@@ -120,7 +124,7 @@ def parse_tensorflow_binary_model(model_binary):
 
             if activation:
                 used_functions.add(activation)
-        """
+
     return used_functions
 
 
@@ -139,13 +143,13 @@ def validate_micro_functions_available(used_functions, micro_functions):
 
 def gen_micro_mutable_ops_resolver_add(model, all_ops_path):
 
-    micro_functions = parse_all_ops(all_ops_path)
+    micro_functions, micro_function_code = parse_all_ops(all_ops_path)
 
     used_functions = parse_tensorflow_binary_model(model)
 
     validate_micro_functions_available(used_functions, micro_functions)
 
-    return gen_model_functions(used_functions)
+    return gen_model_functions(used_functions, micro_function_code)
 
 
 def fill_template_file(

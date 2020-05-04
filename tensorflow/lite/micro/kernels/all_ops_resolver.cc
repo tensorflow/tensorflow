@@ -28,8 +28,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(), 1, 3);
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(), 1, 3);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION(), 1, 3);
-  AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(), 1,
-             3);
+  AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(), 1, 3);
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D(), 1, 2);
   AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
@@ -71,10 +70,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
-  AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-             Register_RESIZE_NEAREST_NEIGHBOR(),
-             /* min_version = */ 1,
-             /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, Register_RESIZE_NEAREST_NEIGHBOR(), 1, 2);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
 }
 

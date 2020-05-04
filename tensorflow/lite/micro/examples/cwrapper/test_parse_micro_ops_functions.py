@@ -19,6 +19,7 @@ def test_model_binary():
         ],
     }
 
+    print(result)
     assert result == expected_result
 
 
