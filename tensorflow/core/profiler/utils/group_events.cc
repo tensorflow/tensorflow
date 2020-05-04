@@ -422,8 +422,20 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kSessionRun,
        HostEventType::kExecutorDoneCallback,
        {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kExecutorDoneCallback,
+       {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kRunGraphDone,
+       {StatType::kStepId}},
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextOp,
+       {StatType::kStepId, StatType::kIterNum}},
+      {HostEventType::kExecutorStateProcess,
+       HostEventType::kIteratorGetNextAsOptionalOp,
        {StatType::kStepId, StatType::kIterNum}},
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
@@ -450,7 +462,8 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
       CreateInterThreadConnectInfoList();
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kTraceContext, HostEventType::kFunctionRun,
-       HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});
+       HostEventType::kSessionRun, HostEventType::kRunGraph,
+       HostEventType::kHostTrainingLoopIteration});
   EventForest event_forest(connect_info_list, root_event_types,
                            CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {

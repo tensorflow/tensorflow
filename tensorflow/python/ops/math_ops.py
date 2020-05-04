@@ -804,7 +804,8 @@ def angle(input, name=None):
     if input.dtype.is_complex:
       return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
     else:
-      return array_ops.zeros_like(input)
+      return array_ops.where(input < 0, np.pi * array_ops.ones_like(input),
+                             array_ops.zeros_like(input))
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin

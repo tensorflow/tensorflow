@@ -194,6 +194,13 @@ class ProcessFunctionLibraryRuntime {
            const FunctionArgsInterface& args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
+  Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                 FunctionLibraryRuntime::Handle handle,
+                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets) const;
+  Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                 FunctionLibraryRuntime::Handle handle,
+                 CallFrameInterface* frame) const;
+
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
   const std::shared_ptr<DeviceSet> device_set() {

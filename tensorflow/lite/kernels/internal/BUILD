@@ -216,6 +216,7 @@ cc_library(
     build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
+        ":cppmath",
         ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",

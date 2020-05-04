@@ -209,8 +209,8 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
-  bool adjoint_lhs;
-  bool adjoint_rhs;
+  bool adj_x;
+  bool adj_y;
 } TfLiteBatchMatMulParams;
 
 typedef struct {

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -47,6 +48,7 @@ using llvm::SmallVector;
 using mlir::Builder;
 using mlir::DenseFPElementsAttr;
 using mlir::DenseIntElementsAttr;
+using mlir::DenseStringElementsAttr;
 using mlir::ElementsAttr;
 using mlir::OpaqueElementsAttr;
 using mlir::RankedTensorType;
@@ -95,6 +97,20 @@ StatusOr<ElementsAttr> ConvertBF16Tensor(const Tensor& input_tensor,
   return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(flat_double));
 }
 
+StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
+                                           ShapedType type) {
+  // Extract to a vector of StringRefs for converting.
+  auto arr = input_tensor.flat<tstring>();
+  std::vector<mlir::StringRef> string_refs;
+  string_refs.reserve(arr.size());
+  for (int i = 0; i < arr.size(); i++) {
+    const auto& val = arr(i);
+    string_refs.push_back({val.data(), val.size()});
+  }
+
+  return DenseStringElementsAttr::get(type, string_refs);
+}
+
 StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
                                      Builder* builder) {
   const auto& input_dtype = input_tensor.dtype();
@@ -121,6 +137,9 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     // match its storage type.
     case DT_BFLOAT16:
       return ConvertBF16Tensor(input_tensor, type);
+
+    case DT_STRING:
+      return ConvertStringTensor(input_tensor, type);
 
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
@@ -176,6 +195,16 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
   // Empty TensorShape indicates a scalar.
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
+}
+
+// Converts an MLIR dense string elements attribute to a TensorFlow tensor
+// proto.
+Status ConvertStringElementsAttr(const DenseStringElementsAttr attr,
+                                 TensorProto* output_tensor) {
+  for (const auto& val : attr.getRawStringData()) {
+    output_tensor->add_string_val(val.data(), val.size());
+  }
+  return Status::OK();
 }
 
 // Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
@@ -336,6 +365,9 @@ Status ConvertToTensorProto(const ElementsAttr attr,
       return ConvertBoolElementsAttr(attr, output_tensor);
     case DT_BFLOAT16:
       return ConvertBfloat16ElementsAttr(attr, output_tensor);
+    case DT_STRING:
+      return ConvertStringElementsAttr(attr.cast<DenseStringElementsAttr>(),
+                                       output_tensor);
     default:
       return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(),
                                        output_tensor);

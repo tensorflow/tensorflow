@@ -23,6 +23,7 @@ py_strict_library(
     srcs = [
         "__init__.py",
         "core.py",
+        "distribute.py",
         "internal.py",
     ],
     srcs_version = "PY2AND3",

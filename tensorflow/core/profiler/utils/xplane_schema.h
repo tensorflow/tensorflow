@@ -72,6 +72,7 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kRunGraphDone,
   kTfOpRun,
   kEagerKernelExecute,
   kExecutorStateProcess,
@@ -104,6 +105,7 @@ enum HostEventType {
   kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
+  kIteratorGetNextAsOptionalOp,
   // Virtual events for grouping.
   kHostTrainingLoopIteration,
   kAsyncExecutorTraceContext,
@@ -161,6 +163,8 @@ enum StatType {
   kHloModule,
   kEquation,
   kIsEager,
+  kTfFunctionCall,
+  kTfFunctionTracingCount,
   // Performance counter related.
   kRawValue,
   kScaledValue,

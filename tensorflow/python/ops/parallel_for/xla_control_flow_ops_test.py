@@ -20,13 +20,17 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
+from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
@@ -118,5 +122,120 @@ class PForTest(PForTestCase):
     self.assertAllClose(ans_val, output_val)
 
 
-if __name__ == '__main__':
+def _make_unstacked(cond, body, pfor_config):
+
+  def _cond(*args):
+    return math_ops.reduce_any(pfor_config.reduce_concat(args[0]))
+
+  def _body(*args):
+    not_done = args[0]
+    args = args[1:]
+    not_done = math_ops.logical_and(not_done, cond(*args))
+    outputs = body(*args)
+    return (not_done,) + tuple(
+        array_ops.where_v2(not_done, x, y) for x, y in zip(outputs, args))
+
+  return _cond, _body
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class WhileV2Test(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    super(WhileV2Test, self).setUp()
+
+  def tearDown(self):
+    if not self._enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+    super(WhileV2Test, self).tearDown()
+
+  def _test_loop_fn(self, loop_fn, iters, force_xla=False):
+
+    def f():
+      return pfor_control_flow_ops.pfor(loop_fn, iters)
+
+    @def_function.function
+    def jit_f():
+      with jit.experimental_jit_scope():
+        return f()
+
+    out = f()
+    jit_out = jit_f()
+    self.run_and_assert_equal(out, jit_out)
+    # TODO(agarwal): The following may complain about uncompilable nodes. Hence
+    # these are currently not enabled for all tests.
+    if force_xla:
+      out_exp_compile_f = def_function.function(experimental_compile=True)(f)()
+      self.run_and_assert_equal(out, out_exp_compile_f)
+      out_xla_compile_f = xla.compile(f, inputs=[])
+      self.run_and_assert_equal(out, out_xla_compile_f)
+
+  def test_stateless_while(self):
+    x = random_ops.random_uniform([3, 5])
+    lengths = constant_op.constant([4, 0, 2])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      lengths_i = array_ops.gather(lengths, i)
+
+      return control_flow_ops.while_loop(
+          lambda j, _: j < lengths_i,
+          lambda j, t: (j + 1, t + array_ops.gather(x_i, j)),
+          [0, 0.])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_with_variable(self):
+    v = resource_variable_ops.ResourceVariable(5.)
+
+    def loop_fn(_):
+      _, output = control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + v),
+          [0, 0.])
+      return output
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_unstacked_condition(self):
+
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + i), [0, 0])
+
+    self._test_loop_fn(loop_fn, 3, force_xla=True)
+
+  def test_while_force_unstacked_condition(self):
+    # The while_loop in this setup is similar to the one in test_stateless_while
+    # whose condition is loop variant. However here we wrap the cond and body of
+    # the loop in a way that makes the while_loop condition pfor loop invariant.
+    # This allows xla compilation to work since the vectorized code no longer
+    # needs to perform dynamic partitioning of the inputs.
+    x = random_ops.random_uniform([3, 5])
+    lengths = constant_op.constant([4, 0, 2])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      lengths_i = array_ops.gather(lengths, i)
+
+      def _cond(j, _):
+        return j < lengths_i
+
+      def _body(j, t):
+        return (j + 1, t + array_ops.gather(x_i, j))
+
+      cond, body = _make_unstacked(_cond, _body, pfor_config)
+      return control_flow_ops.while_loop(
+          cond,
+          body,
+          [True, 0, 0.])
+
+    # b/155430349: Enabling forrce_xla=True triggers a CHECK in debug mode.
+    self._test_loop_fn(loop_fn, 3, force_xla=False)
+
+
+if __name__ == "__main__":
   test.main()

@@ -13,32 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/types/variant.h"
-#include "tensorflow/c/c_api.h"
+#include <vector>
+
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_private.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/c/eager/c_api_unified_experimental.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 using tensorflow::string;
-using tensorflow::internal::AbstractFunction;
-using tensorflow::internal::AbstractOp;
-using tensorflow::internal::AbstractTensor;
-using tensorflow::internal::dynamic_cast_helper;
-using tensorflow::internal::ExecutionContext;
-using tensorflow::internal::OutputList;
-using tensorflow::internal::unwrap;
-using tensorflow::internal::wrap;
 
-class TF_EagerContext;
+namespace tensorflow {
+namespace internal {
 
+// Simple wrapper over a TFE_TensorHandle
 struct EagerTensor : public AbstractTensor {
   TFE_TensorHandle* t = nullptr;
   EagerTensor() : AbstractTensor(kKind) {}
@@ -47,9 +39,10 @@ struct EagerTensor : public AbstractTensor {
   static constexpr AbstractTensorKind kKind = kEagerTensor;
 };
 
-class TF_EagerOp : public AbstractOp {
+// Simple wrapper over a TFE_Op
+class EagerOp : public AbstractOp {
  public:
-  explicit TF_EagerOp(TFE_Context* ctx) : AbstractOp(kKind), ctx_(ctx) {}
+  explicit EagerOp(TFE_Context* ctx) : AbstractOp(kKind), ctx_(ctx) {}
   void SetOpType(const char* const op_type, TF_Status* s) override {
     op_ = TFE_NewOp(ctx_, op_type, s);
   }
@@ -66,18 +59,19 @@ class TF_EagerOp : public AbstractOp {
     TFE_OpSetAttrType(op_, attr_name, value);
   }
 
-  ~TF_EagerOp() override { TFE_DeleteOp(op_); }
+  ~EagerOp() override { TFE_DeleteOp(op_); }
   static constexpr AbstractOpKind kKind = kEagerOp;
 
  private:
-  friend class TF_EagerContext;  // For access to op_.
+  friend class EagerContext;  // For access to op_.
   TFE_Op* op_ = nullptr;
   TFE_Context* ctx_;
 };
 
-class TF_EagerContext : public ExecutionContext {
+// Wraps a TFE_Context and dispatch EagerOp with EagerTensor inputs.
+class EagerContext : public ExecutionContext {
  public:
-  TF_EagerContext() : ExecutionContext(kKind) {}
+  EagerContext() : ExecutionContext(kKind) {}
 
   void Build(TFE_ContextOptions* options, TF_Status* status) {
     eager_ctx_ = TFE_NewContext(options, status);
@@ -85,13 +79,13 @@ class TF_EagerContext : public ExecutionContext {
 
   AbstractOp* CreateOperation() override {
     // TODO(srbs): Should the lifetime of this op be tied to the context.
-    return new TF_EagerOp(eager_ctx_);
+    return new EagerOp(eager_ctx_);
   }
 
   void ExecuteOperation(AbstractOp* op, int num_inputs,
                         AbstractTensor* const* inputs, OutputList* o,
                         TF_Status* s) override {
-    auto* eager_op = dynamic_cast_helper<TF_EagerOp>(op);
+    auto* eager_op = dyncast<EagerOp>(op);
     if (eager_op == nullptr) {
       TF_SetStatus(s, TF_INVALID_ARGUMENT,
                    "Unable to cast AbstractOp to TF_EagerOp.");
@@ -100,7 +94,7 @@ class TF_EagerContext : public ExecutionContext {
     auto* tfe_op = eager_op->op_;
     if (TF_GetCode(s) != TF_OK) return;
     for (int i = 0; i < num_inputs; ++i) {
-      auto* eager_tensor = dynamic_cast_helper<const EagerTensor>(inputs[i]);
+      auto* eager_tensor = dyncast<const EagerTensor>(inputs[i]);
       if (!eager_tensor) {
         TF_SetStatus(s, TF_INVALID_ARGUMENT, "Not an eager tensor.");
         return;
@@ -137,34 +131,45 @@ class TF_EagerContext : public ExecutionContext {
     TFE_ContextAddFunction(eager_ctx_, func, s);
   }
 
-  ~TF_EagerContext() override { TFE_DeleteContext(eager_ctx_); }
+  ~EagerContext() override { TFE_DeleteContext(eager_ctx_); }
 
   static constexpr ExecutionContextKind kKind = kEagerContext;
 
  private:
-  friend TFE_Context* TF_ExecutionContextGetTFEContext(
+  friend TFE_Context* ::TF_ExecutionContextGetTFEContext(
       TF_ExecutionContext* ctx);
   TFE_Context* eager_ctx_;
 };
 
+}  // namespace internal
+}  // namespace tensorflow
+
+// =============================================================================
+// Public C API entry points
+// These are only the entry points specific to the Eager API.
+// =============================================================================
+
+using tensorflow::internal::dyncast;
+using tensorflow::internal::unwrap;
+
 TF_ExecutionContext* TF_NewEagerExecutionContext(TFE_ContextOptions* options,
                                                  TF_Status* s) {
-  auto* ctx = new TF_EagerContext();
+  auto* ctx = new tensorflow::internal::EagerContext();
   ctx->Build(options, s);
   return wrap(ctx);
 }
 
 TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
                                                           TF_Status* s) {
-  return wrap(new EagerTensor(t));
+  return wrap(new tensorflow::internal::EagerTensor(t));
 }
 
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s) {
-  auto* eager_tensor = dynamic_cast_helper<EagerTensor>(unwrap(at));
+  auto* eager_tensor = dyncast<tensorflow::internal::EagerTensor>(unwrap(at));
   if (!eager_tensor) {
-    string msg = absl::StrCat("Not an eager tensor handle.",
-                              reinterpret_cast<uintptr_t>(at));
+    string msg = tensorflow::strings::StrCat("Not an eager tensor handle.",
+                                             reinterpret_cast<uintptr_t>(at));
     TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
     return nullptr;
   }
@@ -172,5 +177,7 @@ TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
 }
 
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext* ctx) {
-  return dynamic_cast_helper<TF_EagerContext>(unwrap(ctx))->eager_ctx_;
+  auto* eager_ctx = dyncast<tensorflow::internal::EagerContext>(unwrap(ctx));
+  if (!eager_ctx) return nullptr;
+  return eager_ctx->eager_ctx_;
 }

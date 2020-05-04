@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -1486,6 +1486,33 @@ void ProcessFunctionLibraryRuntime::Run(
         }
         done(Status::OK());
       });
+}
+
+Status ProcessFunctionLibraryRuntime::RunSync(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    std::vector<Tensor>* rets) const {
+  Notification n;
+  Status s;
+  Run(opts, handle, args, rets, [&n, &s](const Status& status) {
+    s.Update(status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return s;
+}
+
+Status ProcessFunctionLibraryRuntime::RunSync(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame) const {
+  Notification n;
+  Status s;
+  Run(opts, handle, frame, [&n, &s](const Status& status) {
+    s.Update(status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return s;
 }
 
 void ProcessFunctionLibraryRuntime::Run(

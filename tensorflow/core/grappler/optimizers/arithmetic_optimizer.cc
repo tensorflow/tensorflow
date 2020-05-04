@@ -2253,7 +2253,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   ~FoldTransposeIntoMatMul() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMatMul(*node);
+    return IsAnyMatMul(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {

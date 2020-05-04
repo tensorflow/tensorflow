@@ -1,7 +1,6 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -132,12 +131,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:compression_utils",
-        "//tensorflow/core/data/service:credentials_factory",
-        "//tensorflow/core/data/service:grpc_util",
-        "//tensorflow/core/data/service:master_cc_grpc_proto",
-        "//tensorflow/core/data/service:master_proto_cc",
-        "//tensorflow/core/data/service:worker_cc_grpc_proto",
+        "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
@@ -145,7 +141,6 @@ tf_kernel_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -158,13 +153,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/data/service:credentials_factory",
-        "//tensorflow/core/data/service:grpc_util",
-        "//tensorflow/core/data/service:master_cc_grpc_proto",
-        "//tensorflow/core/data/service:master_proto_cc",
+        "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:iterator_ops",
-        tf_grpc_cc_dependency(),
     ],
 )
 

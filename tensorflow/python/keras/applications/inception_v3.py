@@ -56,7 +56,7 @@ def InceptionV3(
     classifier_activation='softmax'):
   """Instantiates the Inception v3 architecture.
 
-  Reference paper:
+  Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 

@@ -334,6 +334,9 @@ tf_cuda_library(
         ":checkpoint_reader",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -529,6 +532,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
@@ -604,6 +608,7 @@ tf_cc_test(
         ":c_api",
         ":c_api_internal",
         ":c_test_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -727,4 +732,12 @@ tf_cuda_library(
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "conversion_macros",
+    hdrs = [
+        "conversion_macros.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )

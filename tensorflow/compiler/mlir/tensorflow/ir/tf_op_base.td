@@ -63,6 +63,13 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 
+// Variant of broadcastable trait that considers TF's subtype behavior.
+class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
+    TCOpResIsShapedTypePred<opId, resId>,
+    CPred<"mlir::TF::BroadcastCompatible("
+              "$_op.getOperand(" # opId # ").getType(), "
+              "$_op.getResult(" # resId # ").getType())">]>;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
@@ -396,7 +403,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
@@ -411,12 +418,12 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder->getI1Type());
+    resultType = UnrankedTensorType::get(builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
@@ -426,7 +433,7 @@ class WithBroadcastableCmpOpBuilder {
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder->getI1Type());
+    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
   }
   return build(builder, result, resultType, x, y);
 }]

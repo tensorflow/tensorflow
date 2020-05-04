@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
-#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -99,7 +97,7 @@ void EvalIntegerSVDF(
 
     ae_q56s output_int16_max_56 = AE_CVTQ48A32S(INT16_MAX);
     ae_q56s output_int16_min_56 = AE_CVTQ48A32S(INT16_MIN);
-    ae_p24x2s input_zp_24x2 = AE_CONVERT_INT32_24x2(input_zp);
+    ae_p24x2s input_zp_24x2 = AE_MOVPA24(input_zp);
 
     for (int b = 0; b < n_batch; b++) {
       const int8_t* weight_feature_ptr = weight_feature - 2;
@@ -140,8 +138,6 @@ void EvalIntegerSVDF(
             tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
                 dot_prod_24x2, scale_1_a, scale_1_b);
 
-        // Align from 48bit to 32bit on the QR register
-        dot_prod_56 = AE_Q56S_SLAI(dot_prod_56, 16);
         // Cap min/max and convert to int32:
         dot_prod_56 = AE_MAXQ56S(dot_prod_56, output_int16_min_56);
         dot_prod_56 = AE_MINQ56S(dot_prod_56, output_int16_max_56);
@@ -232,8 +228,6 @@ void EvalIntegerSVDF(
       ae_q56s x_56 =
           tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
               scratch_output_tensor[i], scale_2_a, scale_2_b);
-      // Align from 48bit to 32bit on the QR register:
-      x_56 = AE_Q56S_SLAI(x_56, 16);
       // Add output adjustment:
       x_56 = AE_ADDQ56(x_56, output_zp_56);
       // Cap min/max and convert to int32 (already aligned to 32bit):
