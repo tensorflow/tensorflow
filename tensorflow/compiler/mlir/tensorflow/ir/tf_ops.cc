@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -1429,6 +1431,39 @@ static LogicalResult Verify(EinsumOp op) {
     return op.emitOpError("supports at most two operands");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EmptyOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "empty op has one operand");
+
+  Attribute attr = operands.front();
+  if (!attr) return {};
+
+  auto int_attr = attr.cast<DenseIntElementsAttr>();
+  SmallVector<int64_t, 6> out_shape;
+  for (const auto val : int_attr.getValues<int32_t>()) {
+    out_shape.push_back(val);
+  }
+
+  auto type = getResult().getType().cast<ShapedType>();
+  auto etype = type.getElementType();
+
+  if (auto float_type = etype.dyn_cast<FloatType>()) {
+    auto out_type = RankedTensorType::get(out_shape, float_type);
+    return DenseElementsAttr::get(out_type,
+                                  {APFloat(float_type.getFloatSemantics())});
+  }
+
+  if (etype.isa<IntegerType>()) {
+    auto out_type = RankedTensorType::get(out_shape, etype);
+    return DenseElementsAttr::get<int64_t>(out_type, 0);
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

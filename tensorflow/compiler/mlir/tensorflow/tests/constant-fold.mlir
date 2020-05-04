@@ -38,6 +38,46 @@ func @testPow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, ten
   return %0, %1, %2 : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
+// CHECK-LABEL: func @testEmpty
+func @testEmpty() -> (tensor<?xi64>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value = dense<0> : tensor<5xi64>}
+  // CHECK: return [[VAL]] : tensor<?xi64>
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<?xi64>)
+  return %1 : tensor<?xi64>
+}
+
+// CHECK-LABEL: func @testEmptyFloat
+func @testEmptyFloat() -> (tensor<?xf64>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xf64>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<?xf64>)
+  return %1 : tensor<?xf64>
+}
+
+// CHECK-LABEL: func @testEmptyf16
+func @testEmptyf16() -> (tensor<?xf16>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xf16>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<?xf16>)
+  return %1 : tensor<?xf16>
+}
+
+// CHECK-LABEL: func @testEmptybf16
+func @testEmptybf16() -> (tensor<?xbf16>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xbf16>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<?xbf16>)
+  return %1 : tensor<?xbf16>
+}
+
 // CHECK-LABEL: func @testShapeN
 func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>) {
 
