@@ -175,8 +175,6 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   mlir::PassManager pm(&context);
-  applyPassManagerCLOptions(pm);
-
   mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.

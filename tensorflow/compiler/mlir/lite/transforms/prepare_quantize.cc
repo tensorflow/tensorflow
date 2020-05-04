@@ -227,7 +227,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   func.walk([&](ConcatenationOp concat) {
     if (concat.output().hasOneUse() &&
         Quantized(*concat.output().user_begin())) {
-        return;
+      return;
     }
     concat.emitWarning(
             "Missing quantization parameter on the output might introduce "

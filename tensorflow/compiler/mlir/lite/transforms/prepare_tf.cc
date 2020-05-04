@@ -692,9 +692,6 @@ void PrepareTFPass::runOnFunction() {
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  //patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant, 
-  //                PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
-
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant, PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
 
 
