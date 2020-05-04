@@ -121,16 +121,16 @@ bool IsSupportedNonTFOp(Operation* op) {
 // not a TF operation, as we can't guarantee that the new type will be OK.
 void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
                                         Dialect* tf_dialect, Type old_type) {
-  OpBuilder builder(op);
-  builder.setInsertionPointAfter(op);
   // A tf.Cast operation is lazily created on the first uses that isn't a TF
   // operation.
   TF::CastOp cast_op;
   auto get_cast_op = [&]() {
-    if (!cast_op)
-      cast_op =
-          builder.create<TF::CastOp>(op->getLoc(), old_type, result,
-                                     /*truncate=*/builder.getBoolAttr(false));
+    if (!cast_op) {
+      OpBuilder b(op);
+      b.setInsertionPointAfter(op);
+      cast_op = b.create<TF::CastOp>(op->getLoc(), old_type, result,
+                                     /*truncate=*/b.getBoolAttr(false));
+    }
     return mlir::Value(cast_op);
   };
   for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
@@ -312,13 +312,35 @@ bool InferShapeForCall(Operation* op) {
   return changed;
 }
 
-bool RefineTfConst(TF::ConstOp const_op) {
-  Type old_type = const_op.getType();
-  if (const_op.valueAttr().getType() == old_type) return false;
-  const_op.getResult().setType(const_op.valueAttr().getType());
-  AddCastBackForUnsupportedNonTFUses(const_op, const_op.getResult(),
-                                     const_op.getDialect(), old_type);
-  return true;
+bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti,
+                                    Dialect* tf_dialect) {
+  Operation* op = infer_ti.getOperation();
+  SmallVector<Type, 4> inferred;
+  LogicalResult res = infer_ti.inferReturnTypes(
+      op->getContext(), op->getLoc(), op->getOperands(), op->getAttrs(),
+      op->getRegions(), inferred);
+  if (failed(res)) {
+    op->emitOpError("failed to refine type as inference failed");
+    return false;
+  }
+
+  if (inferred == op->getResultTypes()) return false;
+
+  // Map each of the results of the call to the returned type of the
+  // function.
+  bool changed = false;
+  for (auto result : llvm::zip(op->getResults(), inferred)) {
+    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
+
+    // Inserts a cast back to the original type if any user is not in the
+    // TF dialect.
+    AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result),
+                                       op->getDialect(), std::get<1>(result));
+    // Finally we inferred the shape and replace the type for this result.
+    std::get<0>(result).setType(std::get<1>(result));
+    changed = true;
+  }
+  return changed;
 }
 
 }  // namespace
@@ -658,16 +680,16 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     region->walk([&](Operation* op) {
-      if (op->getDialect() != tf_dialect) {
-        changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
-        return;
-      }
-
-      if (auto tf_const = dyn_cast<TF::ConstOp>(op)) {
-        changed |= RefineTfConst(tf_const);
+      if (auto infer_ti = dyn_cast<InferTypeOpInterface>(op)) {
+        changed |= RefineWithInferTypeOpInterface(infer_ti, tf_dialect);
         // TODO(jpienaar): Debug why we can't just return here. We end up with
         // additional constant due to the propagation of constant into attached
         // function if we return already.
+      }
+
+      if (op->getDialect() != tf_dialect) {
+        changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
+        return;
       }
 
       // Before attempting inference, just try to fold the operation.
