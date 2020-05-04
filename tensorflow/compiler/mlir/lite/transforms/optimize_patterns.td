@@ -33,7 +33,7 @@ def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 // Checks value is not produce by a TLF_QUant with
 // different quantization attribute
 
-def NotFromQuantOpDifferentQuant : Constraint<CPred<"notFromQuantOpDifferentQuanteUse($0,$1)">>;
+def NotFromQuantOpDifferentQuant : Constraint<CPred<"NotFromQuantOpDifferentQuant($0,$1)">>;
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
