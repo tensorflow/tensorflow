@@ -1114,6 +1114,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/stream_executor/lib",
     "//tensorflow/compiler/xla:xla_data_proto_cc",
     "//tensorflow/compiler/xla/service:hlo",
+    ":convert_tensor",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary
