@@ -2862,9 +2862,11 @@ def _GroupControlDeps(dev, deps, name=None):
         return no_op(name=name)
 
 
-# TODO(touts): Accept "inputs" as a list.
-@tf_export("group")
-def group(*inputs, **kwargs):
+@tf_export("group", v1=[])
+@deprecation.deprecated(None, "With eager execution, execution order is"
+                        " determined by program order, you should not need"
+                        " to use tf.group.")
+def group_v2(*inputs, **kwargs):  # pylint: disable=g-doc-args
   """Create an op that groups multiple operations.
 
   When this op finishes, all ops in `inputs` have finished. This op has no
@@ -2872,7 +2874,47 @@ def group(*inputs, **kwargs):
 
   Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
   this method, as code executes in your expected order.* Only use tf.group when
-  working with v1-style code or in a graph context such as inside `Dataset.map`.
+  working with v1-style code or in a graph context.
+
+  When operating in a v1-style graph context, ops are not executed in the same
+  order as specified in the code; TensorFlow will attempt to execute ops in
+  parallel or in an order convienient to the result it is computing.  `tf.group`
+  allows you to request that one or more results finish before execution
+  continues.
+
+  `tf.group` creates a single op (of type `NoOp`), and then adds appropriate
+  control dependencies.  Thus, `c = tf.group(a, b)` will compute the same graph
+  as this:
+
+      with tf.control_dependencies([a, b]):
+          c = tf.no_op()
+
+  See also `tf.tuple` and
+  `tf.control_dependencies`.
+
+  Args:
+    *inputs: Zero or more tensors to group.
+    name: A name for this operation (optional).
+
+  Returns:
+    An Operation that executes all its inputs.
+
+  Raises:
+    ValueError: If an unknown keyword argument is provided.
+  """
+  return group(inputs, kwargs)
+
+
+@tf_export(v1=["group"])
+def group(*inputs, **kwargs):  # pylint: disable=g-doc-args
+  """Create an op that groups multiple operations.
+
+  When this op finishes, all ops in `inputs` have finished. This op has no
+  output.
+
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as code executes in your expected order.* Only use tf.group when
+  working with v1-style code or in a graph context.
 
   When operating in a v1-style graph context, ops are not executed in the same
   order as specified in the code; TensorFlow will attempt to execute ops in
