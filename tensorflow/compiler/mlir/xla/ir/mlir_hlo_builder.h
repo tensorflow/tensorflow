@@ -119,6 +119,10 @@ class MlirHloBuilder : public XlaBuilder {
       const GatherDimensionNumbers& dimension_numbers,
       absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
 
+  StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
+                                absl::Span<const XlaOp> parameters,
+                                const Shape& shape) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 
@@ -169,9 +173,10 @@ class MlirHloBuilder : public XlaBuilder {
                                 absl::Span<const XlaOp> elements) override;
 
   // Creates HLO dialect op and returns the result as an XlaOp.
-  StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
-                           llvm::ArrayRef<XlaOp> operands,
-                           llvm::ArrayRef<mlir::NamedAttribute> attributes);
+  StatusOr<XlaOp> CreateOp(
+      const std::string& op_name, const Shape& shape,
+      llvm::ArrayRef<XlaOp> operands,
+      llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

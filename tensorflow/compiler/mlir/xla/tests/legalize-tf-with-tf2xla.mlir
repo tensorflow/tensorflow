@@ -156,6 +156,13 @@ func @dynamic_result_type(%arg0: tensor<2xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+func @truncated_normal() -> tensor<2x2xf32> {
+  // CHECK-NOT: tf.TruncatedNormal
+  %0 = xla_hlo.constant dense<[2, 2]> : tensor<2xi32>
+  %1 = "tf.TruncatedNormal"(%0) {T = i32, device = "", dtype = f32, seed = 0 : i64, seed2 = 1950157571 : i64} : (tensor<2xi32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

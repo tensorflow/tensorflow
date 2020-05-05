@@ -124,6 +124,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::TransposeOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncateModOp>(),
+    TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaPadOp>()
