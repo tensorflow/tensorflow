@@ -1668,9 +1668,14 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
+      // TODO(b/149823713): Update when NNAPI delegate can support align_corners
+      // & half_pixel_centers.
       Expect(!builtin->align_corners,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
+      Expect(!builtin->half_pixel_centers,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
     } break;
     case kTfLiteBuiltinSqueeze: {
       ExpectOpVersion(version, 1, &val_ctx);

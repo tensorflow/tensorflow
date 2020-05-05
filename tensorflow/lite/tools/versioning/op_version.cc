@@ -332,7 +332,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR:
-      if (op_sig.options.resize_bilinear.half_pixel_centers) {
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
+      if (op_sig.options.resize.half_pixel_centers) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -438,7 +439,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
@@ -554,8 +554,16 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       auto resize_bilinear_option =
           op->builtin_options_as_ResizeBilinearOptions();
       if (resize_bilinear_option) {
-        op_sig.options.resize_bilinear.half_pixel_centers =
+        op_sig.options.resize.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
+      }
+    } break;
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
+      auto resize_nn_option =
+          op->builtin_options_as_ResizeNearestNeighborOptions();
+      if (resize_nn_option) {
+        op_sig.options.resize.half_pixel_centers =
+            resize_nn_option->half_pixel_centers();
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.

@@ -133,6 +133,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kResizeBilinear, 3}, "2.2.0"},
           {{OperatorType::kResizeNearestNeighbor, 1}, "1.13.1"},
           {{OperatorType::kResizeNearestNeighbor, 2}, "1.14.0"},
+          {{OperatorType::kResizeNearestNeighbor, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kSqueeze, 1}, "1.6.0"},
           {{OperatorType::kSplit, 1}, "1.5.0"},
           {{OperatorType::kSplit, 2}, "1.14.0"},
