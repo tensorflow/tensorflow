@@ -1664,10 +1664,12 @@ std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
   return os;
 }
 
-// Parameterized version of OpConverterTest. Parameters are:
-// 1. TrtTestMode (implicit batch / explicit batch / dynamic shape)
-// 2. DataType of the input TF tensors
-// 3. TrtPrecisionMode argument for the Converter (FP32, FP16, INT8)
+// Parameterized version of OpConverterTest. This class will be instantiated
+// to test all the TrtTestModes but only in FP32 precision. This means that we
+// will use the following combinations of test parameters:
+// 1. TrtTestMode: implicit batch, explicit batch, dynamic shape modes
+// 2. DataType of the input TF tensors: DT_FLOAT
+// 3. TrtPrecisionMode argument for the Converter: FP32
 class ParameterizedOpConverterTest
     : public OpConverterTest,
       public ::testing::WithParamInterface<
