@@ -274,6 +274,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
     deps = [
         ":categorical_encoding",
         "//tensorflow/python/distribute:combinations",
@@ -431,6 +434,9 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
     ],
     deps = [
         ":text_vectorization",
