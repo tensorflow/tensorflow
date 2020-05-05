@@ -676,7 +676,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:variable_ops",
         tf_grpc_cc_dependency(),
     ],
 )

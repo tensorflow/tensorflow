@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/core/framework/resource_var.h"
 
 namespace tensorflow {
 

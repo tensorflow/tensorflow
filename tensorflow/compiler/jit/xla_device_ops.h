@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/shape_ops.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
 

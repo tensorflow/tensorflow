@@ -168,10 +168,8 @@ tf_kernel_library(
     ],
     deps = [
         ":bounds_check",
-        ":dense_update_functor",
         ":inplace_ops",
         ":ops_util",
-        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -726,22 +724,6 @@ cc_library(
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
-    ],
-)
-
-cc_library(
-    name = "training_op_helpers",
-    srcs = ["training_op_helpers.cc"],
-    hdrs = ["training_op_helpers.h"],
-    visibility = [
-        ":friends",
-        ":optimizer_helper_friends",
-    ],
-    deps = [
-        ":dense_update_functor",
-        ":variable_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -1626,7 +1608,6 @@ tf_cc_test(
         ":identity_op",
         ":ops_testutil",
         ":ops_util",
-        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2122,7 +2103,6 @@ tf_cc_test(
         ":guarantee_const_op",
         ":ops_testutil",
         ":ops_util",
-        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2607,7 +2587,6 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":scoped_allocator_ops",
-        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -2890,11 +2869,9 @@ tf_kernel_library(
     hdrs = ["resource_variable_ops.h"],
     deps = [
         ":bounds_check",
-        ":dense_update_functor",
         ":gather_functor",
         ":gather_nd_op",
         ":scatter_functor",
-        ":variable_ops",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2931,7 +2908,6 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -5258,7 +5234,6 @@ tf_kernel_library(
     prefix = "stateful_random_ops",
     deps = [
         ":bounds_check",
-        ":dense_update_functor",
         ":gather_functor",
         ":mutex_ops",
         ":random_op",
@@ -5266,14 +5241,11 @@ tf_kernel_library(
         ":scatter_functor",
         ":state",
         ":stateful_random_ops_header",
-        ":training_op_helpers",
-        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:training_op_helpers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5641,7 +5613,6 @@ cc_library(
         ":dense_update_ops",
         ":scatter_nd_op",
         ":scatter_op",
-        ":variable_ops",
     ],
 )
 
@@ -5659,7 +5630,7 @@ STATE_DEPS = [
 tf_kernel_library(
     name = "count_up_to_op",
     prefix = "count_up_to_op",
-    deps = STATE_DEPS + [":variable_ops"],
+    deps = STATE_DEPS,
 )
 
 tf_kernel_library(
@@ -5725,8 +5696,6 @@ tf_kernel_library(
         "scatter_nd_op_gpu.cu.cc",
     ],
     deps = STATE_DEPS + [
-        ":dense_update_functor",
-        ":variable_ops",
         ":inplace_ops",
         "//tensorflow/core:training_op_helpers",
     ],
@@ -6039,7 +6008,6 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
-        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_op_helpers",
@@ -6135,7 +6103,6 @@ tf_kernel_library(
         ":resource_variable_ops",
         ":stateful_random_ops",
         ":stateless_random_ops",
-        ":training_op_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

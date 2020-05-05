@@ -787,10 +787,7 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":framework",
-        ":lib",
         "//tensorflow/core/kernels:dense_update_functor",
-        "//tensorflow/core/kernels:variable_ops",
     ],
     alwayslink = 1,
 )
@@ -2321,7 +2318,6 @@ tf_cuda_library(
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/core/kernels:dense_update_functor",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:einsum_op_util",
@@ -2469,7 +2465,6 @@ alias(
     actual = "//tensorflow/core/example:example_parser_configuration",
     visibility = ["//visibility:public"],
 )
-
 
 tf_proto_library_cc(
     name = "replay_log_proto",

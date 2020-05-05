@@ -378,7 +378,6 @@ cc_library(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
-        "//tensorflow/core/kernels:variable_ops",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
@@ -525,11 +524,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core:training_op_helpers",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 
