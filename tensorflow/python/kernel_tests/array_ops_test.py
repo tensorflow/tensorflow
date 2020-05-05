@@ -281,6 +281,29 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
         result = sess.run(masked_tensor, feed_dict={tile_placeholder: [2, 2]})
         self.assertAllEqual([b"hello", b"hello", b"hello", b"hello"], result)
 
+  def testMaskWithAxisTensor(self):
+
+    @def_function.function(autograph=False)
+    def f():
+      return array_ops.boolean_mask([1, 2, 3], [True, False, True],
+                                    axis=constant_op.constant(
+                                        0, dtype=dtypes.int32))
+
+    self.assertAllEqual(self.evaluate(f()), [1, 3])
+
+  def testMaskWithAxisNonConstTensor(self):
+
+    @def_function.function(
+        autograph=False,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+        ])
+    def f(axis):
+      return array_ops.boolean_mask([1, 2, 3], [True, False, True], axis=axis)
+
+    self.assertAllEqual(
+        self.evaluate(f(constant_op.constant(0, dtype=dtypes.int32))), [1, 3])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
