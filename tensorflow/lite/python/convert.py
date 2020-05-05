@@ -108,6 +108,32 @@ class ConverterError(Exception):
   pass
 
 
+def mlir_quantize(input_data_str):
+  """Quantize `input_data_str` with calibration results.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model with
+                    calibration results).
+
+  Returns:
+    Quantized model in serialized form (e.g. a TFLITE model) with floating-point
+    inputs and outputs.
+  """
+  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str)
+
+
+def mlir_sparsify(input_data_str):
+  """Sparsify `input_data_str` to encode sparse tensor with proper format.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model).
+
+  Returns:
+    Sparsified model in serialized form (e.g. a TFLITE model).
+  """
+  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+
+
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,
@@ -257,7 +283,11 @@ def build_toco_convert_protos(input_tensors,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
                               debug_info=None,
-                              conversion_summary_dir=None):
+                              conversion_summary_dir=None,
+                              saved_model_dir=None,
+                              saved_model_version=0,
+                              saved_model_tags=None,
+                              saved_model_exported_names=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -323,6 +353,18 @@ def build_toco_convert_protos(input_tensors,
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
     conversion_summary_dir: A string, the path to the generated conversion logs.
+    saved_model_dir: Filepath of the saved model to be converted. This value
+      will be non-empty only when the saved model import path will be used.
+      Otherwises, the graph def-based conversion will be processed.
+    saved_model_version: SavedModel file format version of The saved model file
+      to be converted. This value will be set only when the SavedModel import
+      path will be used.
+    saved_model_tags: Set of string saved model tags, formatted in the
+      comma-separated value. This value will be set only when the SavedModel
+      import path will be used.
+    saved_model_exported_names: Names to be exported (default: export all) when
+      the saved model import path is on. This value will be set only when the
+      SavedModel import path will be used.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -370,7 +412,10 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    input_array.name = util.get_tensor_name(input_tensor)
+    if saved_model_dir:
+      input_array.name = input_tensor.name
+    else:
+      input_array.name = util.get_tensor_name(input_tensor)
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
@@ -393,9 +438,20 @@ def build_toco_convert_protos(input_tensors,
     input_array.shape.dims.extend(dims)
 
   for output_tensor in output_tensors:
-    model.output_arrays.append(util.get_tensor_name(output_tensor))
+    if saved_model_dir:
+      model.output_arrays.append(output_tensor.name)
+    else:
+      model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
+
+  if saved_model_dir:
+    model.saved_model_dir = saved_model_dir
+  model.saved_model_version = saved_model_version
+  if saved_model_tags:
+    model.saved_model_tags.extend(saved_model_tags)
+  if saved_model_exported_names:
+    model.saved_model_exported_names.extend(saved_model_exported_names)
 
   return model, toco, debug_info
 

@@ -31,13 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
@@ -296,10 +296,10 @@ Status XlaCompilationCache::CompileSingleOp(
       arg_shapes.push_back(absl::get<TensorShape>(arg.shape));
     }
     GraphDebugInfo debug_info;
-    return CompileGraphToXlaHlo(*graph, {arg_shapes.data(), arg_shapes.size()},
-                                compile_options.use_tuple_arg,
-                                *options.flib_def, debug_info,
-                                options.shape_representation_fn, result);
+    return CompileGraphToXlaHlo(
+        *graph, {arg_shapes.data(), arg_shapes.size()},
+        options.device_type.type_string(), compile_options.use_tuple_arg,
+        *options.flib_def, debug_info, options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

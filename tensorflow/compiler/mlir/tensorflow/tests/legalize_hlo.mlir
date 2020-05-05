@@ -163,12 +163,12 @@ func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<
 }
 
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = xla_hlo.pow %arg0, %arg0 : tensor<2xf32>
+  %0 = xla_hlo.power %arg0, %arg0 : tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = xla_hlo.pow %arg0, %arg0 : tensor<?xf32>
+  %0 = xla_hlo.power %arg0, %arg0 : tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -184,7 +184,7 @@ func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> te
   %8 = xla_hlo.constant dense<1> : tensor<3xi32>
   %9 = xla_hlo.subtract %7, %8 : tensor<3xi32>
   %10 = "xla_hlo.add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
-  %11 = "xla_hlo.neg"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  %11 = "xla_hlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "xla_hlo.abs"(%arg1) : (tensor<3xi32>) -> tensor<3xi32>
   %13 = "xla_hlo.divide"(%11, %12) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %14 = "xla_hlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -203,7 +203,7 @@ func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32
   %8 = xla_hlo.constant dense<1> : tensor<2x3xi32>
   %9 = xla_hlo.subtract %7, %8 : tensor<2x3xi32>
   %10 = "xla_hlo.add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  %11 = "xla_hlo.neg"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  %11 = "xla_hlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "xla_hlo.abs"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %13 = xla_hlo.divide %11, %12 : tensor<2x3xi32>
   %14 = "xla_hlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -322,11 +322,6 @@ func @concat_v2_1d_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tenso
 func @const() -> tensor<2xi32> {
   %0 = xla_hlo.constant dense<0> : tensor<2xi32>
   return %0 : tensor<2xi32>
-}
-
-func @const_dynamic_output() -> tensor<*xi32> {
-  %0 = xla_hlo.constant {value = dense<0> : tensor<2xi32>} : tensor<*xi32>
-  return %0 : tensor<*xi32>
 }
 
 func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
@@ -461,32 +456,32 @@ func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
 }
 
 func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
 func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -551,17 +546,17 @@ func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -577,17 +572,17 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 }
 
 func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -677,6 +672,16 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
   return %0 : tensor<i64>
 }
 
+func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
+  %0 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
+  return %0 : tensor<3xcomplex<f32>>
+}
+
+func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "xla_hlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // NOTE: Assertions have been autogenerated by utils/generate-test-checks.py
 
 // CHECK-LABEL:   func @biasAdd_NHWC(
@@ -718,13 +723,13 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 
 // CHECK-LABEL:   func @div(
 // CHECK-SAME:              [[VAL_18:%.*]]: tensor<2xi32>) -> tensor<2xi32> {
-// CHECK:           [[VAL_19:%.*]] = "tf.RealDiv"([[VAL_18]], [[VAL_18]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+// CHECK:           [[VAL_19:%.*]] = "tf.Div"([[VAL_18]], [[VAL_18]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
 // CHECK:           return [[VAL_19]] : tensor<2xi32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @broadcast_div(
 // CHECK-SAME:                        [[VAL_20:%.*]]: tensor<1xi32>, [[VAL_21:%.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
-// CHECK:           [[VAL_22:%.*]] = "tf.RealDiv"([[VAL_20]], [[VAL_21]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+// CHECK:           [[VAL_22:%.*]] = "tf.Div"([[VAL_20]], [[VAL_21]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return [[VAL_22]] : tensor<1x2xi32>
 // CHECK:         }
 
@@ -736,7 +741,7 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 
 // CHECK-LABEL:   func @div_dynamic(
 // CHECK-SAME:                      [[VAL_26:%.*]]: tensor<?xi32>, [[VAL_27:%.*]]: tensor<?x?xi32>) -> tensor<?x?xi32> {
-// CHECK:           [[VAL_28:%.*]] = "tf.RealDiv"([[VAL_26]], [[VAL_27]]) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+// CHECK:           [[VAL_28:%.*]] = "tf.Div"([[VAL_26]], [[VAL_27]]) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
 // CHECK:           return [[VAL_28]] : tensor<?x?xi32>
 // CHECK:         }
 
@@ -766,13 +771,13 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 
 // CHECK-LABEL:   func @real_div(
 // CHECK-SAME:                   [[VAL_40:%.*]]: tensor<2xi32>) -> tensor<2xi32> {
-// CHECK:           [[VAL_41:%.*]] = "tf.RealDiv"([[VAL_40]], [[VAL_40]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+// CHECK:           [[VAL_41:%.*]] = "tf.Div"([[VAL_40]], [[VAL_40]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
 // CHECK:           return [[VAL_41]] : tensor<2xi32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @broadcast_real_div(
 // CHECK-SAME:                             [[VAL_42:%.*]]: tensor<1xi32>, [[VAL_43:%.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
-// CHECK:           [[VAL_44:%.*]] = "tf.RealDiv"([[VAL_42]], [[VAL_43]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+// CHECK:           [[VAL_44:%.*]] = "tf.Div"([[VAL_42]], [[VAL_43]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return [[VAL_44]] : tensor<1x2xi32>
 // CHECK:         }
 
@@ -891,7 +896,7 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_98:%.*]] = "tf.Const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK:           [[VAL_99:%.*]] = "tf.Less"([[VAL_95]], [[VAL_98]]) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
 // CHECK:           [[VAL_100:%.*]] = "tf.Equal"([[VAL_97]], [[VAL_99]]) {incompatible_shape_error = true} : (tensor<2x3xi1>, tensor<3xi1>) -> tensor<2x3xi1>
-// CHECK:           [[VAL_101:%.*]] = "tf.RealDiv"([[VAL_94]], [[VAL_95]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+// CHECK:           [[VAL_101:%.*]] = "tf.Div"([[VAL_94]], [[VAL_95]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_102:%.*]] = "tf.Abs"([[VAL_94]]) : (tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_103:%.*]] = "tf.Abs"([[VAL_95]]) : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:           [[VAL_104:%.*]] = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -899,7 +904,7 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_106:%.*]] = "tf.AddV2"([[VAL_102]], [[VAL_105]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_107:%.*]] = "tf.Neg"([[VAL_106]]) : (tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_108:%.*]] = "tf.Abs"([[VAL_95]]) : (tensor<3xi32>) -> tensor<3xi32>
-// CHECK:           [[VAL_109:%.*]] = "tf.RealDiv"([[VAL_107]], [[VAL_108]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+// CHECK:           [[VAL_109:%.*]] = "tf.Div"([[VAL_107]], [[VAL_108]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_110:%.*]] = "tf.Select"([[VAL_100]], [[VAL_101]], [[VAL_109]]) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           return [[VAL_110]] : tensor<2x3xi32>
 // CHECK:         }
@@ -911,7 +916,7 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_115:%.*]] = "tf.Const"() {value = dense<0> : tensor<2x3xi32>} : () -> tensor<2x3xi32>
 // CHECK:           [[VAL_116:%.*]] = "tf.Less"([[VAL_112]], [[VAL_115]]) : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi1>
 // CHECK:           [[VAL_117:%.*]] = "tf.Equal"([[VAL_114]], [[VAL_116]]) {incompatible_shape_error = true} : (tensor<3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
-// CHECK:           [[VAL_118:%.*]] = "tf.RealDiv"([[VAL_111]], [[VAL_112]]) : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+// CHECK:           [[VAL_118:%.*]] = "tf.Div"([[VAL_111]], [[VAL_112]]) : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_119:%.*]] = "tf.Abs"([[VAL_111]]) : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:           [[VAL_120:%.*]] = "tf.Abs"([[VAL_112]]) : (tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_121:%.*]] = "tf.Const"() {value = dense<1> : tensor<2x3xi32>} : () -> tensor<2x3xi32>
@@ -919,23 +924,23 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_123:%.*]] = "tf.AddV2"([[VAL_119]], [[VAL_122]]) : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_124:%.*]] = "tf.Neg"([[VAL_123]]) : (tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_125:%.*]] = "tf.Abs"([[VAL_112]]) : (tensor<2x3xi32>) -> tensor<2x3xi32>
-// CHECK:           [[VAL_126:%.*]] = "tf.RealDiv"([[VAL_124]], [[VAL_125]]) : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+// CHECK:           [[VAL_126:%.*]] = "tf.Div"([[VAL_124]], [[VAL_125]]) : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           [[VAL_127:%.*]] = "tf.Select"([[VAL_117]], [[VAL_118]], [[VAL_126]]) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:           return [[VAL_127]] : tensor<2x3xi32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @floordiv_f32(
 // CHECK-SAME:                       [[VAL_128:%.*]]: tensor<2xf32>) -> tensor<2xf32> {
-// CHECK:           [[VAL_129:%.*]] = "tf.RealDiv"([[VAL_128]], [[VAL_128]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-// CHECK:           [[VAL_130:%.*]] = "tf.RealDiv"([[VAL_128]], [[VAL_128]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+// CHECK:           [[VAL_129:%.*]] = "tf.Div"([[VAL_128]], [[VAL_128]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+// CHECK:           [[VAL_130:%.*]] = "tf.Div"([[VAL_128]], [[VAL_128]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 // CHECK:           [[VAL_131:%.*]] = "tf.FloorDiv"([[VAL_128]], [[VAL_128]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 // CHECK:           return [[VAL_131]] : tensor<2xf32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @floordiv_f16_broadcast(
 // CHECK-SAME:                                 [[VAL_132:%.*]]: tensor<2x3xf16>, [[VAL_133:%.*]]: tensor<3xf16>) -> tensor<2x3xf16> {
-// CHECK:           [[VAL_134:%.*]] = "tf.RealDiv"([[VAL_132]], [[VAL_133]]) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
-// CHECK:           [[VAL_135:%.*]] = "tf.RealDiv"([[VAL_132]], [[VAL_133]]) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
+// CHECK:           [[VAL_134:%.*]] = "tf.Div"([[VAL_132]], [[VAL_133]]) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
+// CHECK:           [[VAL_135:%.*]] = "tf.Div"([[VAL_132]], [[VAL_133]]) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
 // CHECK:           [[VAL_136:%.*]] = "tf.FloorDiv"([[VAL_132]], [[VAL_133]]) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
 // CHECK:           return [[VAL_136]] : tensor<2x3xf16>
 // CHECK:         }
@@ -1059,11 +1064,6 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK-LABEL:   func @const() -> tensor<2xi32> {
 // CHECK:           [[VAL_190:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
 // CHECK:           return [[VAL_190]] : tensor<2xi32>
-// CHECK:         }
-
-// CHECK-LABEL:   func @const_dynamic_output() -> tensor<*xi32> {
-// CHECK:           [[VAL_191:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<*xi32>
-// CHECK:           return [[VAL_191]] : tensor<*xi32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @relu(
@@ -1480,4 +1480,16 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK-SAME:                            [[VAL_365:%.*]]: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_366:%.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
 // CHECK:           return [[VAL_366]] : tensor<i64>
+// CHECK:         }
+
+// CHECK-LABEL:   func @complex(
+// CHECK-SAME:                  [[VAL_367:%.*]]: tensor<3xf32>, [[VAL_368:%.*]]: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
+// CHECK:           [[VAL_369:%.*]] = "tf.Complex"([[VAL_367]], [[VAL_368]]) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
+// CHECK:           return [[VAL_369]] : tensor<3xcomplex<f32>>
+// CHECK:         }
+
+// CHECK-LABEL:   func @convert_i32_f32(
+// CHECK-SAME:                          [[VAL_370:%.*]]: tensor<2xi32>) -> tensor<2xf32> {
+// CHECK:           [[VAL_371:%.*]] = "tf.Cast"([[VAL_370]]) {Truncate = false} : (tensor<2xi32>) -> tensor<2xf32>
+// CHECK:           return [[VAL_371]] : tensor<2xf32>
 // CHECK:         }

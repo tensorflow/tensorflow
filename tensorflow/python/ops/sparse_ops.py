@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """Sparse Tensor Representation.
 
-See also `tf.SparseTensor`.
+See also `tf.sparse.SparseTensor`.
 """
 
 from __future__ import absolute_import
@@ -126,18 +126,68 @@ def from_dense(tensor, name=None):
 
 @tf_export("sparse.expand_dims")
 def sparse_expand_dims(sp_input, axis=None, name=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with an length 1 axis inserted at index `axis`.
 
-  Given a tensor `sp_input`, this operation inserts a dimension of 1 at the
-  dimension index `axis` of `sp_input`'s shape. The dimension index `axis`
-  starts at zero; if you specify a negative number for `axis` it is counted
-  backwards from the end.
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
+  from the end.
+
+  This operation is useful to:
+
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
+
+  For example:
+
+  If you have a sparse tensor with shape `[height, width, depth]`:
+
+  >>> sp = tf.sparse.SparseTensor(indices=[[3,4,1]], values=[7,],
+  ...                             dense_shape=[10,10,3])
+
+  You can add an outer `batch` axis by passing `axis=0`:
+
+  >>> tf.sparse.expand_dims(sp, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.sparse.expand_dims(sp, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.sparse.expand_dims(sp, axis=-1).shape.as_list()
+  [10, 10, 3, 1]
+
+  Note: Unlike `tf.expand_dims` this function includes a default value for the
+  `axis`: `-1`. So if `axis is not specified, an inner dimension is added.
+
+  >>> sp.shape.as_list()
+  [10, 10, 3]
+  >>> tf.sparse.expand_dims(sp).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
+  ```
+
+  This operation is related to:
+
+  * `tf.expand_dims`, which provides this functionality for dense tensors.
+  * `tf.squeeze`, which removes dimensions of size 1, from dense tensors.
+  * `tf.sparse.reshape`, which provides more flexible reshaping capability.
 
   Args:
     sp_input: A `SparseTensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to expand the
       shape of `input`. Must be in the range `[-rank(sp_input) - 1,
-      rank(sp_input)]`.
+      rank(sp_input)]`. Defaults to `-1`.
     name: The name of the output `SparseTensor`.
 
   Returns:
@@ -810,14 +860,19 @@ def sparse_reshape(sp_input, shape, name=None):
       original_reshaped_shape = list(reshaped_shape_const)  # A copy
       in_shape_size = np.prod(sp_input.shape.as_list())
       num_implied = sum(dim is None for dim in reshaped_shape_const)
-      if num_implied == 1:
+
+      # If there is a 0 dim in the user-provided shape, we cannot infer the
+      # unknown dim reliably. This is why we skip the `if` branch below when
+      # a 0 is present in `reshaped_shape_const`. Same below.
+      if num_implied == 1 and 0 not in reshaped_shape_const:
         implied_idx = original_reshaped_shape.index(None)
         non_implied_idx = (
             original_reshaped_shape[:implied_idx] +
             original_reshaped_shape[implied_idx + 1:])
         reshaped_shape_const[implied_idx] = int(
             in_shape_size // np.prod(non_implied_idx))
-      if num_implied <= 1:
+      if num_implied == 0 or (num_implied == 1 and
+                              0 not in reshaped_shape_const):
         reshaped_size = np.prod(reshaped_shape_const)
         if reshaped_size != in_shape_size:
           raise ValueError(
@@ -2460,7 +2515,7 @@ def sparse_softmax(sp_input, name=None):
   values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
   indices = np.vstack(np.where(values)).astype(np.int64).T
 
-  result = tf.sparse.softmax(tf.SparseTensor(indices, values, shape))
+  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape))
   # ...returning a 3-D SparseTensor, equivalent to:
   # [?   1.]     [1    ?]
   # [1.  ? ] and [.5  .5]
@@ -2594,8 +2649,8 @@ def sparse_transpose(sp_input, perm=None, name=None):
   """
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
-      if sp_input.shape.is_fully_defined():
-        rank = len(sp_input.shape)
+      if sp_input.shape.rank is not None:
+        rank = sp_input.shape.rank
         perm = (rank - 1) - np.arange(0, rank, 1)
       else:
         rank = array_ops.rank(sp_input)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -428,8 +429,14 @@ FunctionDef* FuseFunctions(
     StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
     const SetInputFn& set_input, const SetOutputFn& set_output,
     const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
-  if (first_function.attr_size() != 0 || second_function.attr_size() != 0)
-    return nullptr;  // Functions with attributes are currently not supported
+  auto has_attrs = [](const FunctionDef& func) {
+    return !(
+        func.attr_size() == 0 ||
+        (func.attr_size() == 1 && func.attr().contains(data::kTFDataFunction)));
+  };
+  if (has_attrs(first_function) || has_attrs(second_function)) {
+    return nullptr;  // Functions with attributes are currently not supported.
+  }
 
   // This function will be used as a clone of second function, having unique
   // names.
@@ -467,7 +474,7 @@ FunctionDef* FuseFunctions(
               fused_function->mutable_ret());
 
   set_nodes(first_function, setup_function, fused_function, library);
-
+  (*fused_function->mutable_attr())[data::kTFDataFunction].set_b(true);
   return fused_function;
 }
 

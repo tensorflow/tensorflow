@@ -152,7 +152,6 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   // BatchToSpaceND + BiasAdd.
-  // TODO(b/149936532): Check the `crops` input, currently ignored.
   TF::BatchToSpaceNDOp bts_op;
   TF::BiasAddOp biasadd_op;
   bool final_op_is_bts = true;
@@ -179,16 +178,50 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (!dilations_attr.hasValue()) return failure();
   op.setAttr("dilations", dilations_attr.getValue());
 
-  // Padding is set to 'SAME' when `stb_op` has non-zero paddings.
-  // TODO(b/149936532): This assumption only holds when the input width & height
-  // is multiple of dilation width & height. We should fix it in order to
-  // support other use cases.
+  // TODO(b/149936532): Check that the input width & height are multiples of
+  // dilation rate.
+  // TF python library will rewrite dilated conv to
+  // "SpaceToBatch->Conv->BatchToSpace" pattern, and the Conv in the middle
+  // always has 'VALID' padding. The padding tensor in `SpaceToBatch` has two
+  // parts of contributions, one is to reduce padding of CONV from 'SAME' to
+  // 'VALID', and another is to make input shape multiples of dilation rate. The
+  // first part of padding, which is also called `base_padding` will be used
+  // here to determine if the original padding format is 'SAME' or 'VALID'.
+  // According to the following formula we will compute the `base_padding` if
+  // it's a constant. Basically, `paddings` tensor in `SpaceToBatch` and `crops`
+  // tensor  in `BatchToSpace` must satisfy the following:
+  //  paddings[i, 0] = base_paddings[i, 0].
+  //  0 <= paddings[i, 1] - base_paddings[i, 1] < block_shape[i]
+  // (input_shape[i] + paddings[i, 0] + paddings[i, 1]) % block_shape[i] == 0.
+  //  crops[i, 0] = 0.
+  //  crops[i, 1] = paddings[i, 1] - base_paddings[i, 1].
+
+  //  If `paddings` - `crops` != 0, this means that `base_paddings` != 0, which
+  // tells us the original padding is 'SAME' (with one caveat presented below).
+  // Here we need to reset the padding back to `SAME` if `base_padding`
+  // != 0.
+  // TODO(b/149936532): We might not simply rely on `paddings - crops != 0` to
+  // determine the original padding format. For example, users can build
+  // arbitrary valid examples of `STB->Conv->BTS` which doesn't represent a
+  // dilated conv, hence we shouldn't pattern match here. Instead, we need to
+  // check values of `paddings` and `crops` to make sure it really stands for
+  // a dilated conv.
   auto stb_paddings = stb_op.paddings();
-  ElementsAttr stb_paddings_attr;
-  if (matchPattern(stb_paddings, m_Constant(&stb_paddings_attr))) {
-    if (llvm::any_of(stb_paddings_attr.getValues<IntegerAttr>(),
-                     [](IntegerAttr attr) { return attr.getInt() != 0; })) {
-      op.setAttr("padding", rewriter.getStringAttr("SAME"));
+  auto bts_crops = bts_op.crops();
+  ElementsAttr stb_paddings_attr, bts_crops_attr;
+  if (matchPattern(stb_paddings, m_Constant(&stb_paddings_attr)) &&
+      matchPattern(bts_crops, m_Constant(&bts_crops_attr))) {
+    if (stb_paddings_attr.getNumElements() != bts_crops_attr.getNumElements())
+      return failure();
+    // padding - crop.
+    auto paddings = stb_paddings_attr.getValues<IntegerAttr>();
+    auto crops = bts_crops_attr.getValues<IntegerAttr>();
+    for (auto it1 = paddings.begin(), it2 = crops.begin();
+         it1 != paddings.end() && it2 != crops.end(); it1++, it2++) {
+      if ((*it1).getInt() != (*it2).getInt()) {
+        op.setAttr("padding", rewriter.getStringAttr("SAME"));
+        break;
+      }
     }
   }
 

@@ -1934,6 +1934,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":debug_info_msf",
@@ -2004,6 +2005,23 @@ cc_library(
         ":support",
         ":target",
     ],
+)
+
+cc_library(
+    name = "extensions",
+    srcs = glob([
+        "lib/Extensions/*.c",
+        "lib/Extensions/*.cpp",
+        "lib/Extensions/*.inc",
+        "lib/Extensions/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Extensions/*.h",
+        "include/llvm/Extensions/*.def",
+        "include/llvm/Extensions/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [":config"],
 )
 
 cc_library(
@@ -2386,6 +2404,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":extensions",
         ":inst_combine",
         ":ipo",
         ":linker",
@@ -4039,27 +4058,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ve_asm_printer",
-    srcs = glob([
-        "lib/Target/VE/InstPrinter/*.c",
-        "lib/Target/VE/InstPrinter/*.cpp",
-        "lib/Target/VE/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/VE/InstPrinter/*.h",
-        "include/llvm/Target/VE/InstPrinter/*.def",
-        "include/llvm/Target/VE/InstPrinter/*.inc",
-        "lib/Target/VE/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
-    deps = [
-        ":config",
-        ":mc",
-        ":support",
-    ],
-)
-
-cc_library(
     name = "ve_code_gen",
     srcs = glob([
         "lib/Target/VE/*.c",
@@ -4083,7 +4081,6 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
-        ":ve_asm_printer",
         ":ve_desc",
         ":ve_info",
     ],
@@ -4107,7 +4104,6 @@ cc_library(
         ":config",
         ":mc",
         ":support",
-        ":ve_asm_printer",
         ":ve_info",
     ],
 )
@@ -4353,7 +4349,6 @@ cc_library(
         ":x86_defs",
         ":x86_desc",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4378,7 +4373,6 @@ cc_library(
         ":mc_disassembler",
         ":support",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4424,27 +4418,6 @@ cc_library(
         ":mc",
         ":support",
         ":x86_target_gen",
-    ],
-)
-
-cc_library(
-    name = "x86_utils",
-    srcs = glob([
-        "lib/Target/X86/Utils/*.c",
-        "lib/Target/X86/Utils/*.cpp",
-        "lib/Target/X86/Utils/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/X86/Utils/*.h",
-        "include/llvm/Target/X86/Utils/*.def",
-        "include/llvm/Target/X86/Utils/*.inc",
-        "lib/Target/X86/Utils/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
-    deps = [
-        ":code_gen",
-        ":config",
-        ":support",
     ],
 )
 

@@ -159,6 +159,24 @@ public abstract class TensorBuffer {
   public abstract float[] getFloatArray();
 
   /**
+   * Returns a float value at a given index. If the buffer is of different types than float, the
+   * value will be converted into float. For example, when reading a value from {@link
+   * TensorBufferUint8}, the value will be first read out as uint8, and then will be converted from
+   * uint8 to float.
+   *
+   * <pre>
+   * For example, a TensorBuffer with shape {2, 3} that represents the following array,
+   * [[0.0f, 1.0f, 2.0f], [3.0f, 4.0f, 5.0f]].
+   *
+   * The fourth element (whose value is 3.0f) in the TensorBuffer can be retrived by:
+   * float v = tensorBuffer.getFloatValue(3);
+   * </pre>
+   *
+   * @param absIndex The absolute index of the value to be read.
+   */
+  public abstract float getFloatValue(int absIndex);
+
+  /**
    * Returns an int array of the values stored in this buffer. If the buffer is of different type
    * than int, the values will be converted into int, and loss of precision may apply. For example,
    * getting an int array from a {@link TensorBufferFloat} with values {400.32f, 23.04f}, the output
@@ -168,12 +186,31 @@ public abstract class TensorBuffer {
   public abstract int[] getIntArray();
 
   /**
+   * Returns an int value at a given index. If the buffer is of different types than int, the value
+   * will be converted into int. For example, when reading a value from {@link TensorBufferFloat},
+   * the value will be first read out as float, and then will be converted from float to int. Loss
+   * of precision may apply.
+   *
+   * <pre>
+   * For example, a TensorBuffer with shape {2, 3} that represents the following array,
+   * [[0.0f, 1.0f, 2.0f], [3.0f, 4.0f, 5.0f]].
+   *
+   * The fourth element (whose value is 3.0f) in the TensorBuffer can be retrived by:
+   * int v = tensorBuffer.getIntValue(3);
+   * Note that v is converted from 3.0f to 3 as a result of type conversion.
+   * </pre>
+   *
+   * @param absIndex The absolute index of the value to be read.
+   */
+  public abstract int getIntValue(int absIndex);
+
+  /**
    * Returns the number of bytes of a single element in the array. For example, a float buffer will
    * return 4, and a byte buffer will return 1.
    */
   public abstract int getTypeSize();
 
-  /** Returns if the TensorBuffer is dynamic sized (could resize arbitrarily). */
+  /** Returns if the {@link TensorBuffer} is dynamic sized (could resize arbitrarily). */
   public boolean isDynamic() {
     return isDynamic;
   }
@@ -330,7 +367,7 @@ public abstract class TensorBuffer {
 
   /**
    * Allocates buffer with corresponding size of the {@code shape}. If shape is an empty array, this
-   * TensorBuffer will be created as a scalar and its flatSize will be 1.
+   * {@link TensorBuffer} will be created as a scalar and its flatSize will be 1.
    *
    * @throws NullPointerException if {@code shape} is null.
    * @throws IllegalArgumentException if {@code shape} has negative elements.

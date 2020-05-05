@@ -30,12 +30,12 @@ namespace {
 
 using linalg::LinalgOp;
 
-class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
+class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
  public:
   LhloFuseLinalg() = default;
   LhloFuseLinalg(const LhloFuseLinalg&) {}
   LhloFuseLinalg(bool use_parallel_loops, llvm::ArrayRef<unsigned> tile_sizes) {
-    tile_sizes_->assign(tile_sizes.begin(), tile_sizes.end());
+    tile_sizes_ = tile_sizes;
     use_parallel_loops_.setValue(use_parallel_loops);
   }
 
@@ -123,7 +123,7 @@ class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalg(
     bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
   return absl::make_unique<LhloFuseLinalg>(use_parallel_loops, tile_sizes);
 }

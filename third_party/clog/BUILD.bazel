@@ -15,15 +15,13 @@ cc_library(
     hdrs = [
         "deps/clog/include/clog.h",
     ],
-    copts = [
-        "-Wno-unused-result",
-    ],
+    copts = select({
+        ":windows": [],
+        "//conditions:default": ["-Wno-unused-result"],
+    }),
     linkopts = select({
-        ":android": [
-            "-llog",
-        ],
-        "//conditions:default": [
-        ],
+        ":android": ["-llog"],
+        "//conditions:default": [],
     }),
     linkstatic = True,
     strip_include_prefix = "deps/clog/include",
@@ -32,5 +30,9 @@ cc_library(
 config_setting(
     name = "android",
     values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
 )

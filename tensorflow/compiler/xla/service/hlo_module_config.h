@@ -104,9 +104,19 @@ class HloModuleConfig {
     return debug_options_.xla_hlo_profile();
   }
 
+  bool cpu_traceme_enabled() const {
+    return debug_options_.xla_cpu_enable_xprof_traceme();
+  }
+
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
+
+  // Set the launch id of the program. Launch id identifies a set of programs
+  // that should be launched together.
+  void set_launch_id(uint64 launch_id) { launch_id_ = launch_id; }
+
+  int32 launch_id() const { return launch_id_; }
 
   void set_replica_count(int64 replica_count) {
     replica_count_ = replica_count;
@@ -196,6 +206,9 @@ class HloModuleConfig {
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
+
+  // Program id that identifies a set of program to be launched together.
+  int32 launch_id_ = 0;
 
   // The number of replicas (data parallelism) to compile this binary for.
   int64 replica_count_ = 1;

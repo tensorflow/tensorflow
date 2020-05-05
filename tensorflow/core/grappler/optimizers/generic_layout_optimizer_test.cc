@@ -77,17 +77,21 @@ Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
 
 Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
                                  int filter_size, const string& padding,
-                                 bool dilated) {
+                                 bool dilated, const int input_sizes_length) {
   int batch_size = 128;
   int input_height = input_size;
   int input_width = input_size;
   int input_depth = 3;
   int filter_count = 2;
   int stride = 1;
-  TensorShape input_sizes_shape({4});
+  TensorShape input_sizes_shape({input_sizes_length});
   Tensor input_data(DT_INT32, input_sizes_shape);
-  test::FillValues<int>(&input_data,
-                        {batch_size, input_height, input_width, input_depth});
+  if (input_sizes_length == 4) {
+    test::FillValues<int>(&input_data,
+                          {batch_size, input_height, input_width, input_depth});
+  } else {
+    test::FillValues<int>(&input_data, {input_height, input_width});
+  }
   Output input_sizes =
       ops::Const(s->WithOpName("InputSizes"), Input::Initializer(input_data));
 
@@ -353,7 +357,8 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
 #endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   Scope s = Scope::NewRootScope();
-  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", /*dilated=*/false);
+  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", /*dilated=*/false,
+                                        /*input_sizes_length=*/4);
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
@@ -378,6 +383,30 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   EXPECT_EQ(input_sizes_node->GetOp(), "DataFormatVecPermute");
   ASSERT_EQ(input_sizes_node->NumRegularFanins(), 1);
   VerifyRegularFaninMatch(input_sizes_node, 0, "InputSizesIdentity", 0);
+}
+
+TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInput2DInputSizes) {
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  Scope s = Scope::NewRootScope();
+  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", /*dilated=*/false,
+                                        /*input_sizes_length=*/2);
+  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
+  GrapplerItem item;
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  GenericLayoutOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  Status status;
+  utils::GraphView graph_view(&output, &status);
+  TF_ASSERT_OK(status);
+  auto* conv2d_backprop_node = graph_view.GetNode("Conv2DBackpropInput");
+  ASSERT_NE(conv2d_backprop_node, nullptr);
+  ASSERT_EQ(conv2d_backprop_node->NumRegularFanins(), 3);
+  VerifyRegularFaninMatch(conv2d_backprop_node, 0, "InputSizesIdentity", 0);
 }
 
 TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {

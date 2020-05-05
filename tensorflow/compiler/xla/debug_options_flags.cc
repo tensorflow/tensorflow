@@ -63,6 +63,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_deterministic_reductions(false);
+  opts.set_xla_cpu_enable_xprof_traceme(true);
+  // TODO(b/155295372): disable ptxas fallback by default.
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(true);
+
   return opts;
 }
 
@@ -529,12 +534,47 @@ static void AllocateFlags() {
                        flag_values->xla_gpu_algorithm_blacklist_path(),
                        "An AlgorithmBlacklist text proto file as a blacklist "
                        "of convolutions to avoid to use."),
-
       tensorflow::Flag(
           "xla_gpu_deterministic_reductions",
           bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
           flag_values->xla_gpu_deterministic_reductions(),
           "Always run deterministic reductions on GPU"),
+      tensorflow::Flag(
+          "xla_tpu_detect_nan",
+          bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),
+          flag_values->xla_tpu_detect_nan(),
+          "Trigger error on execution on TPU if a NAN value is detected"),
+      tensorflow::Flag(
+          "xla_tpu_detect_inf",
+          bool_setter_for(&DebugOptions::set_xla_tpu_detect_inf),
+          flag_values->xla_tpu_detect_inf(),
+          "Trigger error on execution on TPU if a INF value is detected"),
+      tensorflow::Flag(
+          "xla_cpu_enable_xprof_traceme",
+          bool_setter_for(&DebugOptions::set_xla_cpu_enable_xprof_traceme),
+          flag_values->xla_cpu_enable_xprof_traceme(),
+          "If true, XLA CPU generates code to call "
+          "TraceMe::Activity{Start|End} around HLO operations."),
+      tensorflow::Flag(
+          "xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found",
+          bool_setter_for(
+              &DebugOptions::
+                  set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found),
+          flag_values->xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(),
+          "If true, XLA GPU falls back to the driver if ptxas is not found. "
+          "Note that falling back to the driver can have drawbacks like using "
+          "more memory and/or other bugs during compilation, so we recommend "
+          "setting this flag to false."),
+      tensorflow::Flag(
+          "xla_gpu_unsafe_fallback_to_driver_on_ptxas_error",
+          bool_setter_for(
+              &DebugOptions::
+                  set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error),
+          flag_values->xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(),
+          "If true, XLA GPU falls back to the driver if there is an error when "
+          "running ptxas. Note that falling back to the driver can have "
+          "drawbacks like using more memory and/or other bugs during "
+          "compilation, so we recommend setting this flag to false."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

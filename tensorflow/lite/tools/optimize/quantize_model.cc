@@ -445,7 +445,7 @@ TfLiteStatus QuantizeOpInput(
         }
         if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
                                   tensor_property.per_axis_index,
-                                  error_reporter) == kTfLiteError) {
+                                  error_reporter) != kTfLiteOk) {
           TF_LITE_REPORT_ERROR(
               error_reporter,
               "Unable to quantize buffer or min/max value for input %d "
@@ -865,17 +865,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
-        }
-        if (bias_idx >= op->inputs.size()) {
-          TF_LITE_REPORT_ERROR(
-              error_reporter,
-              "Required input index %d is larger than the input length of "
-              "op  %s at index %d in subgraph %d",
-              bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
-              op_idx, subgraph_idx);
-          return kTfLiteError;
         }
         // Quantize if it is not quantized already as the
         // output of another op or input of another op.
@@ -1001,9 +993,20 @@ TfLiteStatus FillQuantizationParams(
           // Dynamic tensor.
         } else if (!utils::HasMinMax(tensor) &&
                    !utils::HasBuffer(model, subgraph, tensor_idx)) {
-          TF_LITE_REPORT_ERROR(error_reporter,
-                               "Max and min for dynamic tensors should be"
-                               " recorded during calibration");
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Max and min for dynamic tensors should be"
+              " recorded during calibration: Failed for tensor %s\n",
+              tensor->name.c_str());
+          if (tensor->quantization == nullptr) {
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "No quantization params for tensor %s",
+                                 tensor->name.c_str());
+          } else if (tensor->quantization->min.empty() ||
+                     tensor->quantization->max.empty()) {
+            TF_LITE_REPORT_ERROR(error_reporter, "Empty min/max for tensor %s",
+                                 tensor->name.c_str());
+          }
           return kTfLiteError;
         }
 
@@ -1035,7 +1038,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
+#include <utility>
+
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -75,6 +77,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kCeil:
       func_builder.create<lhlo::CeilOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kComplex:
+      func_builder.create<lhlo::ComplexOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kCopy:
       func_builder.create<lhlo::CopyOp>(loc, rets, args, attrs);
       break;
@@ -86,6 +91,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kExp:
       func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kImag:
+      func_builder.create<lhlo::ImagOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kLog:
       func_builder.create<lhlo::LogOp>(loc, rets, args, attrs);
@@ -101,6 +109,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kNegate:
       func_builder.create<lhlo::NegOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kReal:
+      func_builder.create<lhlo::RealOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kRemainder:
       func_builder.create<lhlo::RemOp>(loc, rets, args, attrs);
@@ -254,6 +265,18 @@ Status LhloDialectEmitter::HandleBroadcast(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
+  mlir::IntegerAttr concatenate_dim = builder_.getI64IntegerAttr(
+      static_cast<HloConcatenateInstruction*>(instr)->concatenate_dimension());
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+  func_builder.create<lhlo::ConcatenateOp>(
+      getLocation(instr), function.getArguments().drop_back(),
+      function.getArguments().back(), concatenate_dim);
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
@@ -277,7 +300,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   // Insert the write-back from the HLO computation to the result argument
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
-  Value result_memref = function.getArgument(function.getNumArguments() - 1);
+  Value result_memref = function.getArguments().back();
   body_builder.create<::mlir::TensorStoreOp>(getLocation(instr), result,
                                              result_memref);
 

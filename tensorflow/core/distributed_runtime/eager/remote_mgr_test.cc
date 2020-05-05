@@ -102,6 +102,52 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   handle->Unref();
 }
 
+TEST_F(RemoteMgrTest, InvalidateRemoteMirrorWithClusterUpdate) {
+  RemoteMgr remote_mgr(false, ctx_);
+  Tensor t(DT_FLOAT, TensorShape({0}));
+
+  TensorHandle* handle = TensorHandle::CreateLocalHandle(
+      std::move(t), local_device_, local_device_, ctx_);
+  const uint64 op_id = 2;
+  const int output_num = 3;
+  TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
+                                               output_num, "", ctx_));
+  EXPECT_TRUE(
+      handle->HasRemoteMirror(remote_device_, ctx_->GetContextViewId()));
+
+  // When updating cluster, remote mirror should be invalidated.
+  ctx_->IncrementContextViewId();
+  EXPECT_FALSE(
+      handle->HasRemoteMirror(remote_device_, ctx_->GetContextViewId()));
+  // Setting remote shape should still be OK
+  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
+                                      ctx_->GetContextViewId()));
+  handle->Unref();
+}
+
+TEST_F(RemoteMgrTest, SetRemoteShapeWithClusterUpdate) {
+  RemoteMgr remote_mgr(false, ctx_);
+
+  const uint64 op_id = 3;
+  const int output_num = 1;
+  TensorHandle* handle = TensorHandle::CreateUnshapedRemoteHandle(
+      op_id, output_num,
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
+  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
+                                      ctx_->GetContextViewId()));
+  handle->Unref();
+
+  // Setting remote shape on primary (non-mirror) remote handle works after
+  // cluster being updated
+  handle = TensorHandle::CreateUnshapedRemoteHandle(
+      op_id, output_num,
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
+  ctx_->IncrementContextViewId();
+  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
+                                      ctx_->GetContextViewId()));
+  handle->Unref();
+}
+
 }  // namespace
 }  // namespace eager
 }  // namespace tensorflow

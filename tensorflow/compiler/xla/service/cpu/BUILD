@@ -357,6 +357,7 @@ cc_library(
     ],
     hdrs = ["target_machine_features.h"],
     deps = [
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",

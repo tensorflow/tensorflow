@@ -1,14 +1,9 @@
-# TODO(herhut): describe this package.
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_exec_properties",
 )
-load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_visibility = [":friends"],
@@ -22,48 +17,27 @@ package_group(
     ],
 )
 
-tf_cc_test(
-    name = "mlir_gpu_lhlo_gen_test",
-    srcs = if_cuda_is_configured(["mlir_gpu_lhlo_gen_test.cc"]),
-    data = [
-        "abs.hlo",
-        "add.hlo",
-        "add_as_kernel.hlo",
-        "add_in_gpu_dialect.hlo",
-        "add_multiply.hlo",
-        "add_multiply_gpu.hlo",
-        "add_reduce.hlo",
-        "broadcast.hlo",
-        "broken_add.hlo",
-        "ceil.hlo",
-        "compare.hlo",
-        "const.hlo",
-        "copy.hlo",
-        "copy_transpose.hlo",
-        "cos.hlo",
-        "exp.hlo",
-        "fused_reduce.hlo",
-        "iota.hlo",
-        "iota_add_multiply.hlo",
-        "log.hlo",
-        "neg.hlo",
-        "reduce_window.hlo",
-        "rem.hlo",
-        "rsqrt.hlo",
-        "select.hlo",
-        "select_and_scatter.hlo",
-        "sign.hlo",
-        "sqrt.hlo",
-        "tanh.hlo",
+glob_lit_tests(
+    data = [":test_utilities"],
+    default_tags = tf_cuda_tests_tags() + [
+        "no_pip",
+        "config-cuda-only",
     ],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = [
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:test",
-    ] + if_cuda_is_configured([
-        "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
-        "//tensorflow/stream_executor/lib",
-    ]),
+    driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        # TODO(b/137624192): Reenable once we can fuse reductions.
+        "fused_reduce.hlo",
+    ],
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+    test_file_exts = ["hlo"],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        "//tensorflow/compiler/xla/service/mlir_gpu:xla-gpu-opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
 )

@@ -128,8 +128,10 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "notpu",  # TODO(b/142805125): Enable tpu_test_target once fixed on tpu.
         "notsan",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
     ],
     deps = [
         ":distribute_strategy_test_lib",
@@ -243,9 +245,11 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
+        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
+        "notap",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
@@ -261,9 +265,12 @@ distribute_py_test(
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
+        "notap",  # TODO(b/153392670)
         "notsan",
     ],
     deps = [
@@ -279,6 +286,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",
         "notsan",
     ],
@@ -429,5 +437,17 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy_test_utils",
+    srcs = ["tpu_strategy_test_utils.py"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )

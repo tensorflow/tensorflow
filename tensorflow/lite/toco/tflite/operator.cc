@@ -51,7 +51,8 @@ namespace tflite {
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
-      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16}};
+      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
+      {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
 
   auto it = tensor_type_map.find(type);
   if (it != tensor_type_map.end()) {
@@ -63,7 +64,7 @@ namespace tflite {
 ::tflite::OpSignature GetVersioningOpSig(
     const ::tflite::BuiltinOperator op, const OperatorSignature& op_signature) {
   std::vector<::tflite::TensorType> input_types, output_types;
-  for (auto input_name : op_signature.op->inputs) {
+  for (const auto& input_name : op_signature.op->inputs) {
     ::tflite::TensorType input_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(input_name)) {
       const Array& input_array = op_signature.model->GetArray(input_name);
@@ -71,7 +72,7 @@ namespace tflite {
     }
     input_types.push_back(input_type);
   }
-  for (auto output_name : op_signature.op->outputs) {
+  for (const auto& output_name : op_signature.op->outputs) {
     ::tflite::TensorType output_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(output_name)) {
       const Array& output_array = op_signature.model->GetArray(output_name);
@@ -241,7 +242,7 @@ class SpaceToBatchND
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.space_batch.num_dims =
+    op_sig.options.single_input_op.num_dims =
         input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
@@ -302,6 +303,23 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input1_name = op_signature.op->inputs[0];
+    const string& input2_name = op_signature.op->inputs[1];
+    const Array& input1_array = op_signature.model->GetArray(input1_name);
+    const Array& input2_array = op_signature.model->GetArray(input2_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    if (input1_array.has_shape() && input2_array.has_shape()) {
+      op_sig.options.broadcast.num_dims =
+          std::max(input1_array.shape().dimensions_count(),
+                   input2_array.shape().dimensions_count());
+      op_sig.options.broadcast.need_broadcast =
+          (input1_array.shape() != input2_array.shape());
+    }
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
+  }
 };
 
 class BatchToSpaceND
@@ -325,7 +343,7 @@ class BatchToSpaceND
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.space_batch.num_dims =
+    op_sig.options.single_input_op.num_dims =
         input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
@@ -1208,7 +1226,7 @@ class StridedSlice
         static_cast<const StridedSliceOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
+    op_sig.options.single_input_op.num_dims = ss_op.start_indices.size();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -2043,6 +2061,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       ::tflite::BuiltinOperator_RANK, OperatorType::kRank));
   ops.emplace_back(new SimpleOperator<SegmentSumOperator>(
       ::tflite::BuiltinOperator_SEGMENT_SUM, OperatorType::kSegmentSum));
+  ops.emplace_back(MakeUnique<SimpleOperator<ScatterNdOperator>>(
+      ::tflite::BuiltinOperator_SCATTER_ND, OperatorType::kScatterNd));
   return ops;
 }
 }  // namespace

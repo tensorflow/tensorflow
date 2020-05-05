@@ -468,24 +468,24 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   tflite_api_dispatcher::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return JNI_FALSE;
-  const int idx = static_cast<int>(input_idx);
-  if (idx < 0 || idx >= interpreter->inputs().size()) {
+  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     ThrowException(env, kIllegalArgumentException,
                    "Input error: Can not resize %d-th input for a model having "
                    "%d inputs.",
-                   idx, interpreter->inputs().size());
+                   input_idx, interpreter->inputs().size());
     return JNI_FALSE;
   }
+  const int tensor_idx = interpreter->inputs()[input_idx];
   // check whether it is resizing with the same dimensions.
-  TfLiteTensor* target = interpreter->tensor(input_idx);
+  TfLiteTensor* target = interpreter->tensor(tensor_idx);
   bool is_changed = AreDimsDifferent(env, target, dims);
   if (is_changed) {
     TfLiteStatus status = interpreter->ResizeInputTensor(
-        interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
+        tensor_idx, convertJIntArrayToVector(env, dims));
     if (status != kTfLiteOk) {
       ThrowException(env, kIllegalArgumentException,
-                     "Internal error: Failed to resize %d-th input: %s", idx,
-                     error_reporter->CachedErrorMessage());
+                     "Internal error: Failed to resize %d-th input: %s",
+                     input_idx, error_reporter->CachedErrorMessage());
       return JNI_FALSE;
     }
   }

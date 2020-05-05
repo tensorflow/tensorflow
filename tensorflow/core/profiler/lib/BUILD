@@ -26,6 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + if_static([
@@ -50,6 +51,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/util:ptr_util",
     ] + if_not_android([
         ":profiler_utils",
@@ -65,6 +67,13 @@ tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:device_tracer",
+        # Metadata collector does not compile for Cast,
+        # due to its dependency on human_readable_json.
+        # Also, it is only used for XLA:GPU support and
+        # thus move it inside cuda_deps.
+        # TODO(b/155130190): Gate deps and cuda_deps here so they are empty
+        # when compiling for a mobile platform.
+        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [

@@ -120,14 +120,23 @@ class KernelAndDevice : public core::RefCounted {
 
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(
-      const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
-
-  virtual Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
+
+  // Execute kernel asynchronously when applicable. Different from `Run` which
+  // blocks the caller thread and waits for the execution of the op/function,
+  // `RunAsync` could return before finishing the execution. The `done` callback
+  // will be triggered once the op/function execution finishes.
+  // Currently, calling RunAsync on ops might not honor the asynchronicity when
+  // it is called on an instance with only sync implementation, execute the
+  // kernel synchronously and then call the callback with the return status
+  // from sync execution.
+  virtual void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -186,16 +195,21 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
-
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
+
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override {
+    // Trivial async implementation on top of the sync version
+    done(Run(step_container, inputs, outputs, cancellation_manager,
+             remote_func_params));
+  }
 
   const OpKernel* kernel() const override { return kernel_.get(); }
 
@@ -269,15 +283,17 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
+
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 

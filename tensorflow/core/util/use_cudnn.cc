@@ -22,6 +22,24 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool CanUseCudnn() {
+  static bool is_enabled = [] {
+    bool is_enabled = true;
+    // TODO(b/155239286): Remove TF_USE_CUDNN after TF 2.3 is released.
+    Status status =
+        ReadBoolFromEnvVar("TF_USE_CUDNN", /*default_val=*/true, &is_enabled);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    if (!is_enabled) {
+      LOG(WARNING) << "The environmental variable TF_USE_CUDNN is deprecated "
+                      "and will be ignored in the future";
+    }
+    return is_enabled;
+  }();
+  return is_enabled;
+}
+
 #define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
   bool func_name() {                                                       \
     bool value = default_value;                                            \
@@ -32,7 +50,6 @@ namespace tensorflow {
     return value;                                                          \
   }
 
-ADD_BOOL_CUDNN_FLAG(CanUseCudnn, TF_USE_CUDNN, true);
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 // Whether to auto-tuning Cudnn RNN forward and backward pass to pick
 // statistically the best cudnnRNNAlgo_t and cudnnMathType_t.

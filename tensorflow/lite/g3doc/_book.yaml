@@ -127,13 +127,16 @@ upper_tabs:
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
         status: experimental
+      - title: "Core ML delegate"
+        path: /lite/performance/coreml_delegate
+        status: experimental
 
       - heading: "Optimize a model"
       - title: "Overview"
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
+      - title: "Post-training dynamic range quantization"
         path: /lite/performance/post_training_quant
       - title: "Post-training integer quantization"
         path: /lite/performance/post_training_integer_quant
@@ -188,15 +191,17 @@ upper_tabs:
       - title: "Text classification"
         path: /lite/models/text_classification/overview
 
-    - name: "Python API"
+    - name: "API"
       skip_translation: true
       contents:
-      - title: "Python API"
+      - title: API Reference
+        path: /lite/api_docs/
+      - heading: "Python"
+      - title: "Overview"
+        status: external
         path: /api_docs/python/tf/lite
-    - name: "C++ API"
-      skip_translation: true
-      contents:
-      - title: "C++ API"
+      - heading: "C++"
+      - title: Overview
         path: /lite/api_docs/cc/
       - include: /lite/api_docs/cc/_doxygen.yaml
 

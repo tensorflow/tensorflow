@@ -443,6 +443,8 @@ def scan(fn,
          name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.
 
+  See also `tf.map_fn`.
+
   The simplest version of `scan` repeatedly applies the callable `fn` to a
   sequence of elements from first to last. The elements are made of the tensors
   unpacked from `elems` on dimension 0. The callable fn takes two tensors as

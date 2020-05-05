@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -28,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -341,6 +343,11 @@ class BinaryOpTest(test.TestCase):
     # _compareBoth tests on GPU only for floating point types, so test
     # _MOD for int32 on GPU by calling _compareGpu
     self._compareGpu(x, y, np.mod, _MOD)
+
+  def testUint32Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
+    self._compareBoth(x, y, np.add, math_ops.add)
 
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -754,7 +761,7 @@ class BinaryOpTest(test.TestCase):
             ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   @test_util.run_deprecated_v1
-  def testZeroPowGrad(self):
+  def testZeroBasePowGrad(self):
     with self.cached_session():
       for dtype in (np.float16, np.float32, np.float64, np.complex64,
                     np.complex128):
@@ -763,6 +770,43 @@ class BinaryOpTest(test.TestCase):
         z = math_ops.pow(x, y)
         error = gradient_checker.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroPowerPowGrad(self):
+    # Tests for 0. ** 0.'s gradient with respect to the base for real dtypes
+    # only. For complex types 0. ** 0. itself isn't well defined, so we'd get a
+    # non-deterministic smattering of NaNs in the test.
+
+    # pylint: disable=cell-var-from-loop
+    for dtype in (np.float16, np.float32, np.float64):
+      sym_jac, num_jac = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.pow(x, 0.),
+          [constant_op.constant([-1., 0., 1.], dtype=dtype)])
+      self.assertAllClose(sym_jac, num_jac)
+      power = constant_op.constant([0., 0., 0.], dtype=dtype)
+      sym_jac, num_jac = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.pow(x, power),
+          [constant_op.constant([-1., 0., 1.], dtype=dtype)])
+      self.assertAllClose(sym_jac, num_jac)
+      with backprop.GradientTape() as tape:
+        x = constant_op.constant(float("NaN"), dtype=dtype)
+        tape.watch(x)
+        y = x ** 0.
+      self.assertAllClose(0., tape.gradient(y, x))
+    # pylint: enable=cell-var-from-loop
+
+    x = constant_op.constant(0.)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(x)
+      y = math_ops.pow(x, 2.)
+      x_g = tape.gradient(y, x)
+      self.assertAllClose(2. * 0. ** 1., x_g)
+      x_gg = tape.gradient(x_g, x)
+      self.assertAllClose(2. * 0. ** 0., x_gg)
+      x_ggg = tape.gradient(x_gg, x)
+      self.assertAllClose(0., x_ggg)
+      # Note that higher-order gradients currently return NaN since backprop
+      # isn't very smart.
 
   @test_util.run_deprecated_v1
   def testComplexPowGrad(self):
@@ -947,6 +991,44 @@ class ComparisonOpTest(test.TestCase):
             (ValueError, errors.InvalidArgumentError),
             "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
+
+  def testEqualDType(self):
+    dtypes = [
+        np.float16,
+        np.float32,
+        np.float64,
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.bool,
+    ]
+    x = np.asarray([0, 1, 2, 3, 4])
+    y = np.asarray([0, 1, 2, 3, 4])
+    for dtype in dtypes:
+      xt = x.astype(dtype)
+      yt = y.astype(dtype)
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
+    for dtype in [np.complex64, np.complex128]:
+      xt = x.astype(dtype)
+      xt -= 1j * xt
+      yt = y.astype(dtype)
+      yt -= 1j * yt
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
 
 
 if __name__ == "__main__":

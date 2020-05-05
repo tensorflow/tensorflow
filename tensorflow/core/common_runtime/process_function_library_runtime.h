@@ -73,7 +73,7 @@ class ProcessFunctionLibraryRuntime {
       const SessionMetadata* session_metadata = nullptr,
       Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
 
-  virtual ~ProcessFunctionLibraryRuntime() {
+  ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
     // registered in it, which may call ReleaseHandle in this class again to
     // release their sub-function. These circular calls may casue segfault
@@ -137,8 +137,13 @@ class ProcessFunctionLibraryRuntime {
   // index of instantiation of that function. If the function was not
   // instantiated on `device_name` or the function is multi-device,
   // returns kInvalidLocalHandle.
+  //
+  // If `include_multi_device` is true and `handle` is a multi-device function
+  // with a single component that is placed on `device_name`, then this method
+  // will return the local handle for that component.
   FunctionLibraryRuntime::LocalHandle GetHandleOnDevice(
-      const string& device_name, FunctionLibraryRuntime::Handle handle) const;
+      const string& device_name, FunctionLibraryRuntime::Handle handle,
+      bool include_multi_device = false) const;
 
   // Fills `output_devices` with the devices on which the results will
   // be produced. If some output is produced on CPU, the corresponding Device*
@@ -184,14 +189,24 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
            FunctionLibraryRuntime::DoneCallback done) const;
 
-  virtual void Run(const FunctionLibraryRuntime::Options& opts,
-                   FunctionLibraryRuntime::Handle handle,
-                   const FunctionArgsInterface& args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) const;
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle,
+           const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done) const;
+
+  Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                 FunctionLibraryRuntime::Handle handle,
+                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets) const;
+  Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                 FunctionLibraryRuntime::Handle handle,
+                 CallFrameInterface* frame) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
-  const DeviceSet* device_set() { return device_set_.get(); }
+  const std::shared_ptr<DeviceSet> device_set() {
+    tf_shared_lock l(mu_);
+    return device_set_;
+  }
 
   // Initialize the set of local and remote devices for op device selection.
   void InitializeDeviceSet();
@@ -274,12 +289,6 @@ class ProcessFunctionLibraryRuntime {
     uint64 step_id;
     FunctionLibraryRuntime::Handle local_handle;
   };
-
-  virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
-                               FunctionLibraryRuntime::Handle local_handle,
-                               gtl::ArraySlice<FunctionArg> args,
-                               std::vector<Tensor>* rets,
-                               FunctionLibraryRuntime::DoneCallback done) const;
 
   // If `handle` represents a multi-device function, returns the multi-device
   // data associated with `handle`. Else, nullptr.
@@ -425,9 +434,14 @@ class ProcessFunctionLibraryRuntime {
   Env* const env_;
   const absl::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
-  std::unique_ptr<DeviceSet> device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
+
+  // Cluster update can reinitialize the device_set_ due to remote device
+  // changes. At the same time, InstantiateMultiDevice can use the cached
+  // devices to instantiate multi-worker functions. Function instantiation would
+  // fail if it spans the changed remote devices.
+  std::shared_ptr<DeviceSet> device_set_ TF_GUARDED_BY(mu_);
 
   // Holds all the function instantiations. Maps function_keys to handles.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_

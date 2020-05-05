@@ -102,6 +102,39 @@ class MetadataTest(test_util.TensorFlowTestCase):
       f.write(b.Output())
     return metadata_file
 
+  def _create_model_buffer_with_wrong_identifier(self):
+    wrong_identifier = b"widn"
+    model = _schema_fb.ModelT()
+    model_builder = flatbuffers.Builder(0)
+    model_builder.Finish(model.Pack(model_builder), wrong_identifier)
+    return model_builder.Output()
+
+  def _create_metadata_buffer_with_wrong_identifier(self):
+    # Creates a metadata with wrong identifier
+    wrong_identifier = b"widn"
+    metadata = _metadata_fb.ModelMetadataT()
+    metadata_builder = flatbuffers.Builder(0)
+    metadata_builder.Finish(metadata.Pack(metadata_builder), wrong_identifier)
+    return metadata_builder.Output()
+
+  def _populate_metadata_with_identifier(self, model_buf, metadata_buf,
+                                         identifier):
+    # For testing purposes only. MetadataPopulator cannot populate metadata with
+    # wrong identifiers.
+    model = _schema_fb.ModelT.InitFromObj(
+        _schema_fb.Model.GetRootAsModel(model_buf, 0))
+    buffer_field = _schema_fb.BufferT()
+    buffer_field.data = metadata_buf
+    model.buffers = [buffer_field]
+    # Creates a new metadata field.
+    metadata_field = _schema_fb.MetadataT()
+    metadata_field.name = _metadata.MetadataPopulator.METADATA_FIELD_NAME
+    metadata_field.buffer = len(model.buffers) - 1
+    model.metadata = [metadata_field]
+    b = flatbuffers.Builder(0)
+    b.Finish(model.Pack(b), identifier)
+    return b.Output()
+
 
 class MetadataPopulatorTest(MetadataTest):
 
@@ -125,6 +158,14 @@ class MetadataPopulatorTest(MetadataTest):
     with self.assertRaises(ValueError) as error:
       _metadata.MetadataPopulator.with_model_buffer(self._invalid_model_buf)
     self.assertEqual("model_buf cannot be empty.", str(error.exception))
+
+  def testToModelBufferWithWrongIdentifier(self):
+    model_buf = self._create_model_buffer_with_wrong_identifier()
+    with self.assertRaises(ValueError) as error:
+      _metadata.MetadataPopulator.with_model_buffer(model_buf)
+    self.assertEqual(
+        "The model provided does not have the expected identifier, and "
+        "may not be a valid TFLite model.", str(error.exception))
 
   def testSinglePopulateAssociatedFile(self):
     populator = _metadata.MetadataPopulator.with_model_buffer(
@@ -227,6 +268,15 @@ class MetadataPopulatorTest(MetadataTest):
     self.assertEqual(("File, '{0}', is recorded in the metadata, but has "
                       "not been loaded into the populator.").format(
                           os.path.basename(self._file2)), str(error.exception))
+
+  def testPopulateMetadataBufferWithWrongIdentifier(self):
+    metadata_buf = self._create_metadata_buffer_with_wrong_identifier()
+    populator = _metadata.MetadataPopulator.with_model_file(self._model_file)
+    with self.assertRaises(ValueError) as error:
+      populator.load_metadata_buffer(metadata_buf)
+    self.assertEqual(
+        "The metadata buffer does not have the expected identifier, and may not"
+        " be a valid TFLite Metadata.", str(error.exception))
 
   def _assert_golden_metadata(self, model_file):
     with open(model_file, "rb") as f:
@@ -331,6 +381,34 @@ class MetadataDisplayerTest(MetadataTest):
     populator.load_associated_files([self._file1, self._file2])
     populator.populate()
     return model_file
+
+  def test_load_model_buffer_metadataBufferWithWrongIdentifier_throwsException(
+      self):
+    model_buf = self._create_model_buffer_with_wrong_identifier()
+    metadata_buf = self._create_metadata_buffer_with_wrong_identifier()
+    model_buf = self._populate_metadata_with_identifier(
+        model_buf, metadata_buf,
+        _metadata.MetadataPopulator.TFLITE_FILE_IDENTIFIER)
+    with self.assertRaises(ValueError) as error:
+      _metadata.MetadataDisplayer.with_model_buffer(model_buf)
+    self.assertEqual(
+        "The metadata buffer does not have the expected identifier, and may not"
+        " be a valid TFLite Metadata.", str(error.exception))
+
+  def test_load_model_buffer_modelBufferWithWrongIdentifier_throwsException(
+      self):
+    model_buf = self._create_model_buffer_with_wrong_identifier()
+    metadata_file = self._create_metadata_file()
+    wrong_identifier = b"widn"
+    with open(metadata_file, "rb") as f:
+      metadata_buf = bytearray(f.read())
+    model_buf = self._populate_metadata_with_identifier(model_buf, metadata_buf,
+                                                        wrong_identifier)
+    with self.assertRaises(ValueError) as error:
+      _metadata.MetadataDisplayer.with_model_buffer(model_buf)
+    self.assertEqual(
+        "The model provided does not have the expected identifier, and "
+        "may not be a valid TFLite model.", str(error.exception))
 
   def test_load_model_file_invalidModelFile_throwsException(self):
     with self.assertRaises(IOError) as error:

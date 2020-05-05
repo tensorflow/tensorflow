@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -26,13 +27,12 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
 
+using llvm::interleaveComma;
 using llvm::raw_ostream;
 using llvm::RecordKeeper;
 using llvm::StringRef;
-using mlir::interleaveComma;
 using mlir::tblgen::Attribute;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::NamedTypeConstraint;
@@ -81,7 +81,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
     // Emit an argument for an operand.
     if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
       // Handle a non-variadic operand.
-      if (!operand_cst->isVariadic()) {
+      if (!operand_cst->isVariableLength()) {
         os << "    auto xla_arg_" << index
            << " = value_map[*xla_op.getODSOperands(" << operand_number++
            << ").begin()];\n";
@@ -108,7 +108,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
 
   // If all operands are variadic, then pass the builder explicitly to xla
   // client API call
-  if (op.getNumOperands() == op.getNumVariadicOperands()) {
+  if (op.getNumOperands() == op.getNumVariableLengthOperands()) {
     os << "lowering_context.builder";
     if (op.getNumArgs() != 0) os << ", ";
   }

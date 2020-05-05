@@ -54,20 +54,17 @@ namespace gpu {
 namespace metal {
 namespace {
 
-bool IsWidthBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
          inputs[1]->tensor.shape.w == 1;
 }
-bool IsHeightBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
          inputs[1]->tensor.shape.h == 1;
 }
-bool IsChannelsBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
          inputs[1]->tensor.shape.c == 1;
@@ -129,12 +126,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectReshape(
   }
 }
 
-std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
-                                                    int id, ValueId input_id,
-                                                    ValueId output_id) {
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const DeviceInfo& device_info) {
   const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
   if (src_shape.w == 1 && src_shape.h == 1) {
-    return Softmax1x1(id, input_id, output_id, src_shape.c);
+    return Softmax1x1(id, input_id, output_id, device_info, src_shape.c);
   } else {
     return Softmax(id, input_id, output_id, src_shape.c);
   }
@@ -146,12 +143,34 @@ std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
   return SpaceToDepth(id, input_id, output_id, attr);
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectWinograd4x4To36(
+    int id, ValueId input_id, ValueId output_id,
+    const Winograd4x4To36Attributes& attr, const DeviceInfo& device_info,
+    const metal::RuntimeOptions& options) {
+  if (device_info.IsAppleGPU()) {
+    return Winograd4x4To36(id, input_id, output_id, attr);
+  } else {
+    return Winograd4x4To36TileX6(id, input_id, output_id, attr, options);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectWinograd36To4x4(
+    int id, ValueId input_id, ValueId output_id,
+    const Winograd36To4x4Attributes& attr, const DeviceInfo& device_info,
+    const metal::RuntimeOptions& options) {
+  if (device_info.IsAppleGPU()) {
+    return Winograd36To4x4(id, input_id, output_id, options, attr);
+  } else {
+    return Winograd36To4x4Tile4x1(id, input_id, output_id, options, attr);
+  }
+}
+
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const BHWC& dst_shape) {
-  const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+  const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
@@ -206,19 +225,23 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     }
     case OperationType::CONVOLUTION_2D: {
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "Convolution does not support more than 1 runtime tensor");
+      }
       const auto dst_shape = graph.FindOutputs(node_id)[0]->tensor.shape;
       auto attr =
           absl::any_cast<Convolution2DAttributes>(node->operation.attributes);
       if (IsSuitableForWinograd4x4To6x6(attr, dst_shape)) {
-        int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-        int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+        int tiles_x = DivideRoundUp(dst_shape.w, 4);
+        int tiles_y = DivideRoundUp(dst_shape.h, 4);
 
         Winograd4x4To36Attributes wino_up_attr;
         wino_up_attr.padding = attr.padding;
         (*last_node_id) += 1;
         int value_id = *last_value_id + 1;
-        *tasks =
-            Winograd4x4To36(*last_node_id, inputs[0], value_id, wino_up_attr);
+        *tasks = SelectWinograd4x4To36(*last_node_id, inputs[0], value_id,
+                                       wino_up_attr, device_info, options);
 
         BHWC conv_shape{dst_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
         (*last_node_id) += 1;
@@ -231,8 +254,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         wino_down_attr.output_shape = dst_shape;
         wino_down_attr.biases = attr.bias;
         (*last_node_id) += 1;
-        auto t2 = Winograd36To4x4(*last_node_id, value_id + 1, outputs[0],
-                                  options, wino_down_attr);
+        auto t2 = SelectWinograd36To4x4(*last_node_id, value_id + 1, outputs[0],
+                                        wino_down_attr, device_info, options);
         tasks->insert(tasks->end(), t2.begin(), t2.end());
         (*last_value_id) += 2;
       } else {
@@ -334,7 +357,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         return absl::UnimplementedError(
             "Softmax supports only CHANNELS dimension");
       }
-      *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
+      *tasks =
+          SelectSoftmax(graph, node_id, inputs[0], outputs[0], device_info);
       break;
     }
     case OperationType::SPACE_TO_DEPTH:
@@ -427,7 +451,7 @@ absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
                              primary_status.message()));
       }
     }
-    for (auto task : tasks) {
+    for (const auto& task : tasks) {
       task->description = node->operation.type + "_" + std::to_string(node->id);
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());

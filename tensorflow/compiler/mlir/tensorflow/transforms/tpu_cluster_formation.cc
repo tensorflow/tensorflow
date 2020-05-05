@@ -65,13 +65,15 @@ constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
 
 // Mapping for `_tpu_replicate` attribute to TPUReplicateMetadata attributes.
-using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttributeList, 8>;
+using MetadataMap =
+    llvm::SmallDenseMap<llvm::StringRef, MutableDictionaryAttr, 8>;
 
 // Mapping for `_tpu_replicate` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef,
                                        llvm::SmallSetVector<Operation*, 8>, 8>;
 
-struct TPUClusterFormation : public FunctionPass<TPUClusterFormation> {
+struct TPUClusterFormation
+    : public PassWrapper<TPUClusterFormation, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -82,7 +84,7 @@ struct TPUClusterFormation : public FunctionPass<TPUClusterFormation> {
 LogicalResult CollectMetadata(Operation* op, MetadataMap* metadata_map) {
   auto result =
       op->walk([&](TF::TPUReplicateMetadataOp metadata_op) -> WalkResult {
-        NamedAttributeList attrs = metadata_op.getAttrs();
+        MutableDictionaryAttr attrs = metadata_op.getAttrs();
 
         // Missing or bad `_tpu_replicate` attribute.
         auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
@@ -502,7 +504,7 @@ void TPUClusterFormation::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUClusterFormationPass() {
   return std::make_unique<TPUClusterFormation>();
 }
 

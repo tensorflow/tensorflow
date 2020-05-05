@@ -39,6 +39,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+const char kDataServiceDataset[] = "DataServiceDataset";
+
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
@@ -309,14 +311,12 @@ class OwnedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
+  Status GetArg(int index, const Tensor** val) override {
     if (index < args_.size()) {
-      // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
-      // order to be able to `std::move(args_[index])` into `*val`.
-      *val = args_[index];
+      *val = &args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
+      *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -342,12 +342,12 @@ class BorrowedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
+  Status GetArg(int index, const Tensor** val) override {
     if (index < args_.size()) {
-      *val = args_[index];
+      *val = &args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
+      *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -480,6 +480,13 @@ Status FunctionMetadata::Create(
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
       return Status::OK();
+    }
+  }
+  for (const auto& node : fdef->node_def()) {
+    if (node.op() == kDataServiceDataset) {
+      return errors::InvalidArgument(
+          "The `.distribute(...)` dataset transformation is not supported "
+          "within tf.data functions.");
     }
   }
   return Status::OK();
@@ -664,20 +671,13 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
-  Notification n;
-  Status s;
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
@@ -702,9 +702,6 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  Notification n;
-  Status s;
-
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
@@ -712,12 +709,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
@@ -741,27 +733,20 @@ Status InstantiatedCapturedFunction::RunInstantiated(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  Notification n;
-  Status s;
-
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
                             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
 void InstantiatedCapturedFunction::RunAsync(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
-    FunctionLibraryRuntime::DoneCallback done, const string& prefix) const {
+    FunctionLibraryRuntime::DoneCallback done,
+    const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     // Run the `done` callback on a threadpool thread, because it will
@@ -794,18 +779,21 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.cancellation_manager = cancellation_manager.get();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
-  if (ctx->model() || ctx->stats_aggregator()) {
-    stats_collector = absl::make_unique<SimpleStepStatsCollector>();
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
   f_opts.stats_collector = stats_collector.get();
 
   // Transfer ownership of the cancellation manager to `callback`.
   CancellationManager* raw_cancellation_manager =
       cancellation_manager.release();
   auto callback = std::bind(
-      [this, rets, step_container, raw_cancellation_manager, frame](
+      [this, rets, step_container, raw_cancellation_manager, frame, node,
+       collect_usage](
           const FunctionLibraryRuntime::DoneCallback& done,
-          IteratorContext* ctx, const string& prefix,
+          IteratorContext* ctx,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
@@ -815,32 +803,30 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        if (ctx->model()) {
+        if (node) {
           // TODO(b/129085499) Utilize the `node_name` which would be unique
           // than the prefix for the function execution time statistics.
           // prefix_with_func_name would then be node_name + func_name.
           if (ctx->stats_aggregator()) {
-            string prefix_end =
-                str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
             string prefix_with_func_name =
-                strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                strings::StrCat(node->name(), stats_utils::kDelimiter,
                                 captured_func_->func().name());
             ctx->stats_aggregator()->AddToHistogram(
                 stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
                 {static_cast<float>(stats_collector->processing_time())},
-                ctx->model()->NumElements(prefix));
+                node->num_elements());
           }
-          ctx->model()->AddProcessingTime(prefix,
-                                          stats_collector->processing_time());
-          ctx->model()->RecordStart(prefix, false /* stop_output */);
+          node->add_processing_time(stats_collector->processing_time());
+        }
+        if (collect_usage) {
+          node->record_start(EnvTime::NowNanos());
         }
         done(s);
-        if (ctx->model()) {
-          ctx->model()->RecordStop(prefix, false /* start_output */);
+        if (collect_usage) {
+          node->record_stop(EnvTime::NowNanos());
         }
       },
-      std::move(done), ctx, prefix, std::move(stats_collector),
-      std::placeholders::_1);
+      std::move(done), ctx, std::move(stats_collector), std::placeholders::_1);
 
   profiler::TraceMe activity(
       [&] {
@@ -848,7 +834,12 @@ void InstantiatedCapturedFunction::RunAsync(
             "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
+  // Stop the usage collection before calling `Run()` because `callback` may
+  // be executed synchronously, and so the `node->record_start()` call within
+  // `callback` would violate nesting.
+  if (collect_usage) node->record_stop(EnvTime::NowNanos());
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
+  if (collect_usage) node->record_start(EnvTime::NowNanos());
 }
 
 bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {

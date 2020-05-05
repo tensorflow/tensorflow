@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
-#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -48,7 +46,7 @@ struct OpData {
   int effective_scale_2_b;
 };
 
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
 /**
@@ -99,7 +97,7 @@ void EvalIntegerSVDF(
 
     ae_q56s output_int16_max_56 = AE_CVTQ48A32S(INT16_MAX);
     ae_q56s output_int16_min_56 = AE_CVTQ48A32S(INT16_MIN);
-    ae_p24x2s input_zp_24x2 = AE_CONVERT_INT32_24x2(input_zp);
+    ae_p24x2s input_zp_24x2 = AE_MOVPA24(input_zp);
 
     for (int b = 0; b < n_batch; b++) {
       const int8_t* weight_feature_ptr = weight_feature - 2;
@@ -140,8 +138,6 @@ void EvalIntegerSVDF(
             tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
                 dot_prod_24x2, scale_1_a, scale_1_b);
 
-        // Align from 48bit to 32bit on the QR register
-        dot_prod_56 = AE_Q56S_SLAI(dot_prod_56, 16);
         // Cap min/max and convert to int32:
         dot_prod_56 = AE_MAXQ56S(dot_prod_56, output_int16_min_56);
         dot_prod_56 = AE_MINQ56S(dot_prod_56, output_int16_max_56);
@@ -167,9 +163,10 @@ void EvalIntegerSVDF(
       const int16_t* vector1_ptr = GetTensorData<int16_t>(weights_time_tensor);
       const int16_t* vector2_ptr = state_ptr + b * n_memory * n_filter;
 
-      int num_iters = n_filter / 2;
-      const ae_p16x2s* offset_vector1 = (const ae_p16x2s*)(vector1_ptr - 2);
-      const ae_p16x2s* offset_vector2 = (const ae_p16x2s*)(vector2_ptr - 2);
+      const ae_p16x2s* offset_vector1 =
+          reinterpret_cast<const ae_p16x2s*>(vector1_ptr - 2);
+      const ae_p16x2s* offset_vector2 =
+          reinterpret_cast<const ae_p16x2s*>(vector2_ptr - 2);
 
       for (int i = 0; i < n_filter; i++) {
         *scratch_ptr_batch = 0;
@@ -231,21 +228,16 @@ void EvalIntegerSVDF(
       ae_q56s x_56 =
           tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
               scratch_output_tensor[i], scale_2_a, scale_2_b);
-      // Align from 48bit to 32bit on the QR register:
-      x_56 = AE_Q56S_SLAI(x_56, 16);
       // Add output adjustment:
       x_56 = AE_ADDQ56(x_56, output_zp_56);
       // Cap min/max and convert to int32 (already aligned to 32bit):
       x_56 = AE_MAXQ56S(x_56, output_int8_min_56);
       x_56 = AE_MINQ56S(x_56, output_int8_max_56);
-      int32_t x_32 = AE_TRUNCA32Q48(x_56);
       GetTensorData<int8_t>(output_tensor)[i] =
           static_cast<int8_t>(AE_TRUNCA32Q48(x_56));
     }
   }
 }
-
-}  // namespace
 
 // Input tensors.
 constexpr int kInputTensor = 0;
@@ -257,12 +249,9 @@ constexpr int kInputActivationStateTensor = 4;
 
 // Output tensor.
 constexpr int kOutputTensor = 0;
+}  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
@@ -288,14 +277,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int input_size = input->dims->data[1];
   const int batch_size = input->dims->data[0];
+  // Ensure the input size is a multiple of two.  This is necessary since
+  // optimized kernels access the memory in chunks of two, and all accesses
+  // must be aligned to 16 bits.
+  // TODO(b/153202598): Remove when padding is allowed in TFLite tensors.
+  TF_LITE_ENSURE_EQ(context, input_size % 2, 0);
+
   const int num_filters = weights_feature->dims->data[0];
   TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
   if (input->type != kTfLiteInt8) {
-    TF_LITE_KERNEL_LOG(context,
-                       "HiFi Mini kernel SVDF only supports full integer.");
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
 
@@ -353,7 +348,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   // Calculate effective scales.
@@ -367,12 +362,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       weights_time->quantization.params);
   auto* output_params =
       reinterpret_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  const double effective_scale_1 = input_params->scale->data[0] *
-                                   weights_feature_params->scale->data[0] /
-                                   state_params->scale->data[0];
-  const double effective_scale_2 = state_params->scale->data[0] *
-                                   weight_time_params->scale->data[0] /
-                                   output_params->scale->data[0];
+  const float effective_scale_1 = input_params->scale->data[0] *
+                                  weights_feature_params->scale->data[0] /
+                                  state_params->scale->data[0];
+  const float effective_scale_2 = state_params->scale->data[0] *
+                                  weight_time_params->scale->data[0] /
+                                  output_params->scale->data[0];
   xtensa::hifimini::QuantizeMultiplier(effective_scale_1,
                                        &op_data->effective_scale_1_a,
                                        &op_data->effective_scale_1_b);
@@ -409,8 +404,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {svdf::Init, svdf::Free, svdf::Prepare,
-                                 svdf::Eval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/svdf::Free,
+                                 /*prepare=*/svdf::Prepare,
+                                 /*invoke=*/svdf::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

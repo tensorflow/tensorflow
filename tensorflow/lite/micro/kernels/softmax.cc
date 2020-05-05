@@ -72,12 +72,6 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -135,24 +129,22 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32, uint8_t and int8_t input supported currently, got %d.",
-          input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
 }
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init,
-                                 activations::Free,
-                                 activations::SoftmaxPrepare,
-                                 activations::SoftmaxEval,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 0};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::SoftmaxPrepare,
+                                 /*invoke=*/activations::SoftmaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

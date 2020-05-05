@@ -25,10 +25,24 @@ namespace profiler {
 const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+const absl::string_view kMetadataPlane = "/host:metadata";
+const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
+
+const absl::string_view kStepLineName = "Steps";
+const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
+const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
+const absl::string_view kXlaModuleLineName = "XLA Modules";
+const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kKernelLaunchLineName = "Launch Stats";
 
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
+const int32 kMetadataPlaneId = 99;
+const int32 kTFStreamzPlaneId = 98;
+
+const int32 kThreadGroupMinPlaneId = kCuptiDriverApiPlaneId + 1;
+const int32 kThreadGroupMaxPlaneId = kTFStreamzPlaneId - 1;
 
 namespace {
 
@@ -51,6 +65,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"SessionRun", kSessionRun},
       {"FunctionRun", kFunctionRun},
       {"RunGraph", kRunGraph},
+      {"RunGraphDone", kRunGraphDone},
+      {"TfOpRun", kTfOpRun},
       {"EagerKernelExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
@@ -86,6 +102,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
@@ -124,6 +141,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"requested_bytes", kRequestedBytes},
       {"allocation_bytes", kAllocationBytes},
       {"addr", kAddress},
+      {"region_type", kRegionType},
+      {"data_type", kDataType},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},
@@ -142,6 +161,9 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
       {"equation", kEquation},
+      {"is_eager", kIsEager},
+      {"tf_function_call", kTfFunctionCall},
+      {"tracing_count", kTfFunctionTracingCount},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -149,6 +171,7 @@ const StatTypeMap& GetStatTypeMap() {
       // XLA metadata map related.
       {"SELF_DURATION_PS", kSelfDurationPs},
       {"MIN_DURATION_PS", kMinDurationPs},
+      {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},

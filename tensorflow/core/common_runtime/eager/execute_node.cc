@@ -36,7 +36,8 @@ Status ExecuteNodeArgs::Init(
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
         uint64 context_view_id = ctx->GetContextViewId();
-        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
+        if (in->Type() == TensorHandle::REMOTE ||
+            in->HasRemoteMirror(d, context_view_id)) {
           if (!has_remote_inputs_) {
             has_remote_inputs_ = true;
           }
@@ -53,8 +54,7 @@ Status ExecuteNodeArgs::Init(
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
-      absl::variant<Device*, CustomDevice*> variant_device =
-          op_inputs[i]->device();
+      VariantDevice variant_device = op_inputs[i]->device();
       if (VariantDeviceIsCustom(variant_device)) {
         return errors::Internal(
             "Custom devices and remote execution are currently not supported "

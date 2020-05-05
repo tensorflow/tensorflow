@@ -84,8 +84,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
+  mlir::TFL::PassConfig pass_config(quant_specs);
+  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.lower_tensor_list_ops = true;
+
   return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
-                                                 quant_specs, result);
+                                                 pass_config, result);
 }
 
 }  // namespace tensorflow

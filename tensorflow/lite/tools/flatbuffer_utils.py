@@ -25,12 +25,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import os
 import random
 
 from flatbuffers.python import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
+
+TFLITE_FILE_IDENTIFIER = b'TFL3'
 
 
 def read_model(input_tflite_file):
@@ -67,7 +68,7 @@ def write_model(model, output_tflite_file):
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model.Pack(builder)
-  builder.Finish(model_offset)
+  builder.Finish(model_offset, file_identifier=TFLITE_FILE_IDENTIFIER)
   model_data = builder.Output()
   with open(output_tflite_file, 'wb') as out_file:
     out_file.write(model_data)
@@ -84,38 +85,25 @@ def strip_strings(model):
   We retain OperatorCode custom_code and Metadata name.
 
   Args:
-    model: The initial model containing nonessential strings.
+    model: The model from which to remove nonessential strings.
 
-  Returns:
-    The final model from which all nonessential strings have been removed.
   """
-
-  # As the function passes arguments by reference, we make a copy to ensure
-  # that the original model is unmodified.
-  model = copy.deepcopy(model)
 
   model.description = ''
   for subgraph in model.subgraphs:
     subgraph.name = ''
     for tensor in subgraph.tensors:
       tensor.name = ''
-  return model
 
 
 def randomize_weights(model, random_seed=0):
   """Randomize weights in a model.
 
   Args:
-    model: The initial model with unmodified weights.
+    model: The model in which to randomize weights.
     random_seed: The input to the random number generator (default value is 0).
 
-  Returns:
-    The final model in which all the weights have been randomized.
   """
-
-  # As the function passes arguments by reference, we make a copy to ensure
-  # that the original model is unmodified.
-  model = copy.deepcopy(model)
 
   # The input to the random seed generator. The default value is 0.
   random.seed(random_seed)
@@ -134,5 +122,3 @@ def randomize_weights(model, random_seed=0):
     # end up as denormalized or NaN/Inf floating point numbers.
     for j in range(buffer_i_size):
       buffer_i_data[j] = random.randint(0, 255)
-
-  return model

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -111,7 +112,9 @@ bool IsSupportedNonTFOp(Operation* op) {
   return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
          isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
          isa<tf_executor::NextIterationSinkOp>(op) || isa<ReturnOp>(op) ||
-         isa<tf_device::ReturnOp>(op);
+         isa<tf_device::ReturnOp>(op) || isa<tf_executor::MergeOp>(op) ||
+         isa<tf_executor::SwitchOp>(op) || isa<tf_executor::SwitchNOp>(op) ||
+         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op);
 }
 
 // Inserts tf.Cast operation when changing the type of a result if the user is
@@ -157,6 +160,18 @@ bool InferShapeForPassThroughOps(OperandRange pass_through_operands,
     Type operand_type = std::get<0>(entry).getType();
     Value result = std::get<1>(entry);
     if (result.getType() == operand_type) continue;
+    // Pass through nodes may remove ref types, don't consider that as
+    // refinement.
+    // TODO(jpienaar): There could be refinement in addition to this, so
+    // refine this.
+    if (operand_type.cast<TensorType>()
+            .getElementType()
+            .isa<TF::TensorFlowRefType>() &&
+        !result.getType()
+             .cast<TensorType>()
+             .getElementType()
+             .isa<TF::TensorFlowRefType>())
+      continue;
     AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
                                        result.getType());
     result.setType(operand_type);
@@ -181,6 +196,11 @@ bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
     return InferShapeForPassThroughOps(
         iter_sink.getOperands().drop_front().take_front(), iter_source,
         tf_dialect);
+  }
+  // TODO(b/155227679): Use OpInterface instead of hard-coding for TensorCastOp.
+  if (auto tensor_cast = dyn_cast<mlir::TensorCastOp>(op)) {
+    return InferShapeForPassThroughOps(
+        tensor_cast.getOperation()->getOperands(), op, tf_dialect);
   }
   return false;
 }
@@ -224,16 +244,38 @@ GetSubtypes(Type type) {
   return GetSubtypesHelper<TF::VariantType>(type);
 }
 
-// Makes result types match the operand types. Returns if anything is changed.
+// Makes result types match the operand types (the i-th result type will
+// match the i-th operand type). Returns true if anything is changed.
 bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   bool changed = false;
   for (auto entry : llvm::zip(operands, results)) {
     Type operand_type = std::get<0>(entry).getType();
-    if (operand_type == std::get<1>(entry).getType()) continue;
+    Type result_type = std::get<1>(entry).getType();
+    if (operand_type == result_type) continue;
+    // Pass through nodes may remove ref types, don't consider that as
+    // refinement.
+    // TODO(jpienaar): There could be refinement in addition to this, so
+    // refine this.
+    if (operand_type.cast<TensorType>()
+            .getElementType()
+            .isa<TF::TensorFlowRefType>() &&
+        !result_type.cast<TensorType>()
+             .getElementType()
+             .isa<TF::TensorFlowRefType>())
+      continue;
+
     std::get<1>(entry).setType(operand_type);
     changed = true;
   }
   return changed;
+}
+
+// Returns whether type can be further refined.
+bool CanBeRefined(Type type) {
+  auto shape_type = type.dyn_cast<ShapedType>();
+  return shape_type && (!shape_type.hasStaticShape() ||
+                        shape_type.getElementType().isa<TF::ResourceType>() ||
+                        shape_type.getElementType().isa<TF::VariantType>());
 }
 
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
@@ -253,9 +295,9 @@ bool InferShapeForCall(Operation* op) {
   for (auto result : llvm::zip(op->getResults(), func.getType().getResults())) {
     if (std::get<0>(result).getType() == std::get<1>(result)) continue;
     // Skip already statically shaped results.
-    auto shaped_type = std::get<0>(result).getType().dyn_cast<ShapedType>();
-    if (!shaped_type || shaped_type.hasStaticShape()) continue;
+    if (!CanBeRefined(std::get<0>(result).getType())) continue;
 
+    auto shaped_type = std::get<0>(result).getType().cast<ShapedType>();
     auto new_type = std::get<1>(result).dyn_cast<RankedTensorType>();
     if (!new_type) continue;
 
@@ -268,6 +310,15 @@ bool InferShapeForCall(Operation* op) {
     changed = true;
   }
   return changed;
+}
+
+bool RefineTfConst(TF::ConstOp const_op) {
+  Type old_type = const_op.getType();
+  if (const_op.valueAttr().getType() == old_type) return false;
+  const_op.getResult().setType(const_op.valueAttr().getType());
+  AddCastBackForUnsupportedNonTFUses(const_op, const_op.getResult(),
+                                     const_op.getDialect(), old_type);
+  return true;
 }
 
 }  // namespace
@@ -286,15 +337,9 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // If no result for this op needs shape inference, we have a fast-path return.
   // But if the type is a resource/variant, we do not skip it because we might
   // not have the handle shapes.
-  if (llvm::all_of(op->getResultTypes(), [](Type type) {
-        auto shape_type = type.dyn_cast<ShapedType>();
-        return !shape_type ||
-               (shape_type.hasStaticShape() &&
-                !shape_type.getElementType().isa<TF::ResourceType>() &&
-                !shape_type.getElementType().isa<TF::VariantType>());
-      })) {
+  if (llvm::none_of(op->getResultTypes(), CanBeRefined)) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
-                            << op->getName() << "'.\n";);
+                            << op->getName() << "'.\n");
     return false;
   }
 
@@ -312,7 +357,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       })) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for tf.Cast with no TF "
                                "dialect operation users '"
-                            << *op << "'.\n";);
+                            << *op << "'.\n");
     return false;
   }
 
@@ -327,13 +372,13 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       tensorflow::OpRegistry::Global()->LookUp(node_name.data());
   if (!op_reg_data) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for unregistered op '"
-                            << op->getName() << "'.\n";);
+                            << op->getName() << "'.\n");
     return false;
   }
   if (op_reg_data->shape_inference_fn == nullptr) {
     LLVM_DEBUG(llvm::dbgs()
-                   << "Skipping inference for op without shape function '"
-                   << op->getName() << "'.\n";);
+               << "Skipping inference for op without shape function '"
+               << op->getName() << "'.\n");
     return false;
   }
 
@@ -407,8 +452,8 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   for (int output : llvm::seq<int>(0, c.num_outputs())) {
     // Skip already statically shaped results.
     Value result = op->getResult(output);
-    auto shaped_type = result.getType().dyn_cast<ShapedType>();
-    if (!shaped_type || shaped_type.hasStaticShape()) continue;
+    if (!CanBeRefined(result.getType())) continue;
+    auto shaped_type = result.getType().cast<ShapedType>();
 
     tensorflow::shape_inference::ShapeHandle shape_handle = c.output(output);
     LLVM_DEBUG(llvm::dbgs() << "Inferred output " << output << " : "
@@ -484,8 +529,6 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   }
 
   FunctionType func_type = func.getType();
-  if (input_types == func_type.getInputs()) return success();
-
   func.setType(FunctionType::get(input_types, func_type.getResults(),
                                  func.getContext()));
 
@@ -522,6 +565,49 @@ LogicalResult PropagateShapeToFunctions(
   return mlir::success(success);
 }
 
+// If the callee has only one use, propagates any constant operand of call_op to
+// the called function body's corresponding argument.
+//
+// TODO(b/154065712): Move this to a more general inter-procedural constant
+// folding pass.
+void PropagateConstantToCallee(CallOpInterface call_op,
+                               SymbolRefAttr callee_sym, ModuleOp module) {
+  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+  auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
+  int num_uses = std::distance(func_uses->begin(), func_uses->end());
+  OpBuilder builder(&func.front().front());
+  Operation* op = call_op.getOperation();
+  if (num_uses == 1) {
+    // If this is the only caller, and an operand is a constant, propagate
+    // the constant inside the function.
+    for (auto arg : func.getArguments()) {
+      auto operand = op->getOperand(arg.getArgNumber()).getDefiningOp();
+      if (llvm::isa_and_nonnull<TF::ConstOp>(operand)) {
+        arg.replaceAllUsesWith(builder.clone(*operand)->getResult(0));
+      }
+    }
+  }
+}
+
+// Propagates any constant return value of the callee function to the call op's
+// corresponding result.
+void PropagateConstantFromCallee(CallOpInterface call_op,
+                                 SymbolRefAttr callee_sym, ModuleOp module) {
+  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+  // If the return value is a constant, replace the call result with a constant.
+  Operation* op = call_op.getOperation();
+  OpBuilder builder(op);
+  builder.setInsertionPointAfter(op);
+  for (auto retval :
+       llvm::enumerate(func.front().getTerminator()->getOperands())) {
+    auto retval_op = retval.value().getDefiningOp();
+    if (llvm::isa_and_nonnull<TF::ConstOp>(retval_op)) {
+      op->getResult(retval.index())
+          .replaceAllUsesWith(builder.clone(*retval_op)->getResult(0));
+    }
+  }
+}
+
 LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                   int64_t graph_version,
                                                   int64_t max_iteration) {
@@ -538,9 +624,14 @@ LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     CallInterfaceCallable callable = call_op.getCallableForCallee();
     if (SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>()) {
-      return PropagateShapeToFunctions(
-          module, call_op.getArgOperands().getTypes(), {sym.getRootReference()},
-          graph_version, max_iteration);
+      PropagateConstantToCallee(call_op, sym, module);
+      if (failed(PropagateShapeToFunctions(
+              module, call_op.getArgOperands().getTypes(),
+              {sym.getRootReference()}, graph_version, max_iteration))) {
+        return failure();
+      }
+      PropagateConstantFromCallee(call_op, sym, module);
+      return success();
     }
   }
 
@@ -570,6 +661,13 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
       if (op->getDialect() != tf_dialect) {
         changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
         return;
+      }
+
+      if (auto tf_const = dyn_cast<TF::ConstOp>(op)) {
+        changed |= RefineTfConst(tf_const);
+        // TODO(jpienaar): Debug why we can't just return here. We end up with
+        // additional constant due to the propagation of constant into attached
+        // function if we return already.
       }
 
       // Before attempting inference, just try to fold the operation.

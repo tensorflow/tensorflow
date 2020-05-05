@@ -48,10 +48,14 @@ class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",
-                                    [SingleBlockImplicitTerminator<"ReturnOp">]>
-{
-  let summary = [{The `tf_device.launch` op captures all needed live-in values
-                  and launches containing operations on target device.}];
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.launch` op launches containing operations on target device.
+  }];
+
+  let description = [{
+This op captures all needed live-in values.
+  }];
 
   let arguments = (ins
     StrAttr:$device
@@ -70,7 +74,7 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
   }];
 
   let builders = [
-    OpBuilder<[{Builder *builder, OperationState &result,
+    OpBuilder<[{OpBuilder &builder, OperationState &result,
                 StringAttr device, ArrayRef<Type> result_types}],
       [{
         result.addAttribute("device", device);
@@ -85,8 +89,8 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
 
 def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
   let summary = [{
-    The `tf_device.return` operation terminates and returns values from
-    `tf_device.launch` operation;
+The `tf_device.return` operation terminates and returns values from a
+`tf_device` dialect operation.
   }];
 
   let arguments = (ins
@@ -94,7 +98,7 @@ def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -121,8 +125,56 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let extraClassDeclaration = [{
     StringRef getFunc() { return func(); }
     StringRef getDevice() { return device(); }
-    FunctionType getFuncType();
   }];
+}
+
+def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let description = [{
+    ParallelExecute op concurrently executes variadic number of regions. Regions
+    must represent separate sets of instructions to execute concurrently. In
+    order to represent concurrently executed regions with dependencies, multiple
+    ParallelExecute ops can be used instead. As so, regions within
+    ParallelExecute op must not have control/data dependencies.
+
+    While explicit dependencies between regions are disallowed, ParallelExecute
+    op does not prevent implicit communication between regions (e.g.
+    communication via send/recvs). In this case, users of ParallelExecute op
+    must provide correct control dependencies between regions to guarantee
+    correctness. Regions in ParallelExecute may include Resource ops.
+
+    In the case where different regions include ops access the same resource,
+    the users of the ParallelExecute op must provide mechanism (via send/recvs
+    or via control dependencies) to guarantee correct ordering. Sequential
+    ordering of ops within a region is guaranteed. Also, sequential ordering of
+    ops before/after ParallelExecute ops are guaranteed. That is, execution of
+    regions inside ParallelExecute op is blocked until all inputs to all regions
+    are materialized and ops following ParallelExecute op are blocked until all
+    regions are executed.
+  }];
+
+  let results = (outs
+    Variadic<AnyType>:$execute_outputs
+  );
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$regions);
+
+  let extraClassDeclaration = [{
+    Block& GetRegionBlockWithIndex(unsigned index);
+    Operation::result_range GetRegionOutputs(unsigned region_index);
+
+    // Checks if a tf_device.parallel_execute index'th region block wraps a
+    // single operation and the single operation results are perfectly forwarded
+    // to the region block's return.
+    bool RegionWrapsSingleOp(unsigned index);
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder& builder, OperationState& state, int num_regions,"
+              "llvm::ArrayRef<Type> output_types">,
+  ];
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TfDevice_ReplicateOp :
@@ -217,11 +269,11 @@ For example:
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& state, int n, "
+    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
               "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
-    OpBuilder<"Builder* builder, OperationState& state, int n, "
+    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
               "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs, "
               "Operation::result_type_range replica_output_types">
@@ -230,6 +282,53 @@ For example:
   let parser = [{ return Parse$cppClass(&parser, &result); }];
   let printer = [{ return Print(*this, &p); }];
   let verifier = [{ return Verify(*this); }];
+}
+
+def TfDevice_ClusterOp : TfDevice_Op<"cluster",
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.cluster` op wraps containing operations in a region.
+  }];
+
+  let description = [{
+This op can be used to group operations, and captures all needed live-in values.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
+  }];
+}
+
+def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {
+  let summary = [{
+The `tf_device.cluster_func` launches a function containing the body of a
+cluster.
+  }];
+
+  let description = [{
+This op is used for outlining a cluster.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$func,
+    Variadic<AnyType>:$operands
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let extraClassDeclaration = [{
+    StringRef getFunc() { return func(); }
+  }];
 }
 
 #endif // TF_DEVICE_DIALECT

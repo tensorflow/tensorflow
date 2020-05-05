@@ -152,6 +152,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/tpu/client",
+        "@absl_py//absl/testing:flagsaver",
     ],
 )
 

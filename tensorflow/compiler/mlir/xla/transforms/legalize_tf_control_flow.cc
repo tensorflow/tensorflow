@@ -51,13 +51,14 @@ using mlir::PassRegistration;
 namespace mlir {
 namespace xla_hlo {
 namespace {
-class LegalizeTFControlFlow : public ModulePass<LegalizeTFControlFlow> {
+class LegalizeTFControlFlow
+    : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
  public:
-  void runOnModule() override;
+  void runOnOperation() override;
 };
 }  // namespace
 
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createLegalizeTFControlFlowPass() {
   return std::make_unique<LegalizeTFControlFlow>();
 }
@@ -164,8 +165,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 }
 }  // namespace
 
-void LegalizeTFControlFlow::runOnModule() {
-  auto module = getModule();
+void LegalizeTFControlFlow::runOnOperation() {
+  auto module = getOperation();
 
   module.walk([&](TF::WhileOp op) -> void { LowerWhile(op, module); });
   module.walk([&](TF::IfOp op) -> void { LowerIf(op, module); });

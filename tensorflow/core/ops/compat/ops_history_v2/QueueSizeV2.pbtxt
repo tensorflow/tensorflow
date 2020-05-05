@@ -1,0 +1,12 @@
+op {
+  name: "QueueSizeV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

@@ -43,7 +43,8 @@ namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
 
-struct ReplicateToIslandPass : public FunctionPass<ReplicateToIslandPass> {
+struct ReplicateToIslandPass
+    : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -163,9 +164,6 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.n().getLimitedValue();
-  if (!replicate_op.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
-    return replicate_op.emitError()
-           << "TPU computation with multiple logical cores is not supported.";
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas =
@@ -194,8 +192,9 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   // Create single island forwarding per replica result.
   builder.setInsertionPoint(island_op);
   auto island_sink = builder.create<tf_executor::IslandOp>(
-      island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands, llvm::ArrayRef<NamedAttribute>{});
+      island_op.getLoc(),
+      llvm::to_vector<8>(island_op.GetYield().fetches().getTypes()),
+      tf_executor::ControlType::get(island_op.getContext()), island_operands);
   island_sink.body().push_back(new Block);
 
   // Move replicate island YieldOp over to new single island.
@@ -213,7 +212,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
 // islands per replica of the replicate.
 LogicalResult LowerSingleIslandReplicateToIslands(
     const Dialect* tf_dialect, tf_executor::IslandOp island_op) {
-  if (!has_single_element(island_op.GetBody().without_terminator()))
+  if (!hasSingleElement(island_op.GetBody().without_terminator()))
     return success();
 
   if (auto replicate_op =
@@ -240,7 +239,7 @@ void ReplicateToIslandPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 

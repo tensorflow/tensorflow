@@ -1,0 +1,25 @@
+op {
+  name: "DatasetToGraphV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "strip_device_assignment"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

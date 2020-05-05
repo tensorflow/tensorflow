@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -703,8 +704,6 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  auto op_annotation =
-      ScopedMemoryDebugAnnotation(op_kernel().name_view().data(), step_id());
   Tensor new_tensor(a, type, shape,
                     AllocationAttributes(allocation_attr.no_retry_on_failure,
                                          /* allocation_will_be_logged= */ true,
@@ -758,6 +757,8 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "output", type, &shape);
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -787,6 +788,8 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "temp", type, &shape);
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -815,6 +818,8 @@ Status OpKernelContext::allocate_persistent(DataType type,
     return errors::Internal(
         "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "persist", type, &shape);
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -921,6 +926,9 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
+    ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                              step_id(), "output",
+                                              tensor.dtype(), &tensor.shape());
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
@@ -1090,6 +1098,15 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   record_memory_consumption_ = v;
   if (v && !tracking_state_) {
     tracking_state_ = absl::make_unique<TrackingState>();
+  }
+}
+
+const string& OpKernelContext::executor_type() const {
+  if (params_->executor_type) {
+    return *params_->executor_type;
+  } else {
+    static const string& kEmptyString = *new string("");
+    return kEmptyString;
   }
 }
 
@@ -1266,7 +1283,21 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 
 namespace {
 
-static const StringPiece kKernelAttr("_kernel");
+// Label defaults to empty if not found in NodeDef.
+const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
+  static const string& kKernelAttr = *new string("_kernel");
+  static const string& kEmptyString = *new string("");
+
+  // NOTE: We inline the implementation of `GetNodeAttrString()` here in order
+  // to use the `AttrSlice::FindByString()` overload, which does a more
+  // efficient map lookup (instead of a linear scan) when the attribute name is
+  // already a `const string&`.
+  const AttrValue* attr_value = node_attrs.FindByString(kKernelAttr);
+  if (attr_value == nullptr || attr_value->value_case() != AttrValue::kS)
+    return kEmptyString;
+  else
+    return attr_value->s();
+}
 
 // TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
@@ -1277,8 +1308,8 @@ Status FindKernelRegistration(
     bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+
+  const string& label = GetKernelLabelAttr(node_attrs);
 
   const string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();

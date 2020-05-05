@@ -26,8 +26,11 @@ namespace tensorflow {
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted to. If the
 // `ignore_unregistered_attrs` argument is set to true, the attributes which are
-// not in the op registry will be ignored. Set it to true if the returned
-// NodeDef will be executed by the linked TF Eager runtime.
+// not in the op registry will be ignored. If the `ignore_unregistered_attrs`
+// argument is not set to true, _output_shapes attribute is added to nodes with
+// ShapedType for the leading values with ShapedType in the results of the
+// nodes. Set it to true if the returned NodeDef will be executed by the linked
+// TF Eager runtime.
 stream_executor::port::StatusOr<std::unique_ptr<NodeDef>>
 ConvertTFDialectOpToNodeDef(mlir::Operation* inst, llvm::StringRef name,
                             bool ignore_unregistered_attrs);

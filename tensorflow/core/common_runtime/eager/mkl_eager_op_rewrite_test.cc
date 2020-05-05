@@ -36,19 +36,19 @@ class EagerOpRewriteTest {
     bool lazy_remote_tensor_copy = false;
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
-    std::unique_ptr<tensorflow::EagerContext> eager_ctx =
-        std::unique_ptr<tensorflow::EagerContext>(new tensorflow::EagerContext(
-            SessionOptions(),
-            tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-            tensorflow::ContextMirroringPolicy::MIRRORING_NONE, async,
-            lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
-            GetDefaultCustomKernelCreator()));
+    tensorflow::EagerContext* eager_ctx = new tensorflow::EagerContext(
+        SessionOptions(),
+        tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, async,
+        lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous,
+        GetDefaultCustomKernelCreator());
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
-        new tensorflow::EagerOperation(eager_ctx.get()));
+        new tensorflow::EagerOperation(eager_ctx));
     EXPECT_EQ(Status::OK(),
               op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
+    eager_ctx->Unref();
     return op;
   }
 

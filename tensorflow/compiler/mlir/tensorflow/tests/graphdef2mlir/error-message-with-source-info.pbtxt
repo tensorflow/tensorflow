@@ -1,7 +1,7 @@
-# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-input-arrays=x,y -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=2:3 -tf-output-arrays=x_y_sum %s --tf-debug-info=%s.debug -o - 2>&1 | FileCheck %s
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-input-arrays=x,y -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=2:3 -tf-output-arrays=x_y_sum %s --tf-debug-info=%s.debug -o - 2>&1 | FileCheck %s --dump-input-on-failure
 
 # Checks that source debug information is used in the output error message.
-# CHECK: Graph import failed: Invalid argument: Dimensions must be equal
+# CHECK: error: 'tf.Add' op operands don't have broadcast-compatible shapes
 # CHECK: math_ops.add(x, y, name='x_y_sum')
 # CHECK: build_graph(out_dir)
 node: {

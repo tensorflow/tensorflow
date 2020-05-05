@@ -83,6 +83,7 @@ FRAMEWORK_LIB_HDRS = [
 cc_library(
     name = "version",
     hdrs = ["version.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     # Note that we only use the header defines from :version_lib.
     deps = ["//tensorflow/core:version_lib"],
@@ -135,6 +136,7 @@ cc_library(
     name = "external_cpu_backend_context",
     srcs = ["external_cpu_backend_context.cc"],
     hdrs = ["external_cpu_backend_context.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         "//tensorflow/lite/c:common",
@@ -571,6 +573,9 @@ cc_test(
 #   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite",
+    # Until we have more granular symbol export for the C++ API on Windows,
+    # export all symbols.
+    features = ["windows_export_all_symbols"],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",

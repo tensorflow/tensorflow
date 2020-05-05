@@ -266,6 +266,12 @@ class RNN(Layer):
       RNN calculation. However, most TensorFlow data is batch-major, so by
       default this function accepts input and emits output in batch-major
       form.
+    zero_output_for_mask: Boolean (default `False`).
+      Whether the output should use zeros for the masked timesteps. Note that
+      this field is only used when `return_sequences` is True and mask is
+      provided. It can useful if you want to reuse the raw output sequence of
+      the RNN without interference from the masked timesteps, eg, merging
+      bidirectional RNNs.
 
   Call arguments:
     inputs: Input tensor.
@@ -432,7 +438,6 @@ class RNN(Layer):
     self._states = None
     self.constants_spec = None
     self._num_constants = 0
-    self._supports_ragged_inputs = True
 
     if stateful:
       if ds_context.has_strategy():
@@ -688,10 +693,14 @@ class RNN(Layer):
     if is_keras_tensor:
       # Compute the full input spec, including state and constants
       full_input = [inputs] + additional_inputs
-      # The original input_spec is None since there could be a nested tensor
-      # input. Update the input_spec to match the inputs.
-      full_input_spec = generic_utils.to_list(
-          nest.map_structure(lambda _: None, inputs)) + additional_specs
+      if self.built:
+        # Keep the input_spec since it has been populated in build() method.
+        full_input_spec = self.input_spec + additional_specs
+      else:
+        # The original input_spec is None since there could be a nested tensor
+        # input. Update the input_spec to match the inputs.
+        full_input_spec = generic_utils.to_list(
+            nest.map_structure(lambda _: None, inputs)) + additional_specs
       # Perform the call with temporarily replaced input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
@@ -2223,8 +2232,8 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -2493,7 +2502,8 @@ class PeepholeLSTMCell(LSTMCell):
   well as the previous hidden state (which is what LSTMCell is limited to).
   This allows PeepholeLSTMCell to better learn precise timings over LSTMCell.
 
-  From [Gers et al.](http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
+  From [Gers et al., 2002](
+    http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
 
   "We find that LSTM augmented by 'peephole connections' from its internal
   cells to its multiplicative gates can learn the fine distinction between
@@ -2502,9 +2512,7 @@ class PeepholeLSTMCell(LSTMCell):
 
   The peephole implementation is based on:
 
-  [Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling.
-  ](https://research.google.com/pubs/archive/43905.pdf)
+  [Sak et al., 2014](https://research.google.com/pubs/archive/43905.pdf)
 
   Example:
 
@@ -2591,8 +2599,8 @@ class LSTM(RNN):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to

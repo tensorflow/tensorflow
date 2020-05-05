@@ -1,6 +1,6 @@
 """Macro that creates external repositories for remote config."""
 
-load("//third_party/py:python_configure.bzl", "remote_python_configure")
+load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
 load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
 load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
@@ -12,7 +12,7 @@ def _container_image_uri(container_name):
     container = containers[container_name]
     return "docker://%s/%s@%s" % (container["registry"], container["repository"], container["digest"])
 
-def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, sysroot = None):
+def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, sysroot = None, python_install_path = "/usr"):
     if cuda_version != None and rocm_version != None:
         fail("Specifying both cuda_version and rocm_version is not supported.")
 
@@ -26,7 +26,6 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
         "BAZEL_TARGET_SYSTEM": "x86_64-unknown-linux-gnu",
         "CC_TOOLCHAIN_NAME": "linux_gnu_x86",
         "CC": compiler,
-        "PYTHON_BIN_PATH": "/usr/bin/python%s" % python_version,
         "CLEAR_CACHE": "1",
         "HOST_CXX_COMPILER": compiler,
         "HOST_C_COMPILER": compiler,
@@ -58,18 +57,6 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             "container-image": container_image,
             "Pool": "default",
         }
-
-        remote_platform_configure(
-            name = "%s_config_platform" % name,
-            platform = "linux",
-            platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
 
         remote_cuda_configure(
             name = "%s_config_cuda" % name,
@@ -103,37 +90,40 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             "Pool": "default",
         }
 
-        remote_platform_configure(
-            name = "%s_config_platform" % name,
-            platform = "linux",
-            platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
-
         remote_rocm_configure(
             name = "%s_config_rocm" % name,
             environ = env,
             exec_properties = exec_properties,
         )
-    elif python_version != None:
+    elif python_versions != None:
         container_image = _container_image_uri(os)
         exec_properties = {
             "container-image": container_image,
             "Pool": "default",
         }
 
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
     else:
         fail("Neither cuda_version, rocm_version nor python_version specified.")
+
+    remote_platform_configure(
+        name = "%s_config_platform" % name,
+        platform = "linux",
+        platform_exec_properties = exec_properties,
+    )
+    for python_version in python_versions:
+        env.update({
+            "PYTHON_BIN_PATH": "%s/bin/python%s" % (python_install_path, python_version),
+        })
+
+        # For backwards compatibility do not add the python version to the name
+        # if we only create a single python configuration.
+        version = python_version if len(python_versions) > 1 else ""
+        remote_python_configure(
+            name = "%s_config_python%s" % (name, version),
+            environ = env,
+            exec_properties = exec_properties,
+            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
+        )
 
 def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-1803"):
     container_image = _container_image_uri(container_name)
@@ -156,7 +146,20 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
         name = "%s_config_python" % name,
         environ = env,
         exec_properties = exec_properties,
+        platform_constraint = "@%s_config_platform//:platform_constraint" % name,
+    )
+
+def _tensorflow_local_config(name):
+    remote_platform_configure(
+        name = "%s_config_platform" % name,
+        platform = "local",
+        platform_exec_properties = {},
+    )
+    local_python_configure(
+        name = "%s_config_python" % name,
+        platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 
 tensorflow_rbe_config = _tensorflow_rbe_config
 tensorflow_rbe_win_config = _tensorflow_rbe_win_config
+tensorflow_local_config = _tensorflow_local_config

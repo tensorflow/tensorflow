@@ -4416,7 +4416,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
 
     with _initialized_session():
       with self.assertRaisesRegexp(errors.OpError,
-                                   r'indices\[0\] = 2 is not in \[0, 2\)'):
+                                   r'indices\[0\] .* 2 .* \[0, 2\)'):
         self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1

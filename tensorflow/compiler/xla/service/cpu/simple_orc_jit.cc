@@ -56,9 +56,8 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::StringMap<bool> host_features;
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
-      if (feature.second) {
-        result.push_back(std::string(feature.first()));
-      }
+      result.push_back((feature.second ? '+' : '-') +
+                       std::string(feature.first()));
     }
   }
   return result;
@@ -237,6 +236,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
   REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
+  REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);

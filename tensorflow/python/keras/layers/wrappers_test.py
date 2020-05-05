@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
@@ -41,6 +42,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
@@ -87,6 +89,24 @@ class _ResidualLSTMCell(keras.layers.LSTMCell):
   def call(self, inputs, states, training=None):
     output, states = super(_ResidualLSTMCell, self).call(inputs, states)
     return output + inputs, states
+
+
+class _AddOneCell(keras.layers.AbstractRNNCell):
+  """Increments inputs and state by one on each call."""
+
+  @property
+  def state_size(self):
+    return 1
+
+  @property
+  def output_size(self):
+    return 1
+
+  def call(self, inputs, state):
+    inputs = math_ops.reduce_mean(inputs, axis=1, keepdims=True)
+    outputs = inputs + 1.0
+    state = nest.map_structure(lambda t: t + 1.0, state)
+    return outputs, state
 
 
 class TimeDistributedTest(keras_parameterized.TestCase):
@@ -640,6 +660,40 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       for state_birnn, state_inner in zip(y_merged, y_forward + y_backward):
         self.assertAllClose(state_birnn, state_inner, atol=1e-5)
 
+  @parameterized.parameters([True, False])
+  def test_Bidirectional_with_time_major_input(self, time_major):
+    batch_size, time, input_dim = 2, 3, 1
+    inputs = array_ops.zeros((batch_size, time, input_dim))
+    # length is [1 2]. Within the batch, the first element has 1 step, and the
+    # second element as 2 steps.
+    lengths = math_ops.range(1, 1 + batch_size)
+    mask = array_ops.sequence_mask(lengths, maxlen=time, dtype=dtypes.float32)
+
+    forward_cell = _AddOneCell(name='forward')
+    backward_cell = _AddOneCell(name='backward')
+
+    layer = keras.layers.Bidirectional(
+        layer=keras.layers.RNN(
+            forward_cell, time_major=time_major, return_sequences=True),
+        backward_layer=keras.layers.RNN(
+            backward_cell, time_major=time_major, return_sequences=True,
+            go_backwards=True))
+
+    # Switch to time-major.
+    if time_major:
+      inputs = array_ops.transpose(inputs, [1, 0, 2])
+      mask = array_ops.transpose(mask, [1, 0])
+
+    keras_outputs = layer(inputs, mask=mask)
+    if time_major:
+      keras_outputs = array_ops.transpose(keras_outputs, [1, 0, 2])
+
+    # expect the first element in batch has 1 step and second element in batch
+    # has 2 steps.
+    expected_result = np.array([[[1., 1.], [0., 0.], [0., 0.]],
+                                [[1., 1.], [1., 1.], [0., 0.]]])
+    self.assertAllClose(expected_result, keras_outputs)
+
   def test_Bidirectional_dropout(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -733,8 +787,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
       _ = layer(x)
       assert not layer.updates
-      assert not layer.get_updates_for(None)
-      assert not layer.get_updates_for(x)
       # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
       with base_layer_utils.call_context().enter(layer, x, True, None):
         layer.forward_layer.add_update(x_reachable_update, inputs=x)
@@ -742,33 +794,22 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         layer.backward_layer.add_update(x_reachable_update, inputs=x)
         layer.backward_layer.add_update(1, inputs=None)
       assert len(layer.updates) == 4
-      assert len(layer.get_updates_for(None)) == 2
-      assert len(layer.get_updates_for(x)) == 2
 
   def test_Bidirectional_losses(self):
-    with self.cached_session():
-      x = keras.layers.Input(shape=(3, 2))
-      x_reachable_loss = x * x
-      layer = keras.layers.Bidirectional(
-          keras.layers.SimpleRNN(
-              3, kernel_regularizer='l1', bias_regularizer='l1',
-              activity_regularizer='l1'))
-      _ = layer(x)
-      assert len(layer.losses) == 6
-      assert len(layer.get_losses_for(None)) == 4
-      assert len(layer.get_losses_for(x)) == 2
+    x = keras.layers.Input(shape=(3, 2))
+    layer = keras.layers.Bidirectional(
+        keras.layers.SimpleRNN(
+            3,
+            kernel_regularizer='l1',
+            bias_regularizer='l1',
+            activity_regularizer='l1'))
+    _ = layer(x)
+    assert len(layer.losses) == 6
 
-      # Create a random tensor that is not conditional on the inputs.
-      with keras.backend.get_graph().as_default():
-        const_tensor = constant_op.constant(1)
-
-      layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.forward_layer.add_loss(const_tensor, inputs=None)
-      layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.backward_layer.add_loss(const_tensor, inputs=None)
-      assert len(layer.losses) == 10
-      assert len(layer.get_losses_for(None)) == 6
-      assert len(layer.get_losses_for(x)) == 4
+    loss = x * x
+    layer.forward_layer.add_loss(loss)
+    layer.backward_layer.add_loss(loss, inputs=x)
+    assert len(layer.losses) == 8
 
   def test_Bidirectional_with_constants(self):
     with self.cached_session():
@@ -900,6 +941,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
           [None, 2, 16])
 
   def test_Bidirectional_last_output_with_masking(self):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -927,6 +974,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     samples = 2
     dim = 5
     timesteps = 3
@@ -1128,6 +1181,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['ave', 'concat', 'mul'])
   def test_Bidirectional_ragged_input(self, merge_mode):
+    if test.is_built_with_rocm():
+      # ragged tenors are not supported in ROCM RNN implementation
+      self.skipTest('Test not supported on the ROCm platform')
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3
@@ -1167,6 +1223,27 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
       y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
       self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
+
+  def test_full_input_spec(self):
+    # See https://github.com/tensorflow/tensorflow/issues/38403
+    inputs = keras.layers.Input(batch_shape=(1, 1, 1))
+    fw_state = keras.layers.Input(batch_shape=(1, 1))
+    bw_state = keras.layers.Input(batch_shape=(1, 1))
+    states = [fw_state, bw_state]
+    bidirectional_rnn = keras.layers.Bidirectional(
+        keras.layers.SimpleRNN(1, stateful=True))
+
+    rnn_output = bidirectional_rnn(inputs, initial_state=states)
+    model = keras.Model([inputs, fw_state, bw_state], rnn_output)
+    output1 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    output2 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    model.reset_states()
+    output3 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    self.assertAllClose(output1, output3)
+    self.assertNotAllClose(output1, output2)
 
 
 class ExampleWrapper(keras.layers.Wrapper):

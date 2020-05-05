@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 
 #include <vector>
 
@@ -1170,31 +1170,6 @@ node {
                                      "available in GraphDef version 10") !=
               string::npos)
       << s;
-}
-
-TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
-  // Barrier's shape is an output vector of 2, but the graph says it's a vector
-  // of 1. This is currently whitelisted.
-  GraphDef def;
-  bool parsed = protobuf::TextFormat::ParseFromString(
-      R"EOF(
-      node {
-        name: "A"
-        op: "Barrier"
-        attr {
-          key: "_output_shapes"
-          value { list { shape {} } }
-        }
-        attr {
-          key: "component_types"
-          value { list { type: DT_FLOAT } }
-        }
-      }
-      )EOF",
-      &def);
-  ASSERT_TRUE(parsed);
-  Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
-  EXPECT_EQ(Status::OK(), s) << s;
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {

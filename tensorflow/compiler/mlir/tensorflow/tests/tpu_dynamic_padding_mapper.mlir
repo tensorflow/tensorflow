@@ -174,6 +174,33 @@ func @func7(%arg0: tensor<i1>) {
   return
 }
 
+// Test arg that requires a padding arg but padding arg is not an arg to the
+// encapsulated function.
+//
+// Padding map "\10\02\18\01":
+//   arg_index: 0
+//   shape_index: 2
+//   padding_arg_index: 1
+//
+// Padding map "\08\02\10\02\18\03":
+//   arg_index: 2
+//   shape_index: 2
+//   padding_arg_index: 3
+func @missing_padding_arg(%arg0: tensor<i1>) {
+  tf_device.replicate([%arg0, %arg0] as %ri_0: tensor<i1>, [%arg0, %arg0] as %ri_1: tensor<i1>, [%arg0, %arg0] as %ri_2: tensor<i1>, [%arg0, %arg0] as %ri_3: tensor<i1>) {n = 2 : i32} {
+    // expected-warning@+1 {{bad 'padding_map' attribute at index 0, unused padding_arg_index 1}}
+    "tf_device.launch_func"(%ri_0, %ri_2, %ri_3) {device = "", func = @func8, padding_map = ["\10\02\18\01", "\08\02\10\02\18\03"]} : (tensor<i1>, tensor<i1>, tensor<i1>) -> ()
+    tf_device.return
+  }
+  return
+}
+
+// CHECK-LABEL: func @func8
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [2 : i32], shape_indices = [2 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>)
+func @func8(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>) {
+  return
+}
+
 // -----
 
 // Test bad padding map attribute (not an array).
@@ -303,27 +330,5 @@ func @bad_padding_arg_index(%arg0: tensor<i1>) {
 }
 
 func @_func(%arg0: tensor<i1>, %arg1: tensor<i1>) {
-  return
-}
-
-// -----
-
-// Test arg that requires a padding arg but padding arg is not an arg to the
-// encapsulated function.
-//
-// Padding map "\10\02\18\01":
-//   arg_index: 0
-//   shape_index: 2
-//   padding_arg_index: 1
-func @missing_padding_arg(%arg0: tensor<i1>) {
-  tf_device.replicate([%arg0, %arg0] as %ri_0: tensor<i1>, [%arg0, %arg0] as %ri_1: tensor<i1>) {n = 2 : i32} {
-    // expected-error@+1 {{'tf_device.launch_func' op bad 'padding_map' attribute at index 0, unused padding_arg_index 1}}
-    "tf_device.launch_func"(%ri_0) {device = "", func = @_func, padding_map = ["\10\02\18\01"]} : (tensor<i1>) -> ()
-    tf_device.return
-  }
-  return
-}
-
-func @_func(%arg0: tensor<i1>) {
   return
 }

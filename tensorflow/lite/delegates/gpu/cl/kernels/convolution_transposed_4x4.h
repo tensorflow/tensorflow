@@ -82,8 +82,8 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 template <DataType T>
 absl::Status ConvolutionTransposed4x4::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;  //  This operation support only 4x4 kernel
   const int kernel_y = 4;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
@@ -107,8 +107,8 @@ absl::Status ConvolutionTransposed4x4::UploadWeights(
 template <DataType S, typename T>
 void ConvolutionTransposed4x4::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;
   const int kernel_y = 4;
 

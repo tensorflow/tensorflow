@@ -125,7 +125,6 @@ class TimeDistributed(Wrapper):
               input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
     # It is safe to use the fast, reshape-based approach with all of our
     # built-in Layers.
@@ -449,7 +448,6 @@ class Bidirectional(Wrapper):
     self._trainable = True
     self._num_constants = 0
     self.input_spec = layer.input_spec
-    self._supports_ragged_inputs = True
 
   def _verify_layer_config(self):
     """Ensure the forward and backward layers have valid common property."""
@@ -651,7 +649,8 @@ class Bidirectional(Wrapper):
       y_rev = y_rev[0]
 
     if self.return_sequences:
-      y_rev = K.reverse(y_rev, 1)
+      time_dim = 0 if getattr(self.forward_layer, 'time_major', False) else 1
+      y_rev = K.reverse(y_rev, time_dim)
     if self.merge_mode == 'concat':
       output = K.concatenate([y, y_rev])
     elif self.merge_mode == 'sum':

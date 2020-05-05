@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -55,10 +56,18 @@ static llvm::cl::opt<bool> verify_passes(
     llvm::cl::desc("Run the verifier after each transformation pass"),
     llvm::cl::init(true));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> allowUnregisteredDialects(
+    "allow-unregistered-dialect",
+    llvm::cl::desc("Allow operation with no registered dialects"),
+    llvm::cl::init(false));
+
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
-  // Register any pass manager command line options.
+  // Register various MLIR command line options.
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
 
   // Parse pass names in main to ensure static initialization completed.
@@ -77,7 +86,7 @@ int main(int argc, char **argv) {
 
   if (failed(mlir::MlirOptMain(output->os(), std::move(file), pass_pipeline,
                                split_input_file, verify_diagnostics,
-                               verify_passes)))
+                               verify_passes, allowUnregisteredDialects)))
     return 1;
   output->keep();
   return 0;

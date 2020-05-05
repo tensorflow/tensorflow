@@ -49,6 +49,7 @@ REGISTER_OP("_MklFusedConv2D")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
@@ -59,6 +60,30 @@ REGISTER_OP("_MklFusedConv2D")
 *NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
  is expected to create these operators.
 )doc");
+
+REGISTER_OP("_MklFusedDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_args: num_args * uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 REGISTER_OP("_MklFusedMatMul")
     .Input("a: T")
@@ -72,7 +97,7 @@ REGISTER_OP("_MklFusedMatMul")
     .Attr("is_filter_const: bool = false")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float}")
+    .Attr("T: {bfloat16, float}")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -806,6 +831,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -828,6 +854,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;

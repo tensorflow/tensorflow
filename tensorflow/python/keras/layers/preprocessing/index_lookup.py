@@ -49,7 +49,7 @@ _ACCUMULATOR_COUNTS_NAME = "counts"
 class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Maps strings (or integers) from a vocabulary to integer indices.
 
-  This layer translates a set of arbitray strings or integers into an integer
+  This layer translates a set of arbitrary strings or integers into an integer
   output via a table-based lookup, with optional out-of-vocabulary handling.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
@@ -149,9 +149,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     super(IndexLookup, self).__init__(
         combiner=_IndexLookupCombiner(self.max_tokens), **kwargs)
-
-    # This layer supports RaggedTensor inputs.
-    self._supports_ragged_inputs = True
 
     # If the layer's input type is int32, we can only output int32 values -
     # MutableHashTable doesn't allow us to map int32->int64.

@@ -25,7 +25,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
-from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -119,6 +119,31 @@ class ParameterServerStrategy(distribute_lib.Strategy):
         "ParameterServerStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
         len(self.extended.parameter_devices))
+
+  def experimental_distribute_dataset(self, dataset):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy,
+          self).experimental_distribute_dataset(dataset=dataset)
+
+  def experimental_distribute_datasets_from_function(self, dataset_fn):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy,
+          self).experimental_distribute_datasets_from_function(
+              dataset_fn=dataset_fn)
+
+  def run(self, fn, args=(), kwargs=None, options=None):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy, self).run(
+        fn, args=args, kwargs=kwargs, options=options)
+
+  def scope(self):
+    self._raise_pss_error_if_eager()
+    return super(ParameterServerStrategy, self).scope()
+
+  def _raise_pss_error_if_eager(self):
+    if context.executing_eagerly():
+      raise NotImplementedError("ParameterServerStrategy currently only works "
+                                "with the tf.Estimator API")
 
 
 @tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
@@ -456,9 +481,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         return var_creator(**kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(
-        self._container_strategy(), self._compute_devices, fn, args, kwargs)
+    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
+                                              args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:

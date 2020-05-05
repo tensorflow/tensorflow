@@ -120,6 +120,9 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/155406705): flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1014,6 +1017,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1215,8 +1219,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )
@@ -1506,7 +1508,7 @@ cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
-    shard_count = 2,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -2917,6 +2919,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [
@@ -3411,7 +3414,6 @@ tf_py_test(
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
-        "no_rocm",  # flaky test
         "no_windows",
     ],
     deps = [

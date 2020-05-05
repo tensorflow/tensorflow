@@ -922,7 +922,6 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
         ScalarLike(a, 1) - IgammacContinuedFraction<VALUE>(
                                ax, x, a, And(enabled, use_igammac), type),
         IgammaSeries<VALUE>(ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -968,7 +967,6 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
                               ax, x, a, And(enabled, use_igammac), type),
                           IgammaSeries<DERIVATIVE>(
                               ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -1016,7 +1014,6 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
                               ax, x, a, And(enabled, use_igammac), type),
                           IgammaSeries<SAMPLE_DERIVATIVE>(
                               ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -1061,8 +1058,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
-    return Select(underflow, ZerosLike(a),
-                  Select(out_of_range, FullLike(a, 1), result));
+    return Select(out_of_range, FullLike(a, 1), result);
   };
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));

@@ -41,3 +41,13 @@ def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
 def wrapped_get_potentially_supported_ops():
   """Wraps TocoGetPotentiallySupportedOps with lazy loader."""
   return _pywrap_toco_api.TocoGetPotentiallySupportedOps()
+
+
+def wrapped_experimental_mlir_quantize(input_data_str):
+  """Wraps experimental mlir quantize model."""
+  return _pywrap_toco_api.ExperimentalMlirQuantizeModel(input_data_str)
+
+
+def wrapped_experimental_mlir_sparsify(input_data_str):
+  """Wraps experimental mlir sparsify model."""
+  return _pywrap_toco_api.ExperimentalMlirSparsifyModel(input_data_str)
