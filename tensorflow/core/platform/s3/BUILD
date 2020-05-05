@@ -83,7 +83,7 @@ cc_library(
     ],
     deps = select({
         "@org_tensorflow//tensorflow:windows": [
-            "//tensorflow/core/platform:retrying_file_system"
+            "//tensorflow/core/platform:retrying_file_system",
         ],
         "//conditions:default": [],
     }) + [
