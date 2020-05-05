@@ -1613,6 +1613,18 @@ class HuberLossTest(test.TestCase):
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
+  def test_loss_with_non_default_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/39004
+    self.setup()
+    h_obj = losses.Huber()
+    try:
+      backend.set_floatx('float64')
+      loss = h_obj(self.y_true, self.y_true)
+      self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+    finally:
+      backend.set_floatx('float32')
+
 
 class BinaryTruePositivesViaControlFlow(losses.Loss):
 
