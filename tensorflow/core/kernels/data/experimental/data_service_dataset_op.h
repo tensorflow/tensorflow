@@ -24,6 +24,8 @@ namespace data {
 class DataServiceDatasetOp : public DatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "DataService";
+  static constexpr const char* const kDatasetId = "dataset_id";
+  static constexpr const char* const kProcessingMode = "processing_mode";
   static constexpr const char* const kAddress = "address";
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kMaxOutstandingRequests =

@@ -165,6 +165,7 @@ cc_library(
         ":mlir_hlo_builder",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",

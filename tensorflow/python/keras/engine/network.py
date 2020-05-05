@@ -51,7 +51,6 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
@@ -426,10 +425,6 @@ class Network(base_layer.Layer):
     self._is_graph_network = False
     self.inputs = None
     self.outputs = None
-    # Since we don't know whether the subclass model support ragged inputs,
-    # we leave it as True, otherwise the layer will raise error when a ragged
-    # tensor is called as input.
-    self._supports_ragged_inputs = True
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -1398,8 +1393,6 @@ class Network(base_layer.Layer):
                         'Note that input tensors are '
                         'instantiated via `tensor = tf.keras.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
-      if isinstance(x, ragged_tensor.RaggedTensor):
-        self._supports_ragged_inputs = True
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [

@@ -160,6 +160,8 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TF_AllOp : TF_Op<"All", [NoSideEffect]> {
@@ -1963,6 +1965,8 @@ def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -4895,7 +4899,7 @@ func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> 
 
 @tf.function
 def foo(x, y):
-  return = mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
+  return mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
 
 graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.TensorSpec([10], tf.float32)).graph.as_graph_def()
 ```
@@ -4960,6 +4964,8 @@ def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShap
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_MulNoNanOp : TF_Op<"MulNoNan", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -6030,6 +6036,29 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", []> {
+  let summary = "An op that receives embedding activations on the TPU.";
+
+  let description = [{
+The TPU system performs the embedding lookups and aggregations specified by
+the arguments to TPUEmbeddingEnqueue(Integer/Sparse/SparseTensor)Batch. The
+results of these aggregations are visible to the Tensorflow Graph as the
+outputs of a RecvTPUEmbeddingActivations op. This op returns a list containing
+one Tensor of activations per table specified in the model. There can be at
+most one RecvTPUEmbeddingActivations op in the TPU graph.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Variadic<F32Tensor>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
@@ -8096,6 +8125,8 @@ def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TF_SumOp : TF_Op<"Sum", [NoSideEffect]> {
@@ -10048,6 +10079,29 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", []> {
+  let summary = "An op that receives embeddng activations on the TPU.";
+
+  let description = [{
+The TPU system performs the embedding lookups and aggregations. The results of
+these aggregations are visible to the Tensorflow Graph as the outputs of a
+_RecvTPUEmbeddingActivations Op. This op returns a list containing one
+Tensor of activations per table specified in the model.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$deduplication_data,
+
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Variadic<F32Tensor>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {

@@ -94,23 +94,11 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
-  Status DefaultAction(HloInstruction* hlo) final {
-    return ::xla::Unimplemented("unsupported HLO %s", hlo->name());
-  }
+  Status DefaultAction(HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
   Status HandleParameter(HloInstruction* instr) final { return Status::OK(); }
-
-  // HLO Copy is translated 1:1 to an lhlo.copy operation.
-  Status HandleCopy(HloInstruction* instr) final {
-    TF_ASSIGN_OR_RETURN(Value source, GetOrCreateView(instr->operand(0)));
-    TF_ASSIGN_OR_RETURN(Value dest, GetOrCreateView(instr));
-    if (source != dest)
-      builder_.create<xla_lhlo::CopyOp>(getLocation(instr),
-                                        llvm::ArrayRef<Type>{}, source, dest);
-    return Status::OK();
-  }
 
   // Helper function to create view in a buffer for a given slice. The view is
   // cached in the `slices_` map.
@@ -159,6 +147,98 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   // Convenient "cached" access to this widely used MLIR type (i8).
   Type i8_type_;
 };
+
+Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+  llvm::SmallVector<Value, 4> operands(instr->operand_count() + 1);
+  for (int arg_idx = 0; arg_idx < instr->operand_count(); ++arg_idx) {
+    TF_ASSIGN_OR_RETURN(operands[arg_idx],
+                        GetOrCreateView(instr->operand(arg_idx)));
+  }
+
+  TF_ASSIGN_OR_RETURN(operands.back(), GetOrCreateView(instr));
+  Location loc = getLocation(instr);
+  ArrayRef<std::pair<Identifier, Attribute>> attrs;
+  ArrayRef<Type> rets{};
+
+  using ::xla::HloOpcode;
+  switch (instr->opcode()) {
+    case HloOpcode::kAbs:
+      builder_.create<xla_lhlo::AbsOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kAdd:
+      builder_.create<xla_lhlo::AddOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kAnd:
+      builder_.create<xla_lhlo::AndOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kCeil:
+      builder_.create<xla_lhlo::CeilOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kComplex:
+      builder_.create<xla_lhlo::ComplexOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kCopy:
+      builder_.create<xla_lhlo::CopyOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kCos:
+      builder_.create<xla_lhlo::CosOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kDivide:
+      builder_.create<xla_lhlo::DivOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kExp:
+      builder_.create<xla_lhlo::ExpOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kImag:
+      builder_.create<xla_lhlo::ImagOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kLog:
+      builder_.create<xla_lhlo::LogOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kMaximum:
+      builder_.create<xla_lhlo::MaxOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kMinimum:
+      builder_.create<xla_lhlo::MinOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kMultiply:
+      builder_.create<xla_lhlo::MulOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kNegate:
+      builder_.create<xla_lhlo::NegOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kReal:
+      builder_.create<xla_lhlo::RealOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kRemainder:
+      builder_.create<xla_lhlo::RemOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kRsqrt:
+      builder_.create<xla_lhlo::RsqrtOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kSelect:
+      builder_.create<xla_lhlo::SelectOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kSign:
+      builder_.create<xla_lhlo::SignOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kSqrt:
+      builder_.create<xla_lhlo::SqrtOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kSubtract:
+      builder_.create<xla_lhlo::SubOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    case HloOpcode::kTanh:
+      builder_.create<xla_lhlo::TanhOp>(loc, rets, operands, attrs);
+      return Status::OK();
+    default:
+      llvm::errs() << instr->ToString();
+      return tensorflow::errors::Internal(
+          absl::StrCat("LHLO opcode ", ::xla::HloOpcodeString(instr->opcode()),
+                       " is not supported."));
+  }
+  return Status::OK();
+}
 
 Value LhloDialectEmitter::GetOrCreateView(
     const BufferAllocation::Slice& slice) {

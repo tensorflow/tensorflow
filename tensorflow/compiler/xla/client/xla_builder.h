@@ -1030,6 +1030,7 @@ class XlaBuilder {
   friend XlaOp Imag(XlaOp operand);
   friend XlaOp Sqrt(XlaOp operand);
   friend XlaOp Rsqrt(XlaOp operand);
+  friend XlaOp Cbrt(XlaOp operand);
   friend XlaOp Pow(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(XlaOp operand);
@@ -1883,6 +1884,9 @@ XlaOp Imag(XlaOp operand);
 
 // Enqueues a sqrt computation onto the computation.
 XlaOp Sqrt(XlaOp operand);
+
+// Enqueues a cbrt computation onto the computation.
+XlaOp Cbrt(XlaOp operand);
 
 // Enqueues a rsqrt computation onto the computation.
 XlaOp Rsqrt(XlaOp operand);

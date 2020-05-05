@@ -24,9 +24,14 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
+from tensorflow.python.autograph.pyct.static_analysis import liveness
+from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.utils import compat_util
 
 
@@ -528,9 +533,22 @@ class ControlFlowTransformer(converter.Base):
         undefined_assigns=undefined_assigns)
 
 
+class AnnotatedDef(reaching_definitions.Definition):
+
+  def __init__(self):
+    super(AnnotatedDef, self).__init__()
+    self.directives = {}
+
+
 def transform(node, ctx):
-  transformer = ControlFlowTransformer(ctx)
-  return transformer.visit(node)
+  graphs = cfg.build(node)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
+  node = reaching_definitions.resolve(node, ctx, graphs, AnnotatedDef)
+  node = liveness.resolve(node, ctx, graphs)
+
+  node = ControlFlowTransformer(ctx).visit(node)
+  return node
 
 
 compat_util.deprecated_py2_support(__name__)

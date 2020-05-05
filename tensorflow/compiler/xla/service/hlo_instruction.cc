@@ -807,6 +807,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       break;
     default:
@@ -1565,6 +1566,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -1937,6 +1939,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -2381,6 +2384,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       CHECK_EQ(1, operand_count());
       return true;
@@ -2893,6 +2897,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSin(this);
     case HloOpcode::kSqrt:
       return visitor->HandleSqrt(this);
+    case HloOpcode::kCbrt:
+      return visitor->HandleCbrt(this);
     case HloOpcode::kRsqrt:
       return visitor->HandleRsqrt(this);
     case HloOpcode::kReal:

@@ -171,6 +171,29 @@ XEventBuilder CreateXEventWithStringViewMetadataValue(
   return event_builder;
 }
 
+XEventBuilder CreateXEventWithIntAndStringViewMetadataValue(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& int_stats,
+    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
+        str_stats) {
+  auto event_builder = line_builder->AddEvent(
+      *plane_builder->GetOrCreateEventMetadata(event_name));
+  event_builder.SetOffsetPs(offset_ps);
+  event_builder.SetDurationPs(duration_ps);
+  for (const auto& stat_type_and_value : int_stats) {
+    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(stat_type_and_value.first)),
+                               stat_type_and_value.second);
+  }
+  for (const auto& stat_type_and_value : str_stats) {
+    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(stat_type_and_value.first)),
+                               stat_type_and_value.second);
+  }
+  return event_builder;
+}
+
 void RemovePlaneWithName(XSpace* space, absl::string_view name) {
   auto* planes = space->mutable_planes();
   planes->erase(

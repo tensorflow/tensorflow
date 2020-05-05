@@ -519,8 +519,8 @@ class Tensor(internal.NativeObject):
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did not convert this function. Try"
-        " decorating it directly with @tf.function.".format(task))
+        "{} is not allowed: AutoGraph did convert this function. This might"
+        " indicate you are trying to use an unsupported feature.".format(task))
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -1748,8 +1748,8 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
+_VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):

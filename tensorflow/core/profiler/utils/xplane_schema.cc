@@ -102,6 +102,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},

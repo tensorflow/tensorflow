@@ -33,6 +33,13 @@ enum class ProcessingMode : int64 {
   ONE_EPOCH = 1,
 };
 
+// Parses a string representing a processing mode and stores the result in
+// *mode. Returns an InvalidArgument status if the string is not recognized.
+Status ParseProcessingMode(absl::string_view s, ProcessingMode* mode);
+
+// Converts a processing mode to its corresponding string.
+std::string ProcessingModeToString(ProcessingMode mode);
+
 // Base class for data service clients. Data service clients are
 // thread-compatible, requiring external synchronization when used from multiple
 // threads.

@@ -494,6 +494,48 @@ LogicalResult FoldOperandsPermutation(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Rewrite Pattern for removing trivial Arithmetic op.
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Utility methods that returns Identity value to use for selected ops.
+
+APFloat GetIdentity(AddV2Op op) { return APFloat(0.0f); }
+APFloat GetIdentity(SubOp op) { return APFloat(0.0f); }
+APFloat GetIdentity(MulOp op) { return APFloat(1.0f); }
+APFloat GetIdentity(DivOp op) { return APFloat(1.0f); }
+
+// Folder that returns LHS of an Arithmetic Op if the RHS is a constant
+// known to be Identity (e.g X+0)
+template <typename OP>
+OpFoldResult TrivialArithmeticOpFolder(OP arithmetic_op) {
+  DenseFPElementsAttr rhs_value;
+  auto constant_val = arithmetic_op.y();
+  if (!matchPattern(constant_val, m_Constant(&rhs_value))) {
+    return {};
+  }
+  auto result_op_type = arithmetic_op.getResult().getType();
+  auto lhs_type = arithmetic_op.x().getType();
+  if (!result_op_type.template isa<ShapedType>() ||
+      !lhs_type.template isa<ShapedType>() ||
+      !result_op_type.template cast<ShapedType>().hasStaticShape()) {
+    return {};
+  }
+  // We only handle non-broadcastable case.
+  if (result_op_type != lhs_type) {
+    return {};
+  }
+  auto identity_val = GetIdentity(arithmetic_op);
+  for (auto it = rhs_value.float_value_begin();
+       it != rhs_value.float_value_end(); ++it) {
+    if (*it != identity_val) return {};
+  }
+
+  return arithmetic_op.x();
+}
+}  // namespace
+
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -523,6 +565,10 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+}
+
+OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
+  return TrivialArithmeticOpFolder<AddV2Op>(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1271,6 +1317,10 @@ void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<DivWithSqrtDivisor>(context);
 }
 
+OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
+  return TrivialArithmeticOpFolder<DivOp>(*this);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicStitchOp
 //===----------------------------------------------------------------------===//
@@ -1934,6 +1984,14 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   setOperand(1, shuffled_reduction_op);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MulOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
+  return TrivialArithmeticOpFolder<MulOp>(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2902,6 +2960,10 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<SubOfNeg>(context);
+}
+
+OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
+  return TrivialArithmeticOpFolder<SubOp>(*this);
 }
 
 //===----------------------------------------------------------------------===//

@@ -477,6 +477,34 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 // Tall fat graph
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 
+static void BM_const_identity(int iters, int width, int outputs_per_const) {
+#ifdef PLATFORM_GOOGL
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(
+      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
+                             static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g).Run(iters);
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->ArgPair(100, 100);
+
 static void BM_FeedInputFetchOutput(int iters) {
   testing::StopTiming();
   Graph* g = new Graph(OpRegistry::Global());

@@ -58,18 +58,6 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "Pool": "default",
         }
 
-        remote_platform_configure(
-            name = "%s_config_platform" % name,
-            platform = "linux",
-            platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
-
         remote_cuda_configure(
             name = "%s_config_cuda" % name,
             environ = env,
@@ -102,19 +90,6 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "Pool": "default",
         }
 
-        remote_platform_configure(
-            name = "%s_config_platform" % name,
-            platform = "linux",
-            platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
-        )
-
         remote_rocm_configure(
             name = "%s_config_rocm" % name,
             environ = env,
@@ -130,15 +105,15 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
     else:
         fail("Neither cuda_version, rocm_version nor python_version specified.")
 
+    remote_platform_configure(
+        name = "%s_config_platform" % name,
+        platform = "linux",
+        platform_exec_properties = exec_properties,
+    )
     for python_version in python_versions:
         env.update({
             "PYTHON_BIN_PATH": "%s/bin/python%s" % (python_install_path, python_version),
         })
-        remote_platform_configure(
-            name = "%s_config_platform" % name,
-            platform = "linux",
-            platform_exec_properties = exec_properties,
-        )
 
         # For backwards compatibility do not add the python version to the name
         # if we only create a single python configuration.

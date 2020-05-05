@@ -26,6 +26,34 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+namespace {
+constexpr const char kParallelEpochs[] = "parallel_epochs";
+constexpr const char kOneEpoch[] = "one_epoch";
+}  // namespace
+
+Status ParseProcessingMode(absl::string_view s, ProcessingMode* mode) {
+  if (s == kParallelEpochs) {
+    *mode = ProcessingMode::PARALLEL_EPOCHS;
+  } else if (s == kOneEpoch) {
+    *mode = ProcessingMode::ONE_EPOCH;
+  } else {
+    return errors::InvalidArgument("Unrecognized processing mode: ", s);
+  }
+  return Status::OK();
+}
+
+std::string ProcessingModeToString(ProcessingMode mode) {
+  switch (mode) {
+    case ProcessingMode::PARALLEL_EPOCHS:
+      return kParallelEpochs;
+    case ProcessingMode::ONE_EPOCH:
+      return kOneEpoch;
+    default:
+      DCHECK(false);
+      return "Unknown";
+  }
+}
+
 Status DataServiceMasterClient::CreateJob(int64 dataset_id,
                                           ProcessingMode processing_mode,
                                           int64* job_id) {

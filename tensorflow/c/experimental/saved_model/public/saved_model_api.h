@@ -80,7 +80,7 @@ TF_CAPI_EXPORT extern void TF_DeleteSavedModel(TF_SavedModel* model);
 //  "conceptually" bound to `model`. Once `model` is deleted, all
 //  `TF_ConcreteFunctions` retrieved from it are invalid, and have been deleted.
 TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(
-    TF_SavedModel* model, char* function_path, TF_Status* status);
+    TF_SavedModel* model, const char* function_path, TF_Status* status);
 
 // Retrieve a function from the TF SavedModel via a SignatureDef key.
 //
@@ -94,7 +94,7 @@ TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(
 //  TF_ConcreteFunction instance. Once `model` is deleted, all
 //  `TF_ConcreteFunctions` retrieved from it are invalid, and have been deleted.
 TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelSignatureDefFunction(
-    TF_SavedModel* model, char* signature_def_key, TF_Status* status);
+    TF_SavedModel* model, const char* signature_def_key, TF_Status* status);
 
 // Returns a list of all ConcreteFunctions stored in this SavedModel.
 // The lifetime of the returned list is bound to `model`.

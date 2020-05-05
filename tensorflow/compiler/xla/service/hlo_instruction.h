@@ -1605,6 +1605,9 @@ class HloInstruction {
   virtual int64 dimensions(int64 index) const {
     LOG(FATAL) << "Unimplemented method.";
   }
+  virtual std::vector<int64>* mutable_dimensions() {
+    LOG(FATAL) << "Unimplemented method.";
+  }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
   int64 concatenate_dimension() const;

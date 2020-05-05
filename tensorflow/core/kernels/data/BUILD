@@ -167,9 +167,9 @@ cc_library(
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:entry",
         "//tensorflow/core/common_runtime:local_executor_params",
     ],
     alwayslink = 1,

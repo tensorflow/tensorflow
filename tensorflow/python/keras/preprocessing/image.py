@@ -21,15 +21,20 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_preprocessing import image
+import numpy as np
 try:
   from scipy import linalg  # pylint: disable=unused-import
   from scipy import ndimage  # pylint: disable=unused-import
 except ImportError:
   pass
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -42,6 +47,103 @@ random_channel_shift = image.random_channel_shift
 apply_brightness_shift = image.apply_brightness_shift
 random_brightness = image.random_brightness
 apply_affine_transform = image.apply_affine_transform
+
+
+def smart_resize(x, size, interpolation='bilinear'):
+  """Resize images to a target size without aspect ratio distortion.
+
+  TensorFlow image datasets typically yield images that have each a different
+  size. However, these images need to be batched before they can be
+  processed by Keras layers. To be batched, images need to share the same height
+  and width.
+
+  You could simply do:
+
+  ````python
+  size = (200, 200)
+  ds = ds.map(lambda img: tf.image.resize(img, size))
+  ```
+
+  However, if you do this, you distort the aspect ratio of your images, since
+  in general they do not all have the same aspect ratio. This is
+  fine in many cases, but not always (e.g. for GANs this can be a problem).
+
+  Note that passing the argument `preserve_aspect_ratio=True` to `resize`
+  will preserve the aspect ratio, but at the cost of no longer respecting the
+  provided target size. Because `tf.image.resize` doesn't crop images,
+  your output images will still have different sizes.
+
+  This calls for:
+
+  ```python
+  size = (200, 200)
+  ds = ds.map(lambda img: smart_resize(img, size))
+  ```
+
+  Your output images will actually be `(200, 200)`, and will not be distorted.
+  Instead, the parts of the image that do not fit within the target size
+  get cropped out.
+
+  The resizing process is:
+
+  1. Take the largest centered crop of the image that has the same aspect ratio
+  as the target size. For instance, if `size=(200, 200)` and the input image has
+  size `(340, 500)`, we take a crop of `(340, 340)` centered along the width.
+  2. Resize the cropped image to the target size. In the example above,
+  we resize the `(340, 340)` crop to `(200, 200)`.
+
+  Arguments:
+    x: Input image (as a tensor or NumPy array). Must be in format
+      `(height, width, channels)`.
+    size: Tuple of `(height, width)` integer. Target size.
+    interpolation: String, interpolation to use for resizing.
+      Defaults to `'bilinear'`. Supports `bilinear`, `nearest`, `bicubic`,
+      `area`, `lanczos3`, `lanczos5`, `gaussian`, `mitchellcubic`.
+
+  Returns:
+    Array with shape `(size[0], size[1], channels)`. If the input image was a
+    NumPy array, the output is a NumPy array, and if it was a TF tensor,
+    the output is a TF tensor.
+  """
+  if len(size) != 2:
+    raise ValueError('Expected `size` to be a tuple of 2 integers, '
+                     'but got: %s' % (size,))
+  img = ops.convert_to_tensor(x)
+  if img.shape.rank is not None:
+    if img.shape.rank != 3:
+      raise ValueError(
+          'Expected an image array with shape `(height, width, channels)`, but '
+          'got input with incorrect rank, of shape %s' % (img.shape,))
+  shape = array_ops.shape(img)
+  height, width = shape[0], shape[1]
+  target_height, target_width = size
+  target_ratio = float(target_height) / target_width
+  img_ratio = math_ops.cast(
+      height, 'float32') / math_ops.cast(width, 'float32')
+  if target_ratio < img_ratio:
+    crop_height = math_ops.cast(
+        math_ops.cast(width, 'float32') * target_height / target_width, 'int32')
+    crop_box_hstart = math_ops.cast(
+        math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
+    crop_box_start = [crop_box_hstart, 0, 0]
+    crop_box_size = [crop_height, -1, -1]
+  else:
+    crop_width = math_ops.cast(
+        math_ops.cast(height * target_width, 'float32') / target_height,
+        'int32')
+    crop_box_wstart = math_ops.cast((width - crop_width) / 2, 'int32')
+    crop_box_start = [0, crop_box_wstart, 0]
+    crop_box_size = [-1, crop_width, -1]
+  crop_box_start = array_ops.stack(crop_box_start)
+  crop_box_size = array_ops.stack(crop_box_size)
+  img = array_ops.slice(img, crop_box_start, crop_box_size)
+  img = image_ops.resize_images_v2(
+      images=img,
+      size=size,
+      method=interpolation)
+  if isinstance(x, np.ndarray):
+    return img.numpy()
+  return img
 
 
 @keras_export('keras.preprocessing.image.array_to_img')

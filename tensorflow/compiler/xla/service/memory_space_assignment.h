@@ -604,6 +604,8 @@ class MemorySpaceAssignment {
     AllocationSequence allocation_sequence_;
   };
 
+  virtual ~MemorySpaceAssignment() = default;
+
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
@@ -621,13 +623,19 @@ class MemorySpaceAssignment {
   Status VerifyAndExportHeapSimulatorTrace();
 
  protected:
+  // Main driver of the memory space assignment pass.
+  virtual StatusOr<std::unique_ptr<PresetAssignments>> RunMemorySpaceAssignment(
+      const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis);
+
   // Finds an AllocationSequence for placing buffers in alternate memory using
   // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
   // called.
-  Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
-                                const HloAliasAnalysis& alias_analysis);
+  virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
+                                        const HloAliasAnalysis& alias_analysis);
 
- private:
+  Options options() const { return options_; }
+
   MemorySpaceAssignment(HloModule* module, Options options,
                         const HloLiveRange& hlo_live_range)
       : module_(module),
@@ -646,6 +654,9 @@ class MemorySpaceAssignment {
     }
   }
 
+  AllocationSequence allocations_;
+
+ private:
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   Status Process();
@@ -682,7 +693,6 @@ class MemorySpaceAssignment {
   Options options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
-  AllocationSequence allocations_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
   std::vector<std::pair<HloPosition, Chunk>> alternate_memory_assignments_;
   int64 alternate_memory_size_ = 0;

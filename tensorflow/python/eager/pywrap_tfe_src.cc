@@ -4019,6 +4019,11 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
           "Error while reading CompositeTensor._type_spec.");
     }
     result->objects.push_back(type_spec);
+  } else if (tensorflow::swig::IsTypeSpec(arg)) {
+    // Add the typespec (not a weakref) in case it's a temporary object.
+    absl::StrAppend(&result->str, kRaw);
+    Py_INCREF(arg);
+    result->objects.push_back(arg);
   } else if (tensorflow::swig::IsAttrs(arg)) {
     absl::StrAppend(&result->str, kAttrs);
     tensorflow::Safe_PyObjectPtr attrs(

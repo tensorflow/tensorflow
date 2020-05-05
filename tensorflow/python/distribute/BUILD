@@ -226,9 +226,8 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss_py2",
-        "notap",
-    ],  # b/138443278
+        "no_oss_py2",  # b/138443278
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -1036,7 +1035,7 @@ distribute_py_test(
         "no_rocm",
     ],
     tpu_tags = [
-        "no_oss",  # Target too big to run serially reliably.
+        "no_oss",  # b/150954621 Target too big to run serially reliably.
     ],
     deps = [
         ":combinations",
@@ -1102,6 +1101,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # Target too big to run serially reliably.
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1550,7 +1550,6 @@ cuda_py_test(
     srcs = ["parameter_server_strategy_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/133330625)
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,

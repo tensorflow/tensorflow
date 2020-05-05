@@ -313,7 +313,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
-    self._supports_ragged_inputs = False
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
@@ -905,12 +904,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
-        if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
-            and not self._supports_ragged_inputs):
-          raise ValueError('Layer %s does not support RaggedTensors as input. '
-                           'Inputs received: %s. You can try converting your '
-                           'input to an uniform tensor.' % (self.name, inputs))
-
         graph = backend.get_graph()
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been

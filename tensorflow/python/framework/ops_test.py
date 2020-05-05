@@ -120,7 +120,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "iterating.*not allowed in Graph"):
       next(iter(t))
     with self.assertRaisesRegexp(
-        TypeError, "iterating.*AutoGraph did not convert"):
+        TypeError, "iterating.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
     with self.assertRaisesRegexp(
@@ -136,7 +136,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         TypeError, "using.*as a.*bool.*not allowed in Graph"):
       bool(t)
     with self.assertRaisesRegexp(
-        TypeError, "using.*as a.*bool.*AutoGraph did not convert"):
+        TypeError, "using.*as a.*bool.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
     with self.assertRaisesRegexp(
@@ -1311,6 +1311,18 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("foo_4", g.unique_name("foo"))
     self.assertEqual("bar_2", g.unique_name("bar", mark_as_used=False))
     self.assertEqual("bar_2", g.unique_name("bar"))
+
+  def testBackslashAndDashRegex(self):
+    # GitHub issue 39019, all should pass
+    g = ops.Graph()
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      pass
+    with g.name_scope("foo"):
+      with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+        pass
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      with g.name_scope("foo"):
+        pass
 
   @test_util.run_deprecated_v1
   def testNameAndVariableScope(self):

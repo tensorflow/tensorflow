@@ -66,13 +66,13 @@ struct MklDnnThreadPool : public dnnl::threadpool_iface {
       : eigen_interface_(ctx->device()
                              ->tensorflow_cpu_worker_threads()
                              ->workers->AsEigenThreadPool()) {}
-  virtual int get_num_threads() override {
+  virtual int get_num_threads() const override {
     return eigen_interface_->NumThreads();
   }
-  virtual bool get_in_parallel() override {
+  virtual bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-  virtual uint64_t get_flags() override { return ASYNCHRONOUS; }
+  virtual uint64_t get_flags() const override { return ASYNCHRONOUS; }
   virtual void parallel_for(int n,
                             const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
@@ -86,12 +86,17 @@ struct MklDnnThreadPool : public dnnl::threadpool_iface {
 
     int nthr = get_num_threads();
     int njobs = std::min(n, nthr);
+    bool balance = (nthr < n);
     for (int i = 0; i < njobs; i++) {
       eigen_interface_->ScheduleWithHint(
-          [i, n, njobs, fn]() {
-            int start, end;
-            balance211(n, njobs, i, &start, &end);
-            for (int j = start; j < end; j++) fn(j, n);
+          [balance, i, n, njobs, fn]() {
+            if (balance) {
+              int start, end;
+              balance211(n, njobs, i, &start, &end);
+              for (int j = start; j < end; j++) fn(j, n);
+            } else {
+              fn(i, n);
+            }
           },
           i, i + 1);
     }

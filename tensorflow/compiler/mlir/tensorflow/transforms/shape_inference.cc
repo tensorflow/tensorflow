@@ -160,6 +160,18 @@ bool InferShapeForPassThroughOps(OperandRange pass_through_operands,
     Type operand_type = std::get<0>(entry).getType();
     Value result = std::get<1>(entry);
     if (result.getType() == operand_type) continue;
+    // Pass through nodes may remove ref types, don't consider that as
+    // refinement.
+    // TODO(jpienaar): There could be refinement in addition to this, so
+    // refine this.
+    if (operand_type.cast<TensorType>()
+            .getElementType()
+            .isa<TF::TensorFlowRefType>() &&
+        !result.getType()
+             .cast<TensorType>()
+             .getElementType()
+             .isa<TF::TensorFlowRefType>())
+      continue;
     AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
                                        result.getType());
     result.setType(operand_type);
@@ -238,7 +250,20 @@ bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   bool changed = false;
   for (auto entry : llvm::zip(operands, results)) {
     Type operand_type = std::get<0>(entry).getType();
-    if (operand_type == std::get<1>(entry).getType()) continue;
+    Type result_type = std::get<1>(entry).getType();
+    if (operand_type == result_type) continue;
+    // Pass through nodes may remove ref types, don't consider that as
+    // refinement.
+    // TODO(jpienaar): There could be refinement in addition to this, so
+    // refine this.
+    if (operand_type.cast<TensorType>()
+            .getElementType()
+            .isa<TF::TensorFlowRefType>() &&
+        !result_type.cast<TensorType>()
+             .getElementType()
+             .isa<TF::TensorFlowRefType>())
+      continue;
+
     std::get<1>(entry).setType(operand_type);
     changed = true;
   }

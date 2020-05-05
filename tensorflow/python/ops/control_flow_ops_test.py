@@ -959,7 +959,8 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def make_name(self):
-    return self.id().split(".")[-1].replace("(", "_").replace(")", "")
+    name = self.id().split(".")[-1].replace("(", "_").replace(")", "")
+    return name.replace(" ", "_")
 
   def disabled_testCase_ticklesGpuVsHostMemoryIssueWithInt32(self):
     nbranches = 5
