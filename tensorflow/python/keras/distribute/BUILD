@@ -245,11 +245,10 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # TODO(b/153672562)
+        "notpu",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
