@@ -120,7 +120,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "iterating.*not allowed in Graph"):
       next(iter(t))
     with self.assertRaisesRegexp(
-        TypeError, "iterating.*AutoGraph did not convert"):
+        TypeError, "iterating.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
     with self.assertRaisesRegexp(
@@ -136,7 +136,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         TypeError, "using.*as a.*bool.*not allowed in Graph"):
       bool(t)
     with self.assertRaisesRegexp(
-        TypeError, "using.*as a.*bool.*AutoGraph did not convert"):
+        TypeError, "using.*as a.*bool.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
     with self.assertRaisesRegexp(

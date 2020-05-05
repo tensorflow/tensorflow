@@ -109,6 +109,9 @@ class DfsHloVisitorBase {
   virtual Status HandleRsqrt(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleCbrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;

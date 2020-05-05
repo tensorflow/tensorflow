@@ -1792,8 +1792,6 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
                         absl::Span<const XlaOp> parameters,
                         const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     // Check the number of parameters per RNG distribution.
     switch (distribution) {
       case RandomDistribution::RNG_NORMAL:
@@ -1809,12 +1807,18 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
     }
 
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
-    *instr.mutable_shape() = shape.ToProto();
-
-    instr.set_distribution(distribution);
-
-    return AddInstruction(std::move(instr), HloOpcode::kRng, parameters);
+    return RngOpInternal(distribution, parameters, shape);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::RngOpInternal(RandomDistribution distribution,
+                                          absl::Span<const XlaOp> parameters,
+                                          const Shape& shape) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_distribution(distribution);
+
+  return AddInstruction(std::move(instr), HloOpcode::kRng, parameters);
 }
 
 XlaOp XlaBuilder::RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape) {
@@ -3570,6 +3574,9 @@ XlaOp Imag(const XlaOp operand) {
 }
 XlaOp Sqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Cbrt(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand);
 }
 XlaOp Rsqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);

@@ -230,7 +230,7 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       {
           'sigma': 1e15,
           'rtol': 1e-6,
-          'atol': 1e-6
+          'atol': 1e-4
       },
       {
           'sigma': 30,
@@ -240,7 +240,7 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       {
           'sigma': 1e-8,
           'rtol': 5e-4,
-          'atol': 3e-6
+          'atol': 3e-4
       },
       {
           'sigma': 1e-16,

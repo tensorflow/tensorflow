@@ -2194,6 +2194,9 @@ tf_cuda_cc_test(
     name = "quantize_and_dequantize_op_test",
     size = "small",
     srcs = ["quantize_and_dequantize_op_test.cc"],
+    tags = [
+        "no_windows",  # test uses rand_r which does not exist on Windows
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -5666,6 +5669,32 @@ tf_kernel_library(
     name = "scatter_op",
     prefix = "scatter_op",
     deps = STATE_DEPS,
+)
+
+tf_kernel_library(
+    name = "count_ops",
+    prefix = "count_ops",
+    deps = STATE_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/framework:op_requires",
+    ],
+)
+
+tf_cc_test(
+    name = "count_ops_test",
+    size = "small",
+    srcs = ["count_ops_test.cc"],
+    deps = [
+        ":count_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(

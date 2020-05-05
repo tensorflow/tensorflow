@@ -129,9 +129,16 @@ def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
 def TF_Uint8 : UI<8>;
+def TF_Uint8Tensor : TensorOf<[TF_Uint8]>;
+
 def TF_Uint16 : UI<16>;
+def TF_Uint16Tensor : TensorOf<[TF_Uint16]>;
+
 def TF_Uint32 : UI<32>;
+def TF_Uint32Tensor : TensorOf<[TF_Uint32]>;
+
 def TF_Uint64 : UI<64>;
+def TF_Uint64Tensor : TensorOf<[TF_Uint64]>;
 
 // Any unsigned integer type
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;

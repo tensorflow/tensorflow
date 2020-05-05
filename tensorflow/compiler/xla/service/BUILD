@@ -2123,6 +2123,51 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "conditional_code_motion",
+    srcs = ["conditional_code_motion.cc"],
+    hdrs = ["conditional_code_motion.h"],
+    deps = [
+        ":call_graph",
+        ":call_inliner",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_dce",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":tuple_simplifier",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "conditional_code_motion_test",
+    srcs = ["conditional_code_motion_test.cc"],
+    deps = [
+        ":conditional_code_motion",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "convolution_group_converter",
     srcs = ["convolution_group_converter.cc"],
     hdrs = ["convolution_group_converter.h"],

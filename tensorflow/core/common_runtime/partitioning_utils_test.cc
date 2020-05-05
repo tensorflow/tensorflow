@@ -158,11 +158,20 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   ASSERT_EQ(3, part2->num_op_nodes());
 }
 
-void CheckIndices(const std::vector<int>& expected,
-                  const std::vector<int>& actual) {
+void CheckRetIndices(const std::vector<int>& expected,
+                     const std::vector<int>& actual) {
   ASSERT_EQ(expected.size(), actual.size());
   for (int i = 0; i < expected.size(); ++i) {
     ASSERT_EQ(expected[i], actual[i]) << " at index " << i;
+  }
+}
+
+void CheckArgIndices(const std::vector<FunctionArgIndex>& expected,
+                     const std::vector<FunctionArgIndex>& actual) {
+  ASSERT_EQ(expected.size(), actual.size());
+  for (int i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(expected[i].index, actual[i].index) << " at index " << i;
+    ASSERT_EQ(expected[i].sub_index, actual[i].sub_index) << " at index " << i;
   }
 }
 
@@ -185,7 +194,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {3}, {5});
 
-  std::vector<int> arg_indices;
+  std::vector<FunctionArgIndex> arg_indices;
   std::vector<int> ret_indices;
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
@@ -197,8 +206,8 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
       &ret_alloc_attrs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
-  CheckIndices({3}, arg_indices);
-  CheckIndices({5}, ret_indices);
+  CheckArgIndices({{3, -1}}, arg_indices);
+  CheckRetIndices({5}, ret_indices);
   CheckAlloc({false}, arg_alloc_attrs);
   CheckAlloc({false}, ret_alloc_attrs);
 
@@ -213,7 +222,18 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {9, 7, 5, 3, 1}, {2, 4, 6, 8, 10});
 
-  std::vector<int> arg_indices;
+  const std::map<int, int> sub_indices = {
+      {7, 2}, {3, 1}, {1, 0}, {5, 2}, {9, 0}};
+  const AttrValue* attr_value;
+  for (Node* n : graph->op_nodes()) {
+    if (n->IsArg()) {
+      TF_ASSERT_OK(n->attrs().Find("index", &attr_value));
+      n->AddAttr("sub_index",
+                 sub_indices.at(static_cast<int>(attr_value->i())));
+    }
+  }
+
+  std::vector<FunctionArgIndex> arg_indices;
   std::vector<int> ret_indices;
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
@@ -225,8 +245,8 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
       &ret_alloc_attrs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
-  CheckIndices({1, 3, 5, 7, 9}, arg_indices);
-  CheckIndices({2, 4, 6, 8, 10}, ret_indices);
+  CheckArgIndices({{1, 0}, {3, 1}, {5, 2}, {7, 2}, {9, 0}}, arg_indices);
+  CheckRetIndices({2, 4, 6, 8, 10}, ret_indices);
   CheckAlloc({false, false, false, false, false}, arg_alloc_attrs);
   CheckAlloc({false, false, false, false, false}, ret_alloc_attrs);
 }

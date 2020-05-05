@@ -63,7 +63,7 @@ class InterpreterWrapper {
 
   PyObject* InputIndices() const;
   PyObject* OutputIndices() const;
-  PyObject* ResizeInputTensor(int i, PyObject* value);
+  PyObject* ResizeInputTensor(int i, PyObject* value, bool strict);
 
   int NumTensors() const;
   std::string TensorName(int i) const;
@@ -109,6 +109,9 @@ class InterpreterWrapper {
   // InterpreterWrapper() = delete here for SWIG compatibility.
   InterpreterWrapper();
   InterpreterWrapper(const InterpreterWrapper& rhs);
+
+  // Helper function to resize an input tensor.
+  PyObject* ResizeInputTensorImpl(int i, PyObject* value);
 
   // The public functions which creates `InterpreterWrapper` should ensure all
   // these member variables are initialized successfully. Otherwise it should

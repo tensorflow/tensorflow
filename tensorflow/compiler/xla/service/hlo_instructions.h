@@ -465,6 +465,7 @@ class HloReverseInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -491,6 +492,7 @@ class HloConcatenateInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Accessor for the dimension in which a concatenate HLO should occur.
   int64 concatenate_dimension() const { return dimensions(0); }
   // Returns a serialized representation of this instruction.
@@ -520,6 +522,7 @@ class HloReduceInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -560,6 +563,7 @@ class HloSortInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns the sort dimension for this instruction
   int64 sort_dimension() const { return dimensions(0); }
   // Returns a serialized representation of this instruction.
@@ -594,6 +598,7 @@ class HloTransposeInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
   // Returns a serialized representation of this instruction.
@@ -621,6 +626,7 @@ class HloBroadcastInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -668,6 +674,7 @@ class HloMapInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 

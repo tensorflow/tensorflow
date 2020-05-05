@@ -9230,30 +9230,30 @@ flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::Flat
 
 struct BatchMatMulOptionsT : public flatbuffers::NativeTable {
   typedef BatchMatMulOptions TableType;
-  bool adjoint_lhs;
-  bool adjoint_rhs;
+  bool adj_x;
+  bool adj_y;
   BatchMatMulOptionsT()
-      : adjoint_lhs(false),
-        adjoint_rhs(false) {
+      : adj_x(false),
+        adj_y(false) {
   }
 };
 
 struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BatchMatMulOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ADJOINT_LHS = 4,
-    VT_ADJOINT_RHS = 6
+    VT_ADJ_X = 4,
+    VT_ADJ_Y = 6
   };
-  bool adjoint_lhs() const {
-    return GetField<uint8_t>(VT_ADJOINT_LHS, 0) != 0;
+  bool adj_x() const {
+    return GetField<uint8_t>(VT_ADJ_X, 0) != 0;
   }
-  bool adjoint_rhs() const {
-    return GetField<uint8_t>(VT_ADJOINT_RHS, 0) != 0;
+  bool adj_y() const {
+    return GetField<uint8_t>(VT_ADJ_Y, 0) != 0;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_ADJOINT_LHS) &&
-           VerifyField<uint8_t>(verifier, VT_ADJOINT_RHS) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_X) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_Y) &&
            verifier.EndTable();
   }
   BatchMatMulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9264,11 +9264,11 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct BatchMatMulOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_adjoint_lhs(bool adjoint_lhs) {
-    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJOINT_LHS, static_cast<uint8_t>(adjoint_lhs), 0);
+  void add_adj_x(bool adj_x) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_X, static_cast<uint8_t>(adj_x), 0);
   }
-  void add_adjoint_rhs(bool adjoint_rhs) {
-    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJOINT_RHS, static_cast<uint8_t>(adjoint_rhs), 0);
+  void add_adj_y(bool adj_y) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_Y, static_cast<uint8_t>(adj_y), 0);
   }
   explicit BatchMatMulOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -9284,11 +9284,11 @@ struct BatchMatMulOptionsBuilder {
 
 inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    bool adjoint_lhs = false,
-    bool adjoint_rhs = false) {
+    bool adj_x = false,
+    bool adj_y = false) {
   BatchMatMulOptionsBuilder builder_(_fbb);
-  builder_.add_adjoint_rhs(adjoint_rhs);
-  builder_.add_adjoint_lhs(adjoint_lhs);
+  builder_.add_adj_y(adj_y);
+  builder_.add_adj_x(adj_x);
   return builder_.Finish();
 }
 
@@ -13617,8 +13617,8 @@ inline BatchMatMulOptionsT *BatchMatMulOptions::UnPack(const flatbuffers::resolv
 inline void BatchMatMulOptions::UnPackTo(BatchMatMulOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = adjoint_lhs(); _o->adjoint_lhs = _e; }
-  { auto _e = adjoint_rhs(); _o->adjoint_rhs = _e; }
+  { auto _e = adj_x(); _o->adj_x = _e; }
+  { auto _e = adj_y(); _o->adj_y = _e; }
 }
 
 inline flatbuffers::Offset<BatchMatMulOptions> BatchMatMulOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BatchMatMulOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13629,12 +13629,12 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuff
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BatchMatMulOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  auto _adjoint_lhs = _o->adjoint_lhs;
-  auto _adjoint_rhs = _o->adjoint_rhs;
+  auto _adj_x = _o->adj_x;
+  auto _adj_y = _o->adj_y;
   return tflite::CreateBatchMatMulOptions(
       _fbb,
-      _adjoint_lhs,
-      _adjoint_rhs);
+      _adj_x,
+      _adj_y);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

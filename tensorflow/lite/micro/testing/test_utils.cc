@@ -33,6 +33,13 @@ uint8_t raw_arena_[kArenaSize];
 SimpleMemoryAllocator* simple_memory_allocator_ = nullptr;
 constexpr size_t kBufferAlignment = 16;
 
+// We store the pointer to the ith scratch buffer to implement the Request/Get
+// ScratchBuffer API for the tests. scratch_buffers_[i] will be the ith scratch
+// buffer and will still be allocated from within raw_arena_.
+constexpr size_t kNumScratchBuffers = 5;
+uint8_t* scratch_buffers_[kNumScratchBuffers];
+size_t scratch_buffer_count_ = 0;
+
 // Note that the context parameter in this function is only needed to match the
 // signature of TfLiteContext::AllocatePersistentBuffer and isn't needed in the
 // implementation because we are assuming a single global
@@ -46,6 +53,38 @@ TfLiteStatus AllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
     return kTfLiteError;
   }
   return kTfLiteOk;
+}
+
+TfLiteStatus RequestScratchBufferInArena(TfLiteContext* context, size_t bytes,
+                                         int* buffer_index) {
+  TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
+  TFLITE_DCHECK(buffer_index != nullptr);
+
+  if (scratch_buffer_count_ == kNumScratchBuffers) {
+    TF_LITE_REPORT_ERROR(
+        static_cast<ErrorReporter*>(context->impl_),
+        "Exceeded the maximum number of scratch tensors allowed (%d).",
+        kNumScratchBuffers);
+    return kTfLiteError;
+  }
+
+  // For tests, we allocate scratch buffers from the tail and keep them around
+  // for the lifetime of model. This means that the arena size in the tests will
+  // be more than what we would have if the scratch buffers could share memory.
+  scratch_buffers_[scratch_buffer_count_] =
+      simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
+  TFLITE_DCHECK(scratch_buffers_[scratch_buffer_count_] != nullptr);
+
+  *buffer_index = scratch_buffer_count_++;
+  return kTfLiteOk;
+}
+
+void* GetScratchBuffer(TfLiteContext* context, int buffer_index) {
+  TFLITE_DCHECK(scratch_buffer_count_ <= kNumScratchBuffers);
+  if (buffer_index >= scratch_buffer_count_) {
+    return nullptr;
+  }
+  return scratch_buffers_[buffer_index];
 }
 
 }  // namespace
@@ -83,6 +122,7 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   simple_memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
       error_reporter, raw_arena_, kArenaSize);
   TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
+  scratch_buffer_count_ = 0;
 
   context->tensors_size = tensors_size;
   context->tensors = tensors;
@@ -98,10 +138,8 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   context->SetExternalContext = nullptr;
 
   context->AllocatePersistentBuffer = AllocatePersistentBuffer;
-  // The scratch buffer API will need to be implemented for the tests once we
-  // start using it in the kernels.
-  context->RequestScratchBufferInArena = nullptr;
-  context->GetScratchBuffer = nullptr;
+  context->RequestScratchBufferInArena = RequestScratchBufferInArena;
+  context->GetScratchBuffer = GetScratchBuffer;
 
   for (int i = 0; i < tensors_size; ++i) {
     if (context->tensors[i].is_variable) {

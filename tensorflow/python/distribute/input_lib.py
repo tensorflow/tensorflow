@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import sys
 
 import six
@@ -47,6 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.types import distribute as distribute_types
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 
@@ -256,7 +258,7 @@ def _get_static_shape(iterators):
     return static_shape
 
 
-class DistributedIteratorBase(object):
+class DistributedIteratorBase(distribute_types.Iterator):
   """Common implementation for all input iterators."""
 
   def __init__(self, input_workers, iterators, strategy):
@@ -494,12 +496,13 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = []
     worker_device_pairs = self._input_workers._worker_device_pairs  # pylint: disable=protected-access
-    for i in range(len(worker_device_pairs)):
-      input_device, compute_devices = worker_device_pairs[i]
+
+    for i, (input_device, compute_devices) in enumerate(worker_device_pairs):
+      element_spec = nest.map_structure(
+          functools.partial(_replace_per_replica_spec, i=i), self._element_spec)
       specs.append(_SingleWorkerDatasetIteratorSpec(input_device,
                                                     compute_devices,
-                                                    element_spec=
-                                                    self._element_spec))
+                                                    element_spec))
     return specs
 
   def _to_components(self, value):
@@ -517,6 +520,13 @@ class DistributedIteratorSpec(type_spec.TypeSpec):
     # pylint: disable=protected-access
     return DistributedIteratorSpec(value._input_workers, value._element_spec,
                                    value._strategy)
+
+  def _with_tensor_ranks_only(self):
+    element_spec = nest.map_structure(
+        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
+        self._element_spec)
+    return DistributedIteratorSpec(self._input_workers, element_spec,
+                                   self._strategy)
 
 
 class DistributedIterator(DistributedIteratorBase,
@@ -564,7 +574,7 @@ class DistributedIterator(DistributedIteratorBase,
                                    self._strategy)
 
 
-class _IterableInput(object):
+class _IterableInput(distribute_types.Iterable):
   """Base class for iterable inputs for distribution strategies."""
 
   def __init__(self, input_workers):
@@ -1140,7 +1150,7 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
 
   def __init__(self, worker, devices, element_spec):
     self._worker = worker
-    self._devices = devices
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
     self._element_spec = element_spec
 
   @property
@@ -1148,7 +1158,7 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
     return _SingleWorkerOwnedDatasetIterator
 
   def _serialize(self):
-    return (self._worker, tuple(self._devices), self._element_spec)
+    return (self._worker, self._devices, self._element_spec)
 
   @property
   def _component_specs(self):
@@ -1579,3 +1589,11 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
     return values.PerReplicaSpec(*value_specs)
 
   return nest.map_structure(_get_value_per_replica, tensor_spec)
+
+
+def _replace_per_replica_spec(spec, i):
+  """If `spec` is a `PerReplicaSpec`, then return its `i`th value_spec."""
+  if isinstance(spec, values.PerReplicaSpec):
+    return spec._value_specs[i]  # pylint: disable=protected-access
+  else:
+    return spec

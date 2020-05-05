@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_pimpl",
         "//tensorflow/stream_executor:timer",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,

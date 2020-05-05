@@ -1053,19 +1053,27 @@ class ComplexMakeRealImagTest(test.TestCase):
     self.assertAllClose(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
-  def testAngle64(self):
-    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
-    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
-    cplx = real + 1j * imag
-    self._compareAngle(cplx, use_gpu=False)
-    self._compareAngle(cplx, use_gpu=True)
-
   def testAngle(self):
-    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
-    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
-    cplx = real + 1j * imag
+    mag = np.random.rand(10).astype(np.float32)
+    angle = (2 * np.pi * np.arange(10) / 10.).astype(np.float32)
+    cplx = mag * np.exp(1j * angle)
+    cplx = np.append(cplx, [1., 1.j, -1., -1.j])
     self._compareAngle(cplx, use_gpu=False)
     self._compareAngle(cplx, use_gpu=True)
+    real = (np.arange(-2, 2) / 2.).astype(np.float64)
+    self._compareAngle(real, use_gpu=False)
+    self._compareAngle(real, use_gpu=True)
+
+  def testAngle64(self):
+    mag = np.random.rand(10).astype(np.float64)
+    angle = (2 * np.pi * np.arange(10) / 100.).astype(np.float64)
+    cplx = mag * np.exp(1j * angle)
+    cplx = np.append(cplx, [1., 1.j, -1., -1.j])
+    self._compareAngle(cplx, use_gpu=False)
+    self._compareAngle(cplx, use_gpu=True)
+    real = (np.arange(-2, 2) / 2.).astype(np.float64)
+    self._compareAngle(real, use_gpu=False)
+    self._compareAngle(real, use_gpu=True)
 
   @test_util.run_deprecated_v1
   def testRealReal(self):

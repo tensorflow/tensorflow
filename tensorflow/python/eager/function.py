@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
+import pprint
 import threading
 import types as types_lib
 import weakref
@@ -152,100 +153,33 @@ CacheKey = collections.namedtuple("CacheKey", [
 ])
 
 
-def _flat_shape_list(*params):
-  """Return a flat list of TensorShapes, one for each tensor[spec] in `*params`.
-
-  If `params` contains `CompositeTensors`, then they are expanded to their
-  components `Tensors`.
-
-  Args:
-    *params: Set of nested entries containing Tensors, TensorSpec, and
-      non-tensors.
-
-  Returns:
-    A list of entries containing either `None` or `TensorShape`.
-  """
-  return [
-      tensor_shape.TensorShape(x.shape)
-      if isinstance(x, (ops.Tensor, tensor_spec.DenseSpec)) else None
-      for x in nest.flatten(params, expand_composites=True)
-  ]
+def _type_spec_for(x):
+  """Returns a TypeSpec for `x`, or `None` if `x` doesn't have a TensorSpec."""
+  if isinstance(x, ops.Tensor):
+    return tensor_spec.TensorSpec.from_tensor(x)
+  elif isinstance(x, type_spec.TypeSpec):
+    return x
+  elif isinstance(x, composite_tensor.CompositeTensor):
+    return x._type_spec  # pylint: disable=protected-access
+  else:
+    return None
 
 
-def _shape_less_specific_than(relaxed, to_check):
-  """Checks if `relaxed` is less specific than `to_check`.
-
-  This is an asymmetric check, unlike `TensorShape.is_compatible_with`. If
-  `to_check` has a dimension with an undefined shape, `relaxed` must also have
-  an undefined shape for that dimension.
-
-  Args:
-    relaxed: A `TensorShape` to check against.
-    to_check: A second `TensorShape`.
-
-  Returns:
-    True if `to_check` represents a set of shapes which is a subset of
-    `relaxed`'s shapes and False otherwise.
-  """
-  if to_check.dims is not None and relaxed.dims is not None:
-    if to_check.rank != relaxed.rank:
-      return False
-    for check_dim, relaxed_dim in zip(to_check.dims, relaxed.dims):
-      if check_dim.value is None and relaxed_dim.value is not None:
-        return False
-      if not relaxed_dim.is_compatible_with(check_dim):
-        return False
-  return True
+def _is_type_subset(a, b):
+  """Returns true if TypeSpec `b` is a subset of type `a` (or if a is None.)"""
+  if a is None:
+    return True
+  else:
+    return a.most_specific_compatible_type(b) == a
 
 
-def _compatible_shapes(flat_relaxed, flat_to_check):
-  """Check if lists of TensorShapes contain compatible shapes.
-
-  Checks that each `flat_relaxed` shape covers a superset of the shapes of the
-  corresponding `flat_to_check` shape.
-
-  Args:
-    flat_relaxed: List of TensorShape or None.
-    flat_to_check: List of TensorShape or None.
-
-  Returns:
-    A python bool.
-
-  Raises:
-    RuntimeError:
-      if `len(flat_relaxed) != len(flat_to_check)`.
-    RuntimeError:
-      if `flat_relaxed[i] is None != flat_to_check[i] is None` for any `i`.
-  """
-
-  if len(flat_relaxed) != len(flat_to_check):
-    raise RuntimeError("Expected shape lists of identical lengths, but saw: "
-                       "%s and %s" % (flat_relaxed, flat_to_check))
-  def is_compatible(relaxed, to_check):
-    """Internal help function.
-
-    Args:
-      relaxed: TensorShape or None.
-      to_check: TensorShape or None.
-
-    Returns:
-      Python bool.
-
-    Raises:
-      RuntimeError: If `relaxed is None != to_check is None`.
-    """
-    # If both x and y are None, there is no shape to compare.  Otherwise check
-    # if they are compatible with each other.  Either way, both input signatures
-    # must have have Tensors in the same entries.  If not, raise an assertion
-    # error.
-    if relaxed is None != to_check is None:
-      raise RuntimeError(
-          "Expected signature type matches between flattened input shapes "
-          "%s and %s; but saw that (%s is None) != (%s is None)"
-          % (flat_relaxed, flat_to_check, relaxed, to_check))
-    return relaxed is None or _shape_less_specific_than(relaxed, to_check)
-  return all(is_compatible(relaxed, to_check)
-             for relaxed, to_check in zip(flat_relaxed, flat_to_check))
+def _shape_relaxed_type_for_composite_tensor(x):
+  """Returns a shape-relaxed TypeSpec for x (if composite) or x (if not)."""
+  if isinstance(x, composite_tensor.CompositeTensor):
+    # pylint: disable=protected-access
+    return x._type_spec._with_tensor_ranks_only()
+  else:
+    return x
 
 
 def common_shape(x, y):
@@ -2288,7 +2222,8 @@ class ConcreteFunction(object):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)
-        result = "{}".format(structure)
+        # Ensure dictionaries are sorted by key (for determinism)
+        result = pprint.pformat(structure, width=10000)
         for (marker, piece) in zip(markers, pieces):
           result += "\n      {}: {}".format(marker, pretty_print_spec(piece))
         return result
@@ -2780,9 +2715,10 @@ class FunctionCache(object):
     # The primary cache, mapping a fully shaped CacheKey to a function.
     self.primary = collections.OrderedDict()
     # A cache key lookup, mapping a CacheKey generated without shape info to a
-    # flat list of relaxed shapes (one for each argument).  Arguments that are
-    # not Tensors contain a `None` for the corresponding relaxed shape.
-    self.arg_relaxed_shapes = collections.OrderedDict()
+    # flat list of `TypeSpec`s with relaxed shapes (one for each flattened
+    # argument). Arguments that are not Tensors or `CompositeTensor`s contain a
+    # `None` for the corresponding relaxed spec.
+    self.arg_relaxed_specs = collections.OrderedDict()
     # The secondary cache, mapping a CacheKey generated without shape info to a
     # function.
     self.arg_relaxed = collections.OrderedDict()
@@ -2790,7 +2726,7 @@ class FunctionCache(object):
     self._garbage_collectors = [
         _FunctionGarbageCollector(self.primary),
         _FunctionGarbageCollector(self.arg_relaxed),
-        _FunctionGarbageCollector(self.arg_relaxed_shapes)]
+        _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
     """A set of all `ConcreteFunction` instances held by this cache."""
@@ -3130,33 +3066,60 @@ class Function(object):
 
   def _define_function_with_shape_relaxation(self, args, kwargs):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
+    any_composite_args = any(isinstance(x, composite_tensor.CompositeTensor)
+                             for x in nest.flatten((args, kwargs)))
 
-    rank_only_cache_key = self._cache_key(
-        args, kwargs, include_tensor_ranks_only=True)
+    # Build a cache key where TensorShapes include only rank information (and
+    # not information about the size of each dimension).
+    if not any_composite_args:
+      rank_only_cache_key = self._cache_key(
+          args, kwargs, include_tensor_ranks_only=True)
+    else:
+      # For the rank-only cache key, replace any composite tensors with
+      # shape-relaxed TypeSpecs.
+      (cache_key_args, cache_key_kwargs) = nest.map_structure(
+          _shape_relaxed_type_for_composite_tensor, (args, kwargs))
+      rank_only_cache_key = self._cache_key(
+          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True)
 
-    arg_shapes = _flat_shape_list(args, kwargs)
-    relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
+    arg_specs = [_type_spec_for(x) for x in nest.flatten((args, kwargs))]
+    relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
         rank_only_cache_key, None)
     relaxed_arg_function = self._function_cache.arg_relaxed.get(
         rank_only_cache_key, None)
 
     if (relaxed_arg_function is not None
-        and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
-                               flat_to_check=arg_shapes)):
+        and all(_is_type_subset(x, y) for (x, y) in
+                zip(relaxed_arg_specs, arg_specs))):
       return relaxed_arg_function, args, kwargs
 
-    if relaxed_arg_shapes is None:
-      relaxed_arg_shapes = arg_shapes
+    if relaxed_arg_specs is None:
+      relaxed_arg_specs = arg_specs
     else:
-      if len(arg_shapes) != len(relaxed_arg_shapes):
-        raise RuntimeError("Expected arg_shapes len to match "
-                           "relaxed_arg_shapes len: %d vs. %d"
-                           % (len(arg_shapes), len(relaxed_arg_shapes)))
-      relaxed_arg_shapes = [
-          common_shape(x, y) for (x, y) in zip(
-              arg_shapes, relaxed_arg_shapes)]
-    self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
-        relaxed_arg_shapes)
+      if len(arg_specs) != len(relaxed_arg_specs):
+        raise RuntimeError("Expected arg_specs len to match "
+                           "relaxed_arg_specs len: %d vs. %d"
+                           % (len(arg_specs), len(relaxed_arg_specs)))
+      relaxed_arg_specs = [
+          x if x is None else x.most_specific_compatible_type(y)
+          for (x, y) in zip(arg_specs, relaxed_arg_specs)]
+    self._function_cache.arg_relaxed_specs[rank_only_cache_key] = (
+        relaxed_arg_specs)
+    relaxed_arg_shapes = [
+        x if x is None else x.shape
+        for x in nest.flatten(relaxed_arg_specs, expand_composites=True)]
+
+    if any_composite_args:
+      # Rebuild composite tensors with the relaxed TypeSpecs.  For example,
+      # if a tf.data iterator is passed as an argument, then we need to relax
+      # the TensorShapes in its element_spec.
+      (relaxed_arg_specs, relaxed_kwarg_specs) = nest.pack_sequence_as(
+          (args, kwargs), relaxed_arg_specs, expand_composites=False)
+      (args, kwargs) = nest.pack_sequence_as(
+          (relaxed_arg_specs, relaxed_kwarg_specs),
+          nest.flatten((args, kwargs), expand_composites=True),
+          expand_composites=True)
+
     graph_function = self._create_graph_function(
         args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
     self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function

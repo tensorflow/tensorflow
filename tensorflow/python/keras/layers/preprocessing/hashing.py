@@ -90,7 +90,6 @@ class Hashing(Layer):
     super(Hashing, self).__init__(name=name, **kwargs)
     self.num_bins = num_bins
     self.salt = salt
-    self._supports_ragged_inputs = True
 
   def call(self, inputs):
     # Converts integer inputs to string.

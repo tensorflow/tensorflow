@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -43,6 +44,13 @@ class ConvPowerVR : public GPUOperation {
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
   absl::Status Compile(const CreationContext& creation_context) override;
+
+  ConvWeightsDescription GetConvWeightsDescription() const {
+    ConvWeightsDescription desc;
+    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+    desc.output_group_size = conv_params_.block_size.z;
+    return desc;
+  }
 
   // Move only
   ConvPowerVR(ConvPowerVR&& operation);
@@ -83,6 +91,9 @@ class ConvPowerVR : public GPUOperation {
               const Convolution2DAttributes& attr, const CLDevice& device,
               const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
+              const Convolution2DAttributes& attr, const BHWC& weights_shape,
+              const CLDevice& device, const BHWC* dst_shape = nullptr);
+  ConvPowerVR(const OperationDef& definition,
               const FullyConnectedAttributes& attr, const CLDevice& device,
               const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
@@ -112,6 +123,11 @@ class ConvPowerVR : public GPUOperation {
                                         ConvPowerVR* result,
                                         const BHWC* dst_shape);
 
+  friend absl::Status CreateConvPowerVRDynamicWeights(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, const BHWC& weights_shape,
+      ConvPowerVR* result, const BHWC* dst_shape);
+
   friend absl::Status CreateConvPowerVRWino4x4To6x6(
       const CreationContext& creation_context, const OperationDef& definition,
       const Convolution2DAttributes& attr, ConvPowerVR* result,
@@ -125,6 +141,11 @@ class ConvPowerVR : public GPUOperation {
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const Convolution2DAttributes& attr,
+                             const BHWC& weights_shape,
                              const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
@@ -224,6 +245,11 @@ absl::Status CreateConvPowerVR(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvPowerVR* result,
                                const BHWC* dst_shape = nullptr);
+
+absl::Status CreateConvPowerVRDynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvPowerVR* result, const BHWC* dst_shape = nullptr);
 
 absl::Status CreateConvPowerVRWino4x4To6x6(
     const CreationContext& creation_context, const OperationDef& definition,

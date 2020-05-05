@@ -1129,6 +1129,10 @@ cc_library(
         "lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h",
         "lib/Conversion/GPUCommon/OpToFuncCallLowering.h",
     ],
+    # TODO(b/155492113): Move back to hdrs once fixed.
+    textual_hdrs = [
+        "lib/Conversion/GPUCommon/GPUOpsLowering.h",
+    ],
     deps = [
         ":GPUDialect",
         ":IR",
@@ -1181,6 +1185,23 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "GPUToROCDLTGen",
+    strip_include_prefix = "lib/Conversion/GPUToROCDL",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToROCDL/GPUToROCDL.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToROCDL/GPUToROCDL.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":ROCDLOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUToROCDLTransforms",
     srcs = [
@@ -1195,10 +1216,15 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUCommonTransforms",
         ":GPUDialect",
+        ":GPUToROCDLTGen",
+        ":GPUTransforms",
         ":LLVMTransforms",
         ":Pass",
         ":ROCDLDialect",
         ":Transforms",
+        ":VectorOps",
+        ":VectorToLLVM",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -2669,6 +2695,37 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "VulkanRuntime",
+    srcs = [
+        "tools/mlir-vulkan-runner/VulkanRuntime.cpp",
+    ],
+    hdrs = [
+        "tools/mlir-vulkan-runner/VulkanRuntime.h",
+    ],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SideEffects",
+        ":StandardOps",
+        ":Support",
+        "//third_party/vulkan_loader",
+        "@llvm-project//llvm:support",
+        "@vulkan_headers",
+    ],
+)
+
+cc_binary(
+    name = "tools/libvulkan-runtime-wrappers.so",
+    srcs = ["tools/mlir-vulkan-runner/vulkan-runtime-wrappers.cpp"],
+    linkshared = True,
+    deps = [
+        ":VulkanRuntime",
+        "@llvm-project//llvm:support",
+    ],
+)
+
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
@@ -2694,6 +2751,28 @@ cc_binary(
         "//third_party/gpus/cuda:cuda_headers",
         "//third_party/gpus/cuda:cuda_runtime",
         "//third_party/gpus/cuda:libcuda",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-vulkan-runner",
+    srcs = ["tools/mlir-vulkan-runner/mlir-vulkan-runner.cpp"],
+    data = [
+        ":tools/libvulkan-runtime-wrappers.so",
+        "@llvm-project//mlir/test/mlir-cpu-runner:libmlir_runner_utils.so",
+    ],
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":ExecutionEngineUtils",
+        ":GPUToSPIRVTransforms",
+        ":GPUToVulkanTransforms",
+        ":GPUTransforms",
+        ":LLVMTransforms",
+        ":MlirJitRunner",
+        ":Pass",
+        ":SPIRVDialect",
+        ":StandardToSPIRVConversions",
         "@llvm-project//llvm:support",
     ],
 )

@@ -1820,24 +1820,30 @@ MemorySpaceAssignment::Run(HloModule* module,
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
 
-  TF_RETURN_IF_ERROR(memory_space_assignment.FindAllocationSequence(
-      hlo_live_range, alias_analysis));
-  TF_RETURN_IF_ERROR(memory_space_assignment.Process());
-  memory_space_assignment.ScheduleAsynchronousCopies();
-  TF_RETURN_IF_ERROR(memory_space_assignment.SimplifyGraph());
-  TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
-  TF_RETURN_IF_ERROR(memory_space_assignment.ExportAndColorBuffers());
+  return memory_space_assignment.RunMemorySpaceAssignment(hlo_live_range,
+                                                          alias_analysis);
+}
+
+StatusOr<std::unique_ptr<PresetAssignments>>
+MemorySpaceAssignment::RunMemorySpaceAssignment(
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
+  TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+  TF_RETURN_IF_ERROR(Process());
+  ScheduleAsynchronousCopies();
+  TF_RETURN_IF_ERROR(SimplifyGraph());
+  TF_RETURN_IF_ERROR(FixSchedule());
+  TF_RETURN_IF_ERROR(ExportAndColorBuffers());
 
   VLOG(3) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(3, module->ToString());
-  TF_CHECK_OK(module->schedule().Verify());
+  XLA_VLOG_LINES(3, module_->ToString());
+  TF_CHECK_OK(module_->schedule().Verify());
   VLOG(1) << "Maximum number of outstanding async copies: "
-          << CountMaximumOutstandingAsyncCopies(*module);
+          << CountMaximumOutstandingAsyncCopies(*module_);
 
-  TF_RETURN_IF_ERROR(
-      memory_space_assignment.VerifyAndExportHeapSimulatorTrace());
+  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace());
 
-  return std::move(memory_space_assignment.preset_assignments_);
+  return std::move(preset_assignments_);
 }
 
 Status MemorySpaceAssignment::FindAllocationSequence(

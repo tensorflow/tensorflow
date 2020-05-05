@@ -299,7 +299,7 @@ Status ConvertMLIRToXlaComputation(
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
-    tf2xla.disableMultithreading();
+    module_op.getContext()->disableMultithreading();
     tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
         /*print_module_scope=*/true));
   }

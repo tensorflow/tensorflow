@@ -102,9 +102,6 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     self._sparse = sparse
     self._called = False
 
-    # This layer supports RaggedTensor inputs.
-    self._supports_ragged_inputs = True
-
     # We are adding these here instead of in build() since they do not depend
     # on the input shape at all.
     if max_tokens is None:
