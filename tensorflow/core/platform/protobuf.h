@@ -79,10 +79,10 @@ inline void SetProtobufStringSwapAllowed(std::string* src, std::string* dest) {
 // tools/proto_text's generated code.  They have the same name as the versions
 // in core/platform/protobuf.h, so the generation code doesn't need to determine
 // if the type is Cord or string at generation time.
-inline std::string ProtobufStringToString(const Cord& s) {
+inline std::string ProtobufStringToString(const absl::Cord& s) {
   return s.ToString();
 }
-inline void SetProtobufStringSwapAllowed(std::string* src, Cord* dest) {
+inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
   dest->CopyFrom(*src);
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
