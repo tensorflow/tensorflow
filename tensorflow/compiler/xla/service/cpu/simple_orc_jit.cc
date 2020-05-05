@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -270,6 +271,8 @@ bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
                      "Host");
+  registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
+  registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 
