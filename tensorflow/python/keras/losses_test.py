@@ -234,6 +234,10 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Bar.'):
       mse_obj(y, y)
 
+  def test_deserialization_error(self):
+    with self.assertRaisesRegex(ValueError, 'Could not interpret loss'):
+      losses.get(0)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanSquaredErrorTest(test.TestCase):

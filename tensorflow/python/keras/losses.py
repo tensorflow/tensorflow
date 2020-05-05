@@ -1880,8 +1880,8 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'loss function identifier:', identifier)
+    raise ValueError(
+        'Could not interpret loss function identifier: {}'.format(identifier))
 
 
 LABEL_DTYPES_FOR_LOSSES = {

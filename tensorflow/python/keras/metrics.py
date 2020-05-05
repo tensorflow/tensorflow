@@ -3479,9 +3479,8 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    error_msg = 'Could not interpret metric function identifier: {}'.format(
-        identifier)
-    raise ValueError(error_msg)
+    raise ValueError(
+        'Could not interpret metric function identifier: {}'.format(identifier))
 
 
 def is_built_in(cls):
