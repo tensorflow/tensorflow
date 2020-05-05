@@ -274,12 +274,28 @@ func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
-// CHECK-LABEL: func @broadcast
-func @broadcast(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
+// CHECK-LABEL: func @broadcast_in_dim
+func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
   %0 = "xla_hlo.broadcast_in_dim"(%operand)
          {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
          : (tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32>
   return %0 : tensor<7x10x6x4x5xf32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @broadcast_in_dim_with_one_to_one
+func @broadcast_in_dim_with_one_to_one(
+         %operand: tensor<1xf32>) -> tensor<1x5xf32> {
+  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+         {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+         : (tensor<1xf32>) -> tensor<1x5xf32>
+  return %0 : tensor<1x5xf32>
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):

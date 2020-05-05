@@ -265,6 +265,21 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @broadcast_in_dim_with_one_to_one
+func @broadcast_in_dim_with_one_to_one(%operand: memref<1xf32>, %result: memref<1x5xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+    broadcast_dimensions = dense<[0]> : tensor<1xi64>
+  } : (memref<1xf32>, memref<1x5xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
 // CHECK-LABEL: func @constant
 func @constant(%value: memref<i32>) {
   "xla_lhlo.constant"(%value) {value = dense<10> : tensor<i32>} : (memref<i32>) -> ()
