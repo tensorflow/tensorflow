@@ -1,6 +1,14 @@
 op {
   name: "DataServiceDataset"
   input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  input_arg {
     name: "address"
     type: DT_STRING
   }
@@ -15,6 +23,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "output_types"

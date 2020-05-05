@@ -243,7 +243,7 @@ class AdamOptimizerTest(test.TestCase):
     with self.cached_session():
       self.doTestBasic(use_resource=False)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 

@@ -657,7 +657,7 @@ LogicalResult Verify(FullyConnectedOp op) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState &result,
+static void BuildGatherOp(OpBuilder *builder, OperationState &result,
                           Value params, Value indices, IntegerAttr axis) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
@@ -665,7 +665,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   // If params/indices is unranked, then output is unranked.
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
-        builder, result, UnrankedTensorType::get(params_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(params_type.getElementType()),
         params, indices, axis);
 
   int64_t params_rank = params_type.getRank();
@@ -710,9 +710,101 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   }
 
   TFL::GatherOp::build(
-      builder, result,
+      *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
       indices, axis);
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ScatterNdOp op) {
+  auto indices = op.indices();
+  auto updates = op.updates();
+  auto shape = op.shape();
+  auto output = op.output();
+
+  auto updates_type = updates.getType().cast<ShapedType>();
+  auto indices_type = indices.getType().cast<ShapedType>();
+
+  if (!indices_type.hasStaticShape() || !updates_type.hasStaticShape()) {
+    return success();
+  }
+
+  // Checks if the shape of `updates` is a tensor of shape
+  // `indices.shape[:-1] + shape[indices.shape[-1]:]`, as described in
+  // ScatterNd op description.
+
+  auto outer_dims = indices_type.getRank() - 1;
+  auto outermost_dim = indices_type.getDimSize(outer_dims);
+  // Checks whether the first `outer_dims` dimensions of `indices` and
+  // `updates` are equal.
+  for (auto i = 0; i < outer_dims; i++) {
+    if (indices_type.getDimSize(i) != updates_type.getDimSize(i)) {
+      return op.emitOpError()
+             << "indices.Dims(" << i << ") == " << indices_type.getDimSize(i)
+             << ", but updates.Dims(" << i
+             << ") == " << updates_type.getDimSize(i);
+    }
+  }
+
+  auto output_type = output.getType().cast<ShapedType>();
+  auto shape_type = shape.getType().cast<ShapedType>();
+  if (shape_type.hasStaticShape()) {
+    // Check the rank of `shape`.
+    auto output_rank = outermost_dim + updates_type.getRank() - outer_dims;
+    if (shape_type.getDimSize(0) != output_rank) {
+      return op.emitOpError()
+             << "shape must be a vector of length " << output_rank;
+    }
+    if (output_type.hasRank()) {
+      if (output_type.getRank() != output_rank) {
+        return op.emitOpError()
+               << "output must have the same rank with the length of shape = "
+               << output_rank;
+      }
+    }
+  }
+
+  DenseIntElementsAttr shape_value;
+  if (matchPattern(shape, m_Constant(&shape_value))) {
+    for (const auto shape_elem : shape_value) {
+      if (shape_elem.getSExtValue() <= 0) {
+        return op.emitOpError("all elements of shape must be > 0");
+      }
+    }
+
+    // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
+    // dimensions of `updates` and `shape` are equal.
+    for (auto shape_it : llvm::enumerate(shape_value)) {
+      auto i = shape_it.index();
+      auto value = shape_it.value().getSExtValue();
+      if (i >= outermost_dim) {
+        auto corresponding_dim = i - outermost_dim + outer_dims;
+        if (value != updates_type.getDimSize(corresponding_dim)) {
+          return op.emitOpError()
+                 << "updates.Dims(" << i
+                 << ") == " << updates_type.getDimSize(corresponding_dim)
+                 << ", but shape[" << i << "] == " << value;
+        }
+      }
+    }
+
+    // Checks if the output has the shape specified by `shape`.
+    if (output_type.hasStaticShape()) {
+      for (auto shape_it : llvm::enumerate(shape_value)) {
+        int i = shape_it.index();
+        auto value = shape_it.value().getSExtValue();
+        if (output_type.getDimSize(i) != value) {
+          return op.emitOpError()
+                 << "output shape [" << output_type.getShape()
+                 << "] must be equal to the value of shape " << shape_value;
+        }
+      }
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1014,6 +1106,75 @@ static LogicalResult Verify(SliceOp op) {
   return success();
 }
 
+TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
+                                             RankedTensorType value_type,
+                                             Location loc, OpBuilder *builder) {
+  if (input_op == nullptr) return nullptr;
+
+  mlir::DenseIntElementsAttr attr;
+  if (!matchPattern(input_op, m_Constant(&attr))) {
+    return nullptr;
+  }
+
+  auto value_shape_type = mlir::RankedTensorType::get(
+      value_type.getShape(), builder->getIntegerType(32));
+
+  SmallVector<int32_t, 4> value_i32;
+  value_i32.reserve(value_type.getRank());
+  for (const auto &size : attr) {
+    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+  }
+  auto new_value_i32_attr =
+      mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
+
+  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+}
+
+// This will cast donw int64 values for TFL slice op.
+// This will require the begin & size are constants.
+struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
+  using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::SliceOp slice_op,
+                                PatternRewriter &rewriter) const override {
+    auto begin = slice_op.begin();
+    auto size = slice_op.size();
+    auto begin_type = begin.getType().dyn_cast_or_null<RankedTensorType>();
+    auto size_type = size.getType().dyn_cast_or_null<RankedTensorType>();
+    auto begin_op = begin.getDefiningOp();
+    auto size_op = size.getDefiningOp();
+
+    if (begin_op == nullptr && size_op == nullptr) return failure();
+
+    if (begin_type == nullptr && size_type == nullptr) return failure();
+
+    // Handle begin.
+    if (begin_op && begin_type && begin_type.getElementType().isInteger(64)) {
+      auto new_begin = NarrowDownInt64InputValuesForOp(
+          begin_op, begin_type, slice_op.getLoc(), &rewriter);
+      if (new_begin != nullptr) {
+        slice_op.setOperand(1, new_begin);
+      }
+    }
+
+    // Handle size.
+    if (size_op && size_type && size_type.getElementType().isInteger(64)) {
+      auto new_size = NarrowDownInt64InputValuesForOp(
+          size_op, size_type, slice_op.getLoc(), &rewriter);
+      if (new_size != nullptr) {
+        slice_op.setOperand(2, new_size);
+      }
+    }
+
+    return success();
+  }
+};
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<CastDonwInt64BeginEndToInt32>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // SubOp
 //===----------------------------------------------------------------------===//
@@ -1030,7 +1191,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
+static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
                         Value k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
@@ -1045,14 +1206,14 @@ static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
   // If value is unranked, then so is results.
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
-        builder, result, UnrankedTensorType::get(val_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(val_type.getElementType()),
         UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      builder, result, RankedTensorType::get(shape, val_type.getElementType()),
+      *builder, result, RankedTensorType::get(shape, val_type.getElementType()),
       RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
 }
 
@@ -1861,6 +2022,18 @@ LogicalResult Verify(WhileOp op) {
   return success();
 }
 
+static LogicalResult Verify(CustomOp op) {
+  OpaqueElementsAttr opaque_attr =
+      op.custom_option().cast<OpaqueElementsAttr>();
+  if (!opaque_attr.getType().hasStaticShape())
+    return op.emitOpError("custom_option should have a static shape.");
+  if (opaque_attr.getValue().size() !=
+      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+    return op.emitOpError(
+        "custom_option should have the same length of content with shape.");
+  return success();
+}
+
 namespace {
 // Canonicalize While op so that results and operands match and external values
 // are via implicit capture rather than via block args.
@@ -1928,8 +2101,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     Operation *op = while_op.getOperation();
     Operation *new_op = rewriter.insert(
         Operation::create(op->getLoc(), op->getName(), types, new_operands,
-                          op->getAttrs(), {}, /*numRegions=*/2,
-                          /*resizableOperandList=*/true));
+                          op->getAttrs(), {}, /*numRegions=*/2));
 
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
     int new_index = 0;

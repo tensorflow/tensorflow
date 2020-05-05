@@ -54,7 +54,13 @@ class CopyToDeviceNode : public EagerNode {
         "eager::CopyToDeviceNode", "dynamic", tensor.dtype(), &tensor.shape());
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
     if (!async_ && mirror_) {
-      return dst_->AddLocalMirror(std::move(tensor), dstd_);
+      Status s = dst_->AddLocalMirror(std::move(tensor), dstd_);
+      // If a mirror was added since we called HasLocalMirror then just return
+      // and ignore the error.
+      if (s.ok() || (s.code() == error::Code::ALREADY_EXISTS)) {
+        return Status::OK();
+      }
+      return s;
     } else {
       return dst_->SetTensor(std::move(tensor), dstd_);
     }

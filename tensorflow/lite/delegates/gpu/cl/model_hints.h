@@ -26,11 +26,11 @@ struct ModelHints {
   using ModelHint = uint64_t;
 
   // By default we want the fastest inference
-  static const ModelHint kFastestInference = 0x00000000;
+  static constexpr ModelHint kFastestInference = 0x00000000;
   // Can improve compilation time, but inference can be slower
-  static const ModelHint kReduceKernelsCount = 0x00000001;
+  static constexpr ModelHint kReduceKernelsCount = 0x00000001;
   // Can improve tuning time, but inference can be slower
-  static const ModelHint kFastTuning = 0x00000002;
+  static constexpr ModelHint kFastTuning = 0x00000002;
 
   void Add(ModelHint hint) {
     if (hint == kFastestInference) {

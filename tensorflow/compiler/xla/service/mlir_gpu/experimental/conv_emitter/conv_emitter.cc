@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -44,6 +45,8 @@ limitations under the License.
 namespace xla {
 namespace mlir_gpu {
 namespace {
+
+using mlir::OpBuilder;
 
 // Various extracted information for input shapes.
 struct ShapeInfo {
@@ -155,7 +158,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     CHECK(std::next(begin_op) == end_op)
         << "alloc() needs to be hoisted by its own";
 
-    mlir::OpBuilder builder(where);
+    OpBuilder builder(where);
     mlir::MemRefType type = alloc.getType();
     CHECK(type.getAffineMaps().empty());
     ancestor_dimensions.insert(ancestor_dimensions.end(),
@@ -179,7 +182,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
           affine_map.operands.size(), builder.getContext());
 
       mlir::Operation* new_op =
-          CloneWithNewAffineMap(owner, affine_map, mlir::OpBuilder(owner));
+          CloneWithNewAffineMap(owner, affine_map, OpBuilder(owner));
       SetMemRef(new_op, new_alloc);
       owner->replaceAllUsesWith(new_op);
       owner->erase();
@@ -199,13 +202,13 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   }();
 
   if (any_op_is_loop_variant) {
-    auto builder = mlir::OpBuilder(where);
+    auto builder = OpBuilder(where);
     std::vector<mlir::AffineForOp> new_loops;
     for (auto dim : ancestor_dimensions) {
       auto where =
           builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
       new_loops.push_back(where);
-      builder = where.getBodyBuilder();
+      builder = OpBuilder::atBlockTerminator(where.getBody());
     }
     for (mlir::Operation& op :
          llvm::make_early_inc_range(llvm::make_range(begin_op, end_op))) {
@@ -245,7 +248,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     mlir::Value input, mlir::Value filter, mlir::Value output,
     const ShapeInfo& input_shape_info, const ShapeInfo& filter_shape_info,
     const ShapeInfo& output_shape_info, const Window& window,
-    mlir::OpBuilder builder) {
+    OpBuilder builder) {
   CHECK(input_shape_info.element_type == builder.getF16Type());
   CHECK(filter_shape_info.element_type == builder.getF16Type());
   CHECK(output_shape_info.element_type == builder.getF16Type());
@@ -255,7 +258,8 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   std::vector<mlir::AffineForOp> cartesian_product_loops =
       CreateNestedSimpleLoops(output_shape_info.nchw_dimensions, builder);
 
-  builder = cartesian_product_loops.back().getBodyBuilder();
+  builder =
+      OpBuilder::atBlockTerminator(cartesian_product_loops.back().getBody());
 
   mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
       location, mlir::MemRefType::get({}, builder.getF32Type()));
@@ -285,7 +289,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   int num_spatial_dims = output_spatial_indvars.size();
   CHECK_EQ(num_spatial_dims, filter_spatial_indvars.size());
 
-  builder = reduction_loops.back().getBodyBuilder();
+  builder = OpBuilder::atBlockTerminator(reduction_loops.back().getBody());
 
   mlir::Value loaded_input = [&] {
     std::vector<mlir::AffineExpr> input_indices;
@@ -524,7 +528,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
 StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context) {
-  mlir::OpBuilder builder(context);
+  OpBuilder builder(context);
 
   const auto& dim_nums = conv->convolution_dimension_numbers();
   ShapeInfo input_shape_info =

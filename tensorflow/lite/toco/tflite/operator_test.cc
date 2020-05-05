@@ -617,6 +617,13 @@ TEST_F(OperatorTest, BuiltinSquaredDifference) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinScatterNd) {
+  ScatterNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SCATTER_ND", OperatorType::kScatterNd), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;

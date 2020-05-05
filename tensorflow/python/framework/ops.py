@@ -56,13 +56,13 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
@@ -302,8 +302,9 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
+# TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(tensor_like.TensorLike):
+class Tensor(internal.NativeObject):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -518,8 +519,8 @@ class Tensor(tensor_like.TensorLike):
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did not convert this function. Try"
-        " decorating it directly with @tf.function.".format(task))
+        "{} is not allowed: AutoGraph did convert this function. This might"
+        " indicate you are trying to use an unsupported feature.".format(task))
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -1007,6 +1008,7 @@ class Tensor(tensor_like.TensorLike):
 
 
 # TODO(agarwal): consider getting rid of this.
+# TODO(mdan): This object should not subclass ops.Tensor.
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
@@ -1065,15 +1067,17 @@ class _EagerTensorBase(Tensor):
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
 
+  def __array__(self):
+    return self._numpy()
+
   def _numpy_internal(self):
     raise NotImplementedError()
 
   def _numpy(self):
-    # pylint: disable=protected-access
     try:
       return self._numpy_internal()
-    except core._NotOkStatusException as e:
-      six.raise_from(core._status_to_exception(e.code, e.message), None)
+    except core._NotOkStatusException as e:  # pylint: disable=protected-access
+      six.raise_from(core._status_to_exception(e.code, e.message), None)  # pylint: disable=protected-access
 
   @property
   def dtype(self):
@@ -1746,8 +1750,8 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
+_VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
@@ -5295,6 +5299,11 @@ def control_dependencies(control_inputs):
   See `tf.Graph.control_dependencies`
   for more details.
 
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as code executes in the expected order.* Only use
+  `tf.control_dependencies` when working with v1-style code or in a graph
+  context such as inside `Dataset.map`.
+
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
 
@@ -6057,7 +6066,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
+    if (isinstance(op_input, (Operation, internal.NativeObject)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
     else:

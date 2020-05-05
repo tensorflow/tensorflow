@@ -379,9 +379,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = 0;
   op_params.output_offset = output->params.zero_point;
-  // TODO(b/130439627): Use calculated value for clamping.
-  op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
-  op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
   TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
                                                &op_params.depth_multiplier));
 

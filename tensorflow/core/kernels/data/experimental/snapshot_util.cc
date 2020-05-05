@@ -402,16 +402,15 @@ Status Reader::MakeNestedDataset(Env* env,
 
   datasets.reserve(filenames.size());
   for (const auto& filename : filenames) {
-    datasets.push_back(new Dataset(
-        filename, compression_type, version, dtypes, shapes,
-        DatasetContext::Params{.type_string = "snapshot_util::Reader::Dataset",
-                               .node_name = "snapshot_util_reader_Dataset"}));
+    datasets.push_back(
+        new Dataset(filename, compression_type, version, dtypes, shapes,
+                    DatasetContext::Params({"snapshot_util::Reader::Dataset",
+                                            "snapshot_util_reader_Dataset"})));
   }
 
   *output = new NestedDataset(
-      datasets, DatasetContext::Params{
-                    .type_string = "snapshot_util::Reader::NestedDataset",
-                    .node_name = "snapshot_util_reader_NestedDataset"});
+      datasets, DatasetContext::Params({"snapshot_util::Reader::NestedDataset",
+                                        "snapshot_util_reader_NestedDataset"}));
   return Status::OK();
 }
 

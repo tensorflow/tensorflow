@@ -216,6 +216,7 @@ cc_library(
     build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
+        ":cppmath",
         ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",
@@ -504,6 +505,7 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
@@ -566,6 +568,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite:string_util",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -813,6 +816,7 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":common",
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
@@ -878,6 +882,23 @@ cc_test(
     name = "depthwiseconv_per_channel_quantized_16x8_test",
     srcs = [
         "depthwiseconv_per_channel_quantized_16x8_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_per_channel_quantized_16x8_test",
+    srcs = [
+        "conv_per_channel_quantized_16x8_test.cc",
     ],
     shard_count = 2,
     deps = [

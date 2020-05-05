@@ -138,7 +138,7 @@ decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 
-  Reference paper:
+  Reference:
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 

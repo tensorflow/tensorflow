@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -525,6 +526,20 @@ class Device;
 // Forward declare. Defined in common_runtime/device_mgr.h
 class DeviceMgr;
 
+// Index of an _Arg node.
+struct FunctionArgIndex {
+  explicit FunctionArgIndex(const int index) : index(index) {}
+  FunctionArgIndex(const int index, const int sub_index)
+      : index(index), sub_index(sub_index) {}
+
+  // The value of the attribute "Index" of the _Arg node.
+  int index;
+  // Set only when the _Arg node represents multiple arguments (e.g. an _Arg
+  // node is replicated to multiple devices/subgraphs). Use sub-index to
+  // distinguish arguments with the same index.
+  int sub_index = -1;
+};
+
 class FunctionLibraryRuntime {
  public:
   virtual ~FunctionLibraryRuntime() {}
@@ -575,6 +590,10 @@ class FunctionLibraryRuntime {
     // runtime will leave device specification empty and will rely on Placer to
     // infer correct device.
     std::vector<string> output_devices;
+
+    // Maps from a CompositeDevice name to a list of underlying physical
+    // devices.
+    absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
@@ -729,6 +748,12 @@ class FunctionLibraryRuntime {
                    DoneCallback done) = 0;
   virtual void Run(const Options& opts, Handle handle,
                    CallFrameInterface* call_frame, DoneCallback done) = 0;
+
+  virtual Status RunSync(Options opts, Handle handle,
+                         gtl::ArraySlice<Tensor> args,
+                         std::vector<Tensor>* rets) = 0;
+  virtual Status RunSync(Options opts, Handle handle,
+                         CallFrameInterface* call_frame) = 0;
 
   // Creates a "kernel" for the given NodeProperties "props".
   //

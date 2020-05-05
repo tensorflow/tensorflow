@@ -77,3 +77,64 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+gentbl(
+    name = "tfjs_optimize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_optimize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/optimize_pattern.td",
+    td_srcs = [
+        ":tfjs_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "tfjs_optimize",
+    srcs = [
+        "transforms/generated_optimize.inc",
+        "transforms/optimize.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_js",
+        ":tensorflow_js_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tensorflow_js_passes",
+    srcs = ["tf_tfjs_passes.cc"],
+    hdrs = [
+        "tf_tfjs_passes.h",
+    ],
+    deps = [
+        ":tfjs_optimize",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)

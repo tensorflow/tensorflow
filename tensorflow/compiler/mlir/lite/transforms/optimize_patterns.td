@@ -457,3 +457,21 @@ def : Pat<(TFL_AddOp
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Reorders adds to allow constant folding.
+// Add --> Add $input, $constantA
+//    \--> $constantB
+// To
+// Add --> $input
+//    \--> Add ($constantA, $constantB)
+foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
+  def : Pat<(TFL_AddOp
+              (TFL_AddOp:$first_output $input, (ConstantOp $a), TFL_AF_None),
+              (ConstantOp $b), ActFun),
+            (TFL_AddOp $input,
+              (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
+              ActFun),
+  [(HasOneUse $first_output)]>;
+}
+
+

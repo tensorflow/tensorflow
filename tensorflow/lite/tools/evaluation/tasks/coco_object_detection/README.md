@@ -83,9 +83,10 @@ The following optional parameters can be used to modify the inference runtime:
     assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
     `/data/local/tmp`.
 
-This script also supports all applicable runtime/delegate arguments supported on
-the `benchmark_model` tool. If there is any conflict (for example, `num_threads`
-in `benchmark_model` vs `num_interpreter_threads` here), the parameters of this
+This script also supports runtime/delegate arguments introduced by the
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+If there is any conflict (for example, `num_threads` vs
+`num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
 ### Debug Mode

@@ -35,6 +35,7 @@ ifeq ($(TARGET), hexagon)
     -Wno-sign-compare \
     -Wno-unused-parameter \
     -Wno-write-strings \
+    -Wunused-function \
     -Wvla \
     -fdata-sections \
     -ffunction-sections \

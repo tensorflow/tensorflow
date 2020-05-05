@@ -112,11 +112,12 @@ def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):
       # then call node.inbound_layer on them.
       if all(
           tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
-        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
-                                              node.input_tensors)
         # Call layer.
-        kwargs = node.arguments or {}
-        output_tensors = layer(computed_tensors, **kwargs)
+        args = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                  node.call_args)
+        kwargs = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                    node.call_kwargs)
+        output_tensors = layer(*args, **kwargs)
 
         # Thread-safe way to keep track of what node was created.
         first_output_tensor = nest.flatten(output_tensors)[0]

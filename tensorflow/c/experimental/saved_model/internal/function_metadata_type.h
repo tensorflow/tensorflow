@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_FUNCTION_METADATA_TYPE_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_FUNCTION_METADATA_TYPE_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
-#include "tensorflow/c/experimental/saved_model/internal/conversion_macros.h"
 
 typedef struct TF_FunctionMetadata TF_FunctionMetadata;
 

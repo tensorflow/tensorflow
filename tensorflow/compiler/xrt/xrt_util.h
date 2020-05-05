@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_UTIL_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_UTIL_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -30,6 +34,19 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Factory class which creates NCCL unique IDs based on the replicas
+// participating to a given communication. This is only used for GPU backends.
+struct NcclUniqueIdFactory {
+  virtual ~NcclUniqueIdFactory() {}
+
+  // Generates the NCCL unique ID for the given set of replica IDs.
+  virtual std::string GetUniqueId(absl::Span<const xla::int64> replicas) = 0;
+};
+
+void SetNcclUniqueIdFactory(std::shared_ptr<NcclUniqueIdFactory> factory);
+
+std::shared_ptr<NcclUniqueIdFactory> GetNcclUniqueIdFactory();
 
 struct InputCoords {
   explicit InputCoords(int64 handle) : handle(handle) {}

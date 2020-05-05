@@ -450,8 +450,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
+    # Resize tensor with strict checking.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
     # Resize tensor and invoke.
-    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
     interpreter.allocate_tensors()
     interpreter.invoke()
 
@@ -462,8 +469,36 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
 
     output_details = interpreter.get_output_details()
-    self.assertTrue(([1, 16, 16,
+    self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
+
+  def testResizeTensorInputStrict(self):
+    # Ensures that resize_tensor_input(strict=True) works as expected.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+
+    # Resize incorrect value.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
+    # Resize correct value.
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
+    interpreter.allocate_tensors()
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():
@@ -2173,6 +2208,14 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
+
+  def testExperimentalSparsifyModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
+    converter._experimental_sparsify_model = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 class GrapplerTest(TestModels, parameterized.TestCase):

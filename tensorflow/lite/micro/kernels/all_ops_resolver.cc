@@ -75,6 +75,7 @@ AllOpsResolver::AllOpsResolver() {
              Register_RESIZE_NEAREST_NEIGHBOR(),
              /* min_version = */ 1,
              /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
 }
 
 }  // namespace micro

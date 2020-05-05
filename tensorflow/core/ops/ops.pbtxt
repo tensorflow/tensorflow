@@ -8555,29 +8555,6 @@ op {
   }
 }
 op {
-  name: "CreateJob"
-  input_arg {
-    name: "dataset_id"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "protocol"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "processing_mode"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "job_token"
-    type: DT_VARIANT
-  }
-}
-op {
   name: "CreateSummaryDbWriter"
   input_arg {
     name: "writer"
@@ -10501,6 +10478,14 @@ op {
 op {
   name: "DataServiceDataset"
   input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  input_arg {
     name: "address"
     type: DT_STRING
   }
@@ -10515,6 +10500,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "output_types"
@@ -11473,6 +11465,71 @@ op {
     type: DT_STRING
   }
   is_stateful: true
+}
+op {
+  name: "DenseCountSparseOutput"
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
+      }
+    }
+  }
 }
 op {
   name: "DenseToCSRSparseMatrix"
@@ -12507,6 +12564,14 @@ op {
   is_stateful: true
 }
 op {
+  name: "DummySeedGenerator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
@@ -13387,6 +13452,9 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_QUINT8
         type: DT_QINT8
@@ -21622,22 +21690,6 @@ op {
   }
 }
 op {
-  name: "MakeDataServiceIterator"
-  input_arg {
-    name: "dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "job_token"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  is_stateful: true
-}
-op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
@@ -23721,6 +23773,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -23977,6 +24030,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -24215,6 +24269,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -25376,6 +25431,9 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_QUINT8
         type: DT_QINT8
@@ -33035,6 +33093,75 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RaggedCountSparseOutput"
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
       }
     }
   }
@@ -42252,6 +42379,64 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "ShuffleAndRepeatDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "count"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "ShuffleDataset"
@@ -42312,6 +42497,53 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "ShuffleDatasetV3"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
   attr {
     name: "output_types"
@@ -44430,6 +44662,79 @@ op {
   is_stateful: true
 }
 op {
+  name: "SparseCountSparseOutput"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "SparseCross"
   input_arg {
     name: "indices"
@@ -45403,7 +45708,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45421,6 +45726,19 @@ op {
   }
   attr {
     name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45445,7 +45763,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "output_dim0"
@@ -45467,6 +45785,19 @@ op {
   }
   attr {
     name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45491,7 +45822,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45537,6 +45868,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtN"
@@ -45550,7 +45894,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45579,6 +45923,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNGrad"
@@ -45592,7 +45949,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "output_dim0"
@@ -45625,6 +45982,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNWithNumSegments"
@@ -45638,7 +46008,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45673,6 +46043,19 @@ op {
   }
   attr {
     name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45697,7 +46080,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45736,6 +46119,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSumWithNumSegments"
@@ -45749,7 +46145,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45794,6 +46190,19 @@ op {
   }
   attr {
     name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32

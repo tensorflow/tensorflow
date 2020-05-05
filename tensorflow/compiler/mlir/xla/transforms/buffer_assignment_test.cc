@@ -44,7 +44,7 @@ struct BufferAssignmentPreparationTestPass
     static StringRef getOperationName() {
       return "buffer_assignment_test.unary";
     }
-    static void build(Builder* b, OperationState& state, Value source) {
+    static void build(OpBuilder& b, OperationState& state, Value source) {
       state.addOperands(source);
     }
   };
@@ -59,7 +59,7 @@ struct BufferAssignmentPreparationTestPass
     static StringRef getOperationName() {
       return "buffer_assignment_test.unary_lowered";
     }
-    static void build(Builder* b, OperationState& state, Value source,
+    static void build(OpBuilder& b, OperationState& state, Value source,
                       Value target) {
       state.addOperands(source);
       state.addOperands(target);
@@ -76,7 +76,8 @@ struct BufferAssignmentPreparationTestPass
     static StringRef getOperationName() {
       return "buffer_assignment_test.copy";
     }
-    static void build(Builder* b, OperationState& state, Value from, Value to) {
+    static void build(OpBuilder& b, OperationState& state, Value from,
+                      Value to) {
       state.addOperands(from);
       state.addOperands(to);
     }

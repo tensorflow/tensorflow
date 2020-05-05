@@ -462,3 +462,12 @@ func @testMultiReadVariableOpsOfCast(%arg0: tensor<!tf.resource<tensor<f32>>>) -
  // CHECK: %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
  // CHECK: return %1
 }
+
+// CHECK-LABEL: testRankOfRankedTensor
+func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
+  // CHECK:[[VAL0:%.+]] = "tf.Const"() {value = dense<3> : tensor<i32>}
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<i32>
+
+  // CHECK: return [[VAL0]]
+  return %0 : tensor<i32>
+}

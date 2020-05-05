@@ -522,7 +522,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
   }
 
  private:
-  static const int kBufSize = 512 << 10;
+  static constexpr int kBufSize = 512 << 10;
 
   RandomAccessFile* file_;
   int64 pos_;

@@ -34,6 +34,7 @@ cc_library(
         "dequantize.cc",
         "elementwise.cc",
         "floor.cc",
+        "l2norm.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -68,7 +69,6 @@ cc_library(
             "xtensa_hifimini/quantize.cc",
             "xtensa_hifimini/softmax.cc",
             "xtensa_hifimini/svdf.cc",
-            "xtensa_hifimini/utils.h",
         ],
     }),
     hdrs = ["micro_ops.h"],
@@ -132,6 +132,7 @@ cc_library(
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
+        "l2norm.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -255,6 +256,7 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -661,6 +663,19 @@ tflite_micro_cc_test(
     name = "resize_nearest_neighbor_test",
     srcs = [
         "resize_nearest_neighbor_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "l2norm_test",
+    srcs = [
+        "l2norm_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

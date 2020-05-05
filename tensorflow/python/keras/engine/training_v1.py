@@ -25,6 +25,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -358,6 +359,12 @@ class Model(training_lib.Model):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
+    if isinstance(self._distribution_strategy,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy.ParameterServerStrategy)):
+      raise NotImplementedError('ParameterServerStrategy currently only works '
+                                'with the tf.Estimator API')
+
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
@@ -527,7 +534,7 @@ class Model(training_lib.Model):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
         return def_function.RUN_FUNCTIONS_EAGERLY
       else:

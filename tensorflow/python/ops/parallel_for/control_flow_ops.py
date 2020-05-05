@@ -195,7 +195,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
     if functions_run_eagerly:
       logging.warning(
           "It looks like tf.function behavior was disabled, perhaps using "
-          "tf.config.experimental_run_functions_eagerly. Vectorization "
+          "tf.config.run_functions_eagerly. Vectorization "
           "primitives (e.g. tf.vectorized_map) require tf.function to work. "
           "These primitives will override the disable.")
       def_function.run_functions_eagerly(False)

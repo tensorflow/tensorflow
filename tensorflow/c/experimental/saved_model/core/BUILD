@@ -6,7 +6,9 @@
 
 package(
     default_visibility = [
+        "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
+        "//tensorflow/core:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -43,4 +45,41 @@ cc_library(
         ":concrete_function",
         "//tensorflow/core:lib",
     ],
+)
+
+cc_library(
+    name = "tf_saved_model_impl",
+    srcs = [
+        "tf_saved_model_impl.cc",
+    ],
+    hdrs = ["tf_saved_model_impl.h"],
+    deps = [
+        ":concrete_function",
+        ":saved_model_api",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "pywrap_required_hdrs",
+    textual_hdrs = [
+        "concrete_function.h",
+        "function_metadata.h",
+        "saved_model_api.h",
+    ],
+    visibility = ["//tensorflow/python:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "concrete_function.cc",
+        "concrete_function.h",
+        "function_metadata.h",
+        "saved_model_api.h",
+        "tf_saved_model_impl.cc",
+        "tf_saved_model_impl.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
 )

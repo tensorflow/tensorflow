@@ -40,6 +40,9 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:dlpack",
         "//tensorflow/c/eager:tape",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -81,6 +84,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
+        ":benchmarks_test_base",
         ":cancellation",
         ":context",
         ":core",
@@ -612,7 +616,14 @@ py_library(
     ],
 )
 
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
+py_library(
+    name = "benchmarks_test_base",
+    srcs = ["benchmarks_test_base.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [":test"],
+)
+
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
@@ -620,6 +631,7 @@ cuda_py_test(
     tfrt_enabled = True,
     deps = [
         ":backprop",
+        ":benchmarks_test_base",
         ":context",
         ":forwardprop",
         ":function",
@@ -638,6 +650,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":backprop",
+        ":benchmarks_test_base",
         ":context",
         ":forwardprop",
         ":function",
@@ -947,7 +960,6 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
-        "notsan",  # TODO(b/152075365)
     ],
     deps = [
         "//tensorflow/python:array_ops",

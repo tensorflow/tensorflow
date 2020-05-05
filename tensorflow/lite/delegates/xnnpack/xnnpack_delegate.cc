@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <string>
@@ -397,6 +398,42 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTransposedConvolutionParams(
+      TfLiteContext* context, const TfLiteTransposeConvParams* params,
+      int node_index) {
+    if (params->stride_width <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                           params->stride_width, node_index);
+      }
+      return kTfLiteError;
+    }
+    if (params->stride_height <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                           params->stride_height, node_index);
+      }
+      return kTfLiteError;
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckFullyConnectedParams(
+      TfLiteContext* context, const TfLiteFullyConnectedParams* params,
+      int node_index) {
+    if (params->weights_format != kTfLiteFullyConnectedWeightsFormatDefault) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context,
+                           "unsupported non-default weights format in node #%d",
+                           node_index);
+      }
+      return kTfLiteError;
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckPoolingParams(TfLiteContext* context,
                                          const TfLitePoolParams* params,
                                          int node_index) {
@@ -493,8 +530,11 @@ class Subgraph {
     }
     for (int i = 0; i < tensor.dims->size; i++) {
       if (tensor.dims->data[i] <= 0) {
-        TF_LITE_KERNEL_LOG(context, "invalid dimension #%d (%d) in tensor #%d",
-                           i, tensor.dims->data[i], tensor_index);
+        if (context != nullptr) {
+          TF_LITE_KERNEL_LOG(context,
+                             "invalid dimension #%d (%d) in tensor #%d", i,
+                             tensor.dims->data[i], tensor_index);
+        }
         return kTfLiteError;
       }
     }
@@ -604,6 +644,14 @@ class Subgraph {
                                         node, context->tensors, dwconv_params,
                                         xnnpack_tensors);
       }
+      case kTfLiteBuiltinFullyConnected: {
+        const TfLiteFullyConnectedParams* fc_params =
+            static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
+
+        return VisitFullyConnectedNode(subgraph, logging_context, node_index,
+                                       node, context->tensors, fc_params,
+                                       xnnpack_tensors);
+      }
       case kTfLiteBuiltinHardSwish:
         return VisitHardSwishNode(subgraph, logging_context, node_index, node,
                                   context->tensors, xnnpack_tensors);
@@ -645,6 +693,18 @@ class Subgraph {
         return VisitSoftmaxNode(subgraph, logging_context, node_index, node,
                                 context->tensors, softmax_params,
                                 xnnpack_tensors);
+      }
+      case kTfLiteBuiltinCustom: {
+        if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
+            0) {
+          const TfLiteTransposeConvParams* deconv_params =
+              static_cast<const TfLiteTransposeConvParams*>(
+                  node->custom_initial_data);
+          return VisitMediaPipeDeconvolutionNode(
+              subgraph, context, node_index, node, context->tensors,
+              deconv_params, xnnpack_tensors);
+        }
+        return kTfLiteError;
       }
       default:
         return kTfLiteError;
@@ -934,6 +994,156 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus VisitFullyConnectedNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteFullyConnectedParams* fc_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckFullyConnectedParams(logging_context, fc_params, node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 3, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, filter_tensor, node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 2,
+                                           node->inputs->data[1]));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, filter_tensor, node->inputs->data[1], node_index));
+
+    const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, filter_tensor, node->inputs->data[2], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
+                                           node->inputs->data[2]));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, bias_tensor, node->inputs->data[2], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const int32_t output_channels = filter_tensor.dims->data[0];
+    const int32_t input_channels = filter_tensor.dims->data[1];
+
+    if (input_tensor.dims->size == 0) {
+      if (logging_context != nullptr) {
+        TF_LITE_KERNEL_LOG(
+            logging_context,
+            "unexpected number of shape dimensions %d in tensor #%d",
+            input_tensor.dims->size, node->inputs->data[0]);
+      }
+      return kTfLiteError;
+    }
+
+    int32_t num_input_elements = 1;
+    for (int i = 0; i < input_tensor.dims->size; i++) {
+      if (input_tensor.dims->data[i] <= 0) {
+        if (logging_context != nullptr) {
+          TF_LITE_KERNEL_LOG(logging_context,
+                             "invalid dimension #%d (%d) in tensor #%d", i,
+                             input_tensor.dims->data[i], node->inputs->data[0]);
+        }
+        return kTfLiteError;
+      }
+      num_input_elements *= input_tensor.dims->data[i];
+    }
+
+    if (fc_params->keep_num_dims) {
+      TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
+                                             input_tensor.dims->size,
+                                             node->outputs->data[0]));
+
+      for (int i = 0; i < input_tensor.dims->size - 1; i++) {
+        if (input_tensor.dims->data[i] != output_tensor.dims->data[i]) {
+          if (logging_context != nullptr) {
+            TF_LITE_KERNEL_LOG(
+                logging_context,
+                "mismatch in shape dimension %d (%d != %d) in input and output "
+                "tensors of FULLY_CONNECTED operator #%d",
+                i, input_tensor.dims->data[i], output_tensor.dims->data[i],
+                node_index);
+          }
+          return kTfLiteError;
+        }
+      }
+    } else {
+      if (num_input_elements % input_channels != 0) {
+        if (logging_context != nullptr) {
+          TF_LITE_KERNEL_LOG(
+              logging_context,
+              "number of elements in input tensor #%d in FULLY_CONNECTED "
+              "operator is not divisible by input channels (%d)",
+              node->inputs->data[0], input_channels);
+          return kTfLiteError;
+        }
+      }
+
+      TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 2,
+                                             node->outputs->data[0]));
+
+      if (output_tensor.dims->data[0] != num_input_elements / input_channels) {
+        if (logging_context != nullptr) {
+          TF_LITE_KERNEL_LOG(
+              logging_context,
+              "batch size %d in output tensor #%d in FULLY_CONNECTED operator "
+              "does not match batch size %d in reshaped input tensor #%d",
+              output_tensor.dims->data[0], node->outputs->data[0],
+              num_input_elements / input_channels, node->inputs->data[0]);
+        }
+        return kTfLiteError;
+      }
+    }
+
+    if (output_tensor.dims->data[output_tensor.dims->size - 1] !=
+        output_channels) {
+      if (logging_context != nullptr) {
+        TF_LITE_KERNEL_LOG(
+            logging_context,
+            "number of channels %d in output tensor #%d does not match output "
+            "channels %d in filter tensor #%d",
+            output_tensor.dims->data[output_tensor.dims->size - 1],
+            node->outputs->data[0], output_channels, node->inputs->data[1]);
+      }
+      return kTfLiteError;
+    }
+
+    float output_min = -std::numeric_limits<float>::infinity();
+    float output_max = +std::numeric_limits<float>::infinity();
+    TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
+        logging_context, node_index, fc_params->activation, &output_min,
+        &output_max));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_fully_connected(
+          subgraph, output_min, output_max,
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
+          /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*flags=*/fc_params->keep_num_dims ? 0
+                                             : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate FULLY_CONNECTED node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitHardSwishNode(
       xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
       TfLiteNode* node, const TfLiteTensor* tensors,
@@ -1053,6 +1263,93 @@ class Subgraph {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate MAX_POOL_2D node #%d",
                            node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitMediaPipeDeconvolutionNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteTransposeConvParams* deconv_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 3, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                           node->inputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, filter_tensor, node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 4,
+                                           node->inputs->data[1]));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, filter_tensor, node->inputs->data[1], node_index));
+
+    const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, filter_tensor, node->inputs->data[2], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
+                                           node->inputs->data[2]));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, bias_tensor, node->inputs->data[2], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
+                                           node->outputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const int output_channels = filter_tensor.dims->data[0];
+    const int kernel_height = filter_tensor.dims->data[1];
+    const int kernel_width = filter_tensor.dims->data[2];
+    const int input_channels = filter_tensor.dims->data[3];
+
+    TF_LITE_ENSURE_STATUS(CheckTransposedConvolutionParams(
+        logging_context, deconv_params, node_index));
+
+    uint32_t flags = 0;
+    TF_LITE_ENSURE_STATUS(CalculatePadding(
+        logging_context, deconv_params->padding, &flags, node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_deconvolution_2d(
+          subgraph,
+          /*padding_top=*/0,
+          /*padding_right=*/0,
+          /*padding_bottom=*/0,
+          /*padding_left=*/0,
+          /*adjustment_height=*/0,
+          /*adjustment_width=*/0, static_cast<uint32_t>(kernel_height),
+          static_cast<uint32_t>(kernel_width),
+          static_cast<uint32_t>(deconv_params->stride_height),
+          static_cast<uint32_t>(deconv_params->stride_width),
+          /*dilation_height=*/1,
+          /*dilation_width=*/1,
+          /*groups=*/1,
+          /*group_input_channels=*/input_channels,
+          /*group_output_channels=*/output_channels,
+          /*output_min=*/-std::numeric_limits<float>::infinity(),
+          /*output_max=*/+std::numeric_limits<float>::infinity(),
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
+          /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(
+            logging_context,
+            "failed to delegate Convolution2DTransposeBias node #%d",
+            node_index);
         return kTfLiteError;
       }
     }

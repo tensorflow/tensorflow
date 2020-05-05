@@ -1793,7 +1793,7 @@ def executing_eagerly():
   cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1815,8 +1815,8 @@ def executing_eagerly():
 
   Inside `tf.function` after
 
-  `tf.config.experimental_run_functions_eagerly(True)` is called:
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  `tf.config.run_functions_eagerly(True)` is called:
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1825,7 +1825,7 @@ def executing_eagerly():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 
@@ -1858,7 +1858,7 @@ def executing_eagerly_v1():
   this API might return `False` in the following use cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1881,9 +1881,9 @@ def executing_eagerly_v1():
   False
 
   Inside `tf.function`
-  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  after  `tf.config.run_functions_eagerly(True)` is called:
 
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1892,7 +1892,7 @@ def executing_eagerly_v1():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 

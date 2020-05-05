@@ -89,6 +89,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateSpaceToDepthBuilder(this, OP_DepthToSpace_8);
     case kTfLiteBuiltinQuantize:
       return CreateQuantizeBuilder(this, OP_Requantize_8to8);
+    case kTfLiteBuiltinHardSwish:
+      return CreateHardSwishBuilder(this, OP_QuantizedHardSwish_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;

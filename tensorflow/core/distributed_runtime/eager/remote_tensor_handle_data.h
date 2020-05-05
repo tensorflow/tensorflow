@@ -38,6 +38,7 @@ class RemoteTensorHandleData {
   Status NumDims(int* num_dims) const;
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
+  Status Unprotect() { return Status::OK(); }
 
   bool IsReady() const;
   Status SetShape(const TensorShape& shape);

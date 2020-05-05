@@ -107,6 +107,9 @@ class QuantizeContext {
     return states_manager_.GetOperandParams(op, index);
   }
 
+  // Return the signature of the op.
+  KernelSpecs::Signature GetSignature(QuantizeRegionOp op);
+
   // A heuristic to get quantization parameters satisfies the same scale
   // constraints:
   // - If there are immutable states,

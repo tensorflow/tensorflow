@@ -47,22 +47,6 @@ gentbl(
 )
 
 gentbl(
-    name = "TestLinalgMatmulToVectorPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
@@ -87,6 +71,14 @@ gentbl(
             "lib/Dialect/Test/TestOpEnums.cpp.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "lib/Dialect/Test/TestOpStructs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "lib/Dialect/Test/TestOpStructs.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/Dialect/Test/TestPatterns.inc",
         ),
@@ -96,6 +88,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -121,6 +114,7 @@ cc_library(
         ":TestOpsIncGen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -173,7 +167,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestLinalgMatmulToVectorPatternsIncGen",
         ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:support",

@@ -65,7 +65,8 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     x5 = math_ops.matmul(x, b)
     b = self._ConstOp((48,))
     x5 = nn.bias_add(x5, b)
-    x5 = gen_array_ops.reshape(x5, [4, -1])
+    # TODO(b/154672994): Put the reshape back when the bug is fixed.
+    # x5 = gen_array_ops.reshape(x5, [4, -1])
 
     x6 = gen_array_ops.reshape(x, [4, 24, 6])
     b = self._ConstOp((6,))

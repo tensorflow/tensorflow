@@ -25,12 +25,12 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (!strcmp(argv[3], "uint8") && !strcmp(argv[3], "int8")) {
+  if (strcmp(argv[3], "uint8") && strcmp(argv[3], "int8")) {
     printf("Only support uint8 and int8 for input interface");
     return 1;
   }
 
-  if (!strcmp(argv[4], "uint8") && !strcmp(argv[4], "int8")) {
+  if (strcmp(argv[4], "uint8") && strcmp(argv[4], "int8")) {
     printf("Only support uint8 and int8 for output interface");
     return 1;
   }

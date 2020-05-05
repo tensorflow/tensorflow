@@ -150,9 +150,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).__init__(
         combiner=_IndexLookupCombiner(self.max_tokens), **kwargs)
 
-    # This layer supports RaggedTensor inputs.
-    self._supports_ragged_inputs = True
-
     # If the layer's input type is int32, we can only output int32 values -
     # MutableHashTable doesn't allow us to map int32->int64.
     if self.dtype == dtypes.int32:

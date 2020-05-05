@@ -133,7 +133,7 @@ RUN python3 -m pip --no-cache-dir install \
     enum34
 
  # Build and install bazel
-ENV BAZEL_VERSION 0.15.0
+ENV BAZEL_VERSION 3.0.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -147,9 +147,9 @@ RUN mkdir /bazel && \
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN python3 -m pip install jupyter matplotlib
+RUN python3 -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/

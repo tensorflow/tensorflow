@@ -145,7 +145,7 @@ layers = VersionAwareLayers()
 
 BASE_DOCSTRING = """Instantiates the {name} architecture.
 
-  Reference paper:
+  Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 

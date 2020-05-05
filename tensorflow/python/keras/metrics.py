@@ -26,6 +26,8 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -138,7 +140,7 @@ class Metric(base_layer.Layer):
       values = tf.cast(values, self.dtype)
       if sample_weight is not None:
         sample_weight = tf.cast(sample_weight, self.dtype)
-        sample_weight = tf.broadcast_weights(sample_weight, values)
+        sample_weight = tf.broadcast_to(sample_weight, values.shape)
         values = tf.multiply(values, sample_weight)
       self.true_positives.assign_add(tf.reduce_sum(values))
 
@@ -165,7 +167,12 @@ class Metric(base_layer.Layer):
     # return ops.
     if (base_layer_utils.is_in_eager_or_tf_function() or
         is_built_in(cls)):
-      update_state_fn = obj.update_state
+      obj_update_state = obj.update_state
+
+      def update_state_fn(*args, **kwargs):
+        control_status = ag_ctx.control_status_ctx()
+        ag_update_state = autograph.tf_convert(obj_update_state, control_status)
+        return ag_update_state(*args, **kwargs)
     else:
       if isinstance(obj.update_state, def_function.Function):
         update_state_fn = obj.update_state
@@ -174,7 +181,16 @@ class Metric(base_layer.Layer):
 
     obj.update_state = types.MethodType(
         metrics_utils.update_state_wrapper(update_state_fn), obj)
-    obj.result = types.MethodType(metrics_utils.result_wrapper(obj.result), obj)
+
+    obj_result = obj.result
+
+    def result_fn(*args, **kwargs):
+      control_status = ag_ctx.control_status_ctx()
+      ag_result = autograph.tf_convert(obj_result, control_status)
+      return ag_result(*args, **kwargs)
+
+    obj.result = types.MethodType(metrics_utils.result_wrapper(result_fn), obj)
+
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -279,15 +295,16 @@ class Metric(base_layer.Layer):
     if distributed_training_utils.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
-    return super(Metric, self).add_weight(
-        name=name,
-        shape=shape,
-        dtype=self._dtype if dtype is None else dtype,
-        trainable=False,
-        initializer=initializer,
-        collections=[],
-        synchronization=synchronization,
-        aggregation=aggregation)
+    with ops.init_scope():
+      return super(Metric, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=self._dtype if dtype is None else dtype,
+          trainable=False,
+          initializer=initializer,
+          collections=[],
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   ### End: For use by subclasses ###
 
@@ -308,13 +325,12 @@ class Reduce(Metric):
   def __init__(self, reduction, name, dtype=None):
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    with ops.init_scope():
-      self.total = self.add_weight(
-          'total', initializer=init_ops.zeros_initializer)
-      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                       metrics_utils.Reduction.WEIGHTED_MEAN]:
-        self.count = self.add_weight(
-            'count', initializer=init_ops.zeros_initializer)
+    self.total = self.add_weight(
+        'total', initializer=init_ops.zeros_initializer)
+    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+      self.count = self.add_weight(
+          'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the metric.
@@ -591,7 +607,8 @@ class MeanMetricWrapper(Mean):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(MeanMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -1925,7 +1942,8 @@ class AUC(Metric):
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+    self._thresholds = np.array([0.0 - K.epsilon()] + thresholds +
+                                [1.0 + K.epsilon()])
 
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
@@ -1958,6 +1976,11 @@ class AUC(Metric):
       self._num_labels = None
     else:
       self._build(None)
+
+  @property
+  def thresholds(self):
+    """The thresholds used for evaluating AUC."""
+    return list(self._thresholds)
 
   def _build(self, shape):
     """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
@@ -2056,7 +2079,7 @@ class AUC(Metric):
           },
           y_true,
           y_pred,
-          self.thresholds,
+          self._thresholds,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -3165,7 +3188,8 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(SumOverBatchSizeMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -3455,11 +3479,9 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    error_msg = 'Could not interpret metric function identifier: {}'.format(
-        identifier)
-    raise ValueError(error_msg)
+    raise ValueError(
+        'Could not interpret metric function identifier: {}'.format(identifier))
 
 
 def is_built_in(cls):
   return cls.__module__ == Metric.__module__
-
