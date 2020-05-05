@@ -748,34 +748,19 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       // transA must be non-transpose if transB is transpose (cusparse
       // limitation).
-#if GOOGLE_CUDA
-      const gpusparseOperation_t transA = CUSPARSE_OPERATION_NON_TRANSPOSE;
-#elif TENSORFLOW_USE_ROCM
-      const gpusparseOperation_t transA = HIPSPARSE_OPERATION_NON_TRANSPOSE;
-#endif
+      const gpusparseOperation_t transA = GPUSPARSE(OPERATION_NON_TRANSPOSE);
 
       // transB: b is row-major, and cusparse requires col-major b (or
       // equivalently transB == transpose).  this version is actually more
       // efficient.
-#if GOOGLE_CUDA
-      const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
+      const gpusparseOperation_t transB = GPUSPARSE(OPERATION_TRANSPOSE);
 
       gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(gpusparse(CreateMatDescr)(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
+          gpusparse(SetMatType)(descrA, GPUSPARSE(MATRIX_TYPE_GENERAL)));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
-#elif TENSORFLOW_USE_ROCM
-      const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
-
-      gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
-#endif
+          gpusparse(SetMatIndexBase)(descrA, GPUSPARSE(INDEX_BASE_ZERO)));
 
       // A is (m, k), Bt is (ldb, k) and Ct is (ldc, n)
       const int k = b.dimension(0);
@@ -838,19 +823,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const T beta = 0;
 
       gpusparseMatDescr_t descrA;
-#if GOOGLE_CUDA
-      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(gpusparse(CreateMatDescr)(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
+          gpusparse(SetMatType)(descrA, GPUSPARSE(MATRIX_TYPE_GENERAL)));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
-#elif TENSORFLOW_USE_ROCM
-      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+          gpusparse(SetMatIndexBase)(descrA, GPUSPARSE(INDEX_BASE_ZERO)));
 
       const int m = a.dense_shape_host(0);
       const int n = a.dense_shape_host(1);
