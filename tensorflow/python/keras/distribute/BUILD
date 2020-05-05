@@ -320,7 +320,6 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
     deps = [
