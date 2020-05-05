@@ -143,6 +143,12 @@ def _test_combinations():
        cardinality.UNKNOWN),
       ("Unbatch4", lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True).repeat().unbatch(),
        cardinality.INFINITE),
+      ("Unbatch5",
+       lambda: dataset_ops.Dataset.zip((
+           dataset_ops.Dataset.range(4).batch(2, drop_remainder=False),
+           dataset_ops.Dataset.range(5).batch(2, drop_remainder=True),
+       )).unbatch(),
+       4),
       ("Window1", lambda: dataset_ops.Dataset.range(5).window(
           size=2, shift=2, drop_remainder=True), 2),
       ("Window2", lambda: dataset_ops.Dataset.range(5).window(
