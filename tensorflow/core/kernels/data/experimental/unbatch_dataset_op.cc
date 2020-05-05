@@ -38,13 +38,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     explicit Dataset(OpKernelContext* ctx, DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
-      known_batch_size_ = -1;
+      batch_size_ = -1;
       for (const PartialTensorShape& shape : input->output_shapes()) {
         if (!shape.unknown_rank()) {
-          if (known_batch_size_ < 0) {
-            if (shape.dim_size(0) >= 0) {
-              known_batch_size_ = shape.dim_size(0);
-            }
+          if (batch_size_ < 0 && shape.dim_size(0) >= 0) {
+            batch_size_ = shape.dim_size(0);
           }
           gtl::InlinedVector<int64, 4> partial_dim_sizes;
           for (int i = 1; i < shape.dims(); ++i) {
@@ -80,8 +78,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
-      if (known_batch_size_ > 0) {
-        return n * known_batch_size_;
+      if (batch_size_ > 0) {
+        return n * batch_size_;
       }
       return kUnknownCardinality;
     }
@@ -239,7 +237,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> shapes_;
-    int64 known_batch_size_;
+    // batch_size_ may or may not be known, with -1 as unknown
+    int64 batch_size_;
   };
 };
 
