@@ -276,6 +276,18 @@ class CallFrameInterface {
   virtual size_t num_retvals() const = 0;
 
   virtual Status GetArg(int index, const Tensor** val) = 0;
+
+  // Optimized implementation of `GetArg()` that allows the caller to take
+  // ownership of the tensor. This method may only be called once per
+  // value of `index` and `CallFrameInterface` instance.
+  //
+  // REQUIRES: `this->CanConsumeArg(index) == true`.
+  virtual void ConsumeArg(int index, Tensor* val) {
+    LOG(ERROR) << "This `CallFrameInterface` implementation does not support "
+                  "consuming arguments.";
+  }
+  virtual bool CanConsumeArg(int index) const { return false; }
+
   virtual Status SetRetval(int index, const Tensor& val) = 0;
 };
 

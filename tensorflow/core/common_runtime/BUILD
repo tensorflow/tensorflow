@@ -2348,6 +2348,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

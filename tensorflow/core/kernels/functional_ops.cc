@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -537,6 +538,55 @@ class WhileOp : public AsyncOpKernel {
     }
   };
 
+  class BodyFuncCallFrame : public CallFrameInterface {
+   public:
+    BodyFuncCallFrame(std::vector<Tensor>* args, std::vector<Tensor>* retvals,
+                      DataTypeSlice ret_types)
+        : args_(args), retvals_(retvals), ret_types_(ret_types) {}
+
+    size_t num_args() const override { return args_->size(); }
+    size_t num_retvals() const override { return retvals_->size(); }
+
+    Status GetArg(int index, const Tensor** val) override {
+      if (index < args_->size()) {
+        *val = &(*args_)[index];
+        return Status::OK();
+      } else {
+        return errors::InvalidArgument("Argument ", index, " is out of range.");
+      }
+    }
+
+    void ConsumeArg(int index, Tensor* val) override {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, args_->size());
+      *val = std::move((*args_)[index]);
+    }
+    bool CanConsumeArg(int index) const override {
+      return index >= 0 && index < args_->size();
+    }
+
+    Status SetRetval(int index, const Tensor& val) override {
+      if (TF_PREDICT_FALSE(index < 0 || index >= retvals_->size())) {
+        return errors::InvalidArgument("Return value ", index,
+                                       " is out of range.");
+      } else if (TF_PREDICT_FALSE(val.dtype() != ret_types_[index])) {
+        return errors::InvalidArgument("Expected type ",
+                                       DataTypeString(ret_types_[index]),
+                                       " for return value ", index, " but got ",
+                                       DataTypeString(val.dtype()), ".");
+      }
+      (*retvals_)[index] = val;
+      return Status::OK();
+    }
+
+   private:
+    std::vector<Tensor>* const args_;     // Not owned.
+    std::vector<Tensor>* const retvals_;  // Not owned.
+    DataTypeSlice ret_types_;
+
+    TF_DISALLOW_COPY_AND_ASSIGN(BodyFuncCallFrame);
+  };
+
   Status DoComputeSync(OpKernelContext* ctx) {
     FHandle cond_handle;
     FHandle body_handle;
@@ -556,8 +606,22 @@ class WhileOp : public AsyncOpKernel {
     body_rets.reserve(num_loop_vars);
 
     // The initial loop variable args are the inputs to the kernel.
+    //
+    // We attempt to forward the input so that it can be consumed inside the
+    // body function (and participate in buffer forwarding, etc.).
+    DataTypeVector loop_var_types(num_loop_vars);
     for (int i = 0; i < num_loop_vars; ++i) {
-      args.push_back(ctx->input(i));
+      const Tensor& input = ctx->input(i);
+      loop_var_types[i] = input.dtype();
+      std::unique_ptr<Tensor> maybe_forwarded_input = ctx->forward_input(
+          i, /* output_index= */ OpKernelContext::Params::kNoReservation,
+          input.dtype(), input.shape(), ctx->input_memory_type(i),
+          ctx->input_alloc_attr(i));
+      if (maybe_forwarded_input) {
+        args.push_back(std::move(*maybe_forwarded_input));
+      } else {
+        args.push_back(input);
+      }
     }
 
     // Implement the logic of the while loop as a single C++ do-while loop that
@@ -591,8 +655,9 @@ class WhileOp : public AsyncOpKernel {
         profiler::TraceMe trace_me(
             [&] { return StartBodyTraceString(ctx, opts); },
             /*level=*/2);
-
-        TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, args, &body_rets));
+        body_rets.resize(num_loop_vars);
+        BodyFuncCallFrame call_frame(&args, &body_rets, loop_var_types);
+        TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, &call_frame));
       }
       std::swap(body_rets, args);
       body_rets.clear();
