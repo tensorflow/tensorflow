@@ -2234,7 +2234,7 @@ class ConcreteFunction(object):
     arg_specs, kwarg_specs = self.structured_input_signature
     names = list(self._function_spec.arg_names)
     names.extend(sorted(kwarg_specs))
-    specs = list(arg_specs) + list(kwarg_specs.values())
+    specs = list(arg_specs) + list(_deterministic_dict_values(kwarg_specs))
     # note: we can skip bound args, since we already displayed thier bound
     # value in the signature summary.
     arg_details = []
