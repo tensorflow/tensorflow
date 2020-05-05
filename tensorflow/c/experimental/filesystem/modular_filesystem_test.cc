@@ -106,17 +106,15 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     env_ = Env::Default();
   }
 
-
   void SetUp() override {
     FileSystem* fs = nullptr;
-    Status s = env_->GetFileSystemForFile("s3://", &fs);
-    if (fs == nullptr || !s.ok()) GTEST_SKIP() << "No filesystem registered: " << s;
+    Status s = env_->GetFileSystemForFile(root_dir_, &fs);
+    if (fs == nullptr || !s.ok())
+      GTEST_SKIP() << "No filesystem registered: " << s;
 
-    s = fs->CreateDir("s3://bucketvnvo" + root_dir_);
+    s = fs->CreateDir(root_dir_);
     if (!s.ok()) {
-      printf("Failed %s\n", s.error_message().c_str());
-      GTEST_SKIP() << "Cannot create working directory: "
-                   << s;
+      GTEST_SKIP() << "Cannot create working directory: " << s;
     }
   }
 
@@ -136,21 +134,10 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   std::string GetURIForPath(StringPiece path) {
     const std::string translated_name =
         tensorflow::io::JoinPath(root_dir_, path);
-<<<<<<< HEAD
     // We have already checked `GetParam().empty()` in
     // `ModularFileSystemTest()`. root_dir_ should contain `GetParam() + "://"`
     // if it isn't empty.
     return translated_name;
-=======
-    if (GetParam().empty()) return translated_name;
-    
-    std::string bucketname = "";
-    if (GetParam() == "s3") {
-      bucketname = "bucketvnvo";
-    }
-
-    return tensorflow::strings::StrCat(GetParam(), "://", bucketname, translated_name);
->>>>>>> Initial Implementation for S3 plugins
   }
 
   // Converts absolute paths to paths relative to root_dir_.
@@ -196,7 +183,6 @@ bool UnimplementedOrReturnsCode(Status actual_status, Code expected_code) {
   return (actual_code == Code::UNIMPLEMENTED) || (actual_code == expected_code);
 }
 
-/*
 TEST_P(ModularFileSystemTest, TestTranslateName) {
   const std::string generic_path = GetURIForPath("some_path");
   FileSystem* fs = nullptr;
@@ -234,7 +220,6 @@ TEST_P(ModularFileSystemTest, TestTranslateName) {
                 GetURIForPath("a/convoluted/../path/./to/.//.///a/file"))),
             "/a/path/to/a/file");
 }
-*/
 
 TEST_P(ModularFileSystemTest, TestCreateFile) {
   const std::string filepath = GetURIForPath("a_file");
@@ -370,7 +355,6 @@ TEST_P(ModularFileSystemTest, TestReadFilePathIsInvalid) {
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
-/*
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegion) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<ReadOnlyMemoryRegion> region;
@@ -445,7 +429,6 @@ TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromFilePathIsInvalid) {
   status = env_->NewReadOnlyMemoryRegionFromFile(new_path, &region);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
-*/
 
 TEST_P(ModularFileSystemTest, TestCreateDir) {
   const std::string dirpath = GetURIForPath("a_dir");
@@ -519,7 +502,6 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirWhichIsFile) {
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
-
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirTwice) {
   const std::string dirpath = GetURIForPath("a/path/to/a/dir");
   Status status = env_->RecursivelyCreateDir(dirpath);
@@ -542,7 +524,6 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirPathIsInvalid) {
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
-
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
   const std::string parent_path = GetURIForPath("some/path");
   Status status = env_->RecursivelyCreateDir(parent_path);
@@ -553,7 +534,6 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
   status = env_->RecursivelyCreateDir(new_dirpath);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
-
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedFile) {
   const std::string parent_path = GetURIForPath("some/path");
@@ -792,7 +772,6 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedDir) {
   status = env_->FileExists(parent_path);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
-
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
   const std::string parent_path = GetURIForPath("some/path");
@@ -1145,7 +1124,7 @@ TEST_P(ModularFileSystemTest, TestFilesExist) {
       GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
-  EXPECT_TRUE(env_->FilesExist(filenames, nullptr));
+  EXPECT_TRUE(env_->FilesExist(filenames, /*status=*/nullptr));
 
   std::vector<Status> statuses;
   EXPECT_TRUE(env_->FilesExist(filenames, &statuses));
@@ -1183,7 +1162,7 @@ TEST_P(ModularFileSystemTest, TestFilesExistAllFailureModes) {
 
 TEST_P(ModularFileSystemTest, TestFilesExistsNoFiles) {
   const std::vector<std::string> filenames = {};
-  EXPECT_TRUE(env_->FilesExist(filenames, nullptr));
+  EXPECT_TRUE(env_->FilesExist(filenames, /*status=*/nullptr));
 
   std::vector<Status> statuses;
   EXPECT_TRUE(env_->FilesExist(filenames, &statuses));
@@ -1247,20 +1226,18 @@ TEST_P(ModularFileSystemTest, TestStatNotFound) {
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
+TEST_P(ModularFileSystemTest, TestStatPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
-//TEST_P(ModularFileSystemTest, TestStatPathIsInvalid) {
-//  const std::string filepath = GetURIForPath("a_file");
-//  std::unique_ptr<WritableFile> file;
-//  Status status = env_->NewWritableFile(filepath, &file);
-//  if (!status.ok())
-//    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
-//
-//  const std::string target_path = GetURIForPath("a_file/a_new_file");
-//  FileStatistics stat;
-//  status = env_->Stat(target_path, &stat);
-//  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
-//}
-
+  const std::string target_path = GetURIForPath("a_file/a_new_file");
+  FileStatistics stat;
+  status = env_->Stat(target_path, &stat);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
 
 TEST_P(ModularFileSystemTest, TestIsDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
@@ -1625,7 +1602,7 @@ TEST_P(ModularFileSystemTest, TestRoundTrip) {
   if (!status.ok())
     GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
-  char scratch[64] = {0};
+  char scratch[64 /* big enough to accommodate test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size(), &result, scratch);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
@@ -1667,7 +1644,7 @@ TEST_P(ModularFileSystemTest, TestRoundTripWithAppendableFile) {
   if (!status.ok())
     GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
-  char scratch[64] = {0};
+  char scratch[64 /* big enough for test_data and more_test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size() + more_test_data.size(), &result,
                            scratch);
@@ -1705,7 +1682,7 @@ TEST_P(ModularFileSystemTest, TestReadOutOfRange) {
   if (!status.ok())
     GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
-  char scratch[64] = {0};
+  char scratch[64 /* must be bigger than test_data */] = {0};
   StringPiece result;
   // read at least 1 byte more than test_data
   status = read_file->Read(0, test_data.size() + 1, &result, scratch);
