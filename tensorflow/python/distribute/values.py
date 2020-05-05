@@ -587,6 +587,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   def value(self):
     return self._get_closest().value()
 
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
     return self._update(
@@ -1142,13 +1149,6 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_closest() returns a Variable.
         return self._get_closest().value()
-
-  def numpy(self):
-    if context.executing_eagerly():
-      return self.read_value().numpy()
-    else:
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
