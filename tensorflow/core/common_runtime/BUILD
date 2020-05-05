@@ -1026,10 +1026,13 @@ cc_library(
 cc_library(
     name = "mkl_layout_pass",
     srcs = ["mkl_layout_pass.cc"],
-    hdrs = ["mkl_layout_pass.h"],
+    hdrs = [
+        "mkl_layout_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
-        ":core_cpu",
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1042,10 +1045,13 @@ cc_library(
 cc_library(
     name = "mkl_tfconversion_pass",
     srcs = ["mkl_tfconversion_pass.cc"],
-    hdrs = ["mkl_tfconversion_pass.h"],
+    hdrs = [
+        "mkl_tfconversion_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
-        ":core_cpu",
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
