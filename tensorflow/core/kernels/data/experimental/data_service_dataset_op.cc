@@ -47,8 +47,11 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kProcessingMode;
 /* static */ constexpr const char* const DataServiceDatasetOp::kAddress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kProtocol;
+/* static */ constexpr const char* const DataServiceDatasetOp::kJobName;
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kIterationCounter;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
@@ -71,23 +74,45 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 dataset_id,
           ProcessingMode processing_mode, const std::string& address,
-          const std::string& protocol, int64 max_outstanding_requests,
-          int64 task_refresh_interval_ms, const DataTypeVector& output_types,
+          const std::string& protocol, const std::string& job_name,
+          int64 max_outstanding_requests, int64 task_refresh_interval_ms,
+          IterationCounter* iteration_counter, bool owns_resource,
+          ResourceHandle iteration_counter_handle,
+          const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         dataset_id_(dataset_id),
         processing_mode_(processing_mode),
         address_(address),
         protocol_(protocol),
+        job_name_(job_name),
         max_outstanding_requests_(max_outstanding_requests),
         task_refresh_interval_ms_(task_refresh_interval_ms),
+        iteration_counter_(iteration_counter),
+        owns_resource_(owns_resource),
+        iteration_counter_handle_(iteration_counter_handle),
+        resource_mgr_(ctx->resource_manager()),
         output_types_(output_types),
         output_shapes_(output_shapes) {}
 
+  ~Dataset() override {
+    iteration_counter_->Unref();
+    if (owns_resource_) {
+      Status s = resource_mgr_->Delete<IterationCounter>(
+          iteration_counter_handle_.container(),
+          iteration_counter_handle_.name());
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to delete iteration counter resource: " << s;
+      }
+    }
+  }
+
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
-        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+    return absl::make_unique<Iterator>(
+        Iterator::Params{this,
+                         name_utils::IteratorPrefix(kDatasetType, prefix)},
+        iteration_counter_->GetAndIncrement());
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -123,9 +148,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Node* protocol;
     TF_RETURN_IF_ERROR(b->AddScalar(protocol_, &protocol));
 
+    Node* job_name;
+    TF_RETURN_IF_ERROR(b->AddScalar(job_name_, &job_name));
+
     Node* max_outstanding_requests;
     TF_RETURN_IF_ERROR(
         b->AddScalar(max_outstanding_requests_, &max_outstanding_requests));
+
+    Node* iteration_counter_handle = nullptr;
+    Tensor handle(DT_RESOURCE, TensorShape({}));
+    handle.scalar<ResourceHandle>()() = iteration_counter_handle_;
+    TF_RETURN_IF_ERROR(b->AddTensor(handle, &iteration_counter_handle));
 
     AttrValue task_refresh_interval_hint_ms;
     b->BuildAttrValue(task_refresh_interval_ms_,
@@ -133,8 +166,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     TF_RETURN_IF_ERROR(
         b->AddDataset(this,
-                      {dataset_id, processing_mode, address, protocol,
-                       max_outstanding_requests},
+                      {dataset_id, processing_mode, address, protocol, job_name,
+                       max_outstanding_requests, iteration_counter_handle},
                       {std::make_pair(kTaskRefreshIntervalHintMs,
                                       task_refresh_interval_hint_ms)},
                       output));
@@ -144,8 +177,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+    explicit Iterator(const Params& params, int64 iterator_index)
+        : DatasetIterator<Dataset>(params), iterator_index_(iterator_index) {}
 
     ~Iterator() override {
       mutex_lock l(mu_);
@@ -161,8 +194,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
       DataServiceMasterClient master(dataset()->address_, dataset()->protocol_);
-      TF_RETURN_IF_ERROR(master.CreateJob(
-          dataset()->dataset_id_, dataset()->processing_mode_, &job_id_));
+      if (dataset()->job_name_.empty()) {
+        TF_RETURN_IF_ERROR(master.CreateJob(
+            dataset()->dataset_id_, dataset()->processing_mode_, &job_id_));
+      } else {
+        TF_RETURN_IF_ERROR(master.GetOrCreateJob(
+            dataset()->dataset_id_, dataset()->processing_mode_,
+            dataset()->job_name_, iterator_index_, &job_id_));
+      }
       VLOG(1) << "Created data service job with id " << job_id_;
       return Status::OK();
     }
@@ -418,6 +457,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    const int64 iterator_index_;
+
     mutex mu_;
     // TODO(aaudibert): split this into a couple cvs for different conditions
     // so that we can use notify_one and avoid unnecessary wakeups.
@@ -449,8 +490,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const ProcessingMode processing_mode_;
   const tstring address_;
   const tstring protocol_;
+  const tstring job_name_;
   const int64 max_outstanding_requests_;
   const int64 task_refresh_interval_ms_;
+  IterationCounter* const iteration_counter_;  // Owned
+  const bool owns_resource_;
+  const ResourceHandle iteration_counter_handle_;
+  ResourceMgr* const resource_mgr_;  // Not owned
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -488,9 +534,41 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(ctx, !protocol.empty(),
               errors::InvalidArgument(kProtocol, " must be non-empty."));
 
+  tstring job_name;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kJobName, &job_name));
+
   int64 max_outstanding_requests;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxOutstandingRequests,
                                           &max_outstanding_requests));
+
+  ResourceHandle iteration_counter_handle;
+  OP_REQUIRES_OK(
+      ctx, HandleFromInput(ctx, kIterationCounter, &iteration_counter_handle));
+  IterationCounter* iteration_counter = nullptr;
+  Status s = ctx->resource_manager()->Lookup<IterationCounter>(
+      iteration_counter_handle.container(), iteration_counter_handle.name(),
+      &iteration_counter);
+  bool owns_resource = false;
+  if (errors::IsNotFound(s)) {
+    owns_resource = true;
+    static std::atomic<int64> resource_id_counter(0);
+    const std::string& container = ctx->resource_manager()->default_container();
+    std::string name =
+        strings::StrCat(ctx->op_kernel().name(), "/", kIterationCounter, "_",
+                        resource_id_counter.fetch_add(1));
+    OP_REQUIRES_OK(ctx,
+                   ctx->resource_manager()->LookupOrCreate<IterationCounter>(
+                       container, name, &iteration_counter,
+                       [](IterationCounter** counter) {
+                         *counter = new IterationCounter();
+                         return Status::OK();
+                       }));
+    iteration_counter_handle =
+        MakeResourceHandle<IterationCounter>(ctx, container, name);
+  } else {
+    OP_REQUIRES_OK(ctx, s);
+  }
+
   OP_REQUIRES(
       ctx,
       max_outstanding_requests == model::kAutotune ||
@@ -499,13 +577,16 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                               model::kAutotune));
 
   *output =
-      new Dataset(ctx, dataset_id, processing_mode, address, protocol,
+      new Dataset(ctx, dataset_id, processing_mode, address, protocol, job_name,
                   max_outstanding_requests, task_refresh_interval_hint_ms_,
+                  iteration_counter, owns_resource, iteration_counter_handle,
                   output_types_, output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),
                         DataServiceDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_CPU),
+                        DummyResourceOp<IterationCounter>);
 
 }  // namespace data
 }  // namespace tensorflow
