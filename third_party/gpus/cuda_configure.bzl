@@ -808,23 +808,28 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
     cmd = \"""%s \""",
 )""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
-def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
+def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions=None):
     """Returns a rule to recursively copy a directory."""
     src_dir = _norm_path(src_dir)
     out_dir = _norm_path(out_dir)
     outs = read_dir(repository_ctx, src_dir)
+    post_cmd=''
+    if exceptions!=None:
+      outs = [x for x in outs if not any([x.startswith(y) for y in exceptions])]
     outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
-
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
+    if exceptions!=None:
+      for x in exceptions:
+        post_cmd+=" ; rm -fR " + x.replace(src_dir, out_dir)
     return """genrule(
     name = "%s",
     outs = [
 %s
     ],
-    cmd = \"""cp -rLf "%s/." "%s/" \""",
-)""" % (name, "\n".join(outs), src_dir, out_dir)
+    cmd = \"""cp -rLf "%s/." "%s/" %s\""",
+)""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
 
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"

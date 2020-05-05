@@ -132,6 +132,10 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
     VLOG(3) << "Unloading  HSACO module " << module;
     GpuDriver::UnloadModule(context_, module);
     gpu_binary_to_module_.erase(module_it);
+    const char* mem_it = nullptr;
+    for (auto x : in_memory_modules_)
+      if (x.second == module) mem_it = x.first;
+    if (mem_it != nullptr) in_memory_modules_.erase(mem_it);
   }
   return true;
 }

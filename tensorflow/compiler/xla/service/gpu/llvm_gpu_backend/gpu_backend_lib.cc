@@ -689,7 +689,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
   return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
-                          hlo_module_config, "-code-object-v3");
+                          hlo_module_config, "+code-object-v3");
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
