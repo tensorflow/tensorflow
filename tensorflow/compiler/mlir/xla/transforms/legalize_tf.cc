@@ -4785,6 +4785,17 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Performs the lowering to XLA dialect.
+void LegalizeTF::runOnFunction() {
+  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
+    signalPassFailure();
+}
+
+static PassRegistration<LegalizeTF> pass(
+    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
+
+}  // end namespace
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -4835,17 +4846,6 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   return applyPartialConversion(op, target, patterns);
 }
-
-/// Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
-    signalPassFailure();
-}
-
-static PassRegistration<LegalizeTF> pass(
-    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
-
-}  // end namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {
