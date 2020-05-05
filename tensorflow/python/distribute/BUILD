@@ -1189,6 +1189,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
+        "noguitar",  # TODO(b/140755528): enable after this is fixed.
         "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
