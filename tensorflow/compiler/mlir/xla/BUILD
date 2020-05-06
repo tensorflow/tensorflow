@@ -399,9 +399,8 @@ cc_library(
 
 cc_library(
     name = "xla_hlo_to_lhlo_with_xla",
-    srcs = [
-        "transforms/xla_hlo_to_lhlo_with_xla.cc",
-    ],
+    srcs = ["transforms/xla_hlo_to_lhlo_with_xla.cc"],
+    hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
     deps = [
         ":hlo",
         ":hlo_utils",
