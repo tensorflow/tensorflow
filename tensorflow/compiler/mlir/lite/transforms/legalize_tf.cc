@@ -196,7 +196,7 @@ LogicalResult ConvertTFConcatOp::matchAndRewrite(
 
   StringAttr fused_activation_function =
       StringAttr::get("NONE", rewriter.getContext());
-  auto fixed_point_scaling = rewriter.getBoolAttr(true);
+  BoolAttr fixed_point_scaling = rewriter.getBoolAttr(true);
   rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
       op, output_type, values, mlir::TFL::ExtractSingleElementAsInteger(axis),
       fused_activation_function, fixed_point_scaling);
@@ -215,7 +215,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
 
   StringAttr fused_activation_function =
       StringAttr::get("NONE", rewriter.getContext());
-  auto fixed_point_scaling = rewriter.getBoolAttr(true);
+  BoolAttr fixed_point_scaling = rewriter.getBoolAttr(true);
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
       op, output_type, values, ExtractSingleElementAsInteger(axis),
       fused_activation_function, fixed_point_scaling);
