@@ -454,12 +454,15 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
       accumulator = self._create_accumulator()
 
     # TODO(momernick): Benchmark improvements to this algorithm.
-    for document in values:
-      if not isinstance(document, list):
-        accumulator.count_dict[document] += 1
-      else:
-        for token in document:
-          accumulator.count_dict[token] += 1
+    if isinstance(values, (str, bytes)):
+      accumulator.count_dict[values] += 1
+    else:
+      for document in values:
+        if not isinstance(document, list):
+          accumulator.count_dict[document] += 1
+        else:
+          for token in document:
+            accumulator.count_dict[token] += 1
 
     return accumulator
 

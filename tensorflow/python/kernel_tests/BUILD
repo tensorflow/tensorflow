@@ -480,6 +480,7 @@ tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

@@ -650,7 +650,7 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 
   mutex_lock l(mu_);
   if (local_mirrors_.find(d) != local_mirrors_.end()) {
-    return errors::Internal("Attempted to duplicate a local mirror.");
+    return errors::AlreadyExists("Attempted to duplicate a local mirror.");
   }
 
   local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
@@ -840,7 +840,7 @@ Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
       local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
                              std::forward_as_tuple(std::move(tensor)));
   if (!elem.second) {
-    return errors::Internal("Attempted to set tensor for existing mirror.");
+    return errors::AlreadyExists("Attempted to add existing mirror.");
   }
 
   return Status::OK();

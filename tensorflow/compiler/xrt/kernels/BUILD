@@ -59,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xrt:xrt_compile_ops_op_lib",
         "//tensorflow/compiler/xrt:xrt_execute_op_op_lib",
         "//tensorflow/compiler/xrt:xrt_proto_cc",

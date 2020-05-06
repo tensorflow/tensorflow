@@ -461,6 +461,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitSqrt(op->shape().element_type(), operand_value);
     case HloOpcode::kRsqrt:
       return EmitRsqrt(op->shape().element_type(), operand_value);
+    case HloOpcode::kCbrt:
+      return EmitCbrt(op->shape().element_type(), operand_value);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor,
                                           {operand_value},
@@ -787,6 +789,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     case HloOpcode::kRsqrt: {
       return EmitComplexRsqrt(op, component_type, operand_value);
     }
+    case HloOpcode::kCbrt: {
+      return EmitComplexCbrt(op, component_type, operand_value);
+    }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
                                 FNeg(EmitExtractImag(operand_value)));
@@ -1079,6 +1084,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
   }
 
   return EmitComposeComplex(op, real_part, imag_part);
+}
+
+//
+// Using EmitComplexPower with c=1.0/3.0 and d=0
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexCbrt(
+    const HloInstruction* op, PrimitiveType prim_type,
+    llvm::Value* operand_value) {
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto third = llvm::ConstantFP::get(type, 1.0 / 3.0);
+  auto zero = llvm::ConstantFP::get(type, 0);
+  llvm::Value* a = EmitExtractReal(operand_value);
+  llvm::Value* b = EmitExtractImag(operand_value);
+  return EmitComplexPower(op, a, b, third, zero);
 }
 
 // (a+bi)^(c+di) =
@@ -1390,6 +1408,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                    llvm::Value* rhs) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::pow, {lhs, rhs},
                                       {lhs->getType()}, b_);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitCbrt(PrimitiveType prim_type,
+                                                    llvm::Value* value) {
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto third = llvm::ConstantFP::get(type, 1.0 / 3.0);
+  auto abs_value =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
+  TF_ASSIGN_OR_RETURN(llvm::Value * abs_res,
+                      EmitPow(prim_type, abs_value, third));
+  auto signed_res = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
+                                                 {abs_res, value}, {type}, b_);
+  return signed_res;
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
@@ -2181,6 +2212,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {

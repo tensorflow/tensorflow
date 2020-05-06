@@ -17,21 +17,6 @@ cc_library(
 )
 
 gentbl(
-    name = "TestLinalgTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestVectorTransformPatternsIncGen",
     tbl_outs = [
         (
@@ -43,22 +28,6 @@ gentbl(
     td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
     td_srcs = [
         "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "TestLinalgMatmulToVectorPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
     ],
 )
 
@@ -183,8 +152,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestLinalgMatmulToVectorPatternsIncGen",
-        ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Affine",

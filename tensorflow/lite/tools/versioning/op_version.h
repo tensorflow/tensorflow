@@ -48,7 +48,7 @@ typedef struct {
     } lstm;
     struct {
       bool half_pixel_centers;
-    } resize_bilinear;
+    } resize;
     struct {
       int32_t num_dims;
     } single_input_op;

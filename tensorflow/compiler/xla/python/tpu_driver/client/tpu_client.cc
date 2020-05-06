@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/semaphore.h"
+#include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"

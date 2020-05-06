@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -79,7 +81,7 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   mlir::Builder b(&context);
 
   // Create the sample tensor to convert.
-  tensorflow::Tensor tensor(DT_STRING, TensorShape({1, 2, 2, 1}));
+  Tensor tensor(DT_STRING, TensorShape({1, 2, 2, 1}));
   EXPECT_EQ(4, tensor.NumElements());
   auto Tt = tensor.flat<tstring>();
   Tt.setValues({"one", "two", "three", "four"});
@@ -95,6 +97,50 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   EXPECT_EQ(string_values[1], mlir::StringRef("two"));
   EXPECT_EQ(string_values[2], mlir::StringRef("three"));
   EXPECT_EQ(string_values[3], mlir::StringRef("four"));
+}
+
+TEST(ConvertTypeToTensorTypeTest, Convert16BitFloats) {
+  RegisterDialects();
+  mlir::MLIRContext context;
+  mlir::Builder b(&context);
+
+  {
+    // Create the sample tensor to convert.
+    Tensor tensor(DT_HALF, TensorShape({2}));
+    auto Tt = tensor.flat<Eigen::half>();
+    Tt.setValues({Eigen::half(1.0), Eigen::half(-1.0)});
+
+    auto value_or = ConvertTensor(tensor, &b);
+    TF_EXPECT_OK(value_or.status());
+    auto attr = value_or.ValueOrDie();
+
+    EXPECT_TRUE(attr.isa<mlir::DenseFPElementsAttr>());
+    EXPECT_TRUE(attr.getType().getElementType().isF16());
+
+    Tensor out;
+    TF_ASSERT_OK(ConvertToTensor(attr, &out));
+
+    test::ExpectTensorEqual<Eigen::half>(tensor, out);
+  }
+
+  {
+    // Create the sample tensor to convert.
+    Tensor tensor(DT_BFLOAT16, TensorShape({2}));
+    auto Tt = tensor.flat<bfloat16>();
+    Tt.setValues({bfloat16(1.0), bfloat16(-1.0)});
+
+    auto value_or = ConvertTensor(tensor, &b);
+    TF_EXPECT_OK(value_or.status());
+    auto attr = value_or.ValueOrDie();
+
+    EXPECT_TRUE(attr.isa<mlir::DenseFPElementsAttr>());
+    EXPECT_TRUE(attr.getType().getElementType().isBF16());
+
+    Tensor out;
+    TF_ASSERT_OK(ConvertToTensor(attr, &out));
+
+    test::ExpectTensorEqual<bfloat16>(tensor, out);
+  }
 }
 
 }  // namespace

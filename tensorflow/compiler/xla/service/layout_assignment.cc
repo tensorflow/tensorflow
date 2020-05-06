@@ -2220,6 +2220,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kPopulationCount:

@@ -668,6 +668,7 @@ table ResizeBilinearOptions {
 
 table ResizeNearestNeighborOptions {
   align_corners: bool;
+  half_pixel_centers: bool;
 }
 
 // A call operation options
@@ -975,8 +976,8 @@ table SegmentSumOptions {
 }
 
 table BatchMatMulOptions {
-  adjoint_lhs:bool;
-  adjoint_rhs:bool;
+  adj_x:bool;
+  adj_y:bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -48,12 +48,15 @@ namespace tensorflow {
 namespace {
 
 NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
-#ifndef TENSORFLOW_LITE_PROTOS
-  DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
-      << "The NodeDef format has changed, and the attr-stripping code may need "
-      << "to be updated.";
-#endif
   const NodeDef& original = ctx->def();
+  if (std::is_base_of<protobuf::Message, NodeDef>()) {
+    DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
+                  ->GetDescriptor()
+                  ->field_count(),
+              6)
+        << "The NodeDef format has changed, and the attr-stripping code may "
+           "need to be updated.";
+  }
   NodeDef ret;
   ret.set_name(original.name());
   ret.set_op(original.op());

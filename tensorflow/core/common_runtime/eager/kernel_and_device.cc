@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -49,13 +50,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status EagerKernelArgs::GetLocalArg(const int index, Tensor* val) const {
-  Tensor* arg = tensor_args_.at(index).tensor;
+Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
+                                    Tensor* val) const {
+  if (index.sub_index >= 0) {
+    return errors::InvalidArgument("Got unexpected sub_index ", index.sub_index,
+                                   " for argument ", index.index);
+  }
+  Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
     return Status::OK();
   } else {
-    return errors::NotFound("Argument ", index, " has no local tensor.");
+    return errors::NotFound("Argument ", index.index, " has no local tensor.");
   }
 }
 

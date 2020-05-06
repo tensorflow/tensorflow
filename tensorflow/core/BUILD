@@ -891,23 +891,29 @@ cc_library(
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":string_ops_op_lib",
-        ":tpu_configuration_ops_op_lib",
-        ":tpu_cross_replica_ops_op_lib",
-        ":tpu_embedding_ops_op_lib",
-        ":tpu_embedding_load_retrieve_ops_op_lib",
-        ":tpu_functional_ops_op_lib",
-        ":tpu_heartbeat_ops_op_lib",
-        ":tpu_host_compute_ops_op_lib",
-        ":tpu_infeed_ops_op_lib",
-        ":tpu_outfeed_ops_op_lib",
-        ":tpu_ordinal_selector_ops_op_lib",
-        ":tpu_replication_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
-    ] + if_mkl([
+    ] + if_chromiumos(
+        [],
+        # Non-tpu platforms don't need tpu dependency. It would be best to guard
+        # them by if_tpu. But there is no such flag yet.
+        [
+            ":tpu_configuration_ops_op_lib",
+            ":tpu_cross_replica_ops_op_lib",
+            ":tpu_embedding_ops_op_lib",
+            ":tpu_embedding_load_retrieve_ops_op_lib",
+            ":tpu_functional_ops_op_lib",
+            ":tpu_heartbeat_ops_op_lib",
+            ":tpu_host_compute_ops_op_lib",
+            ":tpu_infeed_ops_op_lib",
+            ":tpu_outfeed_ops_op_lib",
+            ":tpu_ordinal_selector_ops_op_lib",
+            ":tpu_replication_ops_op_lib",
+        ],
+    ) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
     ]) + if_tensorrt([
@@ -1368,10 +1374,7 @@ cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + tf_portable_full_lite_protos(
-        full = [],
-        lite = ["TENSORFLOW_LITE_PROTOS"],
-    ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
@@ -2394,10 +2397,6 @@ alias(
 
 # Library containing all of the graph construction code that is
 # independent of the runtime.
-#
-# TODO(mrry): Refactor graph_constructor.cc so that it does not depend on code
-# in "common_runtime/", and then the entire "graph/" directory can be included
-# in this library.
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
@@ -2740,42 +2739,6 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_tests(
-    name = "higher_level_tests_needing_kernels",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/graph:higher_level_tests_needing_kernels",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":all_kernels",
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
     ],
 )
 

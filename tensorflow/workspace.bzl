@@ -177,11 +177,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "41a0a396a5a9cb2171c1c7f6d7689316beaa6f638663161fc7f86450eba33070",
-        strip_prefix = "XNNPACK-5871703602c459b98c12be301c01255ae68a45e2",
+        sha256 = "15a300dec0d483af67310ed2edf76a6eff643e1438d0612ad00a372add472c22",
+        strip_prefix = "XNNPACK-5cb16e7ace0fcdcab164af01620a606ba828a3be",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5871703602c459b98c12be301c01255ae68a45e2.zip",
-            "https://github.com/google/XNNPACK/archive/5871703602c459b98c12be301c01255ae68a45e2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5cb16e7ace0fcdcab164af01620a606ba828a3be.zip",
+            "https://github.com/google/XNNPACK/archive/5cb16e7ace0fcdcab164af01620a606ba828a3be.zip",
         ],
     )
 
@@ -679,8 +679,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "ac2aaa3788cc5e7e2bd3752ad9f71e37f411bdca"
-    LLVM_SHA256 = "332d8977754142aae465571a6454d3b04a4dd36eca491d7cea07016232d33a0d"
+    LLVM_COMMIT = "307cfdf5338641e3a895857ef02dc9da35cd0eb6"
+    LLVM_SHA256 = "5e75125ecadee4f91e07c20bf6612d740913a677348fd33c7264ee8fe7d12b17"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

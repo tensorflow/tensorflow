@@ -784,6 +784,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {

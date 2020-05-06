@@ -284,34 +284,32 @@ class BroadcastInDimConverter
         broadcastOp.operand().getType().template cast<ShapedType>();
     unsigned nloops = resultType.getRank();
 
+    // The input is a scalar, i.e. this is a scalar broadcast op.
+    if (operandType.getRank() == 0) {
+      return b->getAffineMapArrayAttr(
+          {AffineMap::get(nloops, /*symbolCount=*/0, b->getContext()),
+           b->getMultiDimIdentityMap(nloops)});
+    }
+
     auto operandShape = operandType.getShape();
     SmallVector<AffineExpr, 4> dimExprs;
-    AffineMap inputMap = AffineMap::get(b->getContext());
-    {
-      dimExprs.reserve(nloops);
+    dimExprs.reserve(nloops);
 
-      if (broadcastOp.broadcast_dimensions()) {
-        for (const auto& broadcastDim :
-             enumerate(broadcastOp.broadcast_dimensions().getIntValues())) {
-          int size = broadcastDim.value().getSExtValue();
-          // TODO(pifon): Add support for args with dynamic shapes for the case
-          // when a dimension of size 1 is broadcasted into dim of size N.
-          AffineExpr affineExpr = operandShape[broadcastDim.index()] == 1
-                                      ? b->getAffineConstantExpr(0)
-                                      : b->getAffineDimExpr(size);
-          dimExprs.push_back(affineExpr);
-        }
-      }
-      if (dimExprs.empty()) {
-        // The input is a scalar, i.e. this is a scalar broadcast op.
-        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, b->getContext());
-      } else {
-        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs,
-                                  b->getContext());
+    if (broadcastOp.broadcast_dimensions()) {
+      for (const auto& broadcastDim :
+           enumerate(broadcastOp.broadcast_dimensions().getIntValues())) {
+        int size = broadcastDim.value().getSExtValue();
+        bool expansion_needed = operandShape[broadcastDim.index()] == 1 &&
+                                resultType.getShape()[size] != 1;
+        // TODO(pifon): Add support for args with dynamic shapes for the case
+        // when a dimension of size 1 is broadcasted into dim of size N.
+        dimExprs.push_back(expansion_needed ? b->getAffineConstantExpr(0)
+                                            : b->getAffineDimExpr(size));
       }
     }
     return b->getAffineMapArrayAttr(
-        {inputMap, b->getMultiDimIdentityMap(nloops)});
+        {AffineMap::get(nloops, /*symbolCount=*/0, dimExprs, b->getContext()),
+         b->getMultiDimIdentityMap(nloops)});
   }
 };
 
@@ -635,6 +633,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::RsqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SignOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::SinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
@@ -730,6 +729,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::RsqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SinOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>,

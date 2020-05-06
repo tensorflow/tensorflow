@@ -156,18 +156,22 @@ Status CreateWritableFile(Env* env, const string& dirname, const string& name,
   return env->NewWritableFile(*filepath, file);
 }
 
-template <class T>
-Status WriteTextProtoToUniqueFile(T& proto, WritableFile* file) {
+Status WriteTextProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
+                                  WritableFile* file) {
   string s;
-#if defined(TENSORFLOW_LITE_PROTOS)
-  if (!SerializeToStringDeterministic(proto, &s)) {
-    return errors::Internal("Failed to serialize proto to string.");
-  }
-#else
   if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &s)) {
     return errors::FailedPrecondition("Unable to convert proto to text.");
   }
-#endif
+  TF_RETURN_IF_ERROR(file->Append(s));
+  return file->Close();
+}
+
+Status WriteTextProtoToUniqueFile(
+    const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
+  string s;
+  if (!SerializeToStringDeterministic(proto, &s)) {
+    return errors::Internal("Failed to serialize proto to string.");
+  }
   TF_RETURN_IF_ERROR(file->Append(s));
   return file->Close();
 }

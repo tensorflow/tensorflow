@@ -511,6 +511,10 @@ EagerContext::~EagerContext() {
   // don't send RPCs and block in destructor.
   WaitForAndCloseRemoteContexts();
 
+  // Custom devices may have obtained references to various context components
+  // (executors, thread pool). It's safer to run their destructors early.
+  custom_devices_.clear();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {

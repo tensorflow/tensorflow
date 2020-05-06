@@ -43,7 +43,6 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Analysis/Verifier.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -57,6 +56,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
@@ -1817,6 +1817,8 @@ Status ImporterBase::ConvertNode(const Node& node) {
   absl::c_stable_sort(in_edges, [](const Edge* e1, const Edge* e2) {
     if (e1->IsControlEdge() && !e2->IsControlEdge()) return false;
     if (!e1->IsControlEdge() && e2->IsControlEdge()) return true;
+    if (e1->IsControlEdge() && e2->IsControlEdge())
+      return e1->src()->id() < e2->src()->id();
     return e1->dst_input() < e2->dst_input();
   });
 

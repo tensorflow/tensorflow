@@ -85,16 +85,20 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
       type, llvm::makeArrayRef(arr.data(), arr.size()));
 }
 
-StatusOr<ElementsAttr> ConvertBF16Tensor(const Tensor& input_tensor,
-                                         ShapedType type) {
+ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor, ShapedType type) {
   auto flat = input_tensor.flat<bfloat16>();
+  llvm::SmallVector<llvm::APFloat, 4> floats;
+  floats.reserve(flat.size());
+  for (bfloat16 v : llvm::makeArrayRef(flat.data(), flat.size()))
+    floats.push_back(llvm::APFloat(static_cast<double>(v)));
+  return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(floats));
+}
 
-  llvm::SmallVector<double, 4> flat_double;
-  flat_double.reserve(flat.size());
-  for (bfloat16 v : llvm::makeArrayRef(flat.data(), flat.size())) {
-    flat_double.push_back(static_cast<double>(v));
-  }
-  return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(flat_double));
+ElementsAttr ConvertHalfTensor(const Tensor& tensor, ShapedType type) {
+  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
+                                   tensor.TotalBytes());
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer,
+                                                   /*isSplatBuffer=*/false);
 }
 
 StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
@@ -136,7 +140,9 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     // BFLOAT16 is a special case that it needs to be cast to double type to
     // match its storage type.
     case DT_BFLOAT16:
-      return ConvertBF16Tensor(input_tensor, type);
+      return ConvertBf16Tensor(input_tensor, type);
+    case DT_HALF:
+      return ConvertHalfTensor(input_tensor, type);
 
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);

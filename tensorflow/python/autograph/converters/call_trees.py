@@ -29,6 +29,7 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.utils import ag_logging
 
@@ -218,4 +219,7 @@ def transform(node, ctx):
         node: The transformed AST
         new_names: set(string), containing any newly-generated names
   """
-  return CallTreeTransformer(ctx).visit(node)
+  node = qual_names.resolve(node)
+
+  node = CallTreeTransformer(ctx).visit(node)
+  return node

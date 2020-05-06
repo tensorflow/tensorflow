@@ -1862,6 +1862,7 @@ struct ResizeNearestNeighborOperator : Operator {
       : Operator(OperatorType::kResizeNearestNeighbor) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of

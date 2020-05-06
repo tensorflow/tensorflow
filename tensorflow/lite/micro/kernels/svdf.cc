@@ -31,10 +31,6 @@ namespace micro {
 namespace svdf {
 namespace {
 
-// These constants represent constants specific to the hotword "OK G" model.
-// They exist until (b/132070898) is fixed.
-constexpr int kScratchTensorMaxSize = 64;
-
 struct OpData {
   int32 effective_scale_1_a;
   int32 effective_scale_2_a;
@@ -42,6 +38,8 @@ struct OpData {
   // shift value - typically between [-32, 32].
   int effective_scale_1_b;
   int effective_scale_2_b;
+  int scratch_tensor_index;
+  int scratch_output_tensor_index;
 };
 
 /**
@@ -54,7 +52,6 @@ struct OpData {
  * and resizes the output tensor. Micro runtime does not support tensor
  * resizing.
  */
-
 static inline void ApplyTimeWeightsBiasAndActivation(
     int batch_size, int memory_size, int num_filters, int num_units, int rank,
     const float* const __restrict__ weights_time_ptr,
@@ -120,7 +117,8 @@ inline void EvalFloatSVDF(
     TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input,
     const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
     const TfLiteTensor* bias, const TfLiteSVDFParams* params,
-    TfLiteTensor* activation_state, TfLiteTensor* output) {
+    int scratch_tensor_index, TfLiteTensor* activation_state,
+    TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -135,10 +133,11 @@ inline void EvalFloatSVDF(
 
   float* state_ptr = GetTensorData<float>(activation_state);
 
-  // TODO(b/132070898): Move this temp variable to the new scratch buffer API
-  // when ready.
-  float scratch_tensor[kScratchTensorMaxSize];
-  float* scratch_ptr = scratch_tensor;
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(context->GetScratchBuffer != nullptr);
+
+  float* scratch_ptr = static_cast<float*>(
+      context->GetScratchBuffer(context, scratch_tensor_index));
 
   float* output_ptr = GetTensorData<float>(output);
 
@@ -185,13 +184,15 @@ inline void EvalFloatSVDF(
       bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
 
-void EvalIntegerSVDF(
-    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input_tensor,
-    const TfLiteTensor* weights_feature_tensor,
-    const TfLiteTensor* weights_time_tensor, const TfLiteTensor* bias_tensor,
-    const TfLiteSVDFParams* params, TfLiteTensor* activation_state_tensor,
-    TfLiteTensor* output_tensor, int32_t scale_1_a, int scale_1_b,
-    int32_t scale_2_a, int scale_2_b, int32_t input_zp, int32_t output_zp) {
+void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
+                     const TfLiteTensor* input_tensor,
+                     const TfLiteTensor* weights_feature_tensor,
+                     const TfLiteTensor* weights_time_tensor,
+                     const TfLiteTensor* bias_tensor,
+                     const TfLiteSVDFParams* params,
+                     TfLiteTensor* activation_state_tensor,
+                     TfLiteTensor* output_tensor, const OpData& data,
+                     int32_t input_zp, int32_t output_zp) {
   const int n_rank = params->rank;
   const int n_batch = input_tensor->dims->data[0];
   const int n_input = input_tensor->dims->data[1];
@@ -199,10 +200,13 @@ void EvalIntegerSVDF(
   const int n_unit = n_filter / n_rank;
   const int n_memory = weights_time_tensor->dims->data[1];
 
-  // TODO(b/132070898): Move these temp variables to the new scratch buffer API
-  // when ready.
-  int32_t scratch_tensor[kScratchTensorMaxSize];
-  int32_t scratch_output_tensor[kScratchTensorMaxSize];
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(context->GetScratchBuffer != nullptr);
+
+  int32_t* scratch_tensor = static_cast<int32_t*>(
+      context->GetScratchBuffer(context, data.scratch_tensor_index));
+  int32_t* scratch_output_tensor = static_cast<int32_t*>(
+      context->GetScratchBuffer(context, data.scratch_output_tensor_index));
 
   // Shift states.
   int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
@@ -236,8 +240,8 @@ void EvalIntegerSVDF(
         for (int c = 0; c < n_input; c++) {
           dot_prod += *matrix_ptr++ * (*vector_in_batch++ - input_zp);
         }
-        dot_prod =
-            MultiplyByQuantizedMultiplier(dot_prod, scale_1_a, scale_1_b);
+        dot_prod = MultiplyByQuantizedMultiplier(
+            dot_prod, data.effective_scale_1_a, data.effective_scale_1_b);
         dot_prod = std::min(std::max(output_min, dot_prod), output_max);
         // This assumes state is symmetrically quantized. Otherwise last bit of
         // state should be initialized to its zero point and accumulate the
@@ -310,7 +314,8 @@ void EvalIntegerSVDF(
     const int32_t output_min = std::numeric_limits<int8_t>::min();
     for (int i = 0; i < n_batch * n_unit; ++i) {
       int32_t x1 = scratch_output_tensor[i];
-      int32_t x2 = MultiplyByQuantizedMultiplier(x1, scale_2_a, scale_2_b);
+      int32_t x2 = MultiplyByQuantizedMultiplier(x1, data.effective_scale_2_a,
+                                                 data.effective_scale_2_b);
       int32_t x3 = x2 + output_zp;
       int32_t x4 = std::min(std::max(output_min, x3), output_max);
       GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
@@ -443,6 +448,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(effective_scale_2, &(data->effective_scale_2_a),
                        &(data->effective_scale_2_b));
 
+    TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
+
+    const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+        context, batch_size * num_filters * sizeof(int32_t),
+        &(data->scratch_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_status);
+
+    const TfLiteStatus scratch_output_status =
+        context->RequestScratchBufferInArena(
+            context, batch_size * num_units * sizeof(int32_t),
+            &(data->scratch_output_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_output_status);
   } else {
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
     TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteFloat32);
@@ -451,6 +468,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
     }
     TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+
+    TFLITE_DCHECK(node->user_data != nullptr);
+    OpData* data = static_cast<OpData*>(node->user_data);
+
+    TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
+    const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+        context, batch_size * num_filters * sizeof(float),
+        &(data->scratch_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_status);
   }
 
   return kTfLiteOk;
@@ -469,22 +495,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
       EvalFloatSVDF(context, node, input, weights_feature, weights_time, bias,
-                    params, activation_state, output);
+                    params, data.scratch_tensor_index, activation_state,
+                    output);
       return kTfLiteOk;
       break;
     }
 
     case kTfLiteInt8: {
       TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
-      TFLITE_DCHECK(node->user_data != nullptr);
-      const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
       EvalIntegerSVDF(context, node, input, weights_feature, weights_time, bias,
-                      params, activation_state, output,
-                      data.effective_scale_1_a, data.effective_scale_1_b,
-                      data.effective_scale_2_a, data.effective_scale_2_b,
+                      params, activation_state, output, data,
                       input->params.zero_point, output->params.zero_point);
       return kTfLiteOk;
       break;

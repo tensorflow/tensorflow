@@ -171,12 +171,33 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   of the output will have L2-norm less than or equal to `clip_norm`. If
   `axes == [0]` instead, each column of the output will be clipped.
 
+  Code example:
+
+  >>> some_nums = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float32)
+  >>> tf.clip_by_norm(some_nums, 2.0).numpy()
+  array([[0.26967996, 0.5393599 , 0.80903983, 1.0787199 , 1.3483998 ]],
+        dtype=float32)
+
   This operation is typically used to clip gradients before applying them with
-  an optimizer.
+  an optimizer.  Most gradient data is a collection of different shaped tensors
+  for different parts of the model.  Thus, this is a common usage:
+
+  ```
+  # Get your gradients after training
+  loss_value, grads = grad(model, features, labels)
+
+  # Apply some clipping
+  grads = [tf.clip_by_norm(g, norm)
+               for g in grads]
+
+  # Continue on with training
+  optimizer.apply_gradients(grads)
+  ```
 
   Args:
-    t: A `Tensor` or `IndexedSlices`.
-    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+    t: A `Tensor` or `IndexedSlices`.  This must be a floating point type.
+    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value, also
+      floating point
     axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
       dimensions.

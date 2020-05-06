@@ -58,6 +58,7 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
         "tf_status_helper.h",
