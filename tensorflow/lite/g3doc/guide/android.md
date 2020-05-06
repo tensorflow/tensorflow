@@ -216,10 +216,10 @@ libraries:
 
 32bit armeabi-v7a:
 ```
-bazel build --config=android_arm //tensorflow/lite:libtensorflowlite.so -c opt
+bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
 ```
 
 64bit arm64-v8a:
 ```
-bazel build --config=android_arm64 //tensorflow/lite:libtensorflowlite.so -c opt
+bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
 ```
