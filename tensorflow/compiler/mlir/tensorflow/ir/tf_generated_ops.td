@@ -1896,6 +1896,29 @@ is the same, though it is cleaner to use `tf.io.decode_image`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_DataFormatDimMapOp : TF_Op<"DataFormatDimMap", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Returns the dimension index in the destination data format given the one in
+  }];
+
+  let description = [{
+the source data format.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x,
+
+    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
+    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_DepthToSpaceOp : TF_Op<"DepthToSpace", [NoSideEffect]> {
   let summary = "DepthToSpace for tensors of type T.";
 
