@@ -396,7 +396,7 @@ class CategoricalEncodingAdaptTest(
 
     ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
                                             tensor_shape.TensorShape([]))
-    batched_ds = ds.take(100).batch(1)
+    batched_ds = ds.take(2)
     input_t = keras.Input(shape=(), dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=10, num_oov_tokens=0, reserve_zero=False)
