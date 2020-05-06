@@ -299,7 +299,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ]
         self._testBinary(bitwise_ops.right_shift, lhs, rhs, expected=expected)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testAdd(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -326,7 +325,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=np.array([3.0269620882574744, 3.3149631512242195],
                               dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testMultiply(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -390,7 +388,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -934,7 +931,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
       expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool)
       self._testBinary(op, lhs, rhs, expected=expected)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testBroadcasting(self):
     """Tests broadcasting behavior of an operator."""
 
