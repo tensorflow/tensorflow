@@ -311,43 +311,6 @@ def shape_from_pyval(pyval):
   return convert(pyval)
 
 
-def transfer_to_infeed(value, device=None):
-  """Transfers the given value into the XLA infeed queue.
-
-  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
-  a totally ordered stream of values. This is dequeued from XLA computations via
-  the Infeed() operation.
-
-  Args:
-    value: the value that the caller would like to enqueue into the XLA infeed
-      queue
-    device: the device to infeed the value to. Each device has a distinct infeed
-      queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  device.transfer_to_infeed(value)
-
-
-def transfer_from_outfeed(shape, device=None):
-  """Transfers a literal of the given shape from `device`'s outfeed.
-
-  Args:
-    shape: The shape of the value to transfer from outfeed.
-    device: The device from which to transfer the outfeed value. Each device has
-      a distinct outfeed queue..
-
-  Returns:
-    The literal value that is produced from the outfeed queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  return device.transfer_from_outfeed(
-      shape.with_major_to_minor_layout_if_absent())
-
-
 DeviceAssignment = _xla.DeviceAssignment
 DeviceAssignment.__doc__ = """
 A DeviceAssignment is a C++ object with the following signature.
