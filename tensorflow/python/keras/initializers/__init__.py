@@ -22,6 +22,7 @@ import threading
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.initializers import initializers_v1
 from tensorflow.python.keras.initializers import initializers_v2
 from tensorflow.python.keras.utils import generic_utils
@@ -156,6 +157,8 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
+    return identifier
+  elif isinstance(identifier, ops.Tensor):
     return identifier
   else:
     raise ValueError('Could not interpret initializer identifier: ' +
