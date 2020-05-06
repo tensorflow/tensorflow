@@ -1,0 +1,735 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //tensorflow/c/experimental/filesystem:modular_filesystem_test
+-----------------------------------------------------------------------------
+[==========] Running 104 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 104 tests from ModularFileSystem/ModularFileSystemTest
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestTranslateName/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:206: Failure
+Expected equality of these values:
+  fs->TranslateName(tensorflow::strings::StrCat(GetParam(), "://"))
+    Which is: "gs://"
+  "/"
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:209: Failure
+Expected equality of these values:
+  fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":///"))
+    Which is: "gs:///"
+  "/"
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:212: Failure
+Expected equality of these values:
+  fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":////"))
+    Which is: "gs:////"
+  "/"
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:217: Failure
+Expected equality of these values:
+  GetRelativePath(fs->TranslateName(GetURIForPath("a_file")))
+    Which is: { 'a' (97, 0x61), '_' (95, 0x5F), 'f' (102, 0x66), 'i' (105, 0x69), 'l' (108, 0x6C), 'e' (101, 0x65) }
+  "/a_file"
+    Which is: 0x10368b559
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:219: Failure
+Expected equality of these values:
+  GetRelativePath(fs->TranslateName(GetURIForPath("a_dir/a_file")))
+    Which is: { 'a' (97, 0x61), '_' (95, 0x5F), 'd' (100, 0x64), 'i' (105, 0x69), 'r' (114, 0x72), '/' (47, 0x2F), 'a' (97, 0x61), '_' (95, 0x5F), 'f' (102, 0x66), 'i' (105, 0x69), 'l' (108, 0x6C), 'e' (101, 0x65) }
+  "/a_dir/a_file"
+    Which is: 0x10368b5c0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:221: Failure
+Expected equality of these values:
+  GetRelativePath(fs->TranslateName(GetURIForPath("./a_file")))
+    Which is: { '.' (46, 0x2E), '/' (47, 0x2F), 'a' (97, 0x61), '_' (95, 0x5F), 'f' (102, 0x66), 'i' (105, 0x69), 'l' (108, 0x6C), 'e' (101, 0x65) }
+  "/a_file"
+    Which is: 0x10368b559
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:224: Failure
+Expected equality of these values:
+  GetRelativePath(fs->TranslateName( GetURIForPath("a/convoluted/../path/./to/.//.///a/file")))
+    Which is: { 'a' (97, 0x61), '/' (47, 0x2F), 'c' (99, 0x63), 'o' (111, 0x6F), 'n' (110, 0x6E), 'v' (118, 0x76), 'o' (111, 0x6F), 'l' (108, 0x6C), 'u' (117, 0x75), 't' (116, 0x74), 'e' (101, 0x65), 'd' (100, 0x64), '/' (47, 0x2F), '.' (46, 0x2E), '.' (46, 0x2E), '/' (47, 0x2F), 'p' (112, 0x70), 'a' (97, 0x61), 't' (116, 0x74), 'h' (104, 0x68), '/' (47, 0x2F), '.' (46, 0x2E), '/' (47, 0x2F), 't' (116, 0x74), 'o' (111, 0x6F), '/' (47, 0x2F), '.' (46, 0x2E), '/' (47, 0x2F), '/' (47, 0x2F), '.' (46, 0x2E), '/' (47, 0x2F), '/' (47, 0x2F), ... }
+  "/a/path/to/a/file"
+    Which is: 0x10368b6af
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestTranslateName/0, where GetParam() = "gs" (987 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateFile/0 (1635 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateFileNonExisting/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:240: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFileNonExisting/0, where GetParam() = "gs" (1843 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateFileExistingDir/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:251: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFileExistingDir/0, where GetParam() = "gs" (2151 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateFilePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:265: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFilePathIsInvalid/0, where GetParam() = "gs" (2866 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestAppendFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestAppendFile/0 (2457 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestAppendFileNonExisting/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:281: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFileNonExisting/0, where GetParam() = "gs" (2098 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestAppendFileExistingDir/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:292: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFileExistingDir/0, where GetParam() = "gs" (2817 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateThenAppendFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateThenAppendFile/0 (3482 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestAppendFilePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:321: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFilePathIsInvalid/0, where GetParam() = "gs" (3481 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestReadFile/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:328: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFile/0, where GetParam() = "gs" (412 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestReadFileNonExisting/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:335: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFileNonExisting/0, where GetParam() = "gs" (408 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestReadFileExistingDir/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:345: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFileExistingDir/0, where GetParam() = "gs" (820 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateThenReadFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateThenReadFile/0 (1841 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestReadFilePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:372: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFilePathIsInvalid/0, where GetParam() = "gs" (1844 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegion/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegion/0 (920 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionNonExisting/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionNonExisting/0 (925 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionExistingDir/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:396: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in Read():  [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionExistingDir/0, where GetParam() = "gs" (1330 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromEmptyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromEmptyFile/0 (1819 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromFile/0 (3735 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromFilePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:450: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in Read():  [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromFilePathIsInvalid/0, where GetParam() = "gs" (2258 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateDir/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCreateDir/0 (930 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateDirNoParent/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:462: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirNoParent/0, where GetParam() = "gs" (1014 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateDirWhichIsFile/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:473: Failure
+UnimplementedOrReturnsCode(status, Code::ALREADY_EXISTS) evaluates to false, where
+status evaluates to OK
+Code::ALREADY_EXISTS evaluates to 6
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirWhichIsFile/0, where GetParam() = "gs" (911 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateDirTwice/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:482: Failure
+UnimplementedOrReturnsCode(status, Code::ALREADY_EXISTS) evaluates to false, where
+status evaluates to OK
+Code::ALREADY_EXISTS evaluates to 6
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirTwice/0, where GetParam() = "gs" (1531 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCreateDirPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:495: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirPathIsInvalid/0, where GetParam() = "gs" (2374 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDir/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:501: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Invalid argument: GCS path doesn't contain an object name.
+Code::OK evaluates to 0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDir/0, where GetParam() = "gs" (3244 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirInATree/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirInATree/0 (3089 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirWhichIsFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirWhichIsFile/0 (2877 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirTwice/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirTwice/0 (2839 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirPathIsInvalid/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirPathIsInvalid/0 (2870 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedDir/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedDir/0 (1637 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedFile/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedFile/0 (1639 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteFile/0 (2047 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileFromDirectory/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileFromDirectory/0 (2561 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileDoesNotExist/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileDoesNotExist/0 (733 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileWhichIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:619: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in DeleteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteFileWhichIsDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteFileWhichIsDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileWhichIsDirectory/0, where GetParam() = "gs" (1110 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteFilePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:632: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in DeleteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteFilePathIsInvalid_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteFilePathIsInvalid_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteFilePathIsInvalid/0, where GetParam() = "gs" (1846 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectory/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectory/0 (829 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryFromDirectory/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryFromDirectory/0 (1336 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryDoesNotExist/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryDoesNotExist/0 (403 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryNotEmpty/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryNotEmpty/0 (1936 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryWhichIsFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryWhichIsFile/0 (1949 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryPathIsInvalid/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteDirectoryPathIsInvalid/0 (1534 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyEmpty/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:711: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyEmpty_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyEmpty_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:713: Failure
+Expected equality of these values:
+  undeleted_dirs
+    Which is: 1
+  0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyEmpty/0, where GetParam() = "gs" (1125 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyNotEmpty/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:739: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyNotEmpty_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyNotEmpty_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:741: Failure
+Expected equality of these values:
+  undeleted_dirs
+    Which is: 1
+  0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyNotEmpty/0, where GetParam() = "gs" (3173 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyDoesNotExist/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyDoesNotExist/0 (717 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyAFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyAFile/0 (2868 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:782: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyPathIsInvalid_0/a_file/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestDeleteRecursivelyPathIsInvalid_0/a_file/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyPathIsInvalid/0, where GetParam() = "gs" (1903 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedDir/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedDir/0 (1680 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedFile/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedFile/0 (1638 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRenameFile/0 (3690 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileOverwrite/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRenameFileOverwrite/0 (4606 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourceNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourceNotFound/0 (715 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileDestinationParentNotFound/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:895: Failure
+UnimplementedOrReturnsCode(status, Code::NOT_FOUND) evaluates to false, where
+status evaluates to OK
+Code::NOT_FOUND evaluates to 5
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileDestinationParentNotFound/0, where GetParam() = "gs" (2562 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourceIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:905: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in RewriteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestRenameFileSourceIsDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestRenameFileSourceIsDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourceIsDirectory/0, where GetParam() = "gs" (1127 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:921: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetIsDirectory/0, where GetParam() = "gs" (2968 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourcePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:935: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in RewriteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestRenameFileSourcePathIsInvalid_0/a_file/x",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestRenameFileSourcePathIsInvalid_0/a_file/x",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourcePathIsInvalid/0, where GetParam() = "gs" (1946 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:955: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetPathIsInvalid/0, where GetParam() = "gs" (3995 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRenameFileCompareContents/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRenameFileCompareContents/0 (4506 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCopyFile/0 (2827 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileOverwrite/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCopyFileOverwrite/0 (4245 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourceNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourceNotFound/0 (708 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourceIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1044: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in RewriteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestCopyFileSourceIsDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestCopyFileSourceIsDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourceIsDirectory/0, where GetParam() = "gs" (1129 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1060: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetIsDirectory/0, where GetParam() = "gs" (3377 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourcePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1074: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in RewriteObject: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestCopyFileSourcePathIsInvalid_0/a_file/x",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestCopyFileSourcePathIsInvalid_0/a_file/x",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourcePathIsInvalid/0, where GetParam() = "gs" (2355 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1094: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to OK
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetPathIsInvalid/0, where GetParam() = "gs" (3588 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestCopyFileCompareContents/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestCopyFileCompareContents/0 (4710 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFileExists/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestFileExists/0 (2148 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFileExistsButIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1148: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFileExistsButIsDirectory_0/a_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFileExistsButIsDirectory_0/a_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFileExistsButIsDirectory/0, where GetParam() = "gs" (1125 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFileExistsNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestFileExistsNotFound/0 (629 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFileExistsPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1167: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFileExistsPathIsInvalid_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFileExistsPathIsInvalid_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFileExistsPathIsInvalid/0, where GetParam() = "gs" (2066 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFilesExist/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestFilesExist/0 (3712 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFilesExistAllFailureModes/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1211: Failure
+UnimplementedOrReturnsCode(statuses[0], Code::OK) evaluates to false, where
+statuses[0] evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFilesExistAllFailureModes_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFilesExistAllFailureModes_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1214: Failure
+UnimplementedOrReturnsCode(statuses[2], Code::FAILED_PRECONDITION) evaluates to false, where
+statuses[2] evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFilesExistAllFailureModes_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestFilesExistAllFailureModes_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFilesExistAllFailureModes/0, where GetParam() = "gs" (3093 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestFilesExistsNoFiles/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestFilesExistsNoFiles/0 (433 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestStatEmptyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestStatEmptyFile/0 (1704 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestStatNonEmptyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestStatNonEmptyFile/0 (3419 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestStatDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1274: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestStatDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestStatDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestStatDirectory/0, where GetParam() = "gs" (1225 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestStatNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestStatNotFound/0 (718 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestStatPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1297: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestStatPathIsInvalid_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestStatPathIsInvalid_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestStatPathIsInvalid/0, where GetParam() = "gs" (2047 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestIsDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1306: Failure
+UnimplementedOrReturnsCode(status, Code::OK) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestIsDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestIsDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::OK evaluates to 0
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestIsDirectory/0, where GetParam() = "gs" (1126 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryFile/0 (2320 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryNotFound/0 (754 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryPathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1337: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestIsDirectoryPathIsInvalid_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestIsDirectoryPathIsInvalid_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryPathIsInvalid/0, where GetParam() = "gs" (1948 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeEmptyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeEmptyFile/0 (1737 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeNonEmptyFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeNonEmptyFile/0 (3483 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeDirectory/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1385: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestGetFileSizeDirectory_0/a_dir",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestGetFileSizeDirectory_0/a_dir",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeDirectory/0, where GetParam() = "gs" (1039 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeNotFound/0 (703 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizePathIsInvalid/0
+tensorflow/c/experimental/filesystem/modular_filesystem_test.cc:1406: Failure
+UnimplementedOrReturnsCode(status, Code::FAILED_PRECONDITION) evaluates to false, where
+status evaluates to Not found: Permanent error in GetObjectMetadata: {
+  "error": {
+    "code": 404,
+    "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestGetFileSizePathIsInvalid_0/a_file/a_new_file",
+    "errors": [
+      {
+        "message": "No such object: tensorflow-gcs-filesystem/test-vnvo/tf_fs_1537472684_TestGetFileSizePathIsInvalid_0/a_file/a_new_file",
+        "domain": "global",
+        "reason": "notFound"
+      }
+    ]
+  }
+}
+ [NOT_FOUND]
+Code::FAILED_PRECONDITION evaluates to 9
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizePathIsInvalid/0, where GetParam() = "gs" (2148 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetChildren/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetChildren/0 (4097 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenEmpty/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenEmpty/0 (821 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenOfFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenOfFile/0 (1739 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenPathNotFound/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenPathNotFound/0 (411 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenPathIsInvalid/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetChildrenPathIsInvalid/0 (1536 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPaths/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPaths/0 (5428 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsEmptyFileSystem/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsEmptyFileSystem/0 (408 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsEmptyPattern/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsEmptyPattern/0 (5334 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsLiteralMatch/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsLiteralMatch/0 (5421 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsNoMatch/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsNoMatch/0 (5322 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestAppendAndTell/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestAppendAndTell/0 (1947 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestClose/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestClose/0 (1640 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRoundTrip/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRoundTrip/0 (2493 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestRoundTripWithAppendableFile/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestRoundTripWithAppendableFile/0 (6621 ms)
+[ RUN      ] ModularFileSystem/ModularFileSystemTest.TestReadOutOfRange/0
+[       OK ] ModularFileSystem/ModularFileSystemTest.TestReadOutOfRange/0 (3888 ms)
+[----------] 104 tests from ModularFileSystem/ModularFileSystemTest (228209 ms total)
+
+[----------] Global test environment tear-down
+[==========] 104 tests from 1 test suite ran. (228209 ms total)
+[  PASSED  ] 52 tests.
+[  SKIPPED ] 11 tests, listed below:
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirInATree/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirTwice/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedDir/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDirFromNestedFile/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedDir/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyANestedFile/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetChildren/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPaths/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsEmptyPattern/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsLiteralMatch/0
+[  SKIPPED ] ModularFileSystem/ModularFileSystemTest.TestGetMatchingPathsNoMatch/0
+[  FAILED  ] 41 tests, listed below:
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestTranslateName/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFileNonExisting/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFileExistingDir/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateFilePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFileNonExisting/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFileExistingDir/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestAppendFilePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFile/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFileNonExisting/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFileExistingDir/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestReadFilePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionExistingDir/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateMemoryRegionFromFilePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirNoParent/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirWhichIsFile/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirTwice/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCreateDirPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRecursivelyCreateDir/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteFileWhichIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteFilePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyEmpty/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyNotEmpty/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestDeleteRecursivelyPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileDestinationParentNotFound/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourceIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileSourcePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestRenameFileTargetPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourceIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileSourcePathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestCopyFileTargetPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFileExistsButIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFileExistsPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestFilesExistAllFailureModes/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestStatDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestStatPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestIsDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestIsDirectoryPathIsInvalid/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizeDirectory/0, where GetParam() = "gs"
+[  FAILED  ] ModularFileSystem/ModularFileSystemTest.TestGetFileSizePathIsInvalid/0, where GetParam() = "gs"
+
+41 FAILED TESTS
