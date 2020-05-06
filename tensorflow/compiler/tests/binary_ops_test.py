@@ -1536,8 +1536,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[4, 5, 6], [40, 50, 60]], dtype=dtype),
           expected=np.array([[-3, 6, -3], [60, -120, 60]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Define BroadcastArgs op in TF and const fold it")
   def testBroadcastArgs(self):
     self._testBinary(array_ops.broadcast_dynamic_shape,
                      np.array([2, 3, 5], dtype=np.int32),
