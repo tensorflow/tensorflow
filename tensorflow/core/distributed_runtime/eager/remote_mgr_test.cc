@@ -68,7 +68,8 @@ class RemoteMgrTest : public ::testing::Test {
 
 TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   RemoteMgr remote_mgr(false, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
+  const TensorShape shape({0});
+  Tensor t(DT_FLOAT, shape);
 
   TensorHandle* handle = TensorHandle::CreateLocalHandle(
       std::move(t), local_device_, local_device_, ctx_);
@@ -76,6 +77,8 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   const int output_num = 3;
   TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
                                                output_num, "", ctx_));
+  TF_ASSERT_OK(
+      handle->SetRemoteShape(shape, remote_device_, ctx_->GetContextViewId()));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));
@@ -90,9 +93,8 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
 
   const uint64 op_id = 3;
   const int output_num = 1;
-  TensorHandle* handle = TensorHandle::CreateUnshapedRemoteHandle(
-      op_id, output_num,
-      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
+  TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
+      op_id, output_num, DT_FLOAT, remote_device_, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));
@@ -119,9 +121,10 @@ TEST_F(RemoteMgrTest, InvalidateRemoteMirrorWithClusterUpdate) {
   ctx_->IncrementContextViewId();
   EXPECT_FALSE(
       handle->HasRemoteMirror(remote_device_, ctx_->GetContextViewId()));
-  // Setting remote shape should still be OK
-  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
-                                      ctx_->GetContextViewId()));
+  EXPECT_FALSE(handle
+                   ->SetRemoteShape(TensorShape({0}), remote_device_,
+                                    ctx_->GetContextViewId())
+                   .ok());
   handle->Unref();
 }
 
