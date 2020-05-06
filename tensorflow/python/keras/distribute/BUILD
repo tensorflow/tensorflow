@@ -447,3 +447,20 @@ py_library(
         "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )
+
+py_test(
+    name = "multi_worker_tutorial_test",
+    srcs = ["multi_worker_tutorial_test.py"],
+    python_version = "PY3",
+    shard_count = 5,
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
