@@ -980,10 +980,17 @@ PYBIND11_MODULE(xla_extension, m) {
               py::gil_scoped_release gil_release;
               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                                   device.GetLocalDeviceState());
+              Shape shape_with_layout = shape;
+              ShapeUtil::ForEachMutableSubshape(
+                  &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
+                    if (!subshape->has_layout()) {
+                      LayoutUtil::SetToDefaultLayout(subshape);
+                    }
+                  });
               TF_ASSIGN_OR_RETURN(
                   Literal literal,
                   local_device->client()->TransferFromOutfeedLocal(
-                      shape, local_device->device_ordinal()));
+                      shape_with_layout, local_device->device_ordinal()));
 
               literal_shared = std::make_shared<Literal>(std::move(literal));
             }
