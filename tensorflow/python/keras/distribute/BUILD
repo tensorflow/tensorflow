@@ -128,6 +128,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notpu",  # TODO(b/155867206) flaky segfault
         "notsan",
     ],
     tpu_tags = [
@@ -245,11 +246,10 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # TODO(b/153672562)
+        "notpu",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
@@ -320,7 +320,6 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
     deps = [

@@ -35,6 +35,7 @@ filegroup(
     srcs = [
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
+        "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
@@ -49,6 +50,7 @@ filegroup(
         "runtime_fft_impl.h",
         "runtime_fp16.h",
         "runtime_key_value_sort.h",
+        "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
@@ -204,6 +206,7 @@ cc_library(
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
+        ":runtime_pow",
         ":runtime_conv2d",
         ":runtime_conv2d_mkl",
         ":runtime_fft",
@@ -242,6 +245,21 @@ cc_library(
     ],
     hdrs = [
         "runtime_fp16.h",
+    ],
+    copts = runtime_copts(),
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "runtime_pow",
+    srcs = [
+        "runtime_pow.cc",
+    ],
+    hdrs = [
+        "runtime_pow.h",
     ],
     copts = runtime_copts(),
     deps = [

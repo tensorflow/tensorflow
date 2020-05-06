@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/types.h"
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -435,6 +437,84 @@ class WhileOp : public AsyncOpKernel {
     return ToBool({cond_t}, out_result);
   }
 
+  // The initial loop variable args are the inputs to the kernel.
+  //
+  // We attempt to forward the input so that it can be consumed inside the
+  // body function (and participate in buffer forwarding, etc.).
+  static void GetArgsFromContext(OpKernelContext* ctx,
+                                 std::vector<Tensor>* out_args,
+                                 DataTypeVector* out_var_types) {
+    const int num_loop_vars = ctx->num_inputs();
+    out_args->reserve(num_loop_vars);
+    out_var_types->resize(num_loop_vars);
+    for (int i = 0; i < num_loop_vars; ++i) {
+      const Tensor& input = ctx->input(i);
+      (*out_var_types)[i] = input.dtype();
+      std::unique_ptr<Tensor> maybe_forwarded_input = ctx->forward_input(
+          i, /* output_index= */ OpKernelContext::Params::kNoReservation,
+          input.dtype(), input.shape(), ctx->input_memory_type(i),
+          ctx->input_alloc_attr(i));
+      if (maybe_forwarded_input) {
+        out_args->push_back(std::move(*maybe_forwarded_input));
+      } else {
+        out_args->push_back(input);
+      }
+    }
+  }
+
+  class BodyFuncCallFrame : public CallFrameInterface {
+   public:
+    BodyFuncCallFrame(std::vector<Tensor>* args, std::vector<Tensor>* retvals,
+                      DataTypeSlice ret_types)
+        : args_(args), retvals_(retvals), ret_types_(ret_types) {}
+
+    size_t num_args() const override { return args_->size(); }
+    size_t num_retvals() const override { return retvals_->size(); }
+
+    Status GetArg(int index, const Tensor** val) override {
+      if (index < args_->size()) {
+        *val = &(*args_)[index];
+        return Status::OK();
+      } else {
+        return errors::InvalidArgument("Argument ", index, " is out of range.");
+      }
+    }
+
+    void ConsumeArg(int index, Tensor* val) override {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, args_->size());
+      *val = std::move((*args_)[index]);
+    }
+    bool CanConsumeArg(int index) const override {
+      return index >= 0 && index < args_->size();
+    }
+
+    Status SetRetval(int index, const Tensor& val) override {
+      if (TF_PREDICT_FALSE(index < 0)) {
+        return errors::InvalidArgument(
+            "Expected non-negative return value index, but got: ", index, ".");
+      } else if (TF_PREDICT_FALSE(index >= retvals_->size())) {
+        return errors::InvalidArgument("While loop body returned ", index + 1,
+                                       " arguments. Expected: ", num_retvals(),
+                                       ".");
+      } else if (TF_PREDICT_FALSE(val.dtype() != ret_types_[index])) {
+        return errors::InvalidArgument("Expected type ",
+                                       DataTypeString(ret_types_[index]),
+                                       " for return value ", index, " but got ",
+                                       DataTypeString(val.dtype()), ".");
+      }
+      (*retvals_)[index] = val;
+      return Status::OK();
+    }
+
+   private:
+    std::vector<Tensor>* const args_;     // Not owned.
+    std::vector<Tensor>* const retvals_;  // Not owned.
+    DataTypeSlice ret_types_;
+
+    TF_DISALLOW_COPY_AND_ASSIGN(BodyFuncCallFrame);
+  };
+
   class State {
    public:
     State(WhileOp* kernel, OpKernelContext* ctx, FHandle cond_handle,
@@ -446,9 +526,9 @@ class WhileOp : public AsyncOpKernel {
           done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
-      for (int i = 0; i < ctx_->num_inputs(); ++i) {
-        args_.push_back(ctx_->input(i));
-      }
+      GetArgsFromContext(ctx, &args_, &loop_var_types_);
+      body_frame_ =
+          absl::make_unique<BodyFuncCallFrame>(&args_, &rets_, loop_var_types_);
     }
 
     ~State() {}
@@ -465,6 +545,8 @@ class WhileOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
     TensorVec rets_;
+    DataTypeVector loop_var_types_;
+    std::unique_ptr<BodyFuncCallFrame> body_frame_;
 
     void EvalCond() {
       profiler::TraceMe trace_me(
@@ -504,12 +586,13 @@ class WhileOp : public AsyncOpKernel {
         return Finish(Status::OK());
       }
       rets_.clear();
+      rets_.resize(args_.size());
       profiler::TraceMe trace_me(
           [&] { return StartBodyTraceString(ctx_, opts_); },
           /*level=*/2);
       lib_->Run(
           // Evaluate the body.
-          opts_, body_handle_, args_, &rets_,
+          opts_, body_handle_, body_frame_.get(),
           // Done callback
           [this](const Status& s) {
             if (!s.ok()) {
@@ -549,16 +632,12 @@ class WhileOp : public AsyncOpKernel {
     // functions.
     std::vector<Tensor> args;
     const int num_loop_vars = ctx->num_inputs();
-    args.reserve(num_loop_vars);
+    DataTypeVector loop_var_types(num_loop_vars);
+    GetArgsFromContext(ctx, &args, &loop_var_types);
     std::vector<Tensor> cond_rets;
     cond_rets.reserve(1);
     std::vector<Tensor> body_rets;
     body_rets.reserve(num_loop_vars);
-
-    // The initial loop variable args are the inputs to the kernel.
-    for (int i = 0; i < num_loop_vars; ++i) {
-      args.push_back(ctx->input(i));
-    }
 
     // Implement the logic of the while loop as a single C++ do-while loop that
     // executes the cond and body functions synchronously.
@@ -591,8 +670,9 @@ class WhileOp : public AsyncOpKernel {
         profiler::TraceMe trace_me(
             [&] { return StartBodyTraceString(ctx, opts); },
             /*level=*/2);
-
-        TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, args, &body_rets));
+        body_rets.resize(num_loop_vars);
+        BodyFuncCallFrame call_frame(&args, &body_rets, loop_var_types);
+        TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, &call_frame));
       }
       std::swap(body_rets, args);
       body_rets.clear();

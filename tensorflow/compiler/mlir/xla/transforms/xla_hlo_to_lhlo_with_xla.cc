@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/xla/transforms/xla_hlo_to_lhlo_with_xla.h"
+
 #include <memory>
 #include <tuple>
 
@@ -72,15 +74,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 // dialect.
 class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
  public:
-  // Populate the MLIR `module` with the computation from the `hlo_module` using
-  // the provided buffer `assignment`. The returned `Status` indicates success
-  // or failure in the conversion.
-  static Status EmitModule(const BufferAssignment& assignment,
-                           const HloModule& hlo_module, ModuleOp module) {
-    return LhloDialectEmitter(assignment, hlo_module, module).Run();
-  }
-
- private:
   // Main entry point of the processing: after this call the MLIR ModuleOp is
   // populated with the computation from the HloModule. The returned `Status`
   // indicates success or failure in the conversion.
@@ -94,6 +87,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
+ private:
   Status DefaultAction(HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
@@ -414,8 +408,7 @@ Status ConvertModule(ModuleOp module, StringRef platform_name) {
   module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      LhloDialectEmitter::EmitModule(*assignment, *optimized_hlo_module,
-                                     module),
+      HloToLhloModule(*assignment, *optimized_hlo_module, module),
       "converting HLO to LHLO");
 
   return Status::OK();
@@ -450,6 +443,11 @@ class XlaHloToLhloPass
 
 std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
   return std::make_unique<XlaHloToLhloPass>();
+}
+
+Status HloToLhloModule(const BufferAssignment& assignment,
+                       const HloModule& hlo_module, ModuleOp module) {
+  return LhloDialectEmitter(assignment, hlo_module, module).Run();
 }
 
 static PassRegistration<XlaHloToLhloPass> registration(

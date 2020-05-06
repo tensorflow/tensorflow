@@ -42,6 +42,7 @@ HANDLER(RegisterWorker);
 HANDLER(WorkerUpdate);
 HANDLER(GetOrRegisterDataset);
 HANDLER(CreateJob);
+HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);
 #undef HANDLER
 

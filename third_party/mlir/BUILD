@@ -3097,32 +3097,6 @@ gentbl(
     ],
 )
 
-filegroup(
-    name = "LinalgTransformPatternsTdFiles",
-    srcs = [
-        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
-        ":AffineOpsTdFiles",
-        ":LinalgOpsTdFiles",
-        ":LinalgStructuredOpsTdFiles",
-        ":OpBaseTdFiles",
-    ],
-)
-
-gentbl(
-    name = "LinalgTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
-    td_srcs = [
-        ":LinalgTransformPatternsTdFiles",
-    ],
-)
-
 cc_library(
     name = "LinalgToLLVM",
     srcs = glob([
@@ -3239,7 +3213,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
         "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
-        "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
+        "include/mlir/Dialect/Linalg/Transforms/Transforms.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
     includes = ["include"],

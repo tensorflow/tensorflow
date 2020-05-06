@@ -323,6 +323,17 @@ class OwnedArgsCallFrame : public CallFrameBase {
     }
   }
 
+  // Since we own the argument tensors in `args_`, we can implement
+  // `ConsumeArg()` for those arguments.
+  void ConsumeArg(int index, Tensor* val) override {
+    DCHECK_GE(index, 0);
+    DCHECK_LT(index, args_.size());
+    *val = std::move(args_[index]);
+  }
+  bool CanConsumeArg(int index) const override {
+    return index >= 0 && index < args_.size();
+  }
+
  private:
   std::vector<Tensor> args_;
   const std::vector<Tensor>* const captured_inputs_;  // Not owned.
