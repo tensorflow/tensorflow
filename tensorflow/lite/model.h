@@ -31,6 +31,7 @@ namespace tflite {
 
 #if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
 using InterpreterBuilder = tflrt::EagerTfLiteInterpreterBuilderAPI;
+using Interpreter = tflrt::EagerInterpreter;
 #else
 using InterpreterBuilder = impl::InterpreterBuilder;
 #endif

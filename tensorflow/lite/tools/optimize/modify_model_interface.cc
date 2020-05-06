@@ -295,7 +295,7 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
       GetOutputTensors(model, &error_reporter);
   if (output_type == TensorType_UINT8) {
     SetOutputTypeToUINT8(model, outputs);
-  } else if (input_type == TensorType_INT8) {
+  } else if (output_type == TensorType_INT8) {
     RemoveOutputTensor(model, outputs);
   } else {
     return kTfLiteError;

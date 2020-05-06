@@ -36,6 +36,9 @@ using Status = tensorflow::Status;
 inline Status UnimplementedError(absl::string_view message) {
   return Status(error::UNIMPLEMENTED, message);
 }
+inline Status InvalidArgumentError(absl::string_view message) {
+  return Status(error::INVALID_ARGUMENT, message);
+}
 inline Status InternalError(absl::string_view message) {
   return Status(error::INTERNAL, message);
 }

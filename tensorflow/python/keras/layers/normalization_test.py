@@ -354,6 +354,13 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
       # Updates should be tracked in a `wrap_function`.
       self.assertLen(layer.updates, 2)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):
+    # Test case for GitHub issue for 32380
+    norm = normalization_v2.BatchNormalization(virtual_batch_size=8)
+    inp = keras.layers.Input(shape=(None, None, 3))
+    _ = norm(inp)
+
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()
@@ -403,8 +410,6 @@ class NormalizationLayersGraphModeOnlyTest(
       model.train_on_batch(x, x)
 
       self.assertLen(bn.updates, 4)
-      self.assertLen(bn.get_updates_for(x1), 2)
-      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
@@ -413,7 +418,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       self.assertLen(new_model.updates, 6)
       self.assertLen(model.updates, 6)
-      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 

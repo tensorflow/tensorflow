@@ -218,7 +218,7 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
   TFE_OpSetAttrType(fill_op, "Tshape", TF_INT32);
 
   float five = 5.0;
-  TFE_TensorHandle* scalar = TestScalarTensorHandle(five);
+  TFE_TensorHandle* scalar = TestScalarTensorHandle(tfe_context_, five);
   TF_Tensor* scalarTensor = TFE_TensorHandleResolve(scalar, status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
   CheckOutputShapes(fill_op,

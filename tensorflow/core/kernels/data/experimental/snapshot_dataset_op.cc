@@ -549,7 +549,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           if (!background_threads_started_) {
             for (int i = 0; i < dataset()->num_reader_threads_; ++i) {
               ++num_active_threads_;
-              thread_pool_->Schedule([this, i]() { ReadingFilesLoop(i); });
+              thread_pool_->Schedule(
+                  [this, i, env = ctx->env()]() { ReadingFilesLoop(env, i); });
             }
             background_threads_started_ = true;
           }
@@ -731,13 +732,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
        private:
         // Reads one file end to end.
-        Status ReadFile(const string& filename) {
-          std::unique_ptr<RandomAccessFile> file;
-          TF_RETURN_IF_ERROR(
-              Env::Default()->NewRandomAccessFile(filename, &file));
-          snapshot_util::Reader reader(file.get(), dataset()->compression_,
-                                       version_, dataset()->output_dtypes());
-
+        Status ReadFile(Env* env, const string& filename) {
+          std::unique_ptr<snapshot_util::Reader> reader;
+          TF_RETURN_IF_ERROR(snapshot_util::Reader::Create(
+              Env::Default(), filename, dataset()->compression_, version_,
+              dataset()->output_dtypes(), &reader));
           while (true) {
             // Wait for a slot in the buffer.
             {
@@ -754,7 +753,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
             }
             std::vector<Tensor> read_tensors;
-            Status s = reader.ReadTensors(&read_tensors);
+            Status s = reader->ReadTensors(&read_tensors);
             if (s.ok()) {
               profiler::TraceMe activity(
                   [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
@@ -787,7 +786,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         // Pulls one file off the filenames_ list and reads it through. When
         // all files are read, terminates.
-        void ReadingFilesLoop(int i) {
+        void ReadingFilesLoop(Env* env, int i) {
           auto cleanup = gtl::MakeCleanup([this]() {
             mutex_lock l(mu_);
             --num_active_threads_;
@@ -803,7 +802,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
               VLOG(2) << "Starting to read: " << filename;
             }
-            Status s = ReadFile(filename);
+            Status s = ReadFile(env, filename);
             // If we get to the end of the file, it's a clean termination and
             // we are at the end of the file. If all files have been processed,
             // then we insert an end_of_sequence marker in the buffer and
@@ -965,7 +964,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
               for (int i = 0; i < dataset()->num_writer_threads_; ++i) {
                 ++num_active_threads_;
-                thread_pool_->Schedule([this]() { WriterThread(); });
+                thread_pool_->Schedule(
+                    [this, env = ctx->env()]() { WriterThread(env); });
               }
               first_call_ = false;
             }
@@ -1002,7 +1002,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             // Book keeping to report some statistics.
             mutex_lock l(mu_);
             int64 num_bytes = 0;
-            for (auto out_tensor : *out_tensors) {
+            for (const auto& out_tensor : *out_tensors) {
               num_bytes += out_tensor.TotalBytes();
             }
 
@@ -1262,9 +1262,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         Status ProcessOneElement(int64* bytes_written,
                                  string* snapshot_data_filename,
-                                 std::unique_ptr<WritableFile>* file,
                                  std::unique_ptr<snapshot_util::Writer>* writer,
-                                 bool* end_of_processing) {
+                                 bool* end_of_processing, Env* env) {
           profiler::TraceMe activity(
               [&]() {
                 return absl::StrCat(prefix(), kSeparator, kProcessOneElement);
@@ -1296,8 +1295,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (cancelled || snapshot_failed) {
             TF_RETURN_IF_ERROR((*writer)->Close());
-            TF_RETURN_IF_ERROR((*file)->Sync());
-            TF_RETURN_IF_ERROR((*file)->Close());
             if (snapshot_failed) {
               return errors::Internal(
                   "SnapshotDataset::SnapshotWriterIterator snapshot failed");
@@ -1312,20 +1309,17 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             }
 
             bool should_close;
-            TF_RETURN_IF_ERROR(ShouldCloseFile(*snapshot_data_filename,
-                                               *bytes_written, (*writer).get(),
-                                               (*file).get(), &should_close));
+            TF_RETURN_IF_ERROR(
+                ShouldCloseWriter(*snapshot_data_filename, *bytes_written,
+                                  (*writer).get(), &should_close));
             if (should_close) {
               // If we exceed the shard size, we get a new file and reset.
               TF_RETURN_IF_ERROR((*writer)->Close());
-              TF_RETURN_IF_ERROR((*file)->Sync());
-              TF_RETURN_IF_ERROR((*file)->Close());
               *snapshot_data_filename = GetSnapshotFilename();
-              TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
-                  *snapshot_data_filename, file));
-              *writer = absl::make_unique<snapshot_util::Writer>(
-                  file->get(), dataset()->compression_, kCurrentVersion,
-                  dataset()->output_dtypes());
+
+              TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+                  env, *snapshot_data_filename, dataset()->compression_,
+                  kCurrentVersion, dataset()->output_dtypes(), writer));
               *bytes_written = 0;
             }
             TF_RETURN_IF_ERROR((*writer)->WriteTensors(elem.value));
@@ -1334,8 +1328,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (*end_of_processing) {
             TF_RETURN_IF_ERROR((*writer)->Close());
-            TF_RETURN_IF_ERROR((*file)->Sync());
-            TF_RETURN_IF_ERROR((*file)->Close());
             mutex_lock l(mu_);
             if (!written_final_metadata_file_) {
               experimental::SnapshotMetadataRecord metadata;
@@ -1358,7 +1350,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         // Just pulls off elements from the buffer and writes them.
-        void WriterThread() {
+        void WriterThread(Env* env) {
           auto cleanup = gtl::MakeCleanup([this]() {
             mutex_lock l(mu_);
             --num_active_threads_;
@@ -1367,9 +1359,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           int64 bytes_written = 0;
           string snapshot_data_filename = GetSnapshotFilename();
-          std::unique_ptr<WritableFile> file;
-          Status s =
-              Env::Default()->NewAppendableFile(snapshot_data_filename, &file);
+          std::unique_ptr<snapshot_util::Writer> writer;
+          Status s = snapshot_util::Writer::Create(
+              env, snapshot_data_filename, dataset()->compression_,
+              kCurrentVersion, dataset()->output_dtypes(), &writer);
           if (!s.ok()) {
             LOG(ERROR) << "Creating " << snapshot_data_filename
                        << " failed: " << s.ToString();
@@ -1378,16 +1371,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             cond_var_.notify_all();
             return;
           }
-          std::unique_ptr<snapshot_util::Writer> writer(
-              new snapshot_util::Writer(file.get(), dataset()->compression_,
-                                        kCurrentVersion,
-                                        dataset()->output_dtypes()));
 
           bool end_of_processing = false;
           while (!end_of_processing) {
             Status s =
                 ProcessOneElement(&bytes_written, &snapshot_data_filename,
-                                  &file, &writer, &end_of_processing);
+                                  &writer, &end_of_processing, env);
             if (!s.ok()) {
               LOG(INFO) << "Error while writing snapshot data to disk: "
                         << s.ToString();
@@ -1401,9 +1390,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        Status ShouldCloseFile(const string& filename, uint64 bytes_written,
-                               snapshot_util::Writer* writer,
-                               WritableFile* file, bool* should_close) {
+        Status ShouldCloseWriter(const string& filename, uint64 bytes_written,
+                                 snapshot_util::Writer* writer,
+                                 bool* should_close) {
           // If the compression ratio has been estimated, use it to decide
           // whether the file should be closed. We avoid estimating the
           // compression ratio repeatedly because it requires syncing the file,
@@ -1425,7 +1414,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           // Use the actual file size to determine compression ratio.
           // Make sure that all bytes are written out.
           TF_RETURN_IF_ERROR(writer->Sync());
-          TF_RETURN_IF_ERROR(file->Sync());
           uint64 file_size;
           TF_RETURN_IF_ERROR(Env::Default()->GetFileSize(filename, &file_size));
           mutex_lock l(mu_);

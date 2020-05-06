@@ -118,9 +118,20 @@ def initialize_system(embedding_config=None,
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(
-        embedding_config=config_string,
+    topology = tpu_ops.configure_distributed_tpu(
         compilation_failure_closes_chips=compilation_failure_closes_chips)
+
+    if embedding_config is None:
+      return topology
+
+    # This set of control dependencies is needed as this function is expected to
+    # return an op which will return the topology when executed, but we need to
+    # call the embedding initialization op between initializing the TPU and
+    # returning the topology.
+    with ops.control_dependencies([topology]):
+      embedding_init = tpu_ops.configure_tpu_embedding(config=config_string)
+    with ops.control_dependencies([embedding_init]):
+      return array_ops.identity(topology, name="tpu_init_identity")
 
 
 def initialize_system_for_tpu_embedding(embedding_config, job=None):
@@ -1154,8 +1165,13 @@ def split_compile_and_replicate(computation,
     }
     metadata_kwargs["num_cores_per_replica"] = (
         device_assignment.num_cores_per_replica)
+
   # This entry is used for enabling automatic outside compilation.
   metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
+  if config.get_soft_device_placement():
+    logging.info("Automatic outside compilation is enabled. "
+                 "Ops without XLA kernels will be automatically "
+                 "placed on CPU.")
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -1218,6 +1234,7 @@ def split_compile_and_replicate(computation,
                for i in inputs[0]]), infeed_queue.number_of_tuple_elements,
                                              arg_error))
 
+  dynamic_shape_inputs = False
   if maximum_shapes:
     if infeed_queue:
       raise ValueError(
@@ -1248,6 +1265,8 @@ def split_compile_and_replicate(computation,
 
     flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes,
                                                padding_spec)
+    if padding_maps:
+      dynamic_shape_inputs = True
 
     serialized_padding_maps = []
     for padding_map in padding_maps:
@@ -1304,7 +1323,7 @@ def split_compile_and_replicate(computation,
         # inputs when dynamic padding is enabled.
         # TODO(rxsang): Use other ways except argument index in padding_map so
         # outside compilation can work with dynamic padding correctly.
-        if maximum_shapes is None or composite:
+        if not dynamic_shape_inputs or composite:
           i.op._set_attr("_tpu_input_identity",
                          attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
@@ -1339,9 +1358,8 @@ def split_compile_and_replicate(computation,
           kwargs["partitioner"] = None
           logging.warning(
               "Partitioned variables are not supported on TPU. Got "
-              "`partitioner` that is {} for variable {}. "
-              "Setting `partitioner` to `None`."
-              .format(partitioner, name))
+              "`partitioner` that is %s for variable %s. "
+              "Setting `partitioner` to `None`.", partitioner, name)
         if saved_custom_getter is None:
           return getter(name, *args, **kwargs)
         else:

@@ -35,6 +35,9 @@ using gpusparseAction_t = cusparseAction_t;
 using gpusparseHandle_t = cusparseHandle_t;
 using gpuStream_t = cudaStream_t;
 
+#define GPUSPARSE(postfix) CUSPARSE_##postfix
+#define gpusparse(postfix) cusparse##postfix
+
 #elif TENSORFLOW_USE_ROCM
 
 #include "rocm/include/hipsparse/hipsparse.h"
@@ -45,6 +48,9 @@ using gpusparseMatDescr_t = hipsparseMatDescr_t;
 using gpusparseAction_t = hipsparseAction_t;
 using gpusparseHandle_t = hipsparseHandle_t;
 using gpuStream_t = hipStream_t;
+
+#define GPUSPARSE(postfix) HIPSPARSE_##postfix
+#define gpusparse(postfix) hipsparse##postfix
 
 #endif
 

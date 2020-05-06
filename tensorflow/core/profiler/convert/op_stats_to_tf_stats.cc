@@ -33,6 +33,7 @@ TfStatsRecord ConvertOpMetricsToTfStatsRecord(
     double ridge_point_operational_intensity) {
   TfStatsRecord record;
   record.set_host_or_device(on_device ? "Device" : "Host");
+  record.set_is_eager(metrics.is_eager());
   record.set_op_type(metrics.category());
   record.set_op_name(metrics.name());
   SetExecutionTimes(metrics, &record);

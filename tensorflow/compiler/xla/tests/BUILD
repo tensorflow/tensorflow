@@ -1104,6 +1104,7 @@ xla_test(
     shard_count = 40,
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1304,6 +1305,7 @@ xla_test(
 
 xla_test(
     name = "slice_test",
+    timeout = "long",
     srcs = ["slice_test.cc"],
     shard_count = 40,
     deps = [
@@ -1348,6 +1350,7 @@ xla_test(
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
@@ -1498,6 +1501,7 @@ xla_test(
     srcs = ["select_and_scatter_test.cc"],
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = [
@@ -2538,6 +2542,9 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
+        "nomsan",  # sometimes times out, http://b/78650012
+        "notsan",  # sometimes times out, http://b/78650012
+        "optonly",
     ],
     deps = [
         ":test_macros_header",

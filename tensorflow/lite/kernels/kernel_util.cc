@@ -18,8 +18,8 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 namespace tflite {
 
@@ -62,8 +62,9 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
   TF_LITE_ENSURE(context, affine_quantization->scale);
   const bool is_per_channel = affine_quantization->scale->size > 1;
   if (is_per_channel) {
-    //  Currently only Int8 is supported for per channel quantization.
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+    //  Currently only Int8/Int16 is supported for per channel quantization.
+    TF_LITE_ENSURE(context,
+                   input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
     TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_channels);
     TF_LITE_ENSURE_EQ(
@@ -104,7 +105,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
   }
-  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8 ||
+      input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, activation, output, output_activation_min,
         output_activation_max));
@@ -124,9 +126,11 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
   // pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
-    TF_LITE_ENSURE(context,
-                   std::abs(input_product_scale - bias_scale) <=
-                       1e-6 * std::min(input_product_scale, bias_scale));
+    // Here we're making sure the input_product_scale & bias_scale the same.
+    // Normally this should be guaranteed by the training pipeline, we are
+    // setting the threshold to be 2e-6 to allow some numeric stability
+    // difference.
+    TF_LITE_ENSURE(context, std::abs(input_product_scale - bias_scale) <= 2e-6);
   }
   return GetQuantizedConvolutionMultipler(context, input, filter, output,
                                           multiplier);

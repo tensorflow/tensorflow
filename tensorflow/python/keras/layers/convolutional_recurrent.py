@@ -458,8 +458,8 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Use in combination with `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et al.]
-      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -739,8 +739,8 @@ class ConvLSTM2D(ConvRNN2D):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Use in combination with `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et al.]
-      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -807,10 +807,9 @@ class ConvLSTM2D(ConvRNN2D):
     ValueError: in case of invalid constructor arguments.
 
   References:
-    - [Convolutional LSTM Network: A Machine Learning Approach for
-    Precipitation Nowcasting](http://arxiv.org/abs/1506.04214v1)
-    The current implementation does not include the feedback loop on the
-    cells output.
+    - [Shi et al., 2015](http://arxiv.org/abs/1506.04214v1)
+    (the current implementation does not include the feedback loop on the
+    cells output).
   """
 
   def __init__(self,

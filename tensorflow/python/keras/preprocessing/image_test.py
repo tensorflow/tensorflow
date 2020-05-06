@@ -24,6 +24,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
 
@@ -52,6 +53,26 @@ def _generate_test_images():
 
 
 class TestImage(test.TestCase):
+
+  @test_util.run_v2_only
+  def test_smart_resize(self):
+    test_input = np.random.random((20, 40, 3))
+    output = preprocessing_image.smart_resize(test_input, size=(50, 50))
+    self.assertIsInstance(output, np.ndarray)
+    self.assertListEqual(list(output.shape), [50, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(10, 10))
+    self.assertListEqual(list(output.shape), [10, 10, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(100, 50))
+    self.assertListEqual(list(output.shape), [100, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(5, 15))
+    self.assertListEqual(list(output.shape), [5, 15, 3])
+
+  def test_smart_resize_errors(self):
+    with self.assertRaisesRegex(ValueError, 'a tuple of 2 integers'):
+      preprocessing_image.smart_resize(
+          np.random.random((20, 20, 2)), size=(10, 5, 3))
+    with self.assertRaisesRegex(ValueError, 'incorrect rank'):
+      preprocessing_image.smart_resize(np.random.random((20, 40)), size=(10, 5))
 
   def test_image_data_generator(self):
     if PIL is None:

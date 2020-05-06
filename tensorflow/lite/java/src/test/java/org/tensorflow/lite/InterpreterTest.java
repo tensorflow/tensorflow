@@ -22,6 +22,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -210,11 +211,46 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testRunWithScalarInput() {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.run(2.37f, parsedOutput);
+    }
+    assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+  }
+
+  @Test
   public void testResizeInput() {
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       int[] inputDims = {1};
       interpreter.resizeInput(0, inputDims);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
+  public void testAllocateTensors() {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      // Redundant allocateTensors() should have no effect.
+      interpreter.allocateTensors();
+
+      // allocateTensors() should propagate resizes.
+      int[] inputDims = {1};
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Additional redundant calls should have no effect.
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Execution should succeed as expected.
       ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
       ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
       interpreter.run(input, output);
@@ -230,10 +266,23 @@ public final class InterpreterTest {
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 
+      // Resize tensor with strict checking. Try invalid resize.
+      inputDims[2] = 5;
+      try {
+        interpreter.resizeInput(0, inputDims, true);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "ResizeInputTensorStrict only allows mutating unknown dimensions identified by -1");
+      }
+      inputDims[2] = 3;
+
       // Set the dimension of the unknown dimension to the expected dimension and ensure shape
       // signature doesn't change.
       inputDims[1] = 3;
-      interpreter.resizeInput(0, inputDims);
+      interpreter.resizeInput(0, inputDims, true);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 

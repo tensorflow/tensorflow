@@ -31,6 +31,7 @@ import random
 import re
 import tempfile
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
@@ -94,9 +95,32 @@ def is_xla_enabled():
 
 
 try:
-  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top
-except:
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
   pass
+
+
+# Uses the same mechanism as above to selectively enable MLIR compilation.
+def is_mlir_bridge_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
+
+# Uses the same mechanism as above to selectively enable TFRT.
+def is_tfrt_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
 
 def _get_object_count_by_type():
   return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
@@ -1051,7 +1075,6 @@ def eager_lazy_remote_copy_on_and_off(f):
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
-                                 reset_test=True,
                                  assert_no_eager_garbage=False):
   """Execute the decorated test with and without enabling eager execution.
 
@@ -1093,8 +1116,6 @@ def run_in_graph_and_eager_modes(func=None,
     config: An optional config_pb2.ConfigProto to use to configure the session
       when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
-    reset_test: If True, tearDown and SetUp the test case between the two
-      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
       the test with eager execution enabled. This will fail if there are
@@ -1138,17 +1159,15 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
       with graph_for_eager_test.as_default(), context.eager_mode():
-        if reset_test:
-          self.setUp()
+        self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
@@ -1726,18 +1745,15 @@ def enable_tf_xla_constant_folding(description):
   return enable_tf_xla_constant_folding_impl
 
 
-# The description is just for documentation purposes.
-def disable_xla(description):
+# Updates test function by selectively disabling it.
+def _disable_test(execute_func):
 
-  def disable_xla_impl(func):
-    """Execute the test method only if xla is not enabled."""
+  def disable_test_impl(func):
 
     def decorator(func):
 
       def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
-          return
-        else:
+        if execute_func:
           return func(self, *args, **kwargs)
 
       return decorated
@@ -1747,7 +1763,51 @@ def disable_xla(description):
 
     return decorator
 
-  return disable_xla_impl
+  return disable_test_impl
+
+
+# The description is just for documentation purposes.
+def disable_xla(description):  # pylint: disable=unused-argument
+  """Execute the test method only if xla is not enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_mlir_bridge(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MLIR bridge is not enabled."""
+  execute_func = not is_mlir_bridge_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tfrt(unused_description):
+
+  def disable_tfrt_impl(cls_or_func):
+    """Execute the test only if tfrt is not enabled."""
+
+    if tf_inspect.isclass(cls_or_func):
+      if is_tfrt_enabled():
+        return None
+      else:
+        return cls_or_func
+    else:
+      def decorator(func):
+
+        def decorated(self, *args, **kwargs):
+          if is_tfrt_enabled():
+            return
+          else:
+            return func(self, *args, **kwargs)
+
+        return decorated
+
+      if cls_or_func is not None:
+        return decorator(cls_or_func)
+
+      return decorator
+
+  return disable_tfrt_impl
 
 
 def for_all_test_methods(decorator, *args, **kwargs):
@@ -1779,27 +1839,9 @@ def for_all_test_methods(decorator, *args, **kwargs):
 
 # The description is just for documentation purposes.
 def no_xla_auto_jit(description):  # pylint: disable=unused-argument
-
-  def no_xla_auto_jit_impl(func):
-    """This test is not intended to be run with XLA auto jit enabled."""
-
-    def decorator(func):
-
-      def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
-          # Skip test if using XLA is forced.
-          return
-        else:
-          return func(self, *args, **kwargs)
-
-      return decorated
-
-    if func is not None:
-      return decorator(func)
-
-    return decorator
-
-  return no_xla_auto_jit_impl
+  """This test is not intended to be run with XLA auto jit enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
@@ -1862,6 +1904,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads = []
     self._tempdir = None
     self._cached_session = None
+    self._test_start_time = None
 
   def setUp(self):
     self._ClearCachedSession()
@@ -1885,7 +1928,15 @@ class TensorFlowTestCase(googletest.TestCase):
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
 
+    self._test_start_time = time.time()
+
   def tearDown(self):
+    # If a subclass overrides setUp and doesn't call the parent class's setUp,
+    # then we may not have set the start time.
+    if self._test_start_time is not None:
+      logging.info("time(%s): %ss", self.id(),
+                   round(time.time() - self._test_start_time, 2))
+
     for thread in self._threads:
       thread.check_termination()
 

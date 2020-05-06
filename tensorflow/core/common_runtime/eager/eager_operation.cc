@@ -14,15 +14,267 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 
 namespace tensorflow {
 
+// An EagerOperation object can be reused for a different op by calling
+// Clear(), and then Reset(...) with the same arguments that would have
+// been provided to the constructor.
+void EagerOperation::Clear() {
+  for (TensorHandle* h : inputs_) {
+    h->Unref();
+  }
+  inputs_.clear();
+  ClearInferenceState();
+}
+
+Status EagerOperation::SetAttrValue(const char* attr_name,
+                                    const AttrValue& value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
+                                     size_t length) {
+  MutableAttrs()->Set(attr_name, StringPiece(data, length));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrInt(const char* attr_name, int64_t value) {
+  MutableAttrs()->Set(attr_name, static_cast<int64>(value));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrFloat(const char* attr_name, float value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrBool(const char* attr_name, bool value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrType(const char* attr_name, DataType value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
+                                    const int num_dims) {
+  if (num_dims > TensorShape::MaxDimensions()) {
+    return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
+                                   num_dims,
+                                   " dimensions which is over the limit of ",
+                                   TensorShape::MaxDimensions(), ".");
+  }
+
+  TensorShapeProto proto;
+  if (num_dims < 0) {
+    proto.set_unknown_rank(true);
+  } else {
+    for (int d = 0; d < num_dims; ++d) {
+      proto.add_dim()->set_size(dims[d]);
+    }
+  }
+
+  MutableAttrs()->Set(attr_name, proto);
+
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrFunction(
+    const char* attr_name, const AbstractOperationInterface* value) {
+  AttrValue attr_value;
+  NameAttrList* func = attr_value.mutable_func();
+  func->set_name(value->Name());
+  auto* value_operation = down_cast<const EagerOperation*>(value);
+  value_operation->Attrs().FillAttrValueMap(func->mutable_attr());
+  MutableAttrs()->Set(attr_name, attr_value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrFunctionName(const char* attr_name,
+                                           const char* data, size_t length) {
+  AttrValue attr_value;
+  NameAttrList* func = attr_value.mutable_func();
+  func->set_name(data, length);
+  MutableAttrs()->Set(attr_name, attr_value);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrTensor(const char* attr_name,
+                                     AbstractTensorInterface* tensor) {
+  Tensor t = TensorFromInterface(tensor);
+  MutableAttrs()->Set(attr_name, t);
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrStringList(const char* attr_name,
+                                         const void* const* values,
+                                         const size_t* lengths,
+                                         int num_values) {
+  std::vector<StringPiece> v(num_values);
+  for (int i = 0; i < num_values; ++i) {
+    v[i] = StringPiece(static_cast<const char*>(values[i]), lengths[i]);
+  }
+  MutableAttrs()->Set(attr_name, v);
+
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrFloatList(const char* attr_name,
+                                        const float* values, int num_values) {
+  MutableAttrs()->Set(attr_name,
+                      gtl::ArraySlice<const float>(values, num_values));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrIntList(const char* attr_name,
+                                      const int64_t* values, int num_values) {
+  MutableAttrs()->Set(attr_name,
+                      gtl::ArraySlice<const int64>(
+                          reinterpret_cast<const int64*>(values), num_values));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrTypeList(const char* attr_name,
+                                       const DataType* values, int num_values) {
+  MutableAttrs()->Set(attr_name,
+                      gtl::ArraySlice<const DataType>(values, num_values));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrBoolList(const char* attr_name,
+                                       const unsigned char* values,
+                                       int num_values) {
+  std::unique_ptr<bool[]> b(new bool[num_values]);
+  for (int i = 0; i < num_values; ++i) {
+    b[i] = values[i];
+  }
+  MutableAttrs()->Set(attr_name,
+                      gtl::ArraySlice<const bool>(b.get(), num_values));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrShapeList(const char* attr_name,
+                                        const int64_t** dims,
+                                        const int* num_dims, int num_values) {
+  std::unique_ptr<TensorShapeProto[]> proto(new TensorShapeProto[num_values]);
+  for (int i = 0; i < num_values; ++i) {
+    const auto num_dims_i = num_dims[i];
+
+    if (num_dims_i > TensorShape::MaxDimensions()) {
+      return errors::InvalidArgument(
+          strings::StrCat("Value specified for `", attr_name, "` has ",
+                          num_dims_i, " dimensions which is over the limit of ",
+                          TensorShape::MaxDimensions(), "."));
+    }
+    if (num_dims_i < 0) {
+      proto[i].set_unknown_rank(true);
+    } else {
+      const int64_t* dims_i = dims[i];
+      auto proto_i = &proto[i];
+      for (int d = 0; d < num_dims_i; ++d) {
+        proto_i->add_dim()->set_size(dims_i[d]);
+      }
+    }
+  }
+  MutableAttrs()->Set(
+      attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
+  return Status::OK();
+}
+
+Status EagerOperation::SetAttrFunctionList(
+    const char* attr_name,
+    absl::Span<const AbstractOperationInterface*> values) {
+  size_t num_values = values.size();
+  std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
+  for (int i = 0; i < num_values; i++) {
+    auto* value_operation = down_cast<const EagerOperation*>(values[i]);
+    funcs[i].set_name(value_operation->Name());
+    value_operation->Attrs().FillAttrValueMap(funcs[i].mutable_attr());
+  }
+  MutableAttrs()->Set(
+      attr_name, gtl::ArraySlice<const NameAttrList>(funcs.get(), num_values));
+  return Status::OK();
+}
+
+const OpDef* EagerOperation::GetOpDef(Status* status) {
+  const tensorflow::OpDef* op_def = OpDef();
+  if (op_def) return op_def;
+  *status = OpDefForOp(Name(), &op_def);
+  return op_def;
+}
+
+Status EagerOperation::InputLength(const char* input_name, int* length) {
+  Status status;
+  const tensorflow::OpDef* op_def = GetOpDef(&status);
+  if (!status.ok()) {
+    return status;
+  }
+  AttrValueMap attrs;
+  Attrs().FillAttrValueMap(&attrs);
+  NameRangeMap name_ranges;
+  TF_RETURN_IF_ERROR(
+      NameRangesForNode(AttrSlice(&attrs), *op_def, &name_ranges, nullptr));
+  auto iter = name_ranges.find(input_name);
+  if (iter == name_ranges.end()) {
+    return errors::InvalidArgument("Input '", input_name, "' not found");
+  }
+  *length = iter->second.second - iter->second.first;
+  return Status::OK();
+}
+
+Status EagerOperation::OutputLength(const char* output_name, int* length) {
+  Status status;
+  const tensorflow::OpDef* op_def = GetOpDef(&status);
+  if (!status.ok()) {
+    return status;
+  }
+  AttrValueMap attrs;
+  Attrs().FillAttrValueMap(&attrs);
+  NameRangeMap name_ranges;
+  TF_RETURN_IF_ERROR(
+      NameRangesForNode(AttrSlice(&attrs), *op_def, nullptr, &name_ranges));
+  auto iter = name_ranges.find(output_name);
+  if (iter == name_ranges.end()) {
+    return errors::InvalidArgument("Output '", output_name, "' not found");
+  }
+  *length = iter->second.second - iter->second.first;
+  return Status::OK();
+}
+
+Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
+  TensorHandle* h = TensorHandleFromInterface(input);
+  AddTensorHandle(h);
+  return MaybeInferSingleInputAttrs(h);
+}
+
+Status EagerOperation::AddInputList(
+    absl::Span<AbstractTensorHandleInterface*> inputs) {
+  for (auto& input : inputs) {
+    TensorHandle* h = TensorHandleFromInterface(input);
+    AddTensorHandle(h);
+  }
+  return InferInputListAttrs(inputs.size());
+}
+
+Status EagerOperation::SetUseXla(bool enable) {
+  use_xla_ = enable;
+  return Status::OK();
+}
+
 Status EagerOperation::Reset(
-    const char* op, const char* raw_device_name, bool remote,
+    const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
     const absl::optional<EagerRemoteFunctionParams> remote_func_params) {
   DCHECK(inputs_.empty());
@@ -58,7 +310,7 @@ Status EagerOperation::Reset(
   executor_ = executor ? executor : &ctx_.Executor();
   remote_func_params_ = remote_func_params;
   op_name_ = op;
-  return SetDeviceName(raw_device_name, true);
+  return SetDeviceName(device_name);
 }
 
 Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
@@ -128,33 +380,23 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   return Status::OK();
 }
 
-Status EagerOperation::SetDeviceName(const char* device, const bool reset) {
-  if (device != nullptr && strlen(device) > 0) {
-    if (device != raw_device_name_) {
-      if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
-        return errors::InvalidArgument("Malformed device specification '",
-                                       device,
-                                       "' in eager op: ", DebugString());
-      }
-      raw_device_name_ = device;
-      device_name_ =
-          DeviceNameUtils::HasSomeDetails(device_parsed_name_)
-              ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
-              : "";
-      CustomDevice* custom_device;
-      if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
-        device_ = custom_device;
-      } else {
-        // Device placement for physical devices happens lazily in
-        // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
-        device_ = kVariantDeviceNull;
-      }
+Status EagerOperation::SetDeviceName(const char* c_name) {
+  string name(c_name != nullptr ? c_name : "");
+  if (name != last_set_device_name_) {
+    if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
+      return errors::InvalidArgument("Malformed device specification '", name,
+                                     "' in eager op: ", DebugString());
     }
-  } else if (reset) {
-    raw_device_name_.clear();
-    device_name_.clear();
-    device_parsed_name_.Clear();
-    device_ = kVariantDeviceNull;
+    last_set_device_name_ = name;
+    device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
+    CustomDevice* custom_device;
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+      device_ = custom_device;
+    } else {
+      // Device placement for physical devices happens lazily in
+      // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
+      device_ = kVariantDeviceNull;
+    }
   }
   return Status::OK();
 }
@@ -188,6 +430,12 @@ string EagerOperation::DebugString() const {
   Attrs().FillAttrValueMap(ndef.mutable_attr());
   strings::StrAppend(&out, "Attrs: ", ndef.DebugString(), "\n");
   return out;
+}
+
+void EagerOperation::AddTensorHandle(TensorHandle* h) {
+  h->Ref();
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 
 }  // namespace tensorflow

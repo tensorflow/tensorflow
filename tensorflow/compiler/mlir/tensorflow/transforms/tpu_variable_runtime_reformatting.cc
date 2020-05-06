@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -116,8 +115,9 @@ std::string GetRandomStateVariableName() {
 //    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
 //  }
 struct TPUVariableRuntimeReformattingPass
-    : public ModulePass<TPUVariableRuntimeReformattingPass> {
-  void runOnModule() override;
+    : public PassWrapper<TPUVariableRuntimeReformattingPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -318,7 +318,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
     new_body_return_vals.push_back(inner_arg);
     new_while_operands.push_back(state_var.resource());
   }
-  OpBuilder builder(&body.front());
+  OpBuilder builder = OpBuilder::atBlockEnd(&body.front());
   // Update return values.
   builder.create<ReturnOp>(body_return.getLoc(), new_body_return_vals);
   body_return.erase();
@@ -346,11 +346,9 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   if (new_while_op.output_shapes().size() != 0) {
     auto new_output_shapes = llvm::to_vector<4>(new_while_op.output_shapes());
     // VarHandleOp is a scalar shape resource.
-    tensorflow::TensorShapeProto scalar;
-    scalar.set_unknown_rank(false);
     for (int64_t i = 0; i < state_vars.size(); ++i) {
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(scalar)));
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
     }
     new_while_op.setAttr("output_shapes",
                          builder.getArrayAttr(new_output_shapes));
@@ -555,8 +553,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 
-void TPUVariableRuntimeReformattingPass::runOnModule() {
-  auto module = getModule();
+void TPUVariableRuntimeReformattingPass::runOnOperation() {
+  auto module = getOperation();
   module.walk([&](TF::WhileOp while_op) {
     auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
     tf_device::ReplicateOp replicate;
@@ -569,13 +567,17 @@ void TPUVariableRuntimeReformattingPass::runOnModule() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    if (replicate) HandleReplicateOp(while_op, replicate, &getContext());
+    // Model parallelism is not supported, and can be detected when a
+    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
+    if (replicate &&
+        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
+      HandleReplicateOp(while_op, replicate, &getContext());
   });
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
 

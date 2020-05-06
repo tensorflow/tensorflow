@@ -141,6 +141,7 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
         ],

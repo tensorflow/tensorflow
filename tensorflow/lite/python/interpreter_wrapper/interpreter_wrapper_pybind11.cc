@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "pybind11/stl.h"
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -55,82 +55,82 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   py::class_<InterpreterWrapper>(m, "InterpreterWrapper")
       .def("AllocateTensors",
            [](InterpreterWrapper& self) {
-             return tensorflow::pyo_or_throw(self.AllocateTensors());
+             return tensorflow::PyoOrThrow(self.AllocateTensors());
            })
       .def("Invoke",
            [](InterpreterWrapper& self) {
-             return tensorflow::pyo_or_throw(self.Invoke());
+             return tensorflow::PyoOrThrow(self.Invoke());
            })
       .def("InputIndices",
            [](const InterpreterWrapper& self) {
-             return tensorflow::pyo_or_throw(self.InputIndices());
+             return tensorflow::PyoOrThrow(self.InputIndices());
            })
       .def("OutputIndices",
            [](InterpreterWrapper& self) {
-             return tensorflow::pyo_or_throw(self.OutputIndices());
+             return tensorflow::PyoOrThrow(self.OutputIndices());
            })
       .def("ResizeInputTensor",
-           [](InterpreterWrapper& self, int i, py::handle& value) {
-             return tensorflow::pyo_or_throw(
-                 self.ResizeInputTensor(i, value.ptr()));
+           [](InterpreterWrapper& self, int i, py::handle& value, bool strict) {
+             return tensorflow::PyoOrThrow(
+                 self.ResizeInputTensor(i, value.ptr(), strict));
            })
       .def("NumTensors", &InterpreterWrapper::NumTensors)
       .def("TensorName", &InterpreterWrapper::TensorName)
       .def("TensorType",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.TensorType(i));
+             return tensorflow::PyoOrThrow(self.TensorType(i));
            })
       .def("TensorSize",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.TensorSize(i));
+             return tensorflow::PyoOrThrow(self.TensorSize(i));
            })
       .def("TensorSizeSignature",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.TensorSizeSignature(i));
+             return tensorflow::PyoOrThrow(self.TensorSizeSignature(i));
            })
       .def("TensorSparsityParameters",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.TensorSparsityParameters(i));
+             return tensorflow::PyoOrThrow(self.TensorSparsityParameters(i));
            })
       .def(
           "TensorQuantization",
           [](const InterpreterWrapper& self, int i) {
-            return tensorflow::pyo_or_throw(self.TensorQuantization(i));
+            return tensorflow::PyoOrThrow(self.TensorQuantization(i));
           },
           R"pbdoc(
             Deprecated in favor of TensorQuantizationParameters.
           )pbdoc")
-      .def("TensorQuantizationParameters",
-           [](InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(
-                 self.TensorQuantizationParameters(i));
-           })
+      .def(
+          "TensorQuantizationParameters",
+          [](InterpreterWrapper& self, int i) {
+            return tensorflow::PyoOrThrow(self.TensorQuantizationParameters(i));
+          })
       .def("SetTensor",
            [](InterpreterWrapper& self, int i, py::handle& value) {
-             return tensorflow::pyo_or_throw(self.SetTensor(i, value.ptr()));
+             return tensorflow::PyoOrThrow(self.SetTensor(i, value.ptr()));
            })
       .def("GetTensor",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.GetTensor(i));
+             return tensorflow::PyoOrThrow(self.GetTensor(i));
            })
       .def("ResetVariableTensors",
            [](InterpreterWrapper& self) {
-             return tensorflow::pyo_or_throw(self.ResetVariableTensors());
+             return tensorflow::PyoOrThrow(self.ResetVariableTensors());
            })
       .def("NumNodes", &InterpreterWrapper::NumNodes)
       .def("NodeName", &InterpreterWrapper::NodeName)
       .def("NodeInputs",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.NodeInputs(i));
+             return tensorflow::PyoOrThrow(self.NodeInputs(i));
            })
       .def("NodeOutputs",
            [](const InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.NodeOutputs(i));
+             return tensorflow::PyoOrThrow(self.NodeOutputs(i));
            })
       .def(
           "tensor",
           [](InterpreterWrapper& self, py::handle& base_object, int i) {
-            return tensorflow::pyo_or_throw(self.tensor(base_object.ptr(), i));
+            return tensorflow::PyoOrThrow(self.tensor(base_object.ptr(), i));
           },
           R"pbdoc(
             Returns a reference to tensor index i as a numpy array. The
@@ -140,7 +140,7 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           "ModifyGraphWithDelegate",
           // Address of the delegate is passed as an argument.
           [](InterpreterWrapper& self, uintptr_t delegate_ptr) {
-            return tensorflow::pyo_or_throw(self.ModifyGraphWithDelegate(
+            return tensorflow::PyoOrThrow(self.ModifyGraphWithDelegate(
                 reinterpret_cast<TfLiteDelegate*>(delegate_ptr)));
           },
           R"pbdoc(

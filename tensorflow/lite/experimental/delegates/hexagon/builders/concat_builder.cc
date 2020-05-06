@@ -30,12 +30,16 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                TfLiteContext* context) {
   static int quant_bound_shape[] = {1, 1, 1, 1};
 
-  // Only axis 3 is supported.
   const TfLiteConcatenationParams* concat_params =
       reinterpret_cast<const TfLiteConcatenationParams*>(builtin_data_);
+  int concat_axis = concat_params->axis;
+  const int output_dim_size = context->tensors[outputs->data[0]].dims->size;
+  // Axis value is incremented if tensor dims are < 4 and/or axis < 0.
+  concat_axis =
+      concat_axis < 0 ? concat_axis + 4 : concat_axis + 4 - output_dim_size;
   auto* axis_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, (char*)&concat_params->axis,
-      sizeof(concat_params->axis));
+      quant_bound_shape, reinterpret_cast<char*>(&concat_axis),
+      sizeof(concat_axis));
   AddInput(TensorID(axis_const->GetID(), 0));
 
   int tensor_id;
@@ -52,9 +56,8 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     float data_min, data_max;
     const auto& data_tensor = context->tensors[tensor_id];
     AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-    TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-        data_tensor, &data_min, &data_max, std::numeric_limits<uint8_t>::min(),
-        std::numeric_limits<uint8_t>::max()));
+    TF_LITE_ENSURE_STATUS(
+        ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
     input_minima_.push_back(data_min);
     input_maxima_.push_back(data_max);
     if (data_min < input_bound_minimum) input_bound_minimum = data_min;
@@ -94,9 +97,7 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
   // Output min/max for requantization.
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min_, &output_max_,
-      std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+      context->tensors[outputs->data[0]], &output_min_, &output_max_));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, (char*)&output_min_, sizeof(output_min_));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(

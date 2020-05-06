@@ -22,7 +22,6 @@ import threading
 
 import numpy as np
 
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -110,7 +109,8 @@ class _NumpyFunctionCallback(object):
         if compat.as_bytes(op_type) in (_ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP,
                                         _NEXT_ITERATION_OP, _STATELESS_IF_OP,
                                         _SWITCH_OP, _WHILE_OP, _IDENTITY_OP,
-                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP):
+                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP,
+                                        _CONSTANT_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted
@@ -432,25 +432,6 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
         instrument.graph_internal_ndarrays[b"Pad"][0], expected_output)
 
   @test_util.run_in_graph_and_eager_modes
-  def testKerasLSTMPredict(self):
-    instrument = _NumpyFunctionCallback(float_only=True)
-
-    op_callbacks.add_op_callback(instrument.callback)
-
-    model = keras.Sequential()
-    model.add(keras.layers.LSTM(1, input_shape=(2, 4)))
-    model.compile(loss="mse", optimizer="sgd")
-
-    xs = np.zeros([8, 2, 4], dtype=np.float32)
-    ys = model.predict(xs)
-
-    self.assertAllClose(ys, np.zeros([8, 1]))
-    # We avoid asserting on the internal details of the LSTM implementation.
-    # Instead, we just assert that some graph-internal execution states are
-    # recorded by the callback.
-    self.assertTrue(instrument.graph_internal_ndarrays)
-
-  @test_util.run_in_graph_and_eager_modes
   def testSimpleGraphConstructionWithCallbackReturningNone(self):
     """Test that callbacks that return None works."""
     op_types = []
@@ -744,7 +725,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   def testOverrideDTypeInFuncGraph(self):
     def to_float64(op_type, inputs, attrs, outputs, op_name=None, graph=None):
       del inputs, attrs, op_name, graph  # Unused.
-      if op_type == "Placeholder":
+      if op_type in ("Const", "Placeholder"):
         return outputs
       else:
         return [math_ops.cast(output, dtypes.float64) for output in outputs]
@@ -770,6 +751,17 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     w = control_flow_ops.group([z])
     self.assertIsNone(w)
     self.assertEqual(instrument.eager_op_types, [_ADD_OP])
+
+  def testOpCallbackCapturesConstTensors(self):
+    instrument = _NumpyFunctionCallback()
+    op_callbacks.add_op_callback(instrument.callback)
+
+    @def_function.function
+    def times_two_plus_three(x):
+      return x * 2.0 + 3.0
+
+    self.assertAllClose(times_two_plus_three(constant_op.constant(10.0)), 23.0)
+    self.assertEqual(instrument.graph_op_types.count(b"Const"), 2)
 
   @test_util.run_in_graph_and_eager_modes
   def testOpCallbackWorksWithGradientTape(self):
@@ -801,37 +793,6 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
                                                         _COS_OP]
     self.assertEqual(len(cos_op_outputs), 1)
     self.assertAllClose(cos_op_outputs[0], np.cos(3.0 * 3.0))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testKeraModelFit(self):
-    # TODO(cais): The purely PyFunc (numpy_function) based instrumentation
-    # doesn't work for the entire Keras model and its fit() call, due to some
-    # shape inference limitations. Use tfdbg's gen_debug_ops for testing
-    # instead (b/139668469).
-    instrument = _NumpyFunctionCallback(instrument_graph_ops=False)
-    op_callbacks.add_op_callback(instrument.callback)
-
-    model = keras.Sequential()
-    model.add(keras.layers.Dense(10, input_shape=(8,), activation="relu"))
-    model.add(keras.layers.BatchNormalization())
-    model.add(keras.layers.Dense(1, activation="linear"))
-    model.compile(loss="mse", optimizer="adam")
-
-    batch_size = 4
-    xs = np.ones([batch_size, 8])
-    ys = np.zeros([batch_size, 1])
-    history = model.fit(xs, ys, epochs=2, verbose=0)
-
-    # Simply assert that the training proceeded as expected and that
-    # op callbacks are invoked. We prefer not to assert on the details of the
-    # graph construction and the execution, in order to avoid future
-    # maintenance cost.
-    self.assertEqual(len(history.history["loss"]), 2)
-    self.assertTrue(instrument.graph_op_types)
-    self.assertEqual(len(instrument.graph_op_types),
-                     len(instrument.graph_op_names))
-    if context.executing_eagerly():
-      self.assertTrue(instrument.eager_op_types)
 
 
 class OpCallbacksErrorConditionsTest(test_util.TensorFlowTestCase):

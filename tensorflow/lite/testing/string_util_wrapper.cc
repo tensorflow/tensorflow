@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/lite/testing/string_util.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -28,7 +28,7 @@ PYBIND11_MODULE(_pywrap_string_util, m) {
   m.def(
       "SerializeAsHexString",
       [](py::handle& string_tensor) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tflite::testing::python::SerializeAsHexString(string_tensor.ptr()));
       },
       R"pbdoc(

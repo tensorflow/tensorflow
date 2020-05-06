@@ -2,6 +2,10 @@
   <img src="https://www.tensorflow.org/images/tf_logo_social.png">
 </div>
 
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
+[![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
+
+
 **`Documentation`** |
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
@@ -135,6 +139,7 @@ Build Type                                                        | Status      
 *   [TensorFlow Examples](https://github.com/tensorflow/examples)
 *   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
 *   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
+*   [Getting Started with TensorFlow 2 from Coursera](https://www.coursera.org/learn/getting-started-with-tensor-flow2)
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
 *   [TensorFlow Blog](https://blog.tensorflow.org)

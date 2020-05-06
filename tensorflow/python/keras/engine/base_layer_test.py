@@ -125,6 +125,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
       def build(self, input_shape):
         self.build_counter += 1
+        self.build_shape = input_shape
 
       def call(self, inputs):
         return inputs
@@ -132,14 +133,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = BuildCounter(dtype=dtypes.float64)
     output_shape = layer.compute_output_shape((None, 10))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_shape.as_list(), [None, 10])
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=[None, 10]))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_signature.dtype, dtypes.float64)
     self.assertEqual(output_signature.shape.as_list(), [None, 10])
     layer(np.ones((5, 10)))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
 
   def test_eager_switch_case_input(self):
     task = input_layer.Input(shape=(), dtype=dtypes.int32)
@@ -1450,26 +1454,12 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
-    layer._supports_ragged_inputs = True
 
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
-
-  def test_supports_ragged_inputs_attribute_error(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'does not support RaggedTensors'):
-      ragged = ragged_tensor.RaggedTensor.from_row_splits(
-          values=array_ops.constant([1., 2., 3.], dtype='float32'),
-          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
-      model = sequential.Sequential([
-          input_layer.InputLayer(input_shape=(None,), ragged=True),
-          IdentityLayer()
-      ])
-      model.compile(rmsprop.RMSprop(0.001), loss='mse')
-      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

@@ -15,11 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
 #define TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/tf_datatype.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -34,74 +32,36 @@ namespace tensorflow {
 // is needed a static_cast can be applied.
 class AbstractTensorHandleInterface {
  public:
-  virtual ~AbstractTensorHandleInterface() {}
+  // Release any underlying resources, including the interface object.
+  //
+  // WARNING: The destructor of this class is marked as protected to disallow
+  // clients from directly destroying this object since it may manage it's own
+  // lifetime through ref counting. Thus this must be allocated on the heap and
+  // clients MUST call Release() in order to destroy an instance of this class.
+  virtual void Release() = 0;
 
-  // Check if the handle is in a valid initialized state.
-  virtual bool IsValid(Status* status) const = 0;
   // Returns tensor dtype.
-  virtual TF_DataType DataType() const = 0;
+  virtual tensorflow::DataType DataType() const = 0;
   // Returns number of dimensions.
-  virtual int NumDims(Status* status) const = 0;
+  virtual Status NumDims(int* num_dims) const = 0;
   // Returns number of elements across all dimensions.
-  virtual int64_t NumElements(Status* status) const = 0;
+  virtual Status NumElements(int64* num_elements) const = 0;
   // Returns size of specified dimension
-  virtual int64_t Dim(int dim_index, Status* status) const = 0;
+  virtual Status Dim(int dim_index, int64* dim) const = 0;
 
   // Returns the device which created the handle.
   virtual const char* DeviceName(Status* status) const = 0;
   // Returns the device where the tensor was placed.
   virtual const char* BackingDeviceName(Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
-  virtual TF_Tensor* Resolve(Status* status) = 0;
-  // Returns debug information about the tensor.
-  virtual TFE_TensorDebugInfo* TensorDebugInfo(Status* status) = 0;
+  virtual AbstractTensorInterface* Resolve(Status* status) = 0;
 
   // Return a copy of the handle.
   virtual AbstractTensorHandleInterface* Copy() = 0;
 
-  // Maintain mirror tensors for any implicit copies to local devices. This
-  // setting is offered on a per tensor handle basis to avoid potential memory
-  // over utilization due to holding on to mirrors as well as the original
-  // tensor. Note this setting overrides the context mirroring policy whereby if
-  // the mirroring policy is MIRRORING_NONE, we will still continue to mirror
-  // this tensor.
-  virtual void EnableImplicitMirroring() = 0;
+ protected:
+  virtual ~AbstractTensorHandleInterface() {}
 };
-
-// TODO(gjn): Try to move these all to TensorHandle and make it implement
-// AbstractTensorHandleInterface. Currently, this is not so straightforward
-// because of various BUILD file dependencies.
-class TensorHandleInterface : public AbstractTensorHandleInterface {
- public:
-  explicit TensorHandleInterface(TensorHandle* h) : handle_(h) {}
-  ~TensorHandleInterface() override;
-
-  bool IsValid(Status* status) const override;
-  TF_DataType DataType() const override;
-  int NumDims(Status* status) const override;
-  int64_t NumElements(Status* status) const override;
-  int64_t Dim(int dim_index, Status* status) const override;
-
-  const char* DeviceName(Status* status) const override;
-  const char* BackingDeviceName(Status* status) const override;
-  TF_Tensor* Resolve(Status* status) override;
-  TFE_TensorDebugInfo* TensorDebugInfo(Status* status) override;
-
-  AbstractTensorHandleInterface* Copy() override;
-
-  void EnableImplicitMirroring() override;
-
-  // For runtime specific APIs, provide ability to get the underlying handle.
-  TensorHandle* Handle() { return handle_; }
-
- private:
-  TensorHandle* handle_;
-};
-
-inline TensorHandle* TensorHandleFromInterface(
-    const std::unique_ptr<AbstractTensorHandleInterface>& handle) {
-  return down_cast<TensorHandleInterface*>(handle.get())->Handle();
-}
 
 }  // namespace tensorflow
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,6 +46,17 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   switch (type.getKind()) {
     case mlir::StandardTypes::BF16:
       return PrimitiveType::BF16;
+    case mlir::StandardTypes::Complex: {
+      mlir::Type element_ty = type.cast<mlir::ComplexType>().getElementType();
+      switch (element_ty.getKind()) {
+        case mlir::StandardTypes::F32:
+          return PrimitiveType::C64;
+        case mlir::StandardTypes::F64:
+          return PrimitiveType::C128;
+        default:
+          return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+      }
+    }
     case mlir::StandardTypes::F16:
       return PrimitiveType::F16;
     case mlir::StandardTypes::F32:
@@ -53,17 +65,18 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
       return PrimitiveType::F64;
     case mlir::StandardTypes::Integer: {
       const auto integer = type.cast<IntegerType>();
+      bool is_unsigned = integer.isUnsigned();
       switch (integer.getWidth()) {
         case 1:
           return PrimitiveType::PRED;
         case 8:
-          return PrimitiveType::S8;
+          return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
         case 16:
-          return PrimitiveType::S16;
+          return is_unsigned ? PrimitiveType::U16 : PrimitiveType::S16;
         case 32:
-          return PrimitiveType::S32;
+          return is_unsigned ? PrimitiveType::U32 : PrimitiveType::S32;
         case 64:
-          return PrimitiveType::S64;
+          return is_unsigned ? PrimitiveType::U64 : PrimitiveType::S64;
         default:
           return PrimitiveType::PRIMITIVE_TYPE_INVALID;
       }

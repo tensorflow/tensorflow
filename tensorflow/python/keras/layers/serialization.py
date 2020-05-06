@@ -26,12 +26,14 @@ import threading
 from tensorflow.python import tf2
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import convolutional_recurrent
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import cudnn_recurrent
 from tensorflow.python.keras.layers import dense_attention
+from tensorflow.python.keras.layers import einsum_dense
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
@@ -51,36 +53,32 @@ from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
-ALL_MODULES = (
-    base_layer,
-    input_layer,
-    advanced_activations,
-    convolutional,
-    convolutional_recurrent,
-    core,
-    cudnn_recurrent,
-    dense_attention,
-    embeddings,
-    local,
-    merge,
-    noise,
-    normalization,
-    pooling,
-    image_preprocessing,
-    preprocessing_normalization_v1,
-    recurrent,
-    wrappers
-)
+ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
+               convolutional_recurrent, core, cudnn_recurrent, dense_attention,
+               embeddings, einsum_dense, local, merge, noise, normalization,
+               pooling, image_preprocessing, preprocessing_normalization_v1,
+               recurrent, wrappers)
 ALL_V2_MODULES = (
     rnn_cell_wrapper_v2,
     normalization_v2,
     recurrent_v2,
     preprocessing_normalization
 )
-
+FEATURE_COLUMN_V1_OBJECTS = {}
+FEATURE_COLUMN_V2_OBJECTS = {}
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()
+
+
+def inject_feature_column_v1_objects(name, cls):
+  global FEATURE_COLUMN_V1_OBJECTS
+  FEATURE_COLUMN_V1_OBJECTS[name] = cls
+
+
+def inject_feature_column_v2_objects(name, cls):
+  global FEATURE_COLUMN_V2_OBJECTS
+  FEATURE_COLUMN_V2_OBJECTS[name] = cls
 
 
 def populate_deserializable_objects():
@@ -124,17 +122,31 @@ def populate_deserializable_objects():
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.premade.linear import LinearModel  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.premade.wide_deep import WideDeepModel  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.feature_column import dense_features  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.feature_column import sequence_feature_column as sfc  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.feature_column.sequence_feature_column import SequenceFeatures  # pylint: disable=g-import-not-at-top
 
   LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
+  LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
   LOCAL.ALL_OBJECTS['Network'] = models.Network
   LOCAL.ALL_OBJECTS['Model'] = models.Model
+  LOCAL.ALL_OBJECTS['SequenceFeatures'] = SequenceFeatures
   LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
   LOCAL.ALL_OBJECTS['LinearModel'] = LinearModel
   LOCAL.ALL_OBJECTS['WideDeepModel'] = WideDeepModel
-  LOCAL.ALL_OBJECTS['DenseFeatures'] = dense_features.DenseFeatures
-  LOCAL.ALL_OBJECTS['SequenceFeatures'] = sfc.SequenceFeatures
+
+  if tf2.enabled():
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V2_OBJECTS)
+  else:
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V1_OBJECTS)
+
+  # Merge layers, function versions.
+  LOCAL.ALL_OBJECTS['add'] = merge.add
+  LOCAL.ALL_OBJECTS['subtract'] = merge.subtract
+  LOCAL.ALL_OBJECTS['multiply'] = merge.multiply
+  LOCAL.ALL_OBJECTS['average'] = merge.average
+  LOCAL.ALL_OBJECTS['maximum'] = merge.maximum
+  LOCAL.ALL_OBJECTS['minimum'] = merge.minimum
+  LOCAL.ALL_OBJECTS['concatenate'] = merge.concatenate
+  LOCAL.ALL_OBJECTS['dot'] = merge.dot
 
 
 @keras_export('keras.layers.serialize')

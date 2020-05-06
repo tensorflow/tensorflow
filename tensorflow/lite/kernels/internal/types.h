@@ -1007,6 +1007,7 @@ struct ResizeBilinearParams {
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
+  bool half_pixel_centers;
 };
 
 struct SliceParams {
@@ -1030,6 +1031,8 @@ struct SoftmaxParams {
   int32_t zero_point;
   float scale;
   float* table;
+  int16_t* exp_lut;
+  int16_t* one_over_one_plus_x_lut;
 };
 
 struct SpaceToBatchParams {
@@ -1077,7 +1080,7 @@ struct TanhParams {
 
 struct TransposeParams {
   int8 perm_count;
-  int32 perm[4];
+  int32 perm[5];
 };
 
 struct UnpackParams {

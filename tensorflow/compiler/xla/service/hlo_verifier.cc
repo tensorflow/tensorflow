@@ -210,6 +210,29 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
           hlo->ToString());
     }
   }
+
+  // When the channel_id() or use_global_device_ids() is set, device ids in
+  // ReplicaGroup config no longer only mean replica ids. So we skip the check
+  // on the replica count.
+  if (auto channel_instr = DynCast<HloChannelInstruction>(hlo)) {
+    if (channel_instr->channel_id()) {
+      return Status::OK();
+    }
+  }
+  if (auto all_reduce = DynCast<HloAllReduceInstruction>(hlo)) {
+    if (all_reduce->use_global_device_ids()) {
+      return Status::OK();
+    }
+  }
+
+  int64 replica_count = hlo->GetModule()->config().replica_count();
+  if (!replicas_seen.empty() && replicas_seen.size() != replica_count) {
+    return InternalError(
+        "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
+        "contains %d replicas: %s",
+        replica_count, replicas_seen.size(), hlo->ToString());
+  }
+
   return Status::OK();
 }
 

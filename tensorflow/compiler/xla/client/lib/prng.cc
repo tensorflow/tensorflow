@@ -434,17 +434,21 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
         (value_type == F64 && bit_type == U64));
 
   // Form random mantissa bits for float/double, with a leading 1 bit.
-  int float_bits = primitive_util::BitWidth(value_type);
+  int num_float_bits = primitive_util::BitWidth(value_type);
   // Subtract one as SignificandWidth includes the leading 1 bit.
-  int mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
+  int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
 
-  bits = ShiftRightLogical(bits, ScalarLike(bits, float_bits - mantissa_bits)) |
-         BitcastConvertType(ScalarLike(minval, 1.0), bit_type);
-  XlaOp values = BitcastConvertType(bits, value_type);
+  // Ignore the exponent bits and convert the mantissa bits to the floating
+  // point type.
+  bits = ShiftRightLogical(
+      bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
 
-  // We have a floating point number in the range [1.0, 2.0).
-  // Subtract 1.0f to shift to the range [0.0, 1.0)
-  values = values - ScalarLike(values, 1.0);
+  // We have an integer-valued floating point number in the range
+  // [0, 2**{num_mantissa_bits}).
+  XlaOp values = ConvertElementType(bits, value_type);
+
+  // Divide by 2**{-num_mantissa_bits} to get a number in the range [0.0, 1.0).
+  values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
 
   // Multiply and add to shift to the range [minval, maxval).
   return values * (maxval - minval) + minval;

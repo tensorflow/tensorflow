@@ -38,7 +38,7 @@ ENTRY %tfcompile.20 {
   // CHECK: },  {
   // CHECK: ^bb0([[A1:%.+]]: tuple<tensor<f32>>):
   // CHECK:   [[R7:%.+]] = "xla_hlo.get_tuple_element"([[A1]])
-  // CHECK:   [[R8:%.+]] = "xla_hlo.exp"([[R7]])
+  // CHECK:   [[R8:%.+]] = "xla_hlo.exponential"([[R7]])
   // CHECK:   [[R9:%.+]] = "xla_hlo.tuple"([[R8]])
   // CHECK:   "xla_hlo.return"([[R9]])
   // CHECK: })

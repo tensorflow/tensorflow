@@ -120,19 +120,21 @@ class GpuAlarmClock {
       alarm_thread_ = std::thread([this]() {
         id<MTLCommandBuffer> prev_command_buffer;
         while (!release_thread_) {
-          if (active_alarms_ == total_alarms_) {
-            id<MTLCommandBuffer> command_buffer = [command_queue_ commandBuffer];
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            [encoder setComputePipelineState:stub_program_];
-            [encoder setBuffer:stub_buffer_ offset:0 atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
-                    threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-            [encoder endEncoding];
-            [command_buffer commit];
-            if (prev_command_buffer != nil) [prev_command_buffer waitUntilScheduled];
-            prev_command_buffer = command_buffer;
-          } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          @autoreleasepool {
+            if (active_alarms_ == total_alarms_) {
+              id<MTLCommandBuffer> command_buffer = [command_queue_ commandBuffer];
+              id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+              [encoder setComputePipelineState:stub_program_];
+              [encoder setBuffer:stub_buffer_ offset:0 atIndex:0];
+              [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+                      threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+              [encoder endEncoding];
+              [command_buffer commit];
+              if (prev_command_buffer != nil) [prev_command_buffer waitUntilScheduled];
+              prev_command_buffer = command_buffer;
+            } else {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
           }
         }
       });
@@ -226,7 +228,7 @@ class Delegate {
   }
 
   absl::Status Prepare(TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
-    // Extract TFLite delegate execution plan from the context and convert it into FlowGraph32.
+    // Extract TFLite delegate execution plan from the context and convert it into GraphFloat32.
     GraphFloat32 graph;
     RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
 
@@ -239,7 +241,7 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
-    auto find_value = [&](int tensor_index) -> Value<TensorRef<BHWC>>* {
+    auto find_value = [&](int tensor_index) -> Value* {
       for (auto value : values) {
         if (value->tensor.ref == tensor_index) return value;
       }
@@ -291,21 +293,17 @@ class Delegate {
       tensor->delegate = &delegate_;
     }
 
+    std::string device_name = std::string([[metal_device_ name] UTF8String]);
+    DeviceInfo device_info(device_name);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      const auto gpu_type = GetGpuType();
-      const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
-                           gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
-      if (powervr) {
-        // PowerVR gpus support only round to zero for floating-point operations,
-        // to increase precision we will use F32 accumulator in this case
-        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
-      } else {
-        // Apple own gpus support round to nearest and have better precision
+      if (device_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+      } else {
+        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
       }
     } else {
       storage_type_size = sizeof(float);
@@ -395,7 +393,7 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 

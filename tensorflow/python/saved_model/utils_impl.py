@@ -178,7 +178,7 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
     spec = struct_coder.decode_proto(spec_proto)
     components = [_get_tensor(component.name) for component in
                   tensor_info.composite_tensor.components]
-    return spec.from_components(components)
+    return spec._from_components(components)  # pylint: disable=protected-access
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
 

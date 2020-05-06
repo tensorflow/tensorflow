@@ -43,6 +43,7 @@ def tpu_py_test(
         "no_pip",
         "no_gpu",
         "nomac",
+        "local",
     ] + tags
 
     test_main = kwargs.get("srcs")

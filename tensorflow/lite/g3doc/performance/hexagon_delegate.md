@@ -74,10 +74,11 @@ dependencies {
     “libhexagon_nn_skel_v66.so”
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
+    *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 03/03/2020 you should use v1.14.
+Note: As of 04/28/2020 you should use v1.17.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -273,6 +274,7 @@ ro.board.platform`).
             *   dilation only supported when stride == 1
             *   Otherwise, stride height/width <= 3
         *   FullyConnected (without any activation)
+        *   Hardswish
         *   L2Normalization (without any activation)
         *   Logistic (aka Sigmoid)
         *   MaxPool2D (without any activation)

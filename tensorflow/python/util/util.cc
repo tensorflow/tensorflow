@@ -730,9 +730,9 @@ bool AssertSameStructureHelper(
 
     // We treat two different namedtuples with identical name and fields
     // as having the same type.
-    const PyObject* o1_tuple = IsNamedtuple(o1, true);
+    const PyObject* o1_tuple = IsNamedtuple(o1, false);
     if (o1_tuple == nullptr) return false;
-    const PyObject* o2_tuple = IsNamedtuple(o2, true);
+    const PyObject* o2_tuple = IsNamedtuple(o2, false);
     if (o2_tuple == nullptr) {
       Py_DECREF(o1_tuple);
       return false;

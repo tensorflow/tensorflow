@@ -45,9 +45,25 @@ def _make_vector_ds(nrows):
   return _make_scalar_ds(nrows).map(lambda x: array_ops.fill([x], x))
 
 
-def _make_matrix_ds(nrows):
+def _make_matrix_ds1(nrows):
   """Create a test dataset with matrix elements (of varying size)."""
   return _make_scalar_ds(nrows).map(lambda x: array_ops.fill([x, 2], x))
+
+
+def _make_matrix_ds2(nrows):
+  """Create a test dataset with matrix elements (of varying size)."""
+  return _make_scalar_ds(nrows).map(lambda x: array_ops.fill([2, x], x))
+
+
+def _make_matrix_ds_fully_defined(nrows):
+  """Create a test dataset with matrix elements (of varying size)."""
+  return _make_scalar_ds(nrows).map(lambda x: array_ops.fill([2, 3], x))
+
+
+def _make_5dtensor_ds(nrows):
+  """Create a test dataset with matrix elements (of varying size)."""
+  return _make_scalar_ds(nrows).map(
+      lambda x: array_ops.fill([2, x, 3, 2*x, 4], x))
 
 
 def _make_ragged_ds(nrows):
@@ -64,6 +80,8 @@ def _make_dict_ds(nrows):
         'shape=[]': ops.convert_to_tensor(x),
         'shape=[x]': math_ops.range(x),
         'shape=[x, 2]': array_ops.fill([x, 2], x),
+        'shape=[2, x]': array_ops.fill([2, x], x),
+        'shape=[2, x, 3, 2x, 4]': array_ops.fill([2, x, 3, 2*x, 4], x)
     }
   return _make_scalar_ds(nrows).map(transform)
 
@@ -88,8 +106,9 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(
               make_dataset=[
-                  _make_scalar_ds, _make_vector_ds, _make_matrix_ds,
-                  _make_ragged_ds, _make_dict_ds, _make_tuple_ds,
+                  _make_scalar_ds, _make_vector_ds, _make_matrix_ds1,
+                  _make_matrix_ds2, _make_ragged_ds, _make_5dtensor_ds,
+                  _make_dict_ds, _make_tuple_ds, _make_matrix_ds_fully_defined,
               ],
               nrows=[0, 20, 23],
               batch_size=[4],

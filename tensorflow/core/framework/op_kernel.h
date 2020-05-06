@@ -492,6 +492,7 @@ class OpOutputList {
   DataType expected_output_dtype(int i) const;
   Status allocate(int i, const TensorShape& shape, Tensor** output);
   void set(int i, const Tensor& tensor);
+  void set(int i, Tensor&& tensor);
   void set_ref(int i, mutex* mu, Tensor* tensor_for_ref);
   int size() const { return stop_ - start_; }
   Iterator begin() const { return Iterator(this, 0); }
@@ -688,13 +689,14 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
+    const string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
 
     // Support for forwarding reservations (used by ScopedAllocator).
-    static const int kNeverForward = -2;
-    static const int kNoReservation = -1;
+    static constexpr int kNeverForward = -2;
+    static constexpr int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
 
@@ -828,6 +830,10 @@ class OpKernelContext {
   bool run_all_kernels_inline() const {
     return params_->run_all_kernels_inline;
   }
+
+  // Returns the registered name for the executor type that is executing the
+  // current kernel. If empty, the default executor is used.
+  const string& executor_type() const;
 
   // Input to output forwarding.
 
@@ -1031,6 +1037,9 @@ class OpKernelContext {
   // REQUIRES: 'tensor' must have the same MemoryType as
   // output_memory_types[index]. See comment above.
   Status set_output(StringPiece name, const Tensor& tensor);
+  Status set_output(StringPiece name, Tensor&& tensor);
+  void set_output(int index, const Tensor& tensor);
+  void set_output(int index, Tensor&& tensor);
 
   // To output a reference.  Caller retains ownership of mu and tensor_for_ref,
   // and they must outlive all uses within the step. See comment above.
@@ -1198,7 +1207,6 @@ class OpKernelContext {
   // The following functions all have versions that return Status
   // to capture error conditions, and are strongly preferred.
   Tensor* mutable_output(int index);
-  void set_output(int index, const Tensor& tensor);
   mutex* input_ref_mutex(int index);
   void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
   TensorValue release_output(int index);
@@ -1273,6 +1281,16 @@ class OpKernelContext {
   Status allocate_tensor(DataType type, const TensorShape& shape,
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
+
+  // Helpers for `set_output()`.
+
+  // Returns `true` if the tensor was copied into an allocated output.
+  bool maybe_set_output_by_allocate_and_copy(int index, const Tensor& tensor);
+
+  void maybe_track_allocations_for_set_output(const Tensor& tensor);
+
+  Status get_input_index(StringPiece name, int* out_index) const;
+  Status get_output_index(StringPiece name, int* out_index) const;
 
   // Initialize the allocated_scope_ids_ set the first time this method is
   // called.
@@ -1702,6 +1720,12 @@ inline void OpOutputList::set(int i, const Tensor& tensor) {
   DCHECK_GE(i, 0);
   DCHECK_LT(i, stop_ - start_);
   ctx_->set_output(start_ + i, tensor);
+}
+
+inline void OpOutputList::set(int i, Tensor&& tensor) {
+  DCHECK_GE(i, 0);
+  DCHECK_LT(i, stop_ - start_);
+  ctx_->set_output(start_ + i, std::move(tensor));
 }
 
 inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {

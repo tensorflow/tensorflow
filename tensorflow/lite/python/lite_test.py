@@ -450,8 +450,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
+    # Resize tensor with strict checking.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
     # Resize tensor and invoke.
-    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
     interpreter.allocate_tensors()
     interpreter.invoke()
 
@@ -462,8 +469,36 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
 
     output_details = interpreter.get_output_details()
-    self.assertTrue(([1, 16, 16,
+    self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
+
+  def testResizeTensorInputStrict(self):
+    # Ensures that resize_tensor_input(strict=True) works as expected.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+
+    # Resize incorrect value.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
+    # Resize correct value.
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
+    interpreter.allocate_tensors()
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():
@@ -529,7 +564,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
           shape=[1, 16, 16, 3], dtype=dtypes.float32)
       var = variable_scope.get_variable(
           'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + var
+      # Get the second output to ensure freezing properly processes tensor names
+      # like 'X:1'.
+      out_tensor = nn_ops.top_k(in_tensor + var, name='top_k')[1]
       sess = session.Session()
       sess.run(_global_variables_initializer())
 
@@ -552,9 +589,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual('top_k:1', output_details[0]['name'])
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testGraphviz(self):
@@ -1632,19 +1669,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1694,19 +1731,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1726,19 +1763,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -2172,6 +2209,14 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
 
+  def testExperimentalSparsifyModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
+    converter._experimental_sparsify_model = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 class GrapplerTest(TestModels, parameterized.TestCase):
 
@@ -2235,6 +2280,37 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertLen(input_details, 2)
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual('Const', input_details[1]['name'])
+
+  def testGrapplerConstFolding(self):
+    # Constant folding converts the following add operation to tf.broadcast_to
+    # operation which was not supported by the TFLite at the time this test was
+    # added.
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = plus_placeholder(
+          array_ops.zeros([2, 2, 2]),
+          array_ops.reshape(in_tensor, shape=[2, 2]))
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    # Only disable this path in MLIR conversion for toco compatibility.
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+
 
 class ImportOpsUtilTest(LiteTest):
 

@@ -340,7 +340,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     shared_layer = LayerWithLoss()
@@ -357,7 +357,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     class LayerWithNestedLayerWithLoss(layers.Layer):

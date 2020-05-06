@@ -13,10 +13,19 @@ package(
 exports_files(["LICENSE"])
 
 py_library(
+    name = "checkpoint_options",
+    srcs = ["checkpoint_options.py"],
+    deps = [
+        "//tensorflow/python:tf_export",
+    ],
+)
+
+py_library(
     name = "functional_saver",
     srcs = ["functional_saver.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":checkpoint_options",
         ":saveable_hook",
         ":saveable_object",
         ":saveable_object_util",
@@ -31,6 +40,7 @@ cuda_py_test(
         "functional_saver_test.py",
     ],
     deps = [
+        ":checkpoint_options",
         ":functional_saver",
         ":saveable_hook",
         "//tensorflow/python/eager:test",

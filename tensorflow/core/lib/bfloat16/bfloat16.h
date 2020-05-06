@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/byte_order.h"
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || (defined(__HIPCC__) && defined(__HIP__))
 // All functions callable from CUDA code must be qualified with __device__
 #define B16_DEVICE_FUNC __host__ __device__
 
@@ -392,11 +392,11 @@ struct bfloat16 {
   uint16_t value;
 
   // A value that represents "not a number".
-  static const uint16_t NAN_VALUE = 0x7FC0;
+  static constexpr uint16_t NAN_VALUE = 0x7FC0;
 
  private:
   // A value that represents "zero".
-  static const uint16_t ZERO_VALUE = 0;
+  static constexpr uint16_t ZERO_VALUE = 0;
 
   B16_DEVICE_FUNC static bool float_isnan(const float& x) {
 #ifdef __CUDA_ARCH__

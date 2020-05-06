@@ -45,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::profiler::ScopedAnnotation;
+using ::tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 
@@ -91,15 +91,8 @@ GpuExecutable::~GpuExecutable() {
 }
 
 void GpuExecutable::ComputeThunkAnnotations() {
-  CanonicalNameMap canonical_name_map;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    const HloInstruction* hlo = thunk->hlo_instruction();
-    CHECK(hlo);
-    thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
-                        hlo->ToStringWithCanonicalNameMap(
-                            HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->name(), hlo->GetModule()->name());
+    thunk->ComputeAnnotations();
   }
 }
 
@@ -175,17 +168,13 @@ Status GpuExecutable::ExecuteThunks(
       tensorflow::profiler::TraceMeLevel::kInfo);
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
-  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    CHECK(thunk->hlo_instruction());
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    absl::optional<ScopedAnnotation> op_annotation;
-    CHECK(thunk->hlo_instruction());
-    if (scoped_annotation_enabled) {
-      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
-    }
+    ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =

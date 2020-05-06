@@ -40,6 +40,7 @@ enum TensorType : byte {
   INT16 = 7,
   COMPLEX64 = 8,
   INT8 = 9,
+  FLOAT64 = 10,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -519,17 +520,22 @@ table LSHProjectionOptions {
 table SVDFOptions {
   rank:int;
   fused_activation_function:ActivationFunctionType;
+  // For weights-only quantization, use asymmetric quantization for non
+  // constant inputs at evaluation time.
+  asymmetric_quantize_inputs:bool;
 }
 
 // An implementation of TensorFlow RNNCell.
 table RNNOptions {
   fused_activation_function:ActivationFunctionType;
+  asymmetric_quantize_inputs:bool;
 }
 
 // An implementation of TensorFlow dynamic_rnn with RNNCell.
 table SequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
+  asymmetric_quantize_inputs:bool;
 }
 
 // An implementation of TensorFlow bidrectional_dynamic_rnn with RNNCell.
@@ -537,6 +543,7 @@ table BidirectionalSequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
   merge_outputs: bool;
+  asymmetric_quantize_inputs:bool;
 }
 
 enum FullyConnectedOptionsWeightsFormat: byte {
@@ -556,6 +563,11 @@ table FullyConnectedOptions {
   // If set to true, then the number of dimension is preserved. Furthermore,
   // all but the last dimension of the input and output shapes will be equal.
   keep_num_dims: bool;
+
+  // Parameters for FullyConnected version 7 or above.
+  // If set to true, then weights-only op will use asymmetric quantization for
+  // inputs.
+  asymmetric_quantize_inputs: bool;
 }
 
 table SoftmaxOptions {
@@ -604,6 +616,9 @@ table LSTMOptions {
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
   kernel_type: LSTMKernelType = FULL;
+
+  // Parameters for LSTM version 4 or above.
+  asymmetric_quantize_inputs: bool;
 }
 
 // An implementation of TensorFlow dynamic_rnn with LSTMCell.
@@ -614,6 +629,9 @@ table UnidirectionalSequenceLSTMOptions {
 
   // If true then first dimension is sequence, otherwise batch.
   time_major:bool;
+
+  // Parameter for Unidirectional Sequence LSTM version 4.
+  asymmetric_quantize_inputs:bool;
 }
 
 table BidirectionalSequenceLSTMOptions {
@@ -630,6 +648,9 @@ table BidirectionalSequenceLSTMOptions {
   // Version 1 implementations assumed time_major to be true, so this default
   // value should never change.
   time_major: bool = true;
+
+  // Parameters for version 3 or above.
+  asymmetric_quantize_inputs:bool;
 }
 
 table ResizeBilinearOptions {
@@ -641,6 +662,7 @@ table ResizeBilinearOptions {
 
 table ResizeNearestNeighborOptions {
   align_corners: bool;
+  half_pixel_centers: bool;
 }
 
 // A call operation options
@@ -948,6 +970,8 @@ table SegmentSumOptions {
 }
 
 table BatchMatMulOptions {
+  adj_x:bool;
+  adj_y:bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

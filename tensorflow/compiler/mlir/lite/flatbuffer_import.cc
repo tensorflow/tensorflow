@@ -59,13 +59,11 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -185,6 +183,12 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
     return RankedTensorType::get({}, elem_type);
   }
 
+  if (!tensor.shape_signature.empty()) {
+    llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
+                                        tensor.shape_signature.end());
+    return RankedTensorType::get(shape, elem_type);
+  }
+
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());
@@ -242,23 +246,8 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 }
 
 StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
-  // TODO(b/143872630): Support custom ops
   if (opcode.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    // Adding some custom op supported on GPU.
-    const absl::string_view custom_name = opcode.custom_code;
-    if (custom_name == "MaxPoolingWithArgmax2D") {
-      return std::string("tfl.max_pooling_with_argmax_2d");
-    }
-    if (custom_name == "Convolution2DTransposeBias") {
-      return std::string("tfl.convolution_2d_transpose_bias");
-    }
-    if (custom_name == "MaxUnpooling2D") {
-      return std::string("tfl.max_unpooling_2d");
-    }
-    // Use an unsupported op name instead of throwing an error here in case the
-    // op is pruned during the import.
-    return std::string(
-        llvm::Twine("tfl.UNSUPPORTED_custom_", opcode.custom_code).str());
+    return std::string("tfl.custom");
   }
   if (opcode.builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
@@ -353,6 +342,22 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       }
       return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
     }
+    case 64: {
+      assert(bytes_len % 8 == 0);
+      size_t elem_count = bytes_len / 8;
+      std::vector<double> values;
+      values.reserve(elem_count);
+
+      const char* data = reinterpret_cast<const char*>(buffer.data());
+
+      for (int i = 0; i < elem_count; i++) {
+        uint64_t bit_repr =
+            llvm::support::endian::readNext<uint64_t, llvm::support::little,
+                                            llvm::support::unaligned>(data);
+        values.push_back(absl::bit_cast<double>(bit_repr));
+      }
+      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+    }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
 }
@@ -437,6 +442,15 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
              elem_type.isa<QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
+  } else if (elem_type.isa<mlir::TF::StringType>()) {
+    tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
+    std::vector<llvm::StringRef> refs;
+    refs.reserve(repr.string_val_size());
+
+    for (const auto& ref : repr.string_val())
+      refs.push_back({ref.data(), ref.size()});
+
+    value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType>() ||
              elem_type.isa<mlir::TF::TensorFlowType>()) {
     auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
@@ -494,18 +508,13 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
   }
 }
 
-// Returns true if this is a custom op.
-bool IsCustomOp(const std::string& op_name) {
-  return op_name == "tfl.max_pooling_with_argmax_2d" ||
-         op_name == "tfl.max_unpooling_2d" ||
-         op_name == "tfl.convolution_2d_transpose_bias";
-}
-
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value>& vals_map,
     const std::vector<mlir::TensorType>& intermediate_types,
-    Value optional_arg_marker, const std::vector<std::string>& op_names,
+    Value optional_arg_marker,
+    const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
+    const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder) {
@@ -518,6 +527,7 @@ StatusOr<Operation*> ConvertOp(
   }
 
   const bool is_basic_lstm = IsBasicLSTMOp(op.builtin_options);
+  const tflite::OperatorCodeT op_code = *op_codes.at(op.opcode_index);
   const std::string& op_name =
       is_basic_lstm ? "tfl.basic_lstm" : op_names.at(op.opcode_index);
   OperationState op_state(loc, op_name);
@@ -563,6 +573,24 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  // While the last several tensors could be optional tensors for an tfl op, the
+  // number of input operands could vary. Gets the min/max number of
+  // operands from tflite op name.
+  // Also, since the above code special-handles the `tfl.reshape` op and add an
+  // additional input, we put these function block here.
+  llvm::MinMax input_min_max = mlir::OperandNumbersMinMax(op_name);
+  int input_max_num = input_min_max.Max;
+  int op_input_num = op_state.operands.size();
+  if (input_max_num != 0 && input_max_num > op_input_num) {
+    // If the number of current inputs is less than the op definition, fill in
+    // with `none` value,
+    llvm::SmallVector<Value, 4> none_operands(
+        input_max_num - op_input_num,
+        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
+                                         builder.getUnitAttr()));
+    op_state.addOperands(ArrayRef<Value>(none_operands));
+  }
+
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
@@ -591,9 +619,9 @@ StatusOr<Operation*> ConvertOp(
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  if (IsCustomOp(op_name)) {
-    auto status = mlir::CustomOptionsToAttributes(op_name, op.custom_options,
-                                                  builder, loc, &attrs);
+  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    auto status = mlir::CustomOptionsToAttributes(
+        op_code.custom_code, op.custom_options, builder, loc, &attrs);
     if (!status.ok()) {
       return emitError(loc, status.ToString()), status;
     }
@@ -642,8 +670,8 @@ template <typename ContainerType>
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
     const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
     const ContainerType indices) {
-  llvm::SmallVector<std::string, 8> tensor_names = mlir::functional::map(
-      [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
+  auto tensor_names = llvm::map_range(
+      indices, [&](int i) { return subgraph.tensors.at(i)->name; });
   return builder->getNamedAttr(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
 }
@@ -705,6 +733,7 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
 // return nodes in ordered_output_arrays in the same order.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
+    const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
@@ -895,7 +924,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
         ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
-                  op_names, func_names, subgraph.tensors, op_loc, op_builder));
+                  op_codes, op_names, func_names, subgraph.tensors, op_loc,
+                  op_builder));
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used
@@ -1002,8 +1032,8 @@ OwningModuleRef tflite::FlatBufferToMlir(
     auto& subgraph = e.value();
     std::string name = SubgraphName(e.index(), *subgraph);
     auto func_or_error = ConvertSubgraph(
-        *subgraph, name, operator_names, func_names, model->buffers, base_loc,
-        builder,
+        *subgraph, name, model->operator_codes, operator_names, func_names,
+        model->buffers, base_loc, builder,
         // TODO(b/131175224,b/132239787) Support multiple entry points
         /*is_entry_point=*/e.index() == 0,
         /*use_external_constant=*/use_external_constant, ordered_input_arrays,

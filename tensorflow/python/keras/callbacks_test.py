@@ -274,6 +274,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegexpMatches(printed.contents(), expected_log)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_callback_warning(self):
+
+    class SleepCallback(keras.callbacks.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        time.sleep(1)
+
+    model = sequential.Sequential()
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(
+        'sgd',
+        loss='binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    warning_messages = []
+
+    def warning(msg):
+      warning_messages.append(msg)
+
+    with test.mock.patch.object(logging, 'warning', warning):
+      model.fit(
+          np.ones((10, 10), 'float32'),
+          np.ones((10, 1), 'float32'),
+          batch_size=5,
+          epochs=10,
+          callbacks=[SleepCallback()])
+    warning_msg = ('Callbacks method `on_train_batch_end` is slow compared '
+                   'to the batch time. Check your callbacks.')
+    self.assertIn(warning_msg, warning_messages)
+
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes
   def test_progbar_logging_deferred_model_build(self):
@@ -872,6 +903,44 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_predict_batch_begin(logs)
       cb_list.on_predict_batch_end(logs)
       cb_list.on_predict_end(logs)
+
+  def test_ProgbarLogger_verbose_2_nonblocking(self):
+    # Should only cause a sync block on epoch end methods.
+    callback = keras.callbacks.ProgbarLogger(count_mode='steps')
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=2)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+        # on_epoch_end should still block.
+        cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -1879,6 +1948,39 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
         },
     )
+
+  def test_TensorBoard_projector_callback(self):
+    layers = [
+        keras.layers.Embedding(10, 10, name='test_embedding'),
+        keras.layers.Dense(10, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        optimizer='adam',
+        loss=keras.losses.BinaryCrossentropy(from_logits=True),
+        run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir,
+        embeddings_freq=1,
+        embeddings_metadata={'test_embedding': 'metadata.tsv'})
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
+      self.assertEqual(
+          f.readlines(), [
+              'embeddings {\n',
+              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
+              '  metadata_path: "metadata.tsv"\n',
+              '}\n'])
 
   def test_custom_summary(self):
     if not context.executing_eagerly():

@@ -378,11 +378,12 @@ enum TensorType {
   TensorType_INT16 = 7,
   TensorType_COMPLEX64 = 8,
   TensorType_INT8 = 9,
+  TensorType_FLOAT64 = 10,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_INT8
+  TensorType_MAX = TensorType_FLOAT64
 };
 
-inline const TensorType (&EnumValuesTensorType())[10] {
+inline const TensorType (&EnumValuesTensorType())[11] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -393,13 +394,14 @@ inline const TensorType (&EnumValuesTensorType())[10] {
     TensorType_BOOL,
     TensorType_INT16,
     TensorType_COMPLEX64,
-    TensorType_INT8
+    TensorType_INT8,
+    TensorType_FLOAT64
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[11] = {
+  static const char * const names[12] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -410,13 +412,14 @@ inline const char * const *EnumNamesTensorType() {
     "INT16",
     "COMPLEX64",
     "INT8",
+    "FLOAT64",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_INT8)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_FLOAT64)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -4216,9 +4219,11 @@ struct SVDFOptionsT : public flatbuffers::NativeTable {
   typedef SVDFOptions TableType;
   int32_t rank;
   tflite::ActivationFunctionType fused_activation_function;
+  bool asymmetric_quantize_inputs;
   SVDFOptionsT()
       : rank(0),
-        fused_activation_function(tflite::ActivationFunctionType_NONE) {
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -4226,7 +4231,8 @@ struct SVDFOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SVDFOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_RANK = 4,
-    VT_FUSED_ACTIVATION_FUNCTION = 6
+    VT_FUSED_ACTIVATION_FUNCTION = 6,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 8
   };
   int32_t rank() const {
     return GetField<int32_t>(VT_RANK, 0);
@@ -4234,10 +4240,14 @@ struct SVDFOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_RANK) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   SVDFOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4254,6 +4264,9 @@ struct SVDFOptionsBuilder {
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(SVDFOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(SVDFOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit SVDFOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4269,9 +4282,11 @@ struct SVDFOptionsBuilder {
 inline flatbuffers::Offset<SVDFOptions> CreateSVDFOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     int32_t rank = 0,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool asymmetric_quantize_inputs = false) {
   SVDFOptionsBuilder builder_(_fbb);
   builder_.add_rank(rank);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -4281,22 +4296,29 @@ flatbuffers::Offset<SVDFOptions> CreateSVDFOptions(flatbuffers::FlatBufferBuilde
 struct RNNOptionsT : public flatbuffers::NativeTable {
   typedef RNNOptions TableType;
   tflite::ActivationFunctionType fused_activation_function;
+  bool asymmetric_quantize_inputs;
   RNNOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : fused_activation_function(tflite::ActivationFunctionType_NONE),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
 struct RNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef RNNOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 6
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   RNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4309,6 +4331,9 @@ struct RNNOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(RNNOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(RNNOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
   explicit RNNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -4324,8 +4349,10 @@ struct RNNOptionsBuilder {
 
 inline flatbuffers::Offset<RNNOptions> CreateRNNOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool asymmetric_quantize_inputs = false) {
   RNNOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -4336,9 +4363,11 @@ struct SequenceRNNOptionsT : public flatbuffers::NativeTable {
   typedef SequenceRNNOptions TableType;
   bool time_major;
   tflite::ActivationFunctionType fused_activation_function;
+  bool asymmetric_quantize_inputs;
   SequenceRNNOptionsT()
       : time_major(false),
-        fused_activation_function(tflite::ActivationFunctionType_NONE) {
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -4346,7 +4375,8 @@ struct SequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SequenceRNNOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TIME_MAJOR = 4,
-    VT_FUSED_ACTIVATION_FUNCTION = 6
+    VT_FUSED_ACTIVATION_FUNCTION = 6,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 8
   };
   bool time_major() const {
     return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0;
@@ -4354,10 +4384,14 @@ struct SequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   SequenceRNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4374,6 +4408,9 @@ struct SequenceRNNOptionsBuilder {
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(SequenceRNNOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(SequenceRNNOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit SequenceRNNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4389,8 +4426,10 @@ struct SequenceRNNOptionsBuilder {
 inline flatbuffers::Offset<SequenceRNNOptions> CreateSequenceRNNOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool time_major = false,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool asymmetric_quantize_inputs = false) {
   SequenceRNNOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_time_major(time_major);
   return builder_.Finish();
@@ -4403,10 +4442,12 @@ struct BidirectionalSequenceRNNOptionsT : public flatbuffers::NativeTable {
   bool time_major;
   tflite::ActivationFunctionType fused_activation_function;
   bool merge_outputs;
+  bool asymmetric_quantize_inputs;
   BidirectionalSequenceRNNOptionsT()
       : time_major(false),
         fused_activation_function(tflite::ActivationFunctionType_NONE),
-        merge_outputs(false) {
+        merge_outputs(false),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -4415,7 +4456,8 @@ struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuf
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TIME_MAJOR = 4,
     VT_FUSED_ACTIVATION_FUNCTION = 6,
-    VT_MERGE_OUTPUTS = 8
+    VT_MERGE_OUTPUTS = 8,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 10
   };
   bool time_major() const {
     return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0;
@@ -4426,11 +4468,15 @@ struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuf
   bool merge_outputs() const {
     return GetField<uint8_t>(VT_MERGE_OUTPUTS, 0) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   BidirectionalSequenceRNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4450,6 +4496,9 @@ struct BidirectionalSequenceRNNOptionsBuilder {
   void add_merge_outputs(bool merge_outputs) {
     fbb_.AddElement<uint8_t>(BidirectionalSequenceRNNOptions::VT_MERGE_OUTPUTS, static_cast<uint8_t>(merge_outputs), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(BidirectionalSequenceRNNOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit BidirectionalSequenceRNNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4466,8 +4515,10 @@ inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> CreateBidirectionalS
     flatbuffers::FlatBufferBuilder &_fbb,
     bool time_major = false,
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
-    bool merge_outputs = false) {
+    bool merge_outputs = false,
+    bool asymmetric_quantize_inputs = false) {
   BidirectionalSequenceRNNOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_merge_outputs(merge_outputs);
   builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_time_major(time_major);
@@ -4481,10 +4532,12 @@ struct FullyConnectedOptionsT : public flatbuffers::NativeTable {
   tflite::ActivationFunctionType fused_activation_function;
   tflite::FullyConnectedOptionsWeightsFormat weights_format;
   bool keep_num_dims;
+  bool asymmetric_quantize_inputs;
   FullyConnectedOptionsT()
       : fused_activation_function(tflite::ActivationFunctionType_NONE),
         weights_format(tflite::FullyConnectedOptionsWeightsFormat_DEFAULT),
-        keep_num_dims(false) {
+        keep_num_dims(false),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -4493,7 +4546,8 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_WEIGHTS_FORMAT = 6,
-    VT_KEEP_NUM_DIMS = 8
+    VT_KEEP_NUM_DIMS = 8,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 10
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -4504,11 +4558,15 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   bool keep_num_dims() const {
     return GetField<uint8_t>(VT_KEEP_NUM_DIMS, 0) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT) &&
            VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4528,6 +4586,9 @@ struct FullyConnectedOptionsBuilder {
   void add_keep_num_dims(bool keep_num_dims) {
     fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_KEEP_NUM_DIMS, static_cast<uint8_t>(keep_num_dims), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit FullyConnectedOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4544,8 +4605,10 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     tflite::FullyConnectedOptionsWeightsFormat weights_format = tflite::FullyConnectedOptionsWeightsFormat_DEFAULT,
-    bool keep_num_dims = false) {
+    bool keep_num_dims = false,
+    bool asymmetric_quantize_inputs = false) {
   FullyConnectedOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_keep_num_dims(keep_num_dims);
   builder_.add_weights_format(weights_format);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -4932,11 +4995,13 @@ struct LSTMOptionsT : public flatbuffers::NativeTable {
   float cell_clip;
   float proj_clip;
   tflite::LSTMKernelType kernel_type;
+  bool asymmetric_quantize_inputs;
   LSTMOptionsT()
       : fused_activation_function(tflite::ActivationFunctionType_NONE),
         cell_clip(0.0f),
         proj_clip(0.0f),
-        kernel_type(tflite::LSTMKernelType_FULL) {
+        kernel_type(tflite::LSTMKernelType_FULL),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -4946,7 +5011,8 @@ struct LSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
-    VT_KERNEL_TYPE = 10
+    VT_KERNEL_TYPE = 10,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -4960,12 +5026,16 @@ struct LSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::LSTMKernelType kernel_type() const {
     return static_cast<tflite::LSTMKernelType>(GetField<int8_t>(VT_KERNEL_TYPE, 0));
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            VerifyField<float>(verifier, VT_CELL_CLIP) &&
            VerifyField<float>(verifier, VT_PROJ_CLIP) &&
            VerifyField<int8_t>(verifier, VT_KERNEL_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   LSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4988,6 +5058,9 @@ struct LSTMOptionsBuilder {
   void add_kernel_type(tflite::LSTMKernelType kernel_type) {
     fbb_.AddElement<int8_t>(LSTMOptions::VT_KERNEL_TYPE, static_cast<int8_t>(kernel_type), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(LSTMOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit LSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5005,10 +5078,12 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     float cell_clip = 0.0f,
     float proj_clip = 0.0f,
-    tflite::LSTMKernelType kernel_type = tflite::LSTMKernelType_FULL) {
+    tflite::LSTMKernelType kernel_type = tflite::LSTMKernelType_FULL,
+    bool asymmetric_quantize_inputs = false) {
   LSTMOptionsBuilder builder_(_fbb);
   builder_.add_proj_clip(proj_clip);
   builder_.add_cell_clip(cell_clip);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_kernel_type(kernel_type);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
@@ -5022,11 +5097,13 @@ struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   float cell_clip;
   float proj_clip;
   bool time_major;
+  bool asymmetric_quantize_inputs;
   UnidirectionalSequenceLSTMOptionsT()
       : fused_activation_function(tflite::ActivationFunctionType_NONE),
         cell_clip(0.0f),
         proj_clip(0.0f),
-        time_major(false) {
+        time_major(false),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -5036,7 +5113,8 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
-    VT_TIME_MAJOR = 10
+    VT_TIME_MAJOR = 10,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -5050,12 +5128,16 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
   bool time_major() const {
     return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            VerifyField<float>(verifier, VT_CELL_CLIP) &&
            VerifyField<float>(verifier, VT_PROJ_CLIP) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5078,6 +5160,9 @@ struct UnidirectionalSequenceLSTMOptionsBuilder {
   void add_time_major(bool time_major) {
     fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_TIME_MAJOR, static_cast<uint8_t>(time_major), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit UnidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5095,10 +5180,12 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     float cell_clip = 0.0f,
     float proj_clip = 0.0f,
-    bool time_major = false) {
+    bool time_major = false,
+    bool asymmetric_quantize_inputs = false) {
   UnidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
   builder_.add_proj_clip(proj_clip);
   builder_.add_cell_clip(cell_clip);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_time_major(time_major);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
@@ -5113,12 +5200,14 @@ struct BidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   float proj_clip;
   bool merge_outputs;
   bool time_major;
+  bool asymmetric_quantize_inputs;
   BidirectionalSequenceLSTMOptionsT()
       : fused_activation_function(tflite::ActivationFunctionType_NONE),
         cell_clip(0.0f),
         proj_clip(0.0f),
         merge_outputs(false),
-        time_major(true) {
+        time_major(true),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -5129,7 +5218,8 @@ struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbu
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
     VT_MERGE_OUTPUTS = 10,
-    VT_TIME_MAJOR = 12
+    VT_TIME_MAJOR = 12,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 14
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -5146,6 +5236,9 @@ struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbu
   bool time_major() const {
     return GetField<uint8_t>(VT_TIME_MAJOR, 1) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
@@ -5153,6 +5246,7 @@ struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbu
            VerifyField<float>(verifier, VT_PROJ_CLIP) &&
            VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   BidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5178,6 +5272,9 @@ struct BidirectionalSequenceLSTMOptionsBuilder {
   void add_time_major(bool time_major) {
     fbb_.AddElement<uint8_t>(BidirectionalSequenceLSTMOptions::VT_TIME_MAJOR, static_cast<uint8_t>(time_major), 1);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(BidirectionalSequenceLSTMOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit BidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5196,10 +5293,12 @@ inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectional
     float cell_clip = 0.0f,
     float proj_clip = 0.0f,
     bool merge_outputs = false,
-    bool time_major = true) {
+    bool time_major = true,
+    bool asymmetric_quantize_inputs = false) {
   BidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
   builder_.add_proj_clip(proj_clip);
   builder_.add_cell_clip(cell_clip);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_time_major(time_major);
   builder_.add_merge_outputs(merge_outputs);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -5277,22 +5376,29 @@ flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(flatbuffe
 struct ResizeNearestNeighborOptionsT : public flatbuffers::NativeTable {
   typedef ResizeNearestNeighborOptions TableType;
   bool align_corners;
+  bool half_pixel_centers;
   ResizeNearestNeighborOptionsT()
-      : align_corners(false) {
+      : align_corners(false),
+        half_pixel_centers(false) {
   }
 };
 
 struct ResizeNearestNeighborOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeNearestNeighborOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ALIGN_CORNERS = 4
+    VT_ALIGN_CORNERS = 4,
+    VT_HALF_PIXEL_CENTERS = 6
   };
   bool align_corners() const {
     return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
   }
+  bool half_pixel_centers() const {
+    return GetField<uint8_t>(VT_HALF_PIXEL_CENTERS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
+           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS) &&
            verifier.EndTable();
   }
   ResizeNearestNeighborOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5305,6 +5411,9 @@ struct ResizeNearestNeighborOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_align_corners(bool align_corners) {
     fbb_.AddElement<uint8_t>(ResizeNearestNeighborOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+  }
+  void add_half_pixel_centers(bool half_pixel_centers) {
+    fbb_.AddElement<uint8_t>(ResizeNearestNeighborOptions::VT_HALF_PIXEL_CENTERS, static_cast<uint8_t>(half_pixel_centers), 0);
   }
   explicit ResizeNearestNeighborOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -5320,8 +5429,10 @@ struct ResizeNearestNeighborOptionsBuilder {
 
 inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    bool align_corners = false) {
+    bool align_corners = false,
+    bool half_pixel_centers = false) {
   ResizeNearestNeighborOptionsBuilder builder_(_fbb);
+  builder_.add_half_pixel_centers(half_pixel_centers);
   builder_.add_align_corners(align_corners);
   return builder_.Finish();
 }
@@ -9132,14 +9243,30 @@ flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::Flat
 
 struct BatchMatMulOptionsT : public flatbuffers::NativeTable {
   typedef BatchMatMulOptions TableType;
-  BatchMatMulOptionsT() {
+  bool adj_x;
+  bool adj_y;
+  BatchMatMulOptionsT()
+      : adj_x(false),
+        adj_y(false) {
   }
 };
 
 struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BatchMatMulOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ADJ_X = 4,
+    VT_ADJ_Y = 6
+  };
+  bool adj_x() const {
+    return GetField<uint8_t>(VT_ADJ_X, 0) != 0;
+  }
+  bool adj_y() const {
+    return GetField<uint8_t>(VT_ADJ_Y, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_X) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_Y) &&
            verifier.EndTable();
   }
   BatchMatMulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9150,6 +9277,12 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct BatchMatMulOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
+  void add_adj_x(bool adj_x) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_X, static_cast<uint8_t>(adj_x), 0);
+  }
+  void add_adj_y(bool adj_y) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_Y, static_cast<uint8_t>(adj_y), 0);
+  }
   explicit BatchMatMulOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -9163,8 +9296,12 @@ struct BatchMatMulOptionsBuilder {
 };
 
 inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(
-    flatbuffers::FlatBufferBuilder &_fbb) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool adj_x = false,
+    bool adj_y = false) {
   BatchMatMulOptionsBuilder builder_(_fbb);
+  builder_.add_adj_y(adj_y);
+  builder_.add_adj_x(adj_x);
   return builder_.Finish();
 }
 
@@ -11034,6 +11171,7 @@ inline void SVDFOptions::UnPackTo(SVDFOptionsT *_o, const flatbuffers::resolver_
   (void)_resolver;
   { auto _e = rank(); _o->rank = _e; }
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<SVDFOptions> SVDFOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SVDFOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11046,10 +11184,12 @@ inline flatbuffers::Offset<SVDFOptions> CreateSVDFOptions(flatbuffers::FlatBuffe
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SVDFOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _rank = _o->rank;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateSVDFOptions(
       _fbb,
       _rank,
-      _fused_activation_function);
+      _fused_activation_function,
+      _asymmetric_quantize_inputs);
 }
 
 inline RNNOptionsT *RNNOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11062,6 +11202,7 @@ inline void RNNOptions::UnPackTo(RNNOptionsT *_o, const flatbuffers::resolver_fu
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<RNNOptions> RNNOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RNNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11073,9 +11214,11 @@ inline flatbuffers::Offset<RNNOptions> CreateRNNOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RNNOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateRNNOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _asymmetric_quantize_inputs);
 }
 
 inline SequenceRNNOptionsT *SequenceRNNOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11089,6 +11232,7 @@ inline void SequenceRNNOptions::UnPackTo(SequenceRNNOptionsT *_o, const flatbuff
   (void)_resolver;
   { auto _e = time_major(); _o->time_major = _e; }
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<SequenceRNNOptions> SequenceRNNOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SequenceRNNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11101,10 +11245,12 @@ inline flatbuffers::Offset<SequenceRNNOptions> CreateSequenceRNNOptions(flatbuff
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SequenceRNNOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _time_major = _o->time_major;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateSequenceRNNOptions(
       _fbb,
       _time_major,
-      _fused_activation_function);
+      _fused_activation_function,
+      _asymmetric_quantize_inputs);
 }
 
 inline BidirectionalSequenceRNNOptionsT *BidirectionalSequenceRNNOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11119,6 +11265,7 @@ inline void BidirectionalSequenceRNNOptions::UnPackTo(BidirectionalSequenceRNNOp
   { auto _e = time_major(); _o->time_major = _e; }
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
   { auto _e = merge_outputs(); _o->merge_outputs = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> BidirectionalSequenceRNNOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceRNNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11132,11 +11279,13 @@ inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> CreateBidirectionalS
   auto _time_major = _o->time_major;
   auto _fused_activation_function = _o->fused_activation_function;
   auto _merge_outputs = _o->merge_outputs;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateBidirectionalSequenceRNNOptions(
       _fbb,
       _time_major,
       _fused_activation_function,
-      _merge_outputs);
+      _merge_outputs,
+      _asymmetric_quantize_inputs);
 }
 
 inline FullyConnectedOptionsT *FullyConnectedOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11151,6 +11300,7 @@ inline void FullyConnectedOptions::UnPackTo(FullyConnectedOptionsT *_o, const fl
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
   { auto _e = weights_format(); _o->weights_format = _e; }
   { auto _e = keep_num_dims(); _o->keep_num_dims = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<FullyConnectedOptions> FullyConnectedOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11164,11 +11314,13 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(fl
   auto _fused_activation_function = _o->fused_activation_function;
   auto _weights_format = _o->weights_format;
   auto _keep_num_dims = _o->keep_num_dims;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateFullyConnectedOptions(
       _fbb,
       _fused_activation_function,
       _weights_format,
-      _keep_num_dims);
+      _keep_num_dims,
+      _asymmetric_quantize_inputs);
 }
 
 inline SoftmaxOptionsT *SoftmaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11352,6 +11504,7 @@ inline void LSTMOptions::UnPackTo(LSTMOptionsT *_o, const flatbuffers::resolver_
   { auto _e = cell_clip(); _o->cell_clip = _e; }
   { auto _e = proj_clip(); _o->proj_clip = _e; }
   { auto _e = kernel_type(); _o->kernel_type = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<LSTMOptions> LSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11366,12 +11519,14 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBuffe
   auto _cell_clip = _o->cell_clip;
   auto _proj_clip = _o->proj_clip;
   auto _kernel_type = _o->kernel_type;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateLSTMOptions(
       _fbb,
       _fused_activation_function,
       _cell_clip,
       _proj_clip,
-      _kernel_type);
+      _kernel_type,
+      _asymmetric_quantize_inputs);
 }
 
 inline UnidirectionalSequenceLSTMOptionsT *UnidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11387,6 +11542,7 @@ inline void UnidirectionalSequenceLSTMOptions::UnPackTo(UnidirectionalSequenceLS
   { auto _e = cell_clip(); _o->cell_clip = _e; }
   { auto _e = proj_clip(); _o->proj_clip = _e; }
   { auto _e = time_major(); _o->time_major = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> UnidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11401,12 +11557,14 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
   auto _cell_clip = _o->cell_clip;
   auto _proj_clip = _o->proj_clip;
   auto _time_major = _o->time_major;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateUnidirectionalSequenceLSTMOptions(
       _fbb,
       _fused_activation_function,
       _cell_clip,
       _proj_clip,
-      _time_major);
+      _time_major,
+      _asymmetric_quantize_inputs);
 }
 
 inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11423,6 +11581,7 @@ inline void BidirectionalSequenceLSTMOptions::UnPackTo(BidirectionalSequenceLSTM
   { auto _e = proj_clip(); _o->proj_clip = _e; }
   { auto _e = merge_outputs(); _o->merge_outputs = _e; }
   { auto _e = time_major(); _o->time_major = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> BidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11438,13 +11597,15 @@ inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectional
   auto _proj_clip = _o->proj_clip;
   auto _merge_outputs = _o->merge_outputs;
   auto _time_major = _o->time_major;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateBidirectionalSequenceLSTMOptions(
       _fbb,
       _fused_activation_function,
       _cell_clip,
       _proj_clip,
       _merge_outputs,
-      _time_major);
+      _time_major,
+      _asymmetric_quantize_inputs);
 }
 
 inline ResizeBilinearOptionsT *ResizeBilinearOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11486,6 +11647,7 @@ inline void ResizeNearestNeighborOptions::UnPackTo(ResizeNearestNeighborOptionsT
   (void)_o;
   (void)_resolver;
   { auto _e = align_corners(); _o->align_corners = _e; }
+  { auto _e = half_pixel_centers(); _o->half_pixel_centers = _e; }
 }
 
 inline flatbuffers::Offset<ResizeNearestNeighborOptions> ResizeNearestNeighborOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11497,9 +11659,11 @@ inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeig
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeNearestNeighborOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _align_corners = _o->align_corners;
+  auto _half_pixel_centers = _o->half_pixel_centers;
   return tflite::CreateResizeNearestNeighborOptions(
       _fbb,
-      _align_corners);
+      _align_corners,
+      _half_pixel_centers);
 }
 
 inline CallOptionsT *CallOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -13469,6 +13633,8 @@ inline BatchMatMulOptionsT *BatchMatMulOptions::UnPack(const flatbuffers::resolv
 inline void BatchMatMulOptions::UnPackTo(BatchMatMulOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
+  { auto _e = adj_x(); _o->adj_x = _e; }
+  { auto _e = adj_y(); _o->adj_y = _e; }
 }
 
 inline flatbuffers::Offset<BatchMatMulOptions> BatchMatMulOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BatchMatMulOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13479,8 +13645,12 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuff
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BatchMatMulOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _adj_x = _o->adj_x;
+  auto _adj_y = _o->adj_y;
   return tflite::CreateBatchMatMulOptions(
-      _fbb);
+      _fbb,
+      _adj_x,
+      _adj_y);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

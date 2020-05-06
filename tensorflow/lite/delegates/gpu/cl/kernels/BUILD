@@ -1,11 +1,11 @@
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -133,6 +133,7 @@ cc_library(
     srcs = ["conv_buffer_1x1.cc"],
     hdrs = ["conv_buffer_1x1.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -152,6 +153,11 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
     ],
+)
+
+cc_library(
+    name = "conv_common",
+    hdrs = ["conv_common.h"],
 )
 
 cc_test(
@@ -217,6 +223,7 @@ cc_library(
     srcs = ["conv_powervr.cc"],
     hdrs = ["conv_powervr.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -298,6 +305,22 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "conv_weights_converter",
+    srcs = ["conv_weights_converter.cc"],
+    hdrs = ["conv_weights_converter.h"],
+    deps = [
+        ":conv_common",
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 
@@ -549,9 +572,9 @@ cc_test(
 )
 
 cc_library(
-    name = "depth_wise_conv",
-    srcs = ["depth_wise_conv.cc"],
-    hdrs = ["depth_wise_conv.h"],
+    name = "depthwise_conv",
+    srcs = ["depthwise_conv.cc"],
+    hdrs = ["depthwise_conv.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -572,9 +595,9 @@ cc_library(
 )
 
 cc_library(
-    name = "depth_wise_conv_3d",
-    srcs = ["depth_wise_conv_3d.cc"],
-    hdrs = ["depth_wise_conv_3d.h"],
+    name = "depthwise_conv_3d",
+    srcs = ["depthwise_conv_3d.cc"],
+    hdrs = ["depthwise_conv_3d.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -595,8 +618,8 @@ cc_library(
 )
 
 cc_test(
-    name = "depth_wise_conv_test",
-    srcs = ["depth_wise_conv_test.cc"],
+    name = "depthwise_conv_test",
+    srcs = ["depthwise_conv_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
         "linux",
@@ -604,7 +627,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":depth_wise_conv",
+        ":depthwise_conv",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -613,9 +636,9 @@ cc_test(
 )
 
 cc_library(
-    name = "depth_wise_conv_3x3",
-    srcs = ["depth_wise_conv_3x3.cc"],
-    hdrs = ["depth_wise_conv_3x3.h"],
+    name = "depthwise_conv_3x3",
+    srcs = ["depthwise_conv_3x3.cc"],
+    hdrs = ["depthwise_conv_3x3.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -635,8 +658,8 @@ cc_library(
 )
 
 cc_test(
-    name = "depth_wise_conv_3x3_test",
-    srcs = ["depth_wise_conv_3x3_test.cc"],
+    name = "depthwise_conv_3x3_test",
+    srcs = ["depthwise_conv_3x3_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
         "linux",
@@ -644,7 +667,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":depth_wise_conv_3x3",
+        ":depthwise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -1423,8 +1446,8 @@ test_suite(
         "convolution_transposed_4x4_test",
         "convolution_transposed_test",
         "convolution_transposed_thin_test",
-        "depth_wise_conv_3x3_test",
-        "depth_wise_conv_test",
+        "depthwise_conv_3x3_test",
+        "depthwise_conv_test",
         "elementwise_test",
         "fully_connected_test",
         "lstm_test",

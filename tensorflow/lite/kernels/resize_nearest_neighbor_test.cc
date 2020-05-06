@@ -25,16 +25,18 @@ using ::testing::ElementsAreArray;
 using uint8 = std::uint8_t;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 class ResizeNearestNeighborOpModel : public SingleOpModel {
  public:
   explicit ResizeNearestNeighborOpModel(const TensorData& input,
                                         std::initializer_list<int> size_data,
-                                        TestType test_type) {
-    bool const_size = (test_type == TestType::CONST);
+                                        TestType test_type,
+                                        bool align_corners = false,
+                                        bool half_pixel_centers = false) {
+    bool const_size = (test_type == TestType::kConst);
 
     input_ = AddInput(input);
     if (const_size) {
@@ -45,7 +47,10 @@ class ResizeNearestNeighborOpModel : public SingleOpModel {
     output_ = AddOutput(input.type);
     SetBuiltinOp(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
                  BuiltinOptions_ResizeNearestNeighborOptions,
-                 CreateResizeNearestNeighborOptions(builder_).Union());
+                 CreateResizeNearestNeighborOptions(
+                     builder_, /*align_corners*/ align_corners,
+                     /*half_pixel_centers*/ half_pixel_centers)
+                     .Union());
     if (const_size) {
       BuildInterpreter({GetShape(input_)});
     } else {
@@ -182,6 +187,47 @@ TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
                                         10, 10, 16,  //
                                     })));
 }
+TEST_P(ResizeNearestNeighborOpTest,
+       TwoDimensionalResizeWithTwoBatches_AlignCorners) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
+                                 GetParam(), /**align_corners**/ true);
+  m.SetInput<float>({
+      3, 6,   //
+      9, 12,  //
+      4, 10,  //
+      10, 16  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
+                                        3, 6, 6,     //
+                                        9, 12, 12,   //
+                                        9, 12, 12,   //
+                                        4, 10, 10,   //
+                                        10, 16, 16,  //
+                                        10, 16, 16,  //
+                                    })));
+}
+TEST_P(ResizeNearestNeighborOpTest,
+       TwoDimensionalResizeWithTwoBatches_HalfPixelCenters) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
+                                 GetParam(), /**align_corners**/ false,
+                                 /**half_pixel_centers**/ true);
+  m.SetInput<float>({
+      3, 6,   //
+      9, 12,  //
+      4, 10,  //
+      10, 16  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
+                                        3, 6, 6,     //
+                                        9, 12, 12,   //
+                                        9, 12, 12,   //
+                                        4, 10, 10,   //
+                                        10, 16, 16,  //
+                                        10, 16, 16,  //
+                                    })));
+}
 TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResize) {
   ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, {3, 3},
                                  GetParam());
@@ -248,6 +294,36 @@ TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
                                         10, 12, 10, 12, 14, 16,  //
                                     })));
 }
+TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8_AlignCorners) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {3, 3},
+                                 GetParam(), /**align_corners**/ true);
+  m.SetInput<uint8>({
+      3, 4, 6, 10,     //
+      10, 12, 14, 16,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
+                                        3, 4, 6, 10, 6, 10,      //
+                                        10, 12, 14, 16, 14, 16,  //
+                                        10, 12, 14, 16, 14, 16,  //
+                                    })));
+}
+TEST_P(ResizeNearestNeighborOpTest,
+       ThreeDimensionalResizeUInt8_HalfPixelCenters) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {3, 3},
+                                 GetParam(), /**align_corners**/ false,
+                                 /**half_pixel_centers**/ true);
+  m.SetInput<uint8>({
+      3, 4, 6, 10,     //
+      10, 12, 14, 16,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
+                                        3, 4, 6, 10, 6, 10,      //
+                                        10, 12, 14, 16, 14, 16,  //
+                                        10, 12, 14, 16, 14, 16,  //
+                                    })));
+}
 TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt8) {
   ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 2}}, {3, 3},
                                  GetParam());
@@ -264,7 +340,7 @@ TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt8) {
 }
 INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTest,
                          ResizeNearestNeighborOpTest,
-                         testing::Values(TestType::CONST, TestType::DYNAMIC));
+                         testing::Values(TestType::kConst, TestType::kDynamic));
 
 }  // namespace
 }  // namespace tflite

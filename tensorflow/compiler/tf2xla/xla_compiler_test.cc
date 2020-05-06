@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
@@ -461,6 +461,27 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
+}
+
+// Unranked fake param returns a 0 shaped tensor.
+TEST_F(XlaCompilerTest, UnrankedFakeParam) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  PartialTensorShape shape;
+  auto a = ops::FakeParam(scope, DT_INT32, shape);
+  auto ret = ops::_Retval(scope.WithOpName("D"), a, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "compile",
+                                     std::move(graph), {}, &result));
+  // Check that the return shapes are correctly tranposed.
+  EXPECT_EQ(result.xla_output_shape,
+            xla::ShapeUtil::MakeTupleShape(
+                {xla::ShapeUtil::MakeShape(xla::S32, {0})}));
 }
 
 // Tests that the compiler doesn't reorder the parameters.

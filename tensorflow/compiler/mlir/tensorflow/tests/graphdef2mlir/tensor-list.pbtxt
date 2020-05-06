@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s --dump-input-on-failure
 
 node {
   name: "TensorListReserve/num_elements"
@@ -59,7 +59,7 @@ node {
     key: "value"
     value {
       tensor {
-        dtype: DT_INT32
+        dtype: DT_FLOAT
         tensor_shape {
           dim {
             size: 2
@@ -68,10 +68,10 @@ node {
             size: 2
           }
         }
-        int_val: 1
-        int_val: 2
-        int_val: 3
-        int_val: 4
+        float_val: 1
+        float_val: 2
+        float_val: 3
+        float_val: 4
       }
     }
   }
@@ -209,10 +209,10 @@ versions {
 }
 
 # Verify that list element shape and dtype are expected.
-# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<2x2xf32>>>
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
 
 # Nested variant type.
-# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<2x2x!tf.variant>>>
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
 
-# CHECK:  tf.TensorListSetItem{{.*}}(tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<!tf.variant<tensor<2x2xf32>>>
-# CHECK:  tf.TensorListStack{{.*}}(tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>) -> tensor<?x2x2xf32>
+# CHECK:  tf.TensorListSetItem{{.*}}(tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<*x!tf.variant>
+# CHECK:  tf.TensorListStack{{.*}}(tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>

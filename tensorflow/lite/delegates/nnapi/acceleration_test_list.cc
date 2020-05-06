@@ -129,6 +129,7 @@ ConcatenationOpTest/FourInputsQuantizedMixedRange,29
 ConcatenationOpTest/FourInputsQuantizedMixedRangeClampingLogic,29
 
 # conv_test
+-ConvolutionOpTest/ConvolutionOpTest.SimplePerTensorTest/.+
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestFloatWithDilation/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestLargeIrregularQuantized/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedOutputMultiplierGreaterThan1/.+,29
@@ -150,6 +151,7 @@ DepthToSpaceOpModel/UInt8
 DepthToSpaceOpModel/int8
 
 # div_test
+-FloatDivOpTest/WithBroadcast5D
 FloatDivOpTest/.+
 
 # elementwise_test
@@ -261,6 +263,8 @@ FloatPoolingOpTest/L2PoolActivationRelu.*,29
 FloatPoolingOpTest/.+
 # Image is too big
 -QuantizedPoolingOpTest/AveragePoolImageSize17
+# Int16 unsupported
+-QuantizedPoolingOpTest/SymmetricAveragePool16
 QuantizedPoolingOpTest/.+
 QuantizedUInt8PoolingOpTest/.+
 
@@ -300,6 +304,9 @@ VariedShapeSpec/ReshapeOpTest/WithStretchDimension/1
 ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 
 # resize_nearest_neighbor_test
+// align_corners & half_pixel_centers are not implemented in NNAPI.
+-ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*,29
+-ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*,29
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
@@ -347,6 +354,7 @@ SVDFOpTest/BlackBoxTestRank2
 # tile_test
 -TileTest/TileTest/Int64.+/.+
 -TileTest/TileTest/Boolean.+/.+
+-TileTest/TileTest/String.+/.+
 # Const tensor only
 TileTest/TileTest/.+/0,29
 
@@ -357,11 +365,15 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 
 # transpose_test
 # death test
--TransposeTest/Test5DInputTensor
+-TransposeTest/Test6DInputTensor
+-TransposeTest/5DDividedIntoTwo2Ds.*
+-TransposeTest/Complex5DTest.*
 -TransposeTest/.+DynamicTensor
 TransposeTest/.+
 
 # transpose_conv_test
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 

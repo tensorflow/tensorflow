@@ -253,7 +253,7 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
     }
   }
 
-  const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+  const auto& tmp = node_map_->GetOutputs(node->name());
   const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
   bool updated_graph = false;
   for (int input_idx : inputs_to_forward) {
@@ -691,7 +691,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   }
 
   // We make a copy here since we might mutate the set.
-  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  const auto outputs = node_map_->GetOutputs(node.name());
   for (NodeDef* output : outputs) {
     for (int k = 0; k < output->input_size(); ++k) {
       int port;
@@ -1053,7 +1053,7 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
       op.find("Reader") != string::npos) {
     return false;
   }
-  if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
+  if (op.find("Quantized") != string::npos || absl::StartsWith(op, "Sparse")) {
     return false;
   }
 
@@ -1594,13 +1594,8 @@ Status ConstantFolding::FoldGraph(
     }
     // We need to record a copy of output nodes before FoldNode() modifies it.
     // We also need to ensure that the fanout is sorted deterministically.
-    const std::set<NodeDef*>& outputs = node_map_->GetOutputs(node->name());
-    std::vector<NodeDef*> fanout(outputs.begin(), outputs.end());
-    std::sort(fanout.begin(), fanout.end(),
-              [](const NodeDef* n1, const NodeDef* n2) {
-                return n1->name() < n2->name();
-              });
-
+    std::vector<NodeDef*> fanout =
+        node_map_->GetOutputsOrderedByNodeName(node->name());
     bool result_too_large = false;
     Status s = FoldNode(node, output, &result_too_large);
     processed_nodes.insert(node->name());
@@ -2341,6 +2336,13 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
       node_map_->NodeExists(axis_node_name)) {
     return false;
   }
+
+  // It's unsafe to add a control dependency on the feed node, because it might
+  // have been never executed otherwiwise.
+  if (feed_nodes_.find(NodeName(node->input(0))) != feed_nodes_.end()) {
+    return false;
+  }
+
   // Create constant axis node.
   Tensor axis_t(DT_INT32, TensorShape({}));
   const int axis =
@@ -2449,12 +2451,8 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
         SetTensorValue(DT_BOOL, false, &false_t).ok()) {
       // Copy the set of consumers of the switch as they will be manipulated
       // below.
-      const auto& consumer_set = node_map_->GetOutputs(node->name());
-      std::vector<NodeDef*> consumers(consumer_set.begin(), consumer_set.end());
-      std::sort(consumers.begin(), consumers.end(),
-                [](const NodeDef* n1, const NodeDef* n2) {
-                  return n1->name() < n2->name();
-                });
+      std::vector<NodeDef*> consumers =
+          node_map_->GetOutputsOrderedByNodeName(node->name());
       // Create constant false & true nodes.
       NodeDef tmp_false_node;
       tmp_false_node.set_name(OptimizedNodeName(*node, "_const_false"));
@@ -3762,20 +3760,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
   return Status::OK();
 }
-
-namespace {
-Status CompressConstants(GraphDef* graph) {
-  for (int i = 0; i < graph->node_size(); ++i) {
-    NodeDef* node = graph->mutable_node(i);
-    if ((IsConstant(*node) || IsHostConstant(*node)) &&
-        HasNodeAttr(*node, "value")) {
-      AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
-    }
-  }
-  return Status::OK();
-}
-}  // namespace
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
