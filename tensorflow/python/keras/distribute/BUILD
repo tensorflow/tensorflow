@@ -128,7 +128,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "notap",  # TODO(b/155867206) flaky segfault
+        "notpu",  # TODO(b/155867206) flaky segfault
         "notsan",
     ],
     tpu_tags = [
