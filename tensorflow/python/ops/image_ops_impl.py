@@ -36,6 +36,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1811,6 +1812,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError('dtype must be either floating point or integer')
   if dtype == image.dtype:
+    logging.warning("The operation `tf.image.convert_image_dtype` will be "
+                    "skipped since the input and output dtypes are identical.")
     return array_ops.identity(image, name=name)
 
   with ops.name_scope(name, 'convert_image', [image]) as name:
@@ -1842,6 +1845,9 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
       # Both float: Just cast, no possible overflows in the allowed ranges.
       # Note: We're ignoring float overflows. If your image dynamic range
       # exceeds float range, you're on your own.
+      logging.warning("The operation `tf.image.convert_image_dtype` will not "
+                      "automatically rescale input data since input and "
+                      "output dtypes are floating formats.")
       return math_ops.cast(image, dtype, name=name)
     else:
       if image.dtype.is_integer:
