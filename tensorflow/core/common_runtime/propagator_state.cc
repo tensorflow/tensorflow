@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -177,8 +178,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
-      DumpPendingNodeState(immutable_state_, node->node_id,
-                           iteration->input_tensors, false);
+      DumpPendingNodeState(*node, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
@@ -186,8 +186,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
     PendingCounts::Handle pending_id =
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
-      DumpActiveNodeState(immutable_state_, node->node_id,
-                          iteration->input_tensors);
+      DumpActiveNodeState(*node, iteration->input_tensors);
     }
   }
   // Show all input tensors in use.

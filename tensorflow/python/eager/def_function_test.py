@@ -21,6 +21,7 @@ import functools
 import itertools
 import pickle
 import re
+import sys
 import weakref
 
 from absl.testing import parameterized
@@ -366,13 +367,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     conc(z=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
-
-    with self.assertRaisesRegexp(
-        ValueError, 'either zero or all names have to be specified'):
-      conc = g.get_concrete_function([
-          tensor_spec.TensorSpec(None, dtypes.float32, 'z'),
-          tensor_spec.TensorSpec(None, dtypes.float32),
-      ])
 
   def test_error_inner_capture(self):
 
@@ -756,6 +750,147 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     x = array_ops.ones([])
     self.assertEqual(self.evaluate(cloned(x)), self.evaluate(func(x)))
+
+  def test_frequent_retracing_warning(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def f(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      self.assertEmpty(logs.output)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_lambda(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    f = def_function.function(lambda x: x)
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_method(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    class Foo(object):
+
+      @def_function.function
+      def f(self, x):
+        return x
+
+    f = Foo().f
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_two_independent_tf_functions(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def f(x):
+      return x
+
+    @def_function.function
+    def g(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      g(1)
+      g(2)
+      g(3)
+      g(4)
+      g(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_nested(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def inner(x):
+      return x + 1
+
+    @def_function.function
+    def outer1(x):
+      return inner(x) * 2
+
+    @def_function.function
+    def outer2(x):
+      return inner(x) * 3
+
+    with self.assertLogs(level='WARN') as logs:
+      inner(1)
+      inner(2)
+      inner(3)
+      inner(4)
+
+      outer1(5)
+      outer1(6)
+      outer1(7)
+      outer1(8)
+
+      outer2(9)
+      outer2(10)
+      outer2(11)
+      outer2(12)
+
+      self.assertEmpty(logs.output)
+
+      outer2(13)
+
+      self.assertLen(logs.output, 1)
+      self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_on_reinstantiation(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    with self.assertLogs(level='WARN') as logs:
+      for i in range(5):
+
+        @def_function.function
+        def f(x):
+          return x
+
+        f(i)
+
+        if i < 4:
+          self.assertEmpty(logs.output)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
 
 
 if __name__ == '__main__':

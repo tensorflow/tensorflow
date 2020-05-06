@@ -191,7 +191,7 @@ class EMBenchmarkHelper {
 
  public:
   // Length of tensors.  TODO(tucker): make this a variable parameter.
-  static const int kTDim = 1024;
+  static constexpr int kTDim = 1024;
 
   int num_ops() const { return add_kernels_.size(); }
   size_t tensor_size() const {

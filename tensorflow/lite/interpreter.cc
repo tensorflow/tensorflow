@@ -311,10 +311,19 @@ void Interpreter::SetCancellationFunction(void* data,
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
+    status = subgraph->ModifyGraphWithDelegate(delegate);
+    if (status != kTfLiteOk) {
+      break;
+    }
   }
-  return kTfLiteOk;
+  // Delegate-specific errors can be recovered from by restoring Interpreter to
+  // its original state.
+  if (status == kTfLiteDelegateError) {
+    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+  }
+  return status;
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
@@ -322,6 +331,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
   // fails, as delegate use will be in an indeterminate state at that point.
   owned_delegates_.push_back(std::move(delegate));
   return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,

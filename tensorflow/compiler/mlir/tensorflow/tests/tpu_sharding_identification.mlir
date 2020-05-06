@@ -185,3 +185,45 @@ func @func_with_sharding_after_cast(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -
   %7 = "tf.XlaSharding"(%5) { _XlaSharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
   return %6, %7 : tensor<*xi32> , tensor<*xi1>
 }
+
+// -----
+
+// Tests that input sharding inside a functional op is parsed correctly.
+// CHECK-LABEL: func @check_sharding_inside_functional_op
+func @check_sharding_inside_functional_op(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
+  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_device_training_loop, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  // CHECK: input_sharding_configuration
+  // CHECK-SAME: ["\01\02\03", "\04\05\06"]
+  // CHECK: output_sharding_configuration
+  // CHECK-SAME: ["\0A\0B\0C", "\0D\0E\0F"]
+  return
+}
+
+// CHECK-LABEL: func @func_with_device_training_loop
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*xi1> {xla_hlo.sharding = "\04\05\06"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {xla_hlo.sharding = "\0D\0E\0F"})
+func @func_with_device_training_loop(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>) {
+  %1:2 = "tf.StatefulPartitionedCall"(%arg0){f= @func_body, config="", config_proto="", executor_type=""}
+         : (tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+  %2 = "tf.PartitionedCall"(%arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_func_body} : (tensor<*xi1>) -> (tensor<i32>)
+  %3, %4 = "tf.A"(%1#0, %2) : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xi1>)
+
+  %5 = "tf.XlaSharding"(%3) { _XlaSharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
+  %6 = "tf.XlaSharding"(%4) { _XlaSharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
+
+  return %5, %6 : tensor<*xi32> , tensor<*xi1>
+}
+
+// CHECK-LABEL: func @func_body
+func @func_body(%arg0: tensor<*xi32>)-> (tensor<*xi32>, tensor<*xi1>) {
+  %1 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
+  %2, %3 = "tf.C"(%1) : (tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+  return %2, %3 : tensor<*xi32> , tensor<*xi1>
+}
+
+// CHECK-LABEL: func @pcall_func_body
+func @pcall_func_body(%arg0: tensor<*xi1>) -> tensor<i32> {
+  %1 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\04\05\06" } : (tensor<*xi1>) -> tensor<*xi1>
+  %2 = "tf.D"(%1) : (tensor<*xi1>) -> (tensor<i32>)
+  return %2 : tensor<i32>
+}

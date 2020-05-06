@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -1100,6 +1101,15 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   }
 }
 
+const string& OpKernelContext::executor_type() const {
+  if (params_->executor_type) {
+    return *params_->executor_type;
+  } else {
+    static const string& kEmptyString = *new string("");
+    return kEmptyString;
+  }
+}
+
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {
@@ -1273,7 +1283,21 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 
 namespace {
 
-static const StringPiece kKernelAttr("_kernel");
+// Label defaults to empty if not found in NodeDef.
+const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
+  static const string& kKernelAttr = *new string("_kernel");
+  static const string& kEmptyString = *new string("");
+
+  // NOTE: We inline the implementation of `GetNodeAttrString()` here in order
+  // to use the `AttrSlice::FindByString()` overload, which does a more
+  // efficient map lookup (instead of a linear scan) when the attribute name is
+  // already a `const string&`.
+  const AttrValue* attr_value = node_attrs.FindByString(kKernelAttr);
+  if (attr_value == nullptr || attr_value->value_case() != AttrValue::kS)
+    return kEmptyString;
+  else
+    return attr_value->s();
+}
 
 // TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
@@ -1284,8 +1308,8 @@ Status FindKernelRegistration(
     bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+
+  const string& label = GetKernelLabelAttr(node_attrs);
 
   const string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();

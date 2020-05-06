@@ -146,7 +146,7 @@ void LegalizeTFToQuant::runOnFunction() {
   auto func = getFunction();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace
 

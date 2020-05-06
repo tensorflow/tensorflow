@@ -154,9 +154,15 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerOperation* op = function_data->op.get();
 
-  eager::EnqueueRequest* request = new eager::EnqueueRequest;
+  if (!op->Inputs().empty()) {
+    done(errors::Internal("Inputs should not be set during instantiation."));
+    return;
+  }
+
+  auto request = std::make_shared<RunComponentFunctionRequest>();
+  auto response = std::make_shared<RunComponentFunctionResponse>();
   request->set_context_id(context_id_);
-  eager::Operation* remote_op = request->add_queue()->mutable_operation();
+  eager::Operation* remote_op = request->mutable_operation();
 
   for (const auto& arg : args) {
     if (arg.index() == 0) {
@@ -183,46 +189,28 @@ void EagerClusterFunctionLibraryRuntime::Run(
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
 
-  for (auto handle : op->Inputs()) {
-    handle->Ref();
-  }
-
-  // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
-  // disabled, Run() returns when the remote function execution completes, which
-  // might be blocked by a non-enqueued function execution.
-  EnqueueResponse* response = new EnqueueResponse;
-  eager_client->EnqueueAsync(
-      request, response,
-      [op, request, response, rets, done = std::move(done)](const Status& s) {
-        Status status = s;
-        auto cleanup = gtl::MakeCleanup([request, response, &status, &done] {
-          done(status);
-          delete request;
-          delete response;
-        });
-
-        for (auto handle : op->Inputs()) {
-          handle->Unref();
-        }
-        if (!status.ok()) {
+  // Execute component function on remote worker using RunComponentFunction RPC.
+  // Different from executing remote functions with Enqueue, this method runs
+  // a function on remote worker without tying up a thread (i.e., pure
+  // asynchronously).
+  eager_client->RunComponentFunctionAsync(
+      request.get(), response.get(),
+      [request, response, rets, done = std::move(done)](const Status& s) {
+        if (!s.ok()) {
+          done(s);
           return;
         }
-        if (response->queue_response_size() != 1) {
-          status.Update(errors::Internal(
-              "Expect that the size of response queue equals 1, but got: ",
-              response->queue_response_size()));
-          return;
-        }
-        for (const auto& tensor_proto : response->queue_response(0).tensor()) {
+        for (const auto& tensor_proto : response->tensor()) {
           Tensor t;
           if (t.FromProto(tensor_proto)) {
             rets->push_back(std::move(t));
           } else {
-            status.Update(errors::Internal("Could not convert tensor proto: ",
-                                           tensor_proto.DebugString()));
+            done(errors::Internal("Could not convert tensor proto: ",
+                                  tensor_proto.DebugString()));
             return;
           }
         }
+        done(Status::OK());
       });
 }
 

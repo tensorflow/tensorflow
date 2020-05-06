@@ -56,9 +56,7 @@ TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Input data tensor & min/max.
   AddInput(graph_builder_->GetHexagonTensorId(input_tensor_id));
   TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_,
-                                  std::numeric_limits<uint8_t>::min(),
-                                  std::numeric_limits<uint8_t>::max()));
+      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&input_min_),
       sizeof(input_min_));

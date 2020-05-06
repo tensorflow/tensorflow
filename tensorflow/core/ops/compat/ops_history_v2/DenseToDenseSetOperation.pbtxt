@@ -1,0 +1,49 @@
+op {
+  name: "DenseToDenseSetOperation"
+  input_arg {
+    name: "set1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+}

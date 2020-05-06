@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
@@ -136,7 +136,7 @@ func @reduce_window(%arg: memref<112x112xf32>,
              %result: memref<56x56xf32>) {
   "xla_lhlo.reduce_window"(%arg, %init, %result) ( {
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-      "xla_lhlo.maximum"(%lhs, %rhs, %res) 
+      "xla_lhlo.maximum"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
       "xla_lhlo.terminator"() : () -> ()
     }) {

@@ -28,7 +28,7 @@ PYBIND11_MODULE(_pywrap_string_util, m) {
   m.def(
       "SerializeAsHexString",
       [](py::handle& string_tensor) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tflite::testing::python::SerializeAsHexString(string_tensor.ptr()));
       },
       R"pbdoc(

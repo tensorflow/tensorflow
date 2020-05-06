@@ -86,7 +86,7 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
     return inputs * 2
 
 
@@ -547,7 +547,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         else:
           return inputs
 
-    t = array_ops.sequence_mask(1)
+    t = self.evaluate(array_ops.sequence_mask(1))
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 

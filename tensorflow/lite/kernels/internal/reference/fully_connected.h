@@ -23,8 +23,6 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-const int kReverseShift = -1;
-
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& weights_shape,

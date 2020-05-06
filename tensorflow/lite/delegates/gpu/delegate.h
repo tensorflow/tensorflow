@@ -65,7 +65,10 @@ enum TfLiteGpuInferencePriority {
 enum TfLiteGpuExperimentalFlags {
   TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE = 0,
   // Enables inference on quantized models with the delegate.
-  TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT = 1 << 0
+  TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT = 1 << 0,
+  // Enforces execution with the provided backend.
+  TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY = 1 << 1,
+  TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY = 1 << 2
 };
 
 // IMPORTANT: Always use TfLiteGpuDelegateOptionsV2Default() method to create
@@ -106,6 +109,11 @@ typedef struct {
 
   // Bitmask flags. See the comments in TfLiteGpuExperimentalFlags.
   int64_t experimental_flags;
+
+  // A graph could have multiple partitions that can be delegated to the GPU.
+  // This limits the maximum number of partitions to be delegated. By default,
+  // it's set to 1 in TfLiteGpuDelegateOptionsV2Default().
+  int32_t max_delegated_partitions;
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:

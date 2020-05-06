@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -146,14 +146,16 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
 
 // -----
 
+func @external_func() -> tensor<3xi64>
+
 // CHECK-LABEL: func @dyn_broadcast
 func @dyn_broadcast(%operand: memref<?x?xf32>) {
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
-  %shape = "compute.shape"() : () -> tensor<3xi64>
+  %shape = call @external_func() : () -> tensor<3xi64>
   %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
       {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
         : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = "compute.shape"()
+  // CHECK: %[[SHAPE:.*]] = call @external_func()
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
   // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index
@@ -167,6 +169,45 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // CHECK-NEXT: "xla_lhlo.broadcast_in_dim"(%{{.*}}, %[[RESULT]]) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
   // Do not store the value back to avoid the tensor-store being rewritten to
   // a copy into the pre-allocated argument.
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @complex
+func @complex(%real: memref<2x2xf32>,
+              %imag: memref<2x2xf32>,
+              %result: memref<2x2xcomplex<f32>>) {
+  %tensor_real = tensor_load %real : memref<2x2xf32>
+  %tensor_imag = tensor_load %imag : memref<2x2xf32>
+  %tensor_result = "xla_hlo.complex"(%tensor_real, %tensor_imag)
+      : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: "xla_lhlo.complex"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xcomplex<f32>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @real
+func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
+  %tensor_result = "xla_hlo.real"(%tensor_operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  // CHECK: "xla_lhlo.real"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @imag
+func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
+  %tensor_result = "xla_hlo.imag"(%tensor_operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  // CHECK: "xla_lhlo.imag"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
 

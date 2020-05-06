@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
@@ -269,6 +270,25 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose(0, argmax(array_ops.ones([10])))
     self.assertAllClose(0, argmin(array_ops.ones([10], dtype=dtypes.float32)))
     self.assertAllClose(0, argmin(array_ops.ones([10])))
+
+  def testErrorMessagePassingTensorArray(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=1, element_shape=[])
+      ta = ta.write(0, 2 * x)
+      y = ta.read(0)
+      return y
+
+    x = constant_op.constant(3.14)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      with self.assertRaisesRegexp(
+          errors.UnimplementedError,
+          'TensorList crossing the XLA/TF boundary'):
+        y = f(x)
+        tape.gradient(y, x)
 
 
 if __name__ == '__main__':

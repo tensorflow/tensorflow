@@ -54,8 +54,9 @@ StatusOr<bool> HloDCE::RunOnComputation(
          (remove_cross_partition_collective_ops &&
           ((instruction->opcode() == HloOpcode::kAllReduce &&
             !Cast<HloAllReduceInstruction>(instruction)->constrain_layout()) ||
-           instruction->opcode() == HloOpcode::kCollectivePermute ||
-           instruction->opcode() == HloOpcode::kAllToAll)))) {
+           (instruction->opcode() == HloOpcode::kAllToAll &&
+            !Cast<HloAllToAllInstruction>(instruction)->constrain_layout()) ||
+           instruction->opcode() == HloOpcode::kCollectivePermute)))) {
       dead_roots.push_back(instruction);
     }
   }

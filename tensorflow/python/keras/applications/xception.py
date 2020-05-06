@@ -18,7 +18,7 @@
 On ImageNet, this model gets to a top-1 validation accuracy of 0.790
 and a top-5 validation accuracy of 0.945.
 
-Reference paper:
+Reference:
   - [Xception: Deep Learning with Depthwise Separable Convolutions](
       https://arxiv.org/abs/1610.02357) (CVPR 2017)
 
@@ -59,6 +59,10 @@ def Xception(
     classes=1000,
     classifier_activation='softmax'):
   """Instantiates the Xception architecture.
+
+  Reference:
+  - [Xception: Deep Learning with Depthwise Separable Convolutions](
+      https://arxiv.org/abs/1610.02357) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

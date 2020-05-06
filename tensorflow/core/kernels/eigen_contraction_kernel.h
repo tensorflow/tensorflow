@@ -270,10 +270,10 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
   static constexpr float kScaleN = 1.0;
 
   // Mkldnn Avx/Avx2/Avx512 unroll factors are: 8/16/48.
-  static const StorageIndex kUnrollM = 48;
+  static constexpr StorageIndex kUnrollM = 48;
 
   // Mkldnn Avx/Avx2/Avx512 unroll factors are: 6/6/8.
-  static const StorageIndex kUnrollN = 24;
+  static constexpr StorageIndex kUnrollN = 24;
 
  public:
   TensorContractionBlocking(StorageIndex k, StorageIndex m, StorageIndex n,

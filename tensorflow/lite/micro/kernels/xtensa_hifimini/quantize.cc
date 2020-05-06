@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -43,7 +42,7 @@ void AffineQuantize(int scale_multiplier,
 
   const ae_p16x2s* input_data_ptr = (const ae_p16x2s*)(input_data - 2);
 
-  ae_p24x2s scale_multiplier_24x2 = AE_CONVERT_INT32_24x2(scale_multiplier);
+  ae_p24x2s scale_multiplier_24x2 = AE_MOVPA24(scale_multiplier);
 
   int iters = flat_size / 2;
   for (int i = 0; i < iters; i++) {
@@ -111,8 +110,10 @@ struct OpData {
 
 // This size will work for both the hotword (1) and ambient music (1):
 constexpr int kMaxOpDataSize = 2;
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
+
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -120,7 +121,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
@@ -159,7 +160,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
+                                 /*free=*/quantize::Free,
                                  /*prepare=*/quantize::Prepare,
                                  /*invoke=*/quantize::Eval,
                                  /*profiling_string=*/nullptr,

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {

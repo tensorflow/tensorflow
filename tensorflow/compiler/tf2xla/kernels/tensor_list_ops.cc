@@ -44,6 +44,36 @@ namespace tensorflow {
 
 namespace {
 
+// GetTensorListDynamicDims collects the dynamic dimensions that a tensorlist
+// may carry and returns them in a 2D vector: int64[ElementSize][DimSize]. If a
+// dimension is static, a constant dimension is returned.
+xla::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
+    XlaOpKernelContext* ctx, const xla::Shape& element_shape,
+    const xla::Shape& list_shape, int64 num_elements) {
+  std::vector<int64> dynamic_sizes;
+  ctx->set_dynamic_dimension_is_minus_one(true);
+  // The multiplier can be a dynamic value.
+  TF_RETURN_IF_ERROR(ctx->ConstantInputAsIntVector(0, &dynamic_sizes));
+  std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
+  // Set dynamic dimension size to 0 for initialization value.
+  std::vector<xla::XlaOp> dynamic_dims;
+  // Leading dim is a static dimension.
+  dynamic_dims.push_back(xla::ConstantR0<int32>(ctx->builder(), num_elements));
+  for (int64 dim = 0; dim < element_shape.dimensions_size(); ++dim) {
+    if (ctx->is_dynamic_dimension(dynamic_sizes[dim])) {
+      auto dynamic_dim_size = xla::Slice(ctx->Input(0), {dim}, {dim + 1}, {1});
+      dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+      dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+      dynamic_dims.push_back(dynamic_dim_size);
+    } else {
+      dynamic_dims.push_back(
+          xla::ConstantR0<int32>(ctx->builder(), dynamic_sizes[dim]));
+    }
+  }
+  list_dynamic_dims.push_back(dynamic_dims);
+  return list_dynamic_dims;
+}
+
 class TensorListLengthOp : public XlaOpKernel {
  public:
   explicit TensorListLengthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
@@ -124,10 +154,14 @@ class TensorListReserveOp : public XlaOpKernel {
       xla::Shape list_shape;
       OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
                               element_shape, num_elements, &list_shape));
-
+      // Set up dynamic dimension sizes to create the zero tensor.
+      auto list_dynamic_dims_or = GetTensorListDynamicDims(
+          ctx, element_shape, list_shape, num_elements);
+      OP_REQUIRES_OK(ctx, list_dynamic_dims_or.status());
       xla::XlaOp new_list;
       OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                              ctx->builder(), list_shape, &new_list));
+                              ctx->builder(), list_shape,
+                              list_dynamic_dims_or.ValueOrDie(), &new_list));
       xla::XlaOp result;
       OP_REQUIRES_OK(
           ctx,
@@ -185,10 +219,16 @@ class EmptyTensorListOp : public XlaOpKernel {
         xla::Shape list_shape;
         OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
                                 element_shape, max_num_elements, &list_shape));
+        // Set up dynamic dimension sizes to create the zero tensor.
+        auto list_dynamic_dims_or = GetTensorListDynamicDims(
+            ctx, element_shape, list_shape, max_num_elements);
+        OP_REQUIRES_OK(ctx, list_dynamic_dims_or.status());
 
         xla::XlaOp result;
         OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                                ctx->builder(), list_shape, &result));
+                                ctx->builder(), list_shape,
+                                list_dynamic_dims_or.ValueOrDie(), &result));
+
         ctx->SetTensorListOutput(0, result);
         return;
       }

@@ -76,18 +76,27 @@ tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[core_cpu_impl]  # device_lib, tfe, tf_session
+[device]  # device_lib, tfe, tf_session
 tensorflow::Device::attributes
+
+[device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
-tensorflow::SessionOptions::SessionOptions
-tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+
+[session_options]  # device_lib, tfe, tf_session
+tensorflow::SessionOptions::SessionOptions
+
+[quantize_training]  # quantize_training
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [server_lib] # server_lib
-tensorflow::data::GrpcDataServer::Start
-tensorflow::data::GrpcDataServer::Stop
-tensorflow::data::GrpcDataServer::Target
+tensorflow::data::GrpcDataServerBase::Start
+tensorflow::data::GrpcDataServerBase::Stop
+tensorflow::data::GrpcDataServerBase::BoundPort
+tensorflow::data::MasterGrpcDataServer::NumTasks
 tensorflow::data::NewMasterServer
 tensorflow::data::NewWorkerServer
 
@@ -108,6 +117,7 @@ tensorflow::swig::TryFindKernelClass
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
+toco::MlirSparsifyModel
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -173,6 +183,10 @@ TFE_Py_TapeGradient
 TFE_Py_FastPathExecute_C
 TFE_Py_RecordGradient
 TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
 TFE_Py_ForwardAccumulatorNew
 TFE_Py_ForwardAccumulatorSetAdd
 TFE_Py_ForwardAccumulatorSetRemove
@@ -206,7 +220,7 @@ tensorflow::ImportGraphDef
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
 
-[core_cpu_base_no_ops] # tf_session
+[graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
 
 [python_api] # tf_session

@@ -217,7 +217,7 @@ MatchBackwardFilter(HloInstruction* conv) {
       }
     }
     if (dim->padding_high() < 0) {
-      LOG(ERROR)
+      LOG(WARNING)
           << "Fusing this pattern to backward filter convolution would cause "
              "negative padding ("
           << dim->padding_high()
@@ -428,7 +428,7 @@ MatchBackwardInput(HloInstruction* conv) {
     auto backward_padding_low =
         kernel_size - 1 - old_window.dimensions(i).padding_low();
     if (backward_padding_low < 0) {
-      LOG(ERROR)
+      LOG(WARNING)
           << "The low padding of the backward convolution would be negative ("
           << backward_padding_low
           << "), which isn't supported by GpuConvPaddingLegalization "
@@ -496,13 +496,13 @@ MatchBackwardInput(HloInstruction* conv) {
     //   ABCD = BackwardInputConv(abc, xy, padding_low=1, padding_high=-1)
     // with positive padding low but negative padding high.
     if (dim->padding_high() < 0) {
-      LOG(ERROR) << "Fusing this pattern to backward convolution would cause "
-                    "negative padding ("
-                 << dim->padding_high()
-                 << ") on right/bottom of the activations, which is not "
-                    "supported by GpuConvPaddingLegalization (b/32744257). "
-                    "Falling back to unfused convolution for instruction: "
-                 << conv->ToString();
+      LOG(WARNING) << "Fusing this pattern to backward convolution would cause "
+                      "negative padding ("
+                   << dim->padding_high()
+                   << ") on right/bottom of the activations, which is not "
+                      "supported by GpuConvPaddingLegalization (b/32744257). "
+                      "Falling back to unfused convolution for instruction: "
+                   << conv->ToString();
       return no_match_result;
     }
   }

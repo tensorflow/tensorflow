@@ -87,7 +87,7 @@ struct LhloLegalizeToAffine
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, patterns);
   }
 };
 

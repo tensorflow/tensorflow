@@ -25,22 +25,20 @@ limitations under the License.
 // TensorFlow code should use the ::tensorflow::protobuf namespace to
 // refer to all protobuf APIs.
 
-#ifndef TENSORFLOW_LITE_PROTOS
+#include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/arena.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/map.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/repeated_field.h"
 #include "google/protobuf/text_format.h"
 #include "google/protobuf/util/json_util.h"
 #include "google/protobuf/util/type_resolver_util.h"
-#endif
-
-#include "google/protobuf/io/coded_stream.h"
-#include "google/protobuf/io/zero_copy_stream.h"
-#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
-#include "google/protobuf/arena.h"
-#include "google/protobuf/map.h"
-#include "google/protobuf/repeated_field.h"
 
 namespace tensorflow {
 
@@ -79,10 +77,10 @@ inline void SetProtobufStringSwapAllowed(std::string* src, std::string* dest) {
 // tools/proto_text's generated code.  They have the same name as the versions
 // in core/platform/protobuf.h, so the generation code doesn't need to determine
 // if the type is Cord or string at generation time.
-inline std::string ProtobufStringToString(const Cord& s) {
+inline std::string ProtobufStringToString(const absl::Cord& s) {
   return s.ToString();
 }
-inline void SetProtobufStringSwapAllowed(std::string* src, Cord* dest) {
+inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
   dest->CopyFrom(*src);
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
@@ -114,7 +112,7 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
   int64_t ByteCount() const override;
 
  private:
-  static const int kMinimumSize = 16;
+  static constexpr int kMinimumSize = 16;
 
   tstring* target_;
 };

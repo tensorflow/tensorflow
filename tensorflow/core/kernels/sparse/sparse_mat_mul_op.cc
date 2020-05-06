@@ -529,20 +529,12 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         adjoint_a_(adjoint_a),
         transpose_b_(transpose_b) {
     // TODO(ebrevdo): Figure out why transposed implementations crash cuSparse.
-#if GOOGLE_CUDA
-    transA_ = transpose_a ? (adjoint_a ? CUSPARSE_OPERATION_TRANSPOSE
-                                       : CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
-                          : CUSPARSE_OPERATION_NON_TRANSPOSE;
-    transB_ = transpose_b ? CUSPARSE_OPERATION_TRANSPOSE
-                          : CUSPARSE_OPERATION_NON_TRANSPOSE;
-#elif TENSORFLOW_USE_ROCM
     transA_ = transpose_a
-                  ? (adjoint_a ? HIPSPARSE_OPERATION_TRANSPOSE
-                               : HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
-                  : HIPSPARSE_OPERATION_NON_TRANSPOSE;
-    transB_ = transpose_b ? HIPSPARSE_OPERATION_TRANSPOSE
-                          : HIPSPARSE_OPERATION_NON_TRANSPOSE;
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+                  ? (adjoint_a ? GPUSPARSE(OPERATION_TRANSPOSE)
+                               : GPUSPARSE(OPERATION_CONJUGATE_TRANSPOSE))
+                  : GPUSPARSE(OPERATION_NON_TRANSPOSE);
+    transB_ = transpose_b ? GPUSPARSE(OPERATION_TRANSPOSE)
+                          : GPUSPARSE(OPERATION_NON_TRANSPOSE);
   }
 
   Status Initialize() {

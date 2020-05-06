@@ -91,6 +91,16 @@ Below is the list of current operators and limitations:
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
   are not supported.
 
+### `FULLY_CONNECTED`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
+  are not supported.
+
 ### `HARD_SWISH`
 
 * Inputs and outputs must be in 32-bit floating-point format.

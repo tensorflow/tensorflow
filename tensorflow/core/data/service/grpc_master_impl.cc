@@ -39,8 +39,10 @@ GrpcMasterImpl::GrpcMasterImpl(ServerBuilder* server_builder,
     return ToGrpcStatus(impl_.method(request, response));       \
   }
 HANDLER(RegisterWorker);
+HANDLER(WorkerUpdate);
 HANDLER(GetOrRegisterDataset);
-HANDLER(BeginEpoch);
+HANDLER(CreateJob);
+HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);
 #undef HANDLER
 

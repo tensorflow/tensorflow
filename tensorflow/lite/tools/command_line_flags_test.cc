@@ -55,8 +55,10 @@ TEST(CommandLineFlagsTest, BasicUsage) {
           Flag::CreateFlag("some_numeric_bool", &some_numeric_bool,
                            "some numeric bool"),
           Flag::CreateFlag("some_int1", &some_int1, "some int"),
-          Flag::CreateFlag("some_int2", &some_int2, "some int", Flag::REQUIRED),
-          Flag::CreateFlag("float_1", &float_1, "some float", Flag::POSITIONAL),
+          Flag::CreateFlag("some_int2", &some_int2, "some int",
+                           Flag::kRequired),
+          Flag::CreateFlag("float_1", &float_1, "some float",
+                           Flag::kPositional),
       });
 
   EXPECT_TRUE(parsed_ok);
@@ -131,7 +133,7 @@ TEST(CommandLineFlagsTest, RequiredFlagNotFound) {
   const char* argv_strings[] = {"program_name", "--flag=12"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
-      {Flag::CreateFlag("some_flag", &some_float, "", Flag::REQUIRED)});
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::kRequired)});
 
   EXPECT_FALSE(parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
@@ -144,7 +146,7 @@ TEST(CommandLineFlagsTest, NoArguments) {
   const char* argv_strings[] = {"program_name"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
-      {Flag::CreateFlag("some_flag", &some_float, "", Flag::REQUIRED)});
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::kRequired)});
 
   EXPECT_FALSE(parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
@@ -157,7 +159,7 @@ TEST(CommandLineFlagsTest, NotEnoughArguments) {
   const char* argv_strings[] = {"program_name"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
-      {Flag::CreateFlag("some_flag", &some_float, "", Flag::POSITIONAL)});
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::kPositional)});
 
   EXPECT_FALSE(parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
@@ -170,7 +172,7 @@ TEST(CommandLineFlagsTest, PositionalFlagFailed) {
   const char* argv_strings[] = {"program_name", "string"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
-      {Flag::CreateFlag("some_flag", &some_float, "", Flag::POSITIONAL)});
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::kPositional)});
 
   EXPECT_FALSE(parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
@@ -213,9 +215,9 @@ TEST(CommandLineFlagsTest, UsageString) {
       {Flag::CreateFlag("some_int", &some_int, "some int"),
        Flag::CreateFlag("some_int64", &some_int64, "some int64"),
        Flag::CreateFlag("some_switch", &some_switch, "some switch"),
-       Flag::CreateFlag("some_name", &some_name, "some name", Flag::REQUIRED),
+       Flag::CreateFlag("some_name", &some_name, "some name", Flag::kRequired),
        Flag::CreateFlag("some_int2", &some_int2, "some int",
-                        Flag::POSITIONAL)});
+                        Flag::kPositional)});
   // Match the usage message, being sloppy about whitespace.
   const char* expected_usage =
       " usage: some_tool_name <some_int2> <flags>\n"
@@ -307,8 +309,8 @@ TEST(CommandLineFlagsTest, DuplicateFlagsNotFound) {
   const char* argv_strings[] = {"program_name", "--some_float=1.0"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
-      {Flag::CreateFlag("some_int", &some_int1, "some int1", Flag::OPTIONAL),
-       Flag::CreateFlag("some_int", &some_int2, "some int2", Flag::REQUIRED)});
+      {Flag::CreateFlag("some_int", &some_int1, "some int1", Flag::kOptional),
+       Flag::CreateFlag("some_int", &some_int2, "some int2", Flag::kRequired)});
 
   EXPECT_FALSE(parsed_ok);
   EXPECT_EQ(-23, some_int1);
@@ -338,7 +340,7 @@ TEST(CommandLineFlagsTest, DuplicateFlagsAndArgs) {
   int some_int1 = -23;
   int some_int2 = -23;
   int argc = 3;
-  const char* argv_strings[] = {"program_name", "--some_int=1 --some_int=2"};
+  const char* argv_strings[] = {"program_name", "--some_int=1", "--some_int=2"};
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
       {Flag::CreateFlag("some_int", &some_int1, "flag1: bind with some_int1"),

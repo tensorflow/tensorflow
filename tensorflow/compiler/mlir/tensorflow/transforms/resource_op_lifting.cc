@@ -654,11 +654,8 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
     arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), update_index};
     if (!new_output_shapes.empty()) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes[entry.getFirst()] = builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto));
+      new_output_shapes[entry.getFirst()] =
+          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond());
     }
   }
   AddLoadsStoresOutsideControlFlowOp(new_while,
@@ -800,11 +797,8 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
     arg_data_type_and_updated_output_index[entry.getFirst() + 1] = {
         entry.getSecond(), update_index};
     if (!if_op.output_shapes().getValue().empty() && update_index >= 0) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
+      new_output_shapes.push_back(
+          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond()));
     }
   }
   AddLoadsStoresOutsideControlFlowOp(new_if,
@@ -878,6 +872,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -1111,7 +1106,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(function.getBlocks())) {
+  if (!hasSingleElement(function.getBlocks())) {
     return function.emitError()
            << "expect the function to have 1 block while it has "
            << function.getBlocks().size();

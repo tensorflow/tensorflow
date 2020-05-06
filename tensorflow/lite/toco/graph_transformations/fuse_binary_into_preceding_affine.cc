@@ -17,15 +17,27 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
 namespace {
+
+int GetBiasIndex(const Operator& op) {
+  if (op.type == OperatorType::kConv ||
+      op.type == OperatorType::kFullyConnected ||
+      op.type == OperatorType::kDepthwiseConv) {
+    return 2;
+  } else if (op.type == OperatorType::kTransposeConv) {
+    return 3;
+  }
+  LOG(FATAL) << "Unhandled operator type";
+  return 0;
+}
 
 void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
                                            const Operator* add_or_sub_op,
@@ -36,7 +48,8 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   if (preceding_op->inputs.size() < 3) {
     LOG(FATAL) << "Missing bias parameter";
   }
-  auto& bias = model->GetArray(preceding_op->inputs[2]);
+  const auto bias_ind = GetBiasIndex(*preceding_op);
+  auto& bias = model->GetArray(preceding_op->inputs[bias_ind]);
   bias.minmax = nullptr;
   const auto& operand =
       model->GetArray(add_or_sub_op->inputs[index_of_constant_input]);
@@ -101,7 +114,8 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
     LOG(FATAL) << "Missing bias parameter";
   }
   const auto& weights_name = preceding_op->inputs[1];
-  const auto& bias_name = preceding_op->inputs[2];
+  const auto bias_ind = GetBiasIndex(*preceding_op);
+  const auto& bias_name = preceding_op->inputs[bias_ind];
   auto& weights = model->GetArray(weights_name);
   DropMinMax(model, weights_name);
   auto& bias = model->GetArray(bias_name);
@@ -136,7 +150,8 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   int output_depth;
 
   if (preceding_op->type == OperatorType::kConv ||
-      preceding_op->type == OperatorType::kFullyConnected) {
+      preceding_op->type == OperatorType::kFullyConnected ||
+      preceding_op->type == OperatorType::kTransposeConv) {
     output_depth = weights_shape.dims(0);
   } else if (preceding_op->type == OperatorType::kDepthwiseConv) {
     output_depth = weights_shape.dims(weights_shape.dimensions_count() - 1);
@@ -253,11 +268,19 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 
   if (preceding_op->type != OperatorType::kConv &&
       preceding_op->type != OperatorType::kFullyConnected &&
-      preceding_op->type != OperatorType::kDepthwiseConv) {
+      preceding_op->type != OperatorType::kDepthwiseConv &&
+      preceding_op->type != OperatorType::kTransposeConv) {
     AddMessageF(
         "Not fusing %s because the preceding %s is not of one of the supported "
         "types",
         LogName(*binary_op), LogName(*preceding_op));
+    return ::tensorflow::Status::OK();
+  }
+
+  if (preceding_op->type == OperatorType::kTransposeConv &&
+      binary_op->type != OperatorType::kAdd) {
+    AddMessageF("Not fusing %s to preceding %s", LogName(*binary_op),
+                LogName(*preceding_op));
     return ::tensorflow::Status::OK();
   }
 
@@ -278,7 +301,8 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   }
 
   const auto& weights_name = preceding_op->inputs[1];
-  const auto& bias_name = preceding_op->inputs[2];
+  const auto bias_ind = GetBiasIndex(*preceding_op);
+  const auto& bias_name = preceding_op->inputs[bias_ind];
   const auto& weights = model->GetArray(weights_name);
   const auto& bias = model->GetArray(bias_name);
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
@@ -159,6 +160,110 @@ Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
     default:
       llvm_unreachable("unexpected tensorflow type with subtypes kind");
   }
+}
+
+ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
+  switch (getKind()) {
+    case TensorFlowTypes::VARIANT:
+      return this->cast<VariantType>().getSubtypes();
+    case TensorFlowTypes::RESOURCE:
+      return this->cast<ResourceType>().getSubtypes();
+    default:
+      llvm_unreachable("unexpected tensorflow type with subtypes kind");
+  }
+}
+
+// TODO(jpienaar): BroadcastCompatible and HasCompatibleElementTypes have
+// similar structure that could be extracted into helper method.
+bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto types : llvm::zip(lhs, rhs)) {
+    auto lhs_type = std::get<0>(types);
+    auto rhs_type = std::get<1>(types);
+
+    // This should be true for all TF ops:
+    auto lhs_tt = lhs_type.dyn_cast<TensorType>();
+    auto rhs_tt = rhs_type.dyn_cast<TensorType>();
+    if (!lhs_tt || !rhs_tt) {
+      if (lhs_type != rhs_type) return false;
+      continue;
+    }
+
+    // Verify matching element types. These should be identical, except for
+    // variant type where unknown subtype is considered compatible with all
+    // subtypes.
+    auto lhs_et = lhs_tt.getElementType();
+    auto rhs_et = rhs_tt.getElementType();
+    if (lhs_et != rhs_et) {
+      // If either does not have subtypes, then the element types don't match.
+      auto lhs_wst = lhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+      auto rhs_wst = rhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+      if (!lhs_wst || !rhs_wst) return false;
+
+      // Consider the subtype of variant types.
+      auto lhs_wst_st = lhs_wst.GetSubtypes();
+      auto rhs_wst_st = rhs_wst.GetSubtypes();
+      if (!lhs_wst_st.empty() && !rhs_wst_st.empty()) {
+        for (auto subtypes : llvm::zip(lhs_wst_st, rhs_wst_st)) {
+          if (!BroadcastCompatible(std::get<0>(subtypes),
+                                   std::get<1>(subtypes)))
+            return false;
+        }
+      }
+    }
+
+    auto lhs_rt = lhs_type.dyn_cast<RankedTensorType>();
+    auto rhs_rt = rhs_type.dyn_cast<RankedTensorType>();
+    if (!lhs_rt || !rhs_rt) return true;
+    SmallVector<int64_t, 4> shape;
+    return OpTrait::util::getBroadcastedShape(lhs_rt.getShape(),
+                                              rhs_rt.getShape(), shape);
+  }
+  return true;
+}
+
+bool HasCompatibleElementTypes(Type lhs, Type rhs,
+                               bool may_ignore_ref_type_lhs) {
+  // Fast path if everything is equal.
+  if (lhs == rhs) return true;
+
+  // In TF all values are tensors.
+  auto lhs_tt = lhs.cast<TensorType>();
+  auto rhs_tt = rhs.cast<TensorType>();
+
+  // Verify matching element types. These should be identical dynamically,
+  // so this allows for types not yet fully refined.
+  auto lhs_et = lhs_tt.getElementType();
+  auto rhs_et = rhs_tt.getElementType();
+  if (lhs_et == rhs_et) return true;
+
+  // Remove ref types.
+  if (may_ignore_ref_type_lhs) {
+    if (auto ref_type = lhs_et.dyn_cast<TF::TensorFlowRefType>()) {
+      lhs_et = ref_type.RemoveRef();
+      if (lhs_et == rhs_et) return true;
+    }
+  }
+
+  if (lhs_et.getKind() != rhs_et.getKind()) return false;
+
+  // If either is not type that contain subtypes then the element types don't
+  // match.
+  auto lhs_wst = lhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  auto rhs_wst = rhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (!lhs_wst || !rhs_wst) return false;
+
+  // Consider the subtype recursively.
+  auto lhs_wst_st = lhs_wst.GetSubtypes();
+  auto rhs_wst_st = rhs_wst.GetSubtypes();
+  if (lhs_wst_st.empty() || rhs_wst_st.empty()) return true;
+  if (lhs_wst_st.size() != rhs_wst_st.size()) return false;
+  for (auto subtypes : llvm::zip(lhs_wst_st, rhs_wst_st)) {
+    if (!HasCompatibleElementTypes(std::get<0>(subtypes),
+                                   std::get<1>(subtypes)))
+      return false;
+  }
+  return true;
 }
 
 }  // namespace TF

@@ -115,20 +115,6 @@ void BaseRendezvousMgr::Cleanup(int64 step_id) {
   }
 }
 
-void BaseRendezvousMgr::CleanupAll() {
-  std::vector<Rendezvous*> rendezs;
-  {
-    mutex_lock l(mu_);
-    for (const auto& entry : table_) {
-      rendezs.push_back(entry.second);
-    }
-    table_.clear();
-  }
-  for (auto rendez : rendezs) {
-    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
-  }
-}
-
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id)
     : env_(env),
       step_id_(step_id),

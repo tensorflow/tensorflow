@@ -77,6 +77,7 @@ tf_proto_library(
         ":kernel_stats_proto",
         ":op_metrics_proto",
         ":steps_db_proto",
+        ":tf_function_proto",
     ],
     visibility = [
         ":friends",
@@ -86,6 +87,13 @@ tf_proto_library(
 tf_proto_library(
     name = "kernel_stats_proto",
     srcs = ["kernel_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "tf_function_proto",
+    srcs = ["tf_function.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )
@@ -109,6 +117,20 @@ tf_proto_library(
 tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "tfstreamz_proto",
+    srcs = ["tfstreamz.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "memory_profile_proto",
+    srcs = ["memory_profile.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )

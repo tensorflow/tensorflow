@@ -29,9 +29,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.types import internal
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -55,8 +55,9 @@ tensor_util = LazyLoader(
     "tensorflow.python.framework.tensor_util")
 
 
+# TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(tensor_like.TensorLike, composite_tensor.CompositeTensor):
+class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -305,7 +306,8 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, tensor_like.TensorLike):
+  # TODO(mdan): Name says tensor_or_indexed_slices. So do explicitly just that?
+  elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %

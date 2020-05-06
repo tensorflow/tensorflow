@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -41,7 +43,6 @@ class SparseReshapeTest(test.TestCase):
     ind = np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2],
                     [3, 3]]).astype(np.int64)
     val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
-
     shape = np.array([5, 6]).astype(np.int64)
     return sparse_tensor.SparseTensorValue(ind, val, shape)
 
@@ -327,6 +328,74 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.indices, new_indices)
       self.assertAllEqual(output_val.values, new_values)
       self.assertAllEqual(output_val.dense_shape, new_shape)
+
+
+class EmptySparseTensorReshapeTest(test.TestCase, parameterized.TestCase):
+  """Tests for reshaping 0-sized SparseTensors, compared w/ dense tensors."""
+
+  def _MakeAndReshapeTensor(self, tensor_class, original_shape, target_shape):
+    if tensor_class == "sparse":
+      ind = np.zeros([0, len(original_shape)]).astype(np.int64)
+      val = np.array([]).astype(np.float64)
+      shape = np.array(original_shape).astype(np.int64)
+      sp_input = sparse_tensor.SparseTensorValue(ind, val, shape)
+      sp_output = self.evaluate(
+          sparse_ops.sparse_reshape(sp_input, target_shape))
+      return sp_output.dense_shape
+    else:
+      dense_input = array_ops.zeros(original_shape)
+      dense_output = self.evaluate(array_ops.reshape(dense_input, target_shape))
+      return dense_output.shape
+
+  @parameterized.named_parameters([
+      ("Dense", "dense"),
+      ("Sparse", "sparse"),
+  ])
+  def testImpliedReshapeEmpty1DTensor(self, tensor_class):
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [0], [-1, 1]), [0, 1])
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [0], [-1, 1, 2]), [0, 1, 2])
+
+  @parameterized.named_parameters([
+      ("Dense", "dense"),
+      ("Sparse", "sparse"),
+  ])
+  def testImpliedReshapeEmpty2DTensor(self, tensor_class):
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [1, 0], [-1, 1]), [0, 1])
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [1, 0], [-1, 2, 3]), [0, 2, 3])
+
+  @parameterized.named_parameters([
+      ("Dense", "dense"),
+      ("Sparse", "sparse"),
+  ])
+  def testImpliedReshapeEmpty3DTensor(self, tensor_class):
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [1, 0, 0], [-1, 2, 3]),
+        [0, 2, 3])
+
+  @parameterized.named_parameters([
+      ("Dense", "dense"),
+      ("Sparse", "sparse"),
+  ])
+  def testImpliedReshapeEmpty4DTensor(self, tensor_class):
+    self.assertAllEqual(
+        self._MakeAndReshapeTensor(tensor_class, [2, 4, 0, 6], [-1, 4, 6, 2]),
+        [0, 4, 6, 2])
+
+  def testImpliedDimTogetherWithZeroDimCausesError(self):
+    # NOTE: When implied dimensions and zero dimensions coexist in the target
+    # shape, the behavior currently differs between sparse and regular tensors.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self._MakeAndReshapeTensor("sparse", [0], [-1, 0])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self._MakeAndReshapeTensor("sparse", [1, 0], [-1, 0])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self._MakeAndReshapeTensor("sparse", [1, 2, 0], [2, -1, 0])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self._MakeAndReshapeTensor("sparse", [1, 2, 3, 0], [2, 0, -1, 3])
 
 
 if __name__ == "__main__":

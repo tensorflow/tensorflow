@@ -30,9 +30,10 @@ namespace {
 void EnableLogging(PassManager *pm) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
-  pm->disableMultithreading();
+  pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
+  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
 }
 }  // namespace
 
@@ -46,6 +47,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
 }
 
 tensorflow::Status RunTPUBridge(

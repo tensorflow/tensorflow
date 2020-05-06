@@ -35,12 +35,13 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
   // observed on a trace, where:
   //   name = the OP name.
   //   category = the OP category.
+  //   is_eager = whether this OP is eagerly executed.
   //   time_ps = the total execution time of the OP in picoseconds, including
   //             the execution time of its children.
   //   children_time_ps = the execution time of the children of this OP in
   //                      picoseconds
   void EnterOp(absl::string_view name, absl::string_view category,
-               uint64 time_ps, uint64 children_time_ps);
+               bool is_eager, uint64 time_ps, uint64 children_time_ps);
 
   // Updates total_host_infeed_enq_duration_ps_ and
   // total_host_infeed_enq_duration_ps_.
@@ -63,6 +64,7 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
   //   name = the OP name.
   //   category = the OP category.
   //   provenance = the provenance of this OP (e.g. original TF OP).
+  //   is_eager = whether this OP is eagerly executed.
   //   occurrences = the number of occurrences of this OP.
   //   time_ps = the total execution time of the OP in picoseconds, including
   //             the execution time of its children.
@@ -72,8 +74,8 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
   //   bytes_accessed = the sum of bytes read and bytes written by this OP.
   void EnterOp(uint64 program_id, absl::string_view name,
                absl::string_view category, absl::string_view provenance,
-               uint64 occurrences, uint64 time_ps, uint64 children_time_ps,
-               int64 flops, int64 bytes_accessed);
+               bool is_eager, uint64 occurrences, uint64 time_ps,
+               uint64 children_time_ps, int64 flops, int64 bytes_accessed);
 
  protected:
   // Peak performance of a TensorCore or a GPU in TFLOP/s.

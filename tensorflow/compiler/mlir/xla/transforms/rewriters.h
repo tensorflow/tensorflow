@@ -61,6 +61,16 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
+
+namespace xla_chlo {
+
+// Populates a collection of conversion patterns for legalizing client-HLO to
+// HLO.
+void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns);
+
+}  // namespace xla_chlo
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_

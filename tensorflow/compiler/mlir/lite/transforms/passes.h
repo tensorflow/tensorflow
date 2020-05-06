@@ -67,13 +67,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass();
 
-// Creates an instance of the TensorFlow Lite dialect ExtractOphint pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOphintPass();
-
-// Creates an instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
-// pass. The composite op is created from the ophint extraction pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeOphintFuncOpPass();
-
 // Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
 std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass();
 

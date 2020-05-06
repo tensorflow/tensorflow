@@ -48,8 +48,9 @@ _profiler_lock = threading.Lock()
 
 @tf_export('profiler.experimental.ProfilerOptions', v1=[])
 class ProfilerOptions(
-    collections.namedtuple('ProfilerOptions',
-                           ['host_tracer_level', 'python_tracer_level'])):
+    collections.namedtuple(
+        'ProfilerOptions',
+        ['host_tracer_level', 'python_tracer_level', 'device_tracer_level'])):
   """Options to control profiler behaviors.
 
   A `tf.profiler.ProfilerOptions` hold the knobs to control tf.profiler's
@@ -60,8 +61,18 @@ class ProfilerOptions(
                        2 => info, 3 => verbose. [default to 2]
     python_tracer_level: for enable python function call tracing, 1 => enable.
                          0 => disable [default to 0]
+    device_tracer_level: for adjust device (TPU/GPU) tracer level, 0 => disable
+                         1 => enabled. We may introduce fine-tuned level in the
+                         future. [default to 1]
   """
-  pass
+
+  def __new__(cls,
+              host_tracer_level=2,
+              python_tracer_level=0,
+              device_tracer_level=1):
+    return super(ProfilerOptions,
+                 cls).__new__(cls, host_tracer_level, python_tracer_level,
+                              device_tracer_level)
 
 
 @tf_export('profiler.experimental.start', v1=[])

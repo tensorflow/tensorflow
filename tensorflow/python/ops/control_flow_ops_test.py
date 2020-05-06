@@ -39,8 +39,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -957,7 +959,8 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def make_name(self):
-    return self.id().split(".")[-1].replace("(", "_").replace(")", "")
+    name = self.id().split(".")[-1].replace("(", "_").replace(")", "")
+    return name.replace(" ", "_")
 
   def disabled_testCase_ticklesGpuVsHostMemoryIssueWithInt32(self):
     nbranches = 5
@@ -1365,6 +1368,30 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     r = control_flow_ops.while_loop(
         c, b, [i], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10])
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_in_graph_and_eager_modes
+  def testSkipsUnnecessaryCaptureGradients(self):
+    @custom_gradient.custom_gradient
+    def gradient_trap(t):
+      def grad(w):
+        # Computing this gradient should fail the test
+        check_ops.assert_equal(0, 1)
+        return w
+      return t, grad
+
+    x = array_ops.constant(0.0, name="x")
+    y = array_ops.constant(1.0, name="y")
+    def cond(s):
+      return s < 10.0
+    def body(s):
+      return s + 2*x + gradient_trap(y)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      out = control_flow_ops.while_loop(cond, body, (array_ops.constant(0.0),))
+
+    grad = tape.gradient(out, x)
+    self.assertAllEqual(grad, 20.0)
 
 
 class AssertTest(test_util.TensorFlowTestCase):

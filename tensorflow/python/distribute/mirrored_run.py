@@ -364,7 +364,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
 
     This pauses the current replica thread and passes `fn` and its arguments to
     the main thread. The main thread will wait until all replicas pause, then
-    invoke `fn` with grouped arugments. The current replica thread will continue
+    invoke `fn` with grouped arguments. The current replica thread will continue
     after `fn` completes.
 
     See `_call_for_each_replica` for the logic in the main thread.

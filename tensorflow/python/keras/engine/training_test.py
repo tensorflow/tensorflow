@@ -28,6 +28,7 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -48,11 +49,14 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import template
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -84,6 +88,35 @@ class TrainingTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
     self.assertAllClose(hist.history['loss'][0], 10000)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_run_eagerly_setting(self):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    run_eagerly = testing_utils.should_run_eagerly()
+    model.compile('sgd', 'mse', run_eagerly=run_eagerly)
+    self.assertEqual(model.run_eagerly, run_eagerly)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @parameterized.named_parameters(
+      ('train_on_batch', 'train_on_batch'),
+      ('test_on_batch', 'test_on_batch'),
+      ('predict_on_batch', 'predict_on_batch'),
+      ('fit', 'fit'),
+      ('evaluate', 'evaluate'),
+      ('predict', 'predict'),
+  )
+  def test_disallow_methods_inside_tf_function(self, method_name):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    run_eagerly = testing_utils.should_run_eagerly()
+    model.compile('sgd', 'mse', run_eagerly=run_eagerly)
+
+    @def_function.function
+    def my_fn():
+      getattr(model, method_name)(1)
+
+    error_msg = 'inside a `tf.function`'
+    with self.assertRaisesRegexp(RuntimeError, error_msg):
+      my_fn()
 
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_learning_phase(self):
@@ -795,6 +828,65 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(l.trainable_variables, [l.layer1.trainable_var])
     self.assertEqual(l.non_trainable_variables, [l.layer1.non_trainable_var])
     self.assertLen(l.get_weights(), 2)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_weight_tracking_for_template(self):
+    def variable_scoped_function(trainable=True):
+      return variable_scope.get_variable(
+          'dummy', shape=[1], trainable=trainable,
+          initializer=init_ops.zeros_initializer())
+    def nested_template():
+      nested1 = template.make_template('nested', variable_scoped_function)
+      nested2 = template.make_template('nested', variable_scoped_function)
+      v1 = nested1()
+      v2 = nested2()
+
+      # nested1 and nested2 should not share variables
+      self.assertIsNot(v1, v2)
+
+      # Variables created by nested1 should be isolated from variables
+      # created by nested2.
+      self.assertEqual(1, len(nested1.variables))
+      self.assertEqual(1, len(nested2.variables))
+      self.assertIs(nested1.variables[0], v1)
+      self.assertIs(nested2.variables[0], v2)
+      self.assertEqual(1, len(nested1.trainable_variables))
+      self.assertEqual(1, len(nested2.trainable_variables))
+      self.assertIs(nested1.trainable_variables[0], v1)
+      self.assertIs(nested2.trainable_variables[0], v2)
+      self.assertEqual(len(nested1.non_trainable_variables), 0)
+      self.assertEqual(len(nested2.non_trainable_variables), 0)
+      return v1, v2
+
+    tmpl1 = template.make_template('s1', nested_template)
+    tmpl2 = template.make_template('s1', nested_template)
+
+    v1, v2 = tmpl1()
+    v5, v6 = tmpl2()
+
+    model = training_module.Model()
+    model.template = tmpl1
+    self.assertEqual(2, len(model.variables))
+    self.assertIs(model.variables[0], v1)
+    self.assertIs(model.variables[1], v2)
+    self.assertEqual(2, len(model.variables))
+    self.assertIs(model.trainable_variables[0], v1)
+    self.assertIs(model.trainable_variables[1], v2)
+    self.assertEqual(len(model.non_trainable_variables), 0)
+    model.templates = [tmpl2]
+    for v, w in zip(model.variables, [v1, v2, v5, v6]):
+      self.assertIs(v, w)
+    for v, w in zip(model.trainable_variables, [v1, v2, v5, v6]):
+      self.assertIs(v, w)
+    self.assertEqual(len(model.non_trainable_variables), 0)
+    # Make sure losses, layers, and updates aren't broken by having a Template
+    # in the mix, which does not expose any updates or losses.
+    self.assertEqual([], model.layers)
+    self.assertEqual([], model.updates)
+    self.assertEqual([], model.losses)
+    self.assertEqual([], model.templates.layers)
+    self.assertEqual([], model.templates.updates)
+    self.assertEqual([], model.templates.losses)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_logs_passed_to_callbacks(self):
@@ -3080,7 +3172,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.fit(np.ones(shape=(10, 1)), np.ones(shape=(10, 2)), batch_size=5)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_add_metric_invalid_aggregation(self):
+  def DISABLED_test_add_metric_invalid_aggregation(self):
+    # TODO(psv): Reenable test once it is fixed.
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
     model = training_module.Model(x, y)

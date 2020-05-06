@@ -133,6 +133,8 @@ message XRTExecutionConfig {
   // a single tuple allocation the execution will return a vector of
   // allocations, one for each of the first-level elements of the result tuple.
   bool return_exploded_tuple = 7;
+  // The replica index this execute is driving.
+  int32 replica_id = 8;
 }
 
 message XRTChainedExecuteConfig {
@@ -143,6 +145,8 @@ message XRTChainedExecuteConfig {
   // Optional key to disambiguate between executions. This is only needed if
   // multiple host send/recvs may be outstanding concurrently with executions.
   string execution_instance_key = 3;
+  // The replica index this execute is driving.
+  int32 replica_id = 4;
 }
 
 // A single chained execute operation. An operation can either be a device data
