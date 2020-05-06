@@ -1461,15 +1461,19 @@ OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
   auto type = getResult().getType().cast<ShapedType>();
   auto etype = type.getElementType();
 
+  // We can not fold if the result is not static.
+  if (!type.hasStaticShape()) return {};
+
   if (auto float_type = etype.dyn_cast<FloatType>()) {
     auto out_type = RankedTensorType::get(out_shape, float_type);
     return DenseElementsAttr::get(out_type,
                                   {APFloat(float_type.getFloatSemantics())});
   }
 
-  if (etype.isa<IntegerType>()) {
+  if (auto int_type = etype.dyn_cast<IntegerType>()) {
     auto out_type = RankedTensorType::get(out_shape, etype);
-    return DenseElementsAttr::get<int64_t>(out_type, 0);
+    APInt val(int_type.getWidth(), 0, int_type.getSignedness());
+    return DenseElementsAttr::get(out_type, val);
   }
 
   return {};
