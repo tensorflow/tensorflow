@@ -115,9 +115,9 @@ class BaseActivationsOpModel : public SingleOpModel {
       if (input.type == TensorType_INT16) {
         output_ = AddOutput({TensorType_INT16,
                            {},
-                           output_min,
-                           output_max,
-                           1.0f / (std::numeric_limits<int16_t>::max() + 1),
+                           0,
+                           0,
+                           output_max / (std::numeric_limits<int16_t>::max()),
                            0});
       } else {
         output_ = AddOutput({input.type, {}, output_min, output_max});
