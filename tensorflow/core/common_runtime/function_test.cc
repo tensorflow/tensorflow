@@ -434,7 +434,33 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
   Tensor* const retval_;
 };
 
-TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument) {
+TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
+  Init({test::function::XTimesTwo()});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(flr0_->Instantiate(
+      "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  float* x_base_ptr = &x.flat<float>()(0);
+  Tensor y;
+  ConsumeArgumentCallFrame frame(&x, &y);
+
+  FunctionLibraryRuntime::Options opts;
+  TF_CHECK_OK(Run(flr0_, handle, opts, &frame));
+
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  // Expect that the buffer for `x` has been forwarded to and used as the buffer
+  // for `y`.
+  float* y_base_ptr = &y.flat<float>()(0);
+  EXPECT_EQ(x_base_ptr, y_base_ptr);
+  EXPECT_FALSE(x.IsInitialized());
+
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+}
+
+TEST_F(FunctionLibraryRuntimeTest,
+       XTimesTwo_ConsumeArgument_SingleThreadedExecutor) {
   Init({test::function::XTimesTwo()});
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
