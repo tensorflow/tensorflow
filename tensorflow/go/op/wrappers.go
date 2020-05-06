@@ -10014,7 +10014,7 @@ func DataServiceDatasetTaskRefreshIntervalHintMs(value int64) DataServiceDataset
 }
 
 // Creates a dataset that reads data from the tf.data service.
-func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
+func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -10025,7 +10025,7 @@ func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.O
 	opspec := tf.OpSpec{
 		Type: "DataServiceDataset",
 		Input: []tf.Input{
-			dataset_id, processing_mode, address, protocol, max_outstanding_requests,
+			dataset_id, processing_mode, address, protocol, job_name, max_outstanding_requests, iteration_counter,
 		},
 		Attrs: attrs,
 	}
