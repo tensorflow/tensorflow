@@ -4060,13 +4060,13 @@ def extract_glimpse(
   ...          [[6.0],
   ...           [7.0],
   ...           [8.0]]]]
-  >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
-  ...                         centered=False, normalized=False)
+  >>> tf.compat.v1.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+  ...                                    centered=False, normalized=False)
   <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
-  array([[[[4.],
-           [5.]],
-          [[7.],
-           [8.]]]], dtype=float32)>
+  array([[[[0.],
+           [1.]],
+          [[3.],
+           [4.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
