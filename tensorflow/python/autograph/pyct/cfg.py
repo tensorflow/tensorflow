@@ -29,6 +29,7 @@ notable exception:
    raise (i.e. a function call in the middle of a block does not return or jump
    to any except or finally block)
 TODO(mdan): Consider adding the edges above. They'd only add ~O(n) edges.
+TODO(mdan): Alternatively, consider adding an edge from try to all its excepts.
 """
 
 # TODO(mdan): The notion of 'statements' below is inaccurate.

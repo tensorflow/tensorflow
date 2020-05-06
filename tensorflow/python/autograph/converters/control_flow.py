@@ -70,18 +70,33 @@ class ControlFlowTransformer(converter.Base):
       return_stmt = templates.replace(template, retvals=returns)
 
     if aliased_orig_names:
+      alias_declarations = []
+      for new_name, old_name in zip(aliased_new_names, aliased_orig_names):
+        template = """
+          try:
+            aliased_new_name = aliased_orig_name
+          except NameError:
+            aliased_new_name = ag__.Undefined(symbol_name)
+        """
+
+        alias_declarations.extend(
+            templates.replace(
+                template,
+                aliased_new_name=new_name,
+                aliased_orig_name=old_name,
+                symbol_name=gast.Constant(str(old_name), kind=None)))
+
       template = """
         def body_name():
-          aliased_new_names, = aliased_orig_names,
+          alias_declarations
           body
           return_stmt
       """
       return templates.replace(
           template,
+          alias_declarations=alias_declarations,
           body_name=body_name,
           body=body,
-          aliased_orig_names=aliased_orig_names,
-          aliased_new_names=aliased_new_names,
           return_stmt=return_stmt)
     else:
       template = """
@@ -132,13 +147,8 @@ class ControlFlowTransformer(converter.Base):
       return 'no variables'
     return ', '.join(map(str, symbol_set))
 
-  def _determine_aliased_symbols(self, scope, node_defined_in, block):
-    if block:
-      block_live_in = set(anno.getanno(block[0], anno.Static.LIVE_VARS_IN))
-    else:
-      block_live_in = set()
-
-    modified_live = scope.modified & node_defined_in & block_live_in
+  def _determine_aliased_symbols(self, scope, node_defined_in):
+    modified_live = scope.modified & node_defined_in
     # Composite symbols are handled elsewhere, see _create_state_functions
     return {
         s for s in modified_live
@@ -221,9 +231,9 @@ class ControlFlowTransformer(converter.Base):
     # that happens in the call to generic_visit below, because the conversion
     # generates nodes that lack static analysis annotations.
     need_alias_in_body = self._determine_aliased_symbols(
-        body_scope, defined_in, node.body)
+        body_scope, defined_in)
     need_alias_in_orelse = self._determine_aliased_symbols(
-        orelse_scope, defined_in, node.orelse)
+        orelse_scope, defined_in)
 
     node = self.generic_visit(node)
 
