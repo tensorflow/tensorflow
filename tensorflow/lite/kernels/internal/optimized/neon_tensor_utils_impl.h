@@ -111,6 +111,11 @@ void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                         int32_t n_row, int32_t n_col,
                                         int32_t* output);
 
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector. Sparse version.
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
