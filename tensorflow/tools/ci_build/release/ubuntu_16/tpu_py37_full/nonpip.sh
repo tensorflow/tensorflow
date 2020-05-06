@@ -61,4 +61,6 @@ test_args=(
   --local_test_jobs=1
 )
 
+set +e
 bazel test "${bazel_args[@]}" "${test_args[@]}" -- "${test_patterns[@]}"
+test_xml_summary_exit
