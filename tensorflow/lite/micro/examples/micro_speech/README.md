@@ -55,7 +55,7 @@ For more detailed information on building and running examples see the appropria
 
 2.	Go to the generated example project director 
     
-        cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/person_detection/make`
+        cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/micro_speech_mock/make
         
 3.	Build the example using 
 

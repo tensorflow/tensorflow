@@ -24,7 +24,7 @@ ifeq ($(filter no_arc_mli,$(ALL_TAGS)),)
 ALL_TAGS += arc_mli
 
 ifeq ($(BUILD_ARC_MLI),true)
-  MLI_LIB_DIR = arc_mli_$(basename $(TCF_FILE_NAME))
+  MLI_LIB_DIR ?= arc_mli_$(basename $(TCF_FILE_NAME))
 
   $(eval $(call add_third_party_download,$(EMBARC_MLI_URL),$(EMBARC_MLI_MD5),$(MLI_LIB_DIR),build_embarc_mli,$(TCF_FILE)))
 
@@ -36,7 +36,7 @@ ifeq ($(BUILD_ARC_MLI),true)
     third_party/$(MLI_LIB_DIR)/LICENSE
 else
 ifneq ($(ARC_MLI_PRE_COMPILED_TARGET),)
-  MLI_LIB_DIR = arc_mli_package
+  MLI_LIB_DIR ?= arc_mli_package
   $(eval $(call add_third_party_download,$(EMBARC_MLI_PRE_COMPILED_URL),$(EMBARC_MLI_PRE_COMPILED_MD5),$(MLI_LIB_DIR),))
 
   MLI_INCLUDE_FOLDER = $(MLI_LIB_DIR)/include

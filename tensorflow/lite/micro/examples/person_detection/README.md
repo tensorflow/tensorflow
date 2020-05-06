@@ -34,7 +34,7 @@ Follow the instructions on the [ARC EM SDP Initial Setup](/tensorflow/lite/micro
 
 The example project for ARC EM SDP platform can be generated with the following command:
     
-    make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_person_detection_make_project `
+    make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_person_detection_make_project
 
 ### Build and Run Example 
 
@@ -44,7 +44,7 @@ For more detailed information on building and running examples see the appropria
 
 2.	Go to the generated example project director 
     
-        cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/person_detection/make`
+        cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/person_detection/make
         
 3.	Build the example using 
 
