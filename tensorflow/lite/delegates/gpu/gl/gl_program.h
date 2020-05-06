@@ -40,12 +40,13 @@ class GlProgram {
   // a program. Thus, if this call returns a program, one may set parameters and
   // finally execute a program.
   // therefore it needs to be handled elsewhere.
-  static Status CreateWithShader(const GlShader& shader, GlProgram* gl_program);
+  static absl::Status CreateWithShader(const GlShader& shader,
+                                       GlProgram* gl_program);
 
   // Same as CreateWithShader but takes compiled shader in a binary form,
   // therefore compilation step is avoided.
-  static Status CreateWithBinaryShader(const BinaryShader& shader,
-                                       GlProgram* gl_program);
+  static absl::Status CreateWithBinaryShader(const BinaryShader& shader,
+                                             GlProgram* gl_program);
 
   // move-only
   GlProgram(GlProgram&& program);
@@ -59,12 +60,12 @@ class GlProgram {
 
   // Returns a binary representation for a shader currently attached and linked
   // into this program.
-  Status GetBinary(BinaryShader* binary_shader);
+  absl::Status GetBinary(BinaryShader* binary_shader);
 
-  Status SetParameter(const Variable& param);
+  absl::Status SetParameter(const Variable& param);
 
   // Executes program
-  Status Dispatch(const uint3& workgroups) const;
+  absl::Status Dispatch(const uint3& workgroups) const;
 
   bool is_valid() const { return id_ != 0; }
 

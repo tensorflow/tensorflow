@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import optional_ops
@@ -52,14 +53,15 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
-    self.assertTrue(any([node.op == "RangeDataset" for node in graph.node]))
+    self.assertTrue(any(node.op == "RangeDataset" for node in graph.node))
 
   def testAsSerializedGraphStateful(self):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda _: random_ops.random_uniform(()))
     with self.assertRaises(errors.FailedPreconditionError):
-      self.evaluate(dataset._as_serialized_graph(
-          external_state_policy=dataset_ops.ExternalStatePolicy.FAIL))
+      self.evaluate(
+          dataset._as_serialized_graph(external_state_policy=distribute_options
+                                       .ExternalStatePolicy.FAIL))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):
@@ -512,6 +514,34 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual(([], ([], []), []),
                      dataset_ops.get_legacy_output_shapes(dataset))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneComponent(self):
+    dataset = dataset_ops.Dataset.from_tensors((42, None))
+    if context.executing_eagerly():
+      self.assertDatasetProduces(dataset, expected_output=[(42, None)])
+    else:
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
+      next_first, next_second = iterator.get_next()
+      self.assertEqual(next_second, None)
+      with self.cached_session() as sess:
+        self.assertEqual(sess.run(next_first), 42)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneComponentInFunction(self):
+
+    @def_function.function
+    def fn(ds):
+      total = 0
+      it = iter(ds)
+      for elem in it:
+        x, _ = elem
+        total += x
+      return total
+
+    dataset = dataset_ops.Dataset.range(
+        10, output_type=dtypes.int32).map(lambda x: (x, None))
+    self.assertEqual(self.evaluate(fn(dataset)), 45)
 
 
 if __name__ == "__main__":

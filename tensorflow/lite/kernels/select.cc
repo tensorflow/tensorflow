@@ -29,7 +29,31 @@ constexpr int kInputTensorX = 1;
 constexpr int kInputTensorY = 2;
 constexpr int kOutputTensor = 0;
 
+enum KernelType {
+  kVersionOne,
+  kVersionTwo,
+};
+
+struct OpData {
+  bool requires_broadcast;
+  bool has_rank_one_input_condition;
+};
+
+void* SelectInit(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  data->requires_broadcast = false;
+  data->has_rank_one_input_condition = false;
+  return data;
+}
+
+void SelectFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
+template <KernelType kernel_type>
 TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -41,34 +65,50 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Input must be bool.
   TF_LITE_ENSURE(context, input_condition->type == kTfLiteBool);
-
-  // Input tensors must have the same type and size
   TF_LITE_ENSURE_EQ(context, input_x->type, input_y->type);
-  TF_LITE_ENSURE(context, HaveSameShapes(input_x, input_y));
   output->type = input_x->type;
 
-  // Either the same shape, or input_condition must be Rank 1 and match over the
-  // first dimension.
-  bool same_shape = HaveSameShapes(input_condition, input_x);
-  if (!same_shape && NumDimensions(input_condition) == 1) {
-    same_shape =
-        SizeOfDimension(input_condition, 0) == SizeOfDimension(input_x, 0);
+  bool same_shape = HaveSameShapes(input_condition, input_x) &&
+                    HaveSameShapes(input_x, input_y);
+  TfLiteIntArray* output_size;
+  if (!same_shape) {
+    switch (kernel_type) {
+      case kVersionOne: {
+        data->has_rank_one_input_condition =
+            NumDimensions(input_condition) == 1 &&
+            SizeOfDimension(input_condition, 0) == SizeOfDimension(input_x, 0);
+        TF_LITE_ENSURE(context, data->has_rank_one_input_condition);
+
+        output_size = TfLiteIntArrayCopy(input_x->dims);
+
+        // Input tensors must have the same type and size
+        TF_LITE_ENSURE(context, HaveSameShapes(input_x, input_y));
+        break;
+      }
+      case kVersionTwo: {
+        TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
+                                       context, input_condition, input_x,
+                                       input_y, &output_size));
+        data->requires_broadcast = true;
+        break;
+      }
+      default:
+        return kTfLiteError;
+    }
+  } else {
+    output_size = TfLiteIntArrayCopy(input_x->dims);
   }
 
-  TF_LITE_ENSURE(context, same_shape);
-
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_x->dims);
   return context->ResizeTensor(context, output, output_size);
 }
 
 TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* input_condition =
       GetInput(context, node, kInputTensorCondition);
   const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
   const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-
-  bool is_rank_one = !HaveSameShapes(input_condition, input_x);
 
 #define TF_LITE_SELECT(type, op)                                           \
   reference_ops::op(GetTensorShape(input_condition),                       \
@@ -109,8 +149,10 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;                                                     \
   }
 
-  if (is_rank_one) {
+  if (data->has_rank_one_input_condition) {
     TF_LITE_SWITCH(input_x->type, RankOneSelect);
+  } else if (data->requires_broadcast) {
+    TF_LITE_SWITCH(input_x->type, BroadcastSelect4DSlow);
   } else {
     TF_LITE_SWITCH(input_x->type, Select);
   }
@@ -122,8 +164,26 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace select
 
+// Select op selects values of 'x' if the corresponding value of 'condition' is
+// true or the value of 'y' if false. There are valid condition input sizes:
+//
+// 1. Either the same shape (in which case the select is elementwise), or
+// 2. condition must be Rank 1 and match over the first dimension.
 TfLiteRegistration* Register_SELECT() {
-  static TfLiteRegistration r = {nullptr, nullptr, select::SelectPrepare,
+  static TfLiteRegistration r = {select::SelectInit, select::SelectFree,
+                                 select::SelectPrepare<select::kVersionOne>,
+                                 select::SelectEval};
+  return &r;
+}
+
+// SelectV2 op selects values of 'x' if the corresponding value of 'condition'
+// is true or the value of 'y' if false. There are valid condition input sizes:
+//
+// 1. Either the same shape (in which case the select is elementwise), or
+// 2. Broadcastable shapes between 'condition', 'x' and 'y'.
+TfLiteRegistration* Register_SELECT_V2() {
+  static TfLiteRegistration r = {select::SelectInit, select::SelectFree,
+                                 select::SelectPrepare<select::kVersionTwo>,
                                  select::SelectEval};
   return &r;
 }

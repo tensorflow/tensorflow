@@ -30,6 +30,7 @@ cc_library(
     hdrs = ["accelerator_utilization_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -38,6 +39,7 @@ cc_library(
     hdrs = ["operation_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -46,6 +48,8 @@ cc_library(
     hdrs = ["expensive_operation_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -59,6 +63,7 @@ cc_library(
         ":internal_checker_runner_dummy",
         ":operation_checker",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

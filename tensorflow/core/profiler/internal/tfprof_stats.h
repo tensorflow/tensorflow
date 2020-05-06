@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/profiler/internal/tfprof_code.h"
 #include "tensorflow/core/profiler/internal/tfprof_graph.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"

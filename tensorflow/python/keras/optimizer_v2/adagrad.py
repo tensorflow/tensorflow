@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Adagrad for TensorFlow."""
+"""Adagrad optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -39,20 +39,25 @@ class Adagrad(optimizer_v2.OptimizerV2):
   updated during training. The more updates a parameter receives,
   the smaller the updates.
 
-  Initialization:
-  $$accum_{g_0} := \text{initial_accumulator_value}$$
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
+    initial_accumulator_value: A floating point value.
+      Starting value for the accumulators, must be non-negative.
+    epsilon: A small floating point value to avoid zero denominator.
+    name: Optional name prefix for the operations created when applying
+      gradients.  Defaults to `"Adagrad"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
-  Update step:
-  $$t := t + 1$$
-  $$accum_{g_t} := accum_{g_{t-1}} + g^2$$
-  $$\theta_t := \theta_{t-1} - lr * g / (\sqrt{accum_{g_t}} + \epsilon)$$
-
-  References:
-
-  * [Paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
-  * [Introduction]
-    (https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
+  Reference:
+    - [Duchi et al., 2011](
+      http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
   """
+
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -60,32 +65,6 @@ class Adagrad(optimizer_v2.OptimizerV2):
                epsilon=1e-7,
                name='Adagrad',
                **kwargs):
-    """Construct a new Adagrad optimizer.
-
-    Args:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      initial_accumulator_value: A floating point value.
-        Starting value for the accumulators, must be non-negative.
-      epsilon: A small floating point value to avoid zero denominator.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to "Adagrad".
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-
-    Raises:
-      ValueError: If the `initial_accumulator_value` or `epsilon` is invalid.
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate` can be a callable that
-    takes no arguments and returns the actual value to use. This can be useful
-    for changing these values across different invocations of optimizer
-    functions.
-    @end_compatibility
-    """
     if initial_accumulator_value < 0.0:
       raise ValueError('initial_accumulator_value must be non-negative: %s' %
                        initial_accumulator_value)
@@ -106,11 +85,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
   def _prepare_local(self, var_device, var_dtype, apply_state):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)].update(dict(
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
-        zero=array_ops.zeros((), dtype=dtypes.int64)
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
+            zero=array_ops.zeros((), dtype=dtypes.int64)))
 
   def set_weights(self, weights):
     params = self.weights
@@ -139,7 +118,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
         An optimizer instance.
     """
     if 'initial_accumulator_value' not in config:
-      config['initial_accumulator_value'] = 0.
+      config['initial_accumulator_value'] = 0.1
     if 'lr' in config:
       config['learning_rate'] = config.pop('lr')
     return cls(**config)

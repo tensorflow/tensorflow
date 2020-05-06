@@ -50,15 +50,11 @@ class LegacyVar : public ResourceBase {
 VariableOp::VariableOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
   dtype_ = RemoveRefType(context->output_type(0));
+  OP_REQUIRES_OK(context, cinfo_.Init(context->resource_manager(), def(),
+                                      true /* use name() */));
 }
 
 void VariableOp::Compute(OpKernelContext* ctx) {
-  mutex_lock l(init_mu_);
-  if (!initialized_) {
-    OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
-                                    true /* use name() */));
-    initialized_ = true;
-  }
   auto creator = [this](LegacyVar** var) {
     *var = new LegacyVar(dtype_);
     (*var)->tensor()->set_shape(shape_);
@@ -235,7 +231,10 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
                           IsVariableInitializedOp);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_complex64(REGISTER_GPU_KERNELS);
+TF_CALL_complex128(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
+TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

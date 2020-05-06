@@ -402,7 +402,7 @@ Status AddPlaceholdersForFeeds(
     // TODO(shikharagarwal): Add original node information.
     NodeDef* d = graph_def->add_node();
     d->set_name(info.placeholder_name);
-    d->set_op("PlaceholderV2");
+    d->set_op("Placeholder");
     auto& attr_map = *d->mutable_attr();
     attr_map["dtype"].set_type(info.data_type);
     *attr_map["shape"].mutable_shape() = info.feed->shape();
@@ -621,7 +621,7 @@ Status RewriteAssociatedFunction(
       NodeDebugInfo debug_info(*node);
       NodeDefBuilder builder(node->name(), rewritten_function_name, fld,
                              &debug_info);
-      for (auto attr : node->attrs()) {
+      for (const auto& attr : node->attrs()) {
         builder.Attr(attr.first, attr.second);
       }
       for (int i = 0; i < node->num_inputs(); i++) {
@@ -695,7 +695,7 @@ Status CachedFunctionHandles::GetOrInstantiate(
 
 Status CachedFunctionHandles::ReleaseAllHandles() {
   Status result;
-  for (auto iter : handles_) {
+  for (const auto& iter : handles_) {
     result.Update(flr_->ReleaseHandle(iter.second));
   }
   handles_.clear();

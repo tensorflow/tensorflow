@@ -42,6 +42,8 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   Note: v2 control flow is always enabled inside of tf.function. Calling this
   function is not required.
   """
+  # pylint: disable=protected-access
+  ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
 
@@ -55,6 +57,8 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   If your code needs tf.disable_control_flow_v2() to be called to work
   properly please file a bug.
   """
+  # pylint: disable=protected-access
+  ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 
 
@@ -79,8 +83,8 @@ def output_all_intermediates(state):  # pylint: disable=invalid-name
   to output the needed intermediates. We work around this by proactively
   outputting the needed intermediates when building the forward pass itself.
   Ideally any such extra tensors should be pruned out at runtime. However, if
-  for any reason this doesn't work for you or if you have an infernce-only model
-  you can turn this behavior off using
+  for any reason this doesn't work for you or if you have an inference-only
+  model you can turn this behavior off using
   `tf.compat.v1.experimental.output_all_intermediates(False)`.
 
   If with the default behavior you are still seeing errors of the form

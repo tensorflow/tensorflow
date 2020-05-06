@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <numeric>
 #include <vector>
+
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -54,6 +55,7 @@ namespace tensorflow {
 namespace {
 Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
                         const std::vector<const XlaExpression*>& expressions,
+                        const NameAttrList& func,
                         std::vector<XlaCompiler::Argument>* args) {
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
@@ -78,9 +80,10 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
           TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
           if (!value.has_value()) {
-            return errors::InvalidArgument(
-                "Argument to function must be a compile-time constant, but "
-                "unable to resolve argument value to a constant.");
+            return errors::InvalidArgument(absl::StrCat(
+                "Argument ", i, " to function '", func.name(),
+                "' must be a compile-time constant, but ",
+                "unable to resolve argument value to a constant."));
           }
           arg.kind = XlaCompiler::Argument::kConstant;
           arg.constant_value = *value;
@@ -133,7 +136,7 @@ Status GraphCompiler::Compile() {
     OpKernel* op_kernel_raw = nullptr;
     // The kernel is not actually run for functional ops, we just need it
     // for metadata.
-    Status s = flib_->CreateKernel(n->def(), &op_kernel_raw);
+    Status s = flib_->CreateKernel(n->properties(), &op_kernel_raw);
     // Transfer ownership of the kernel to a local smart pointer.
     std::unique_ptr<OpKernel> op_kernel(op_kernel_raw);
 
@@ -249,8 +252,8 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
 
   auto graph = compiler->GetGraph(fbody);
 
-  TF_RETURN_IF_ERROR(
-      PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
+  TF_RETURN_IF_ERROR(PrepareArguments(&xla_op_context, graph.get(), expressions,
+                                      func, &arguments));
 
   bool add_token_input_output =
       func.attr().find(kXlaTokenInputNodesAttrName) != func.attr().end();

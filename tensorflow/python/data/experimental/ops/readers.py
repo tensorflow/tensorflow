@@ -440,7 +440,7 @@ def make_csv_dataset_v2(
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
-        raise ValueError("Received unkown compression_type")
+        raise ValueError("Received unknown compression_type")
       if compression_type_value == "GZIP":
         file_io_fn = lambda filename: gzip.open(filename, "rt")
       elif compression_type_value == "ZLIB":
@@ -625,8 +625,6 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     We can construct a CsvDataset from it as follows:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
-
      dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
         [tf.float32,  # Required field, use dtype or empty tensor
@@ -850,7 +848,7 @@ def make_batched_features_dataset_v2(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
-    TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
+    TypeError: If `reader` is of the wrong type.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   if reader is None:
@@ -998,8 +996,6 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
-
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
                                               (tf.string, tf.int32))

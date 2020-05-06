@@ -365,7 +365,7 @@ TEST(JpegMemTest, Jpeg2) {
     const std::unique_ptr<uint8[]> imgdata2(new uint8[flags.stride * in_h]);
     CHECK(imgdata2.get() == Uncompress(cpdata2.c_str(), cpdata2.length(), flags,
                                        nullptr /* nwarn */,
-                                       [&imgdata2](int w, int h, int c) {
+                                       [=, &imgdata2](int w, int h, int c) {
                                          CHECK_EQ(w, in_w);
                                          CHECK_EQ(h, in_h);
                                          CHECK_EQ(c, 3);

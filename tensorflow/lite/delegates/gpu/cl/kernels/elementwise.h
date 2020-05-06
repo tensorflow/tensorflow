@@ -48,13 +48,23 @@ class ElementwiseOneInput : public ElementwiseOperation {
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type);
 
+struct BroadcastSettings {
+  bool width;
+  bool height;
+  bool channels;
+};
+
 // Class for simple two input operations without any parameters, for example
 // sub, div and etc.
 class ElementwiseTwoInput : public ElementwiseOperation {
  public:
   explicit ElementwiseTwoInput(const OperationDef& definition,
-                               const OperationType& op_type)
-      : ElementwiseOperation(definition), op_type_(op_type) {}
+                               const OperationType& op_type,
+                               const BroadcastSettings& broadcast)
+      : ElementwiseOperation(definition),
+        op_type_(op_type),
+        broadcast_(broadcast),
+        use_scalar_para_(false) {}
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -65,12 +75,28 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
+  absl::Status BindArguments(CLKernel* kernel) override;
+  inline void SetScalarPara(FLT scalar) {
+    scalar_para_ = scalar;
+    use_scalar_para_ = true;
+  }
 
  private:
   int link_index_;
   OperationType op_type_;
+  BroadcastSettings broadcast_;
+  FLT scalar_para_;
+  bool use_scalar_para_;
 };
+
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationType& op_type, const BroadcastSettings& broadcast,
+    const ElementwiseAttributes* attr);
+
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const OperationDef& definition, const OperationType& op_type,
+    const BroadcastSettings& broadcast);
 
 ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
                                               const OperationType& op_type);

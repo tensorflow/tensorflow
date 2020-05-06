@@ -47,6 +47,8 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
   The compilation is a hint and only supported on a best-effort basis.
 
   Example usage:
+
+    ```python
     with tf.xla.experimental.jit_scope():
       c = tf.matmul(a, b)  # compiled
     with tf.xla.experimental.jit_scope(compile_ops=False):
@@ -54,8 +56,11 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
     with tf.xla.experimental.jit_scope(
         compile_ops=lambda node_def: 'matmul' in node_def.op.lower()):
       e = tf.matmul(a, b) + d  # matmul is compiled, the addition is not.
+    ```
 
-  Example of separate_compiled_gradients:
+  Example of `separate_compiled_gradients`:
+
+    ```python
     # In the example below, the computations for f, g and h will all be compiled
     # in separate scopes.
     with tf.xla.experimental.jit_scope(
@@ -63,6 +68,7 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
       f = tf.matmul(a, b)
     g = tf.gradients([f], [a, b], name='mygrads1')
     h = tf.gradients([f], [a, b], name='mygrads2')
+    ```
 
   Args:
     compile_ops: Whether to enable or disable compilation in the scope.

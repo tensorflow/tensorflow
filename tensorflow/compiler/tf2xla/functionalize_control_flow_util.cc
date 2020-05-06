@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 

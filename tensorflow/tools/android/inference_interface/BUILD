@@ -5,7 +5,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
-    "tf_cc_binary",
+    "tf_cc_binary",  # @unused
     "tf_copts",
 )
 
@@ -86,4 +86,9 @@ cc_binary(
         "//tensorflow/core:android_tensorflow_lib",
         LINKER_SCRIPT,
     ],
+)
+
+cc_library(
+    name = "android_tensorflow_inference_native",
+    srcs = if_android([":libtensorflow_inference.so"]),
 )

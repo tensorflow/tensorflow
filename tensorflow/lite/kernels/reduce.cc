@@ -359,7 +359,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       } else {
         TF_LITE_ENSURE(
             context,
-            reference_ops::Mean(
+            optimized_ops::MeanGeneral(
                 GetTensorData<float>(op_context.input),
                 op_context.input->dims->data, op_context.input->dims->size,
                 GetTensorData<float>(op_context.output),
@@ -623,7 +623,7 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
-  gemmlowp::ScopedProfilingLabel label("Sum");
+  ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
   const auto& output = op_context.output;
   const bool same_scale =

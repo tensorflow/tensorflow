@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <set>
 
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_scope.h"
@@ -35,19 +35,19 @@ const MultiGraphNodeProto& TFMultiShow::Show(const string& prefix,
   } else {
     const ShowMultiNode* ret = ShowInternal(opts, nullptr);
     if (opts.output_type == kOutput[1]) {
-      printf("%s", (prefix + ret->formatted_str).c_str());
+      absl::PrintF("%s%s", prefix, ret->formatted_str);
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
       Status s = WriteStringToFile(Env::Default(),
                                    opts.output_options.at(kFileOpts[0]),
                                    prefix + ret->formatted_str);
       if (!s.ok()) {
-        fprintf(stderr, "%s\n", s.ToString().c_str());
+        absl::FPrintF(stderr, "%s\n", s.ToString());
       }
     } else if (opts.output_type == kOutput[3] ||
                opts.output_type == kOutput[4]) {
     } else {
-      fprintf(stderr, "Unknown output type: %s\n", opts.output_type.c_str());
+      absl::FPrintF(stderr, "Unknown output type: %s\n", opts.output_type);
     }
     return ret->proto();
   }
@@ -158,8 +158,7 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     legends.push_back("input shapes");
   }
-  return strings::Printf("node name | %s\n",
-                         absl::StrJoin(legends, " | ").c_str());
+  return absl::StrFormat("node name | %s\n", absl::StrJoin(legends, " | "));
 }
 
 string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
@@ -176,14 +175,14 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
     std::vector<string> input_vec;
     for (const auto& s : input_shapes) {
       if (s.second.empty()) {
-        input_vec.push_back(strings::Printf("%d:unknown", s.first));
+        input_vec.push_back(absl::StrFormat("%d:unknown", s.first));
       } else {
-        input_vec.push_back(strings::Printf(
-            "%d:%s", s.first, absl::StrJoin(s.second, "x").c_str()));
+        input_vec.push_back(
+            absl::StrFormat("%d:%s", s.first, absl::StrJoin(s.second, "x")));
       }
     }
-    string shape_type_str = strings::Printf(
-        "input_type: %s", absl::StrJoin(input_vec, ",\t").c_str());
+    string shape_type_str =
+        absl::StrFormat("input_type: %s", absl::StrJoin(input_vec, ",\t"));
     auto t = input_shapes_attr.find(shape_type_str);
     if (t == input_shapes_attr.end()) {
       input_shapes_attr.insert(
@@ -211,9 +210,9 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   input_types.reserve(shape_count_vec.size());
   for (const auto& s : shape_count_vec) {
     std::tuple<int64, int64, int64> t = s.second;
-    input_types.push_back(strings::Printf(
-        "%s\t(run*%lld|defined*%lld)\texec_time: %s", s.first.c_str(),
-        std::get<1>(t), std::get<0>(t), FormatTime(std::get<2>(t)).c_str()));
+    input_types.push_back(absl::StrFormat(
+        "%s\t(run*%d|defined*%d)\texec_time: %s", s.first, std::get<1>(t),
+        std::get<0>(t), FormatTime(std::get<2>(t))));
   }
   return absl::StrJoin(input_types, "\n");
 }

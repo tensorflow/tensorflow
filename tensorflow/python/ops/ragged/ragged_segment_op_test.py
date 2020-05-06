@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+
 from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op

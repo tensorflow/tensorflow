@@ -627,7 +627,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     return Status::OK();
   }
 
-  VLOG(3) << "Try to find a zero iteration while loop:"
+  VLOG(4) << "Try to find a zero iteration while loop:"
           << " switch_node=" << switch_node.name();
 
   // Find the boolean predicate from a LoopCond node (e.g. Greater).
@@ -704,7 +704,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
       &constant_switch_value));
 
   if (constant_switch_value == false) {
-    VLOG(4) << "Remove 0 iteration while loop:"
+    VLOG(3) << "Remove 0 iteration while loop:"
             << " switch_node=" << switch_node.name();
     *has_dead_fanout = true;
     *dead_fanout = 1;
@@ -746,8 +746,6 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
   }
   if (options_.enable_dead_branch_removal) {
-    // TODO(srjoglekar): Figure out if we can optimize NodeMap creations across
-    // optimizer passes.
     NodeMap node_map(optimized_graph);
     absl::flat_hash_set<string> feed_nodes;
     for (const auto& feed : item.feed) {
@@ -890,43 +888,55 @@ Status LoopOptimizer::RemoveDeadBranches(
   // Names of the nodes that were removed from the graph.
   absl::flat_hash_set<absl::string_view> dead_node_names;
   dead_node_names.reserve(dead_nodes.size());
-  for (const NodeDef* dead_node : dead_nodes)
+  for (const NodeDef* dead_node : dead_nodes) {
     dead_node_names.insert(dead_node->name());
+  }
 
-  // Remove dead inputs from Merge nodes that were not pruned from the graph.
+  // Check that the merge nodes are valid.
   for (const auto& itr : dead_merge_inputs) {
-    NodeDef* dead_node = itr.first;
-    if (dead_nodes.find(dead_node) != dead_nodes.end()) {
-      // The node has been pruned since all its inputs are dead.
+    NodeDef* merge_node = itr.first;
+    if (dead_nodes.find(merge_node) != dead_nodes.end()) {
+      // The node will be pruned since all its inputs are dead.
       continue;
     }
     // Remove dead data input.
     const std::set<int>& dead_inputs = itr.second;
-    CHECK_LE(dead_inputs.size(), 1);
-    // (This loop would delete >1 items possibly in the wrong order.)
-    for (int index : dead_inputs) {
-      dead_node->mutable_input()->DeleteSubrange(index, 1);
+    const int num_data_inputs = merge_node->attr().at("N").i();
+    if (merge_node->input_size() != num_data_inputs) {
+      LOG(WARNING)
+          << "Skipping loop optimization for Merge node with control input: "
+          << merge_node->name();
+      return Status::OK();
+    } else if (dead_inputs.size() != 1 || num_data_inputs != 2) {
+      LOG(WARNING) << "Skipping loop optimization for Merge node ("
+                   << merge_node->name()
+                   << ") with unexpected dead_inputs.size() ("
+                   << dead_inputs.size() << " or  num_data_inputs"
+                   << num_data_inputs;
+      return Status::OK();
     }
-    // Turn Merge into Identity only if we deleted the other data input.
-    if (!dead_inputs.empty()) {
-      const int num_data_inputs = dead_node->attr().at("N").i();
-      CHECK_EQ(num_data_inputs, dead_inputs.size() + 1);
-      dead_node->set_op("Identity");
-      dead_node->mutable_attr()->erase("N");
+  }
+
+  // Remove dead inputs from Merge nodes that will not be not
+  // pruned from the graph.
+  for (const auto& itr : dead_merge_inputs) {
+    NodeDef* merge_node = itr.first;
+    if (dead_nodes.find(merge_node) != dead_nodes.end()) {
+      // The node will be pruned since all its inputs are dead.
+      continue;
     }
-    // Remove control inputs from dead nodes.
-    int pos = 0;
-    while (pos < dead_node->input_size()) {
-      TensorId tensor = ParseTensorName(dead_node->input(pos));
-      if (tensor.index() == Graph::kControlSlot &&
-          dead_node_names.contains(tensor.node())) {
-        auto* inputs = dead_node->mutable_input();
-        inputs->SwapElements(pos, dead_node->input_size() - 1);
-        inputs->RemoveLast();
-      } else {
-        ++pos;
-      }
-    }
+    VLOG(3) << "Merge node before cleanup: " << merge_node->DebugString();
+    // Remove dead data input.
+    const std::set<int>& dead_inputs = itr.second;
+    int index = *dead_inputs.begin();
+    auto* inputs = merge_node->mutable_input();
+    inputs->SwapElements(1, index);
+    inputs->SwapElements(1, merge_node->input_size() - 1);
+    inputs->RemoveLast();
+    merge_node->set_op("Identity");
+    merge_node->mutable_attr()->erase("N");
+
+    VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
   }
 
   EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);

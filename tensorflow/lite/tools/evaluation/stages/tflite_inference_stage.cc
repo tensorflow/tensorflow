@@ -70,7 +70,8 @@ TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
   return kTfLiteOk;
 }
 
-TfLiteStatus TfliteInferenceStage::Init() {
+TfLiteStatus TfliteInferenceStage::Init(
+    const DelegateProviders* delegate_providers) {
   if (!config_.specification().has_tflite_inference_params()) {
     LOG(ERROR) << "TfliteInferenceParams not provided";
     return kTfLiteError;
@@ -95,27 +96,25 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  // TODO(b/122482115): Add support for multiple delegates in
-  // TfLiteInferenceParams.
-  if (params.delegate() == TfliteInferenceParams::NNAPI) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
+  if (!delegate_providers) {
+    std::string error_message;
+    auto delegate = CreateTfLiteDelegate(params, &error_message);
     if (delegate) {
       delegates_.push_back(std::move(delegate));
+      LOG(INFO) << "Successfully created "
+                << params.Delegate_Name(params.delegate()) << " delegate.";
     } else {
-      LOG(WARNING) << "NNAPI not supported";
+      LOG(WARNING) << error_message;
     }
-  } else if (params.delegate() == TfliteInferenceParams::GPU) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate(model_.get());
-    if (delegate) {
-      delegates_.push_back(std::move(delegate));
-    } else {
-      LOG(WARNING) << "GPU not supported";
-    }
+  } else {
+    auto delegates = delegate_providers->CreateAllDelegates(params);
+    for (auto& one : delegates) delegates_.push_back(std::move(one));
   }
+
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply delegate %d" << i;
+      LOG(FATAL) << "Failed to apply delegate " << i;
     }
   }
   interpreter_->AllocateTensors();
@@ -160,6 +159,7 @@ EvaluationStageMetrics TfliteInferenceStage::LatestMetrics() {
   latency_metrics->set_min_us(latency_stats_.min());
   latency_metrics->set_sum_us(latency_stats_.sum());
   latency_metrics->set_avg_us(latency_stats_.avg());
+  latency_metrics->set_std_deviation_us(latency_stats_.std_deviation());
   metrics.set_num_runs(
       static_cast<int>(latency_stats_.count() / params.invocations_per_run()));
   auto* inference_metrics =

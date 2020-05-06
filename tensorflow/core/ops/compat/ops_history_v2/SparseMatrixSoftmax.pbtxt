@@ -1,0 +1,21 @@
+op {
+  name: "SparseMatrixSoftmax"
+  input_arg {
+    name: "logits"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "softmax"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

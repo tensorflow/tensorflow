@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef __ANDROID__
 #include <android/log.h>

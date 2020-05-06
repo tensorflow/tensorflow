@@ -84,7 +84,7 @@ enum class DotImplementationStrategy {
   // supported.
   kTiledLlvmIrGemv,
 
-  // The dot operation is lowered into LLVM IR that implemetns a tiled
+  // The dot operation is lowered into LLVM IR that implements a tiled
   // Matrix*Matrix operation.  No fusions are supported.  The two inputs
   // and the output have to be row major.
   kTiledLlvmIrGemm,
@@ -237,7 +237,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
 
   int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   b_->CreateMemSet(target, b_->getInt8(0), /*Size=*/size_bytes,
-                   /*Align=*/1);
+                   /*Align=*/llvm::MaybeAlign(1));
 
   int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(

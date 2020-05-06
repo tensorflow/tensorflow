@@ -41,72 +41,139 @@ enum class TextureAddressMode {
   ZERO,       // translated to CLK_ADDRESS_CLAMP
 };
 
+struct WHSPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string s_name;
+};
+struct WHSBPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string s_name;
+  std::string b_name;
+};
+struct WHDSPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string d_name;
+  std::string s_name;
+};
+struct WHDSBPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string d_name;
+  std::string s_name;
+  std::string b_name;
+};
+
 class TensorCodeGenerator {
  public:
-  struct SizeVariablesNames {
-    SizeVariablesNames() = default;
-    SizeVariablesNames(const std::string& width_name,
-                       const std::string& height_name,
-                       const std::string& depth_name);
-    SizeVariablesNames(const std::string& width_name,
-                       const std::string& height_name,
-                       const std::string& depth_name,
-                       const std::string& batch_name);
-
-    std::string width = "unknown";
-    std::string height = "unknown";
-    std::string channels = "unknown";
-    std::string depth = "unknown";
-    std::string batch = "unknown";
-  };
   TensorCodeGenerator() = default;
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
+  TensorCodeGenerator(const std::string& name, const WHSPoint& sizes,
                       const TensorDescriptor& descriptor);
-
-  TensorCodeGenerator(const std::string& name, const SizeVariablesNames& sizes,
+  TensorCodeGenerator(const std::string& name, const WHSBPoint& sizes,
+                      const TensorDescriptor& descriptor);
+  TensorCodeGenerator(const std::string& name, const WHDSPoint& sizes,
+                      const TensorDescriptor& descriptor);
+  TensorCodeGenerator(const std::string& name, const WHDSBPoint& sizes,
                       const TensorDescriptor& descriptor);
 
   std::string GetDeclaration(AccessType access) const;
 
-  std::string GetAddress(const std::string& var_name, const std::string& x,
-                         const std::string& y, const std::string& z) const;
+  std::string GetAddressWHS(const std::string& var_name, const std::string& x,
+                            const std::string& y, const std::string& s) const;
 
-  std::string GetAddress(const std::string& var_name, const std::string& x,
-                         const std::string& y, const std::string& z,
-                         const std::string& b) const;
+  std::string GetAddressWHSB(const std::string& var_name, const std::string& x,
+                             const std::string& y, const std::string& s,
+                             const std::string& b) const;
+
+  std::string GetAddressWHDS(const std::string& var_name, const std::string& x,
+                             const std::string& y, const std::string& z,
+                             const std::string& s) const;
+
+  std::string GetAddressWHDSB(const std::string& var_name, const std::string& x,
+                              const std::string& y, const std::string& z,
+                              const std::string& s, const std::string& b) const;
 
   // This function (and functions below) accept TextureAddressMode, but this
   // argument applicable only for texture types. Buffer types ignore this
   // parameter.
-  std::string Read3D(
-      const std::string& x, const std::string& y, const std::string& z,
+  std::string ReadWHS(
+      const std::string& x, const std::string& y, const std::string& s,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  // Read4D supports BUFFER and IMAGE_BUFFER storage types.
-  std::string Read4D(
-      const std::string& x, const std::string& y, const std::string& z,
+  std::string ReadWHSB(
+      const std::string& x, const std::string& y, const std::string& s,
       const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadWHDS(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadWHDSB(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s, const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
-  std::string ReadAsFloat3D(
-      const std::string& x, const std::string& y, const std::string& z,
+  std::string ReadAsFloatWHS(
+      const std::string& x, const std::string& y, const std::string& s,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  std::string ReadAsFloat4D(
-      const std::string& x, const std::string& y, const std::string& z,
+  std::string ReadAsFloatWHSB(
+      const std::string& x, const std::string& y, const std::string& s,
       const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  std::string Write3D(const std::string& var_name, const std::string& x,
-                      const std::string& y, const std::string& z) const;
+  std::string ReadAsFloatWHDS(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  // Write4D supports BUFFER and IMAGE_BUFFER storage types.
-  std::string Write4D(const std::string& var_name, const std::string& x,
-                      const std::string& y, const std::string& z,
-                      const std::string& b) const;
+  std::string ReadAsFloatWHDSB(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  // Optimization for textures, so as in opencl we can use read_imagef for any
+  // texture type.
+  std::string ReadAsTypeWHS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string WriteWHS(const std::string& var_name, const std::string& x,
+                       const std::string& y, const std::string& s) const;
+
+  std::string WriteWHSB(const std::string& var_name, const std::string& x,
+                        const std::string& y, const std::string& s,
+                        const std::string& b) const;
+
+  std::string WriteWHDS(const std::string& var_name, const std::string& x,
+                        const std::string& y, const std::string& z,
+                        const std::string& s) const;
+
+  std::string WriteWHDSB(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z,
+                         const std::string& s, const std::string& b) const;
 
   std::string Read(
       const std::string& global_address,
@@ -116,27 +183,48 @@ class TensorCodeGenerator {
   std::string ReadAsFloat(
       const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+  std::string ReadAsType(
+      DataType type, const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
 
  private:
-  std::string GetGlobalAddressNoDeclaration(const std::string& x,
-                                            const std::string& y,
-                                            const std::string& z) const;
-  std::string GetGlobalAddressNoDeclaration(const std::string& x,
-                                            const std::string& y,
-                                            const std::string& z,
-                                            const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
   std::string DeclareAddress(const std::string& var_name,
                              const std::string& address) const;
 
   std::string tensor_name_;
-  SizeVariablesNames sizes_;
+  std::string width_name_ = "unknown";
+  std::string height_name_ = "unknown";
+  std::string depth_name_ = "unknown";
+  std::string slices_name_ = "unknown";
+  std::string batch_name_ = "unknown";
   TensorDescriptor descriptor_;
 };
 
-// Calculates correct X coordinate when stride != 1 and batch != 1 for
-// DHWBC4, HDWBC4, HWBC layouts
+std::string GetTensorDeclaration(AccessType access,
+                                 const std::string& tensor_name,
+                                 const TensorDescriptor& descriptor);
+
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
 std::string GetXStrideCorrected(const std::string& src_x,
                                 const std::string& batch_size,
                                 const std::string& stride_x,
@@ -144,20 +232,20 @@ std::string GetXStrideCorrected(const std::string& src_x,
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int dst_groups = IntegralDivideRoundUp(dst_depth, out_group_size);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
+        for (int s = 0; s < src_slices; ++s) {
           for (int d_group = 0; d_group < out_group_size; ++d_group) {
             for (int j = 0; j < 4; ++j) {
               T filter;
@@ -200,6 +288,15 @@ TextureAddressMode GetFastestZeroMode(const CLDevice& device);
 // but 8s-channel will be empty, then last plane (batch of 4 channels) will
 // have this mask (1, 1, 1, 0).
 float4 GetMaskForLastPlane(int channels);
+
+// returns first work group from wgs that has size not bigger than max_wg_size
+// if no suitable groups among wgs, returns {1, 1, 1}
+int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
+
+// task_size as amount of FLT4 processed elements.
+int GetRecommendedBlockSizeForConv(const CLDevice& device,
+                                   CalculationsPrecision precision,
+                                   int task_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

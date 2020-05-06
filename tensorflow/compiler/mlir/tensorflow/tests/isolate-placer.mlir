@@ -1,13 +1,21 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass  | FileCheck %s
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass | FileCheck %s
 
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 func @main() {
-  %0:2 = "_tf.VarHandleOp"() {container = "c", shared_name = "n"} : () -> (tensor<!tf.resource<tensor<8xf32>>>, !_tf.control)
-  %1:2 = "_tf.StatefulPartitionedCall"(%0#0) {Tin = ["tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_RESOURCE"], config = "", config_proto = "", executor_type = "", f = @foo} : (tensor<!tf.resource<tensor<8xf32>>>) -> (tensor<!tf.resource<tensor<8xf32>>>, !_tf.control) loc("call_foo")
+  tf_executor.graph {
+    %0:2 = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "n"} : () -> tensor<!tf.resource<tensor<8xf32>>>
+    %1:2 = tf_executor.island wraps "tf.StatefulPartitionedCall"(%0#0) {Tin = ["tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_RESOURCE"], config = "", config_proto = "", executor_type = "", f = @foo} : (tensor<!tf.resource<tensor<8xf32>>>) -> tensor<!tf.resource<tensor<8xf32>>> loc("call_foo")
+    tf_executor.fetch
+  }
   return
 }
 
 func @foo(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
-  return %arg0 : tensor<!tf.resource>
+  %graph = tf_executor.graph {
+    tf_executor.fetch %arg0 : tensor<!tf.resource>
+  }
+  return %graph : tensor<!tf.resource>
+}
 }
 
 // The IsolatePlacerInspectionRequiredOpsPass adds Identities for each input/output of function-calling ops.

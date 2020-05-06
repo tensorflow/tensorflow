@@ -96,7 +96,7 @@ def get_header_from_ops_and_kernels(ops_and_kernels,
   Returns:
     the string of the header that should be written as ops_to_register.h.
   """
-  ops = set([op for op, _ in ops_and_kernels])
+  ops = set(op for op, _ in ops_and_kernels)
   result_list = []
 
   def append(s):

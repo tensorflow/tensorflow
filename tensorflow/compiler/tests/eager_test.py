@@ -695,7 +695,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       wholly_compiled_f = def_function.function(f)
       op_by_op_f = def_function.function(f, experimental_compile=False)
 
-      x = constant_op.constant([0.0, 2.0], name='data')
+      x = array_ops.identity([0.0, 2.0], name='data')
 
       # When function is wholly compiled, all outputs will be on the
       # device on which it is run.

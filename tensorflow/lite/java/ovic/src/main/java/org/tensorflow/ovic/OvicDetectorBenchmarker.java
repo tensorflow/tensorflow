@@ -98,7 +98,7 @@ public final class OvicDetectorBenchmarker extends OvicBenchmarker {
     if (!benchmarkStarted) { // Skip the first image to discount warming-up time.
       benchmarkStarted = true;
     } else {
-      totalRuntime += ((double) detector.result.latency);
+      totalRuntimeNano += ((double) detector.result.latencyNano);
     }
     return true;  // Indicating that result is ready.
   }

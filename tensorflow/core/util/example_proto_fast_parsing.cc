@@ -44,6 +44,55 @@ namespace {
 template <typename T>
 using SmallVector = gtl::InlinedVector<T, 4>;
 
+template <typename T>
+class LimitedArraySlice {
+ public:
+  using value_type = T;
+
+  LimitedArraySlice(T* begin, size_t num_elements)
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
+
+  // May return negative if there were push_back calls after slice was filled.
+  int64 EndDistance() const { return end_ - current_; }
+
+  // Attempts to push value to the back of this. If the slice has
+  // already been filled, this method has no effect on the underlying data, but
+  // it changes the number returned by EndDistance into negative values.
+  void push_back(T&& value) {
+    if (EndDistance() > 0) *current_ = std::move(value);
+    ++current_;
+  }
+
+  // "Constructs" an element at the back of this by resizing the slice, and
+  // returns a mutable reference to the new last element.
+  // REQUIRES: EndDistance() > 0.
+  T& construct_at_end() {
+    DCHECK_GT(EndDistance(), 0);
+    return *(current_++);
+  }
+
+  // Returns a mutable reference to the last element in the slice.
+  // REQUIRES: size() > 0.
+  T& back() { return *(current_ - 1); }
+
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
+ private:
+  T* current_;
+  T* begin_;
+  T* end_;
+};
+
 template <typename A>
 auto EnableAliasing(A* a) -> decltype(a->EnableAliasing(true), void()) {
   a->EnableAliasing(true);
@@ -117,6 +166,14 @@ class Feature {
     return true;
   }
 
+  // Helper methods
+  tstring& construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
+    return bytes_list->construct_at_end();
+  }
+  tstring& construct_at_end(SmallVector<tstring>* bytes_list) {
+    return bytes_list->emplace_back();
+  }
+
   template <typename Result>
   bool ParseBytesList(Result* bytes_list) {
     DCHECK(bytes_list != nullptr);
@@ -135,9 +192,9 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      string bytes;
-      if (!stream.ReadString(&bytes, bytes_length)) return false;
-      bytes_list->push_back(std::move(bytes));
+      tstring& bytes = construct_at_end(bytes_list);
+      bytes.resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;
@@ -400,12 +457,11 @@ bool TestFastParse(const string& serialized, Example* example) {
       case DT_INVALID:
         break;
       case DT_STRING: {
-        SmallVector<string> list;
+        SmallVector<tstring> list;
         if (!name_and_feature.second.ParseBytesList(&list)) return false;
         auto* result_list = value.mutable_bytes_list();
         for (auto& bytes : list) {
-          auto* new_value = result_list->add_value();
-          new_value->swap(bytes);
+          result_list->add_value(bytes.data(), bytes.size());
         }
         break;
       }
@@ -486,43 +542,6 @@ struct SeededHasher {
   uint64 seed{0xDECAFCAFFE};
 };
 
-template <typename T>
-class LimitedArraySlice {
- public:
-  using value_type = T;
-
-  LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), begin_(begin), end_(begin + num_elements) {}
-
-  // May return negative if there were push_back calls after slice was filled.
-  int64 EndDistance() const { return end_ - current_; }
-
-  // Attempts to push value to the back of this. If the slice has
-  // already been filled, this method has no effect on the underlying data, but
-  // it changes the number returned by EndDistance into negative values.
-  void push_back(T&& value) {
-    if (EndDistance() > 0) *current_ = std::move(value);
-    ++current_;
-  }
-
-  // Returns the number of elements in the slice.
-  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
-
-  // Attempts to resize the vector to the given size. It does so by advancing
-  // the pointer to the current element, possibly beyond the end of the slice.
-  // As a consequence, calling `size()` after `resize(x)` was called might
-  // return a value less than `x`.
-  void resize(size_t size) { current_ = begin_ + size; }
-
-  // Returns the pointer to the underlying data buffer.
-  T* data() { return begin_; }
-
- private:
-  T* current_;
-  T* begin_;
-  T* end_;
-};
-
 void LogDenseFeatureDataLoss(StringPiece feature_name) {
   LOG(WARNING) << "Data loss! Feature '" << feature_name
                << "' is present in multiple concatenated "
@@ -546,7 +565,7 @@ void LogSparseFeatureDataLoss(StringPiece feature_name) {
 }
 
 Status FastParseSerializedExample(
-    const string& serialized_example, const string& example_name,
+    const tstring& serialized_example, const tstring& example_name,
     const size_t example_index, const Config& config,
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
@@ -596,7 +615,7 @@ Status FastParseSerializedExample(
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name =
+      const tstring& config_feature_name =
           is_dense ? config.dense[d].feature_name
                    : (is_ragged ? config.ragged[d].feature_name
                                 : config.sparse[d].feature_name);
@@ -926,7 +945,7 @@ inline void ReportUnexpectedDataType(DataType dtype) {
       << "in variable that should have been checked by CheckConfigDataType().";
 }
 
-Status CheckConfigDataTypes(Config config) {
+Status CheckConfigDataTypes(const Config& config) {
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
   for (auto& c : config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
@@ -1213,6 +1232,13 @@ Status FastParseExample(const Config& config,
     TF_RETURN_IF_ERROR(status);
   }
 
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
+
   for (size_t d = 0; d < config.dense.size(); ++d) {
     result->dense_values.push_back(std::move(fixed_dense_values[d]));
   }
@@ -1246,20 +1272,23 @@ Status FastParseExample(const Config& config,
       SparseBuffer& buffer = sparse_buffers[i][d];
 
       // Update indices.
-      int64* ix_p = &indices->matrix<int64>()(offset, 0);
       size_t delta = 0;
-      size_t example_index = first_example_of_minibatch(i);
-      for (size_t example_end_index : buffer.example_end_indices) {
-        size_t feature_index = 0;
-        for (; delta < example_end_index; ++delta) {
-          // Column 0: example index
-          *ix_p = example_index;
-          // Column 1: the feature index buffer example
-          *(ix_p + 1) = feature_index;
-          ix_p += 2;
-          ++feature_index;
+
+      if (indices->NumElements() > 0) {
+        int64* ix_p = &indices->matrix<int64>()(offset, 0);
+        size_t example_index = first_example_of_minibatch(i);
+        for (size_t example_end_index : buffer.example_end_indices) {
+          size_t feature_index = 0;
+          for (; delta < example_end_index; ++delta) {
+            // Column 0: example index
+            *ix_p = example_index;
+            // Column 1: the feature index buffer example
+            *(ix_p + 1) = feature_index;
+            ix_p += 2;
+            ++feature_index;
+          }
+          ++example_index;
         }
-        ++example_index;
       }
 
       CopySparseBufferToTensor(config.sparse[d].dtype, offset, &buffer, values);
@@ -1392,8 +1421,8 @@ Status FastParseExample(const Config& config,
   return Status::OK();
 }
 
-Status FastParseSingleExample(const Config& config,
-                              absl::string_view serialized, Result* result) {
+Status FastParseSingleExample(const Config& config, StringPiece serialized,
+                              Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
   TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
@@ -1435,6 +1464,13 @@ Status FastParseSingleExample(const Config& config,
     return errors::Internal(
         "Could not avoid collision. This should not happen.");
   }
+
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
 
   // Allocate dense output tensors.
   for (size_t d = 0; d < config.dense.size(); ++d) {
@@ -1507,7 +1543,7 @@ Status FastParseSingleExample(const Config& config,
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name =
+      const tstring& config_feature_name =
           is_dense ? config.dense[d].feature_name
                    : (is_sparse ? config.sparse[d].feature_name
                                 : config.ragged[d].feature_name);
@@ -1779,7 +1815,7 @@ namespace {
 // substrings for a single feature, plus some auxiliary information derived
 // from those protos (such as the total value length).
 struct FeatureProtos {
-  // Proto substrings from each serialized SequenceExamle that correspond
+  // Proto substrings from each serialized SequenceExample that correspond
   // with this feature.  `protos_present` records whether the proto had a
   // value defined (even if that value is empty).
   std::vector<StringPiece> protos;
@@ -1821,16 +1857,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
       if (out == nullptr) {
         stream->Skip(bytes_length);
       } else {
-#ifdef USE_TSTRING
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-#else   // USE_TSTRING
-        if (!stream->ReadString(out, bytes_length)) {
-          return -1;
-        }
-#endif  // USE_TSTRING
         out++;
       }
       num_elements++;
@@ -2106,7 +2136,7 @@ Status ExtractFeaturesFromSequenceExamples(
   return Status::OK();
 }
 
-// Populates context_fatures[k].length based on context_features[k].protos
+// Populates context_features[k].length based on context_features[k].protos
 // (for all k).
 Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
                                 FeatureProtosMap* context_features) {
@@ -2141,7 +2171,7 @@ Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
   return Status::OK();
 }
 
-// Populates sequence_fatures[k].length and sequence_features[k].num_rows based
+// Populates sequence_features[k].length and sequence_features[k].num_rows based
 // on sequence_features[k].protos (for all k).
 Status GetSequenceFeatureLengths(const gtl::ArraySlice<tstring> example_names,
                                  FeatureProtosMap* sequence_features) {

@@ -126,8 +126,8 @@ std::vector<std::pair<int64, int64>> MakePadding(
                                 window_dimension - input_dimension,
                             0);
         low_high_padding.emplace_back(
-            tensorflow::MathUtil::FloorOfRatio(padding_size, 2ll),
-            tensorflow::MathUtil::CeilOfRatio(padding_size, 2ll));
+            tensorflow::MathUtil::FloorOfRatio(padding_size, int64{2}),
+            tensorflow::MathUtil::CeilOfRatio(padding_size, int64{2}));
       }
       break;
   }

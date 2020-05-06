@@ -43,6 +43,7 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.float32: _types_pb2.FLOAT,
     dtypes.float16: _types_pb2.FLOAT16,
+    dtypes.float64: _types_pb2.FLOAT64,
     dtypes.int32: _types_pb2.INT32,
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
@@ -262,9 +263,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
                                         hinted_outputs_nodes)
 
   if not is_frozen_graph(sess):
-    output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
+    output_node_names = [tensor.name.split(":")[0] for tensor in output_tensors]
     return tf_graph_util.convert_variables_to_constants(sess, graph_def,
-                                                        output_arrays)
+                                                        output_node_names)
   else:
     return sess.graph_def
 
@@ -362,7 +363,7 @@ def get_debug_info(nodes_to_debug_info_func, converted_graph):
   Args:
     nodes_to_debug_info_func: The method to collect the op debug info for the
       nodes.
-    converted_graph: A `GraphDef` after optimization and transfermation.
+    converted_graph: A `GraphDef` after optimization and transformation.
 
   Returns:
     `GraphDebugInfo` for all the original nodes in `converted_graph`.

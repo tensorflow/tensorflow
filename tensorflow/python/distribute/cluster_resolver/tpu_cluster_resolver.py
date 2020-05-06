@@ -21,16 +21,21 @@ from __future__ import print_function
 import collections
 import re
 
-from tensorflow.python.distribute.cluster_resolver.cloud_tpu_client import CloudTPUClient
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
+try:
+  from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
+except ImportError:
+  logging.debug(
+      'Falling back to TensorFlow client; we recommended you install the Cloud '
+      'TPU client directly with pip install cloud-tpu-client.')
+  from tensorflow.python.tpu.client import client
 
 def is_running_in_gce():
   return True
@@ -44,7 +49,7 @@ DeviceDetails = collections.namedtuple(
 
 
 @tf_export('distribute.cluster_resolver.TPUClusterResolver')
-class TPUClusterResolver(ClusterResolver):
+class TPUClusterResolver(cluster_resolver.ClusterResolver):
   """Cluster Resolver for Google Cloud TPUs.
 
   This is an implementation of cluster resolvers for the Google Cloud TPU
@@ -135,7 +140,6 @@ class TPUClusterResolver(ClusterResolver):
         filled in produce an absolute URL to the discovery document for that
         service. The environment variable 'TPU_API_DISCOVERY_URL' will override
         this.
-     **kwargs: Extra keyword arguments passed to CloudTPUClient.
 
     Raises:
       ImportError: If the googleapiclient is not installed.
@@ -144,7 +148,7 @@ class TPUClusterResolver(ClusterResolver):
         Google Cloud environment.
     """
 
-    self._cloud_tpu_client = CloudTPUClient(
+    self._cloud_tpu_client = client.Client(
         tpu=tpu,
         zone=zone,
         project=project,
@@ -208,13 +212,38 @@ class TPUClusterResolver(ClusterResolver):
       if not job_tasks:
         raise ValueError('No TPUs with the specified names exist.')
       master = job_tasks[0]
-    return format_master_url(master, 'grpc')
+    return cluster_resolver.format_master_url(master, 'grpc')
 
   def get_master(self):
     return self.master()
 
   def get_job_name(self):
     return self.task_type
+
+  def get_tpu_system_metadata(self):
+    """Returns the metadata of the TPU system.
+
+    Users can call this method to get some facts of the TPU system, like
+    total number of cores, number of TPU workers and the devices. E.g.
+    ```python
+
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tpu_system_medata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_medata.num_hosts
+    ```
+
+    Returns:
+      A `tf.tpu.experimental.TPUSystemMetadata` object.
+    """
+    cluster_spec = self.cluster_spec()
+    cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+    tpu_system_metadata = (
+        tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
+            self.master(),
+            cluster_def=cluster_def,
+            query_topology=False))
+
+    return tpu_system_metadata
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
@@ -277,7 +306,8 @@ class TPUClusterResolver(ClusterResolver):
     while True:
       try:
         device_details = TPUClusterResolver._get_device_dict_and_cores(
-            get_accelerator_devices(self.master(), config_proto=config_proto))
+            cluster_resolver.get_accelerator_devices(
+                self.master(), config_proto=config_proto))
         break
       except errors.DeadlineExceededError:
         error_message = ('Failed to connect to master. The TPU might not be '

@@ -627,8 +627,13 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal scatter_indices = LiteralUtil::CreateR2<int32>(
-      {{2, 7}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  Literal scatter_indices =
+      LiteralUtil::CreateR2<int32>({{2, 7},
+                                    {2, 1},
+                                    {1, 1},
+                                    {-500, 1},
+                                    {static_cast<int32>(-2147483648), 1},
+                                    {1, 2}});
   Literal updates = LiteralUtil::CreateR3<int32>(
       {{{10}}, {{20}}, {{30}}, {{40}}, {{50}}, {{60}}});
   RunTest(hlo_text, &operand, &scatter_indices, &updates);

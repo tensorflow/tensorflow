@@ -191,9 +191,22 @@ TEST(PackOpTest, Int64MultilDimensions) {
                                 4LL, 5LL, 6LL, 10LL, 11LL, 12LL}));
 }
 
-// uint8
-TEST(PackOpTest, Uint8ThreeInputs) {
-  PackOpModel<uint8_t> model({TensorType_UINT8, {2}}, 0, 3);
+template <typename InputType>
+struct PackOpTestInt : public ::testing::Test {
+  using TypeToTest = InputType;
+  TensorType TENSOR_TYPE =
+      (std::is_same<InputType, int16_t>::value
+           ? TensorType_INT16
+           : (std::is_same<InputType, uint8_t>::value ? TensorType_UINT8
+                                                      : TensorType_INT8));
+};
+
+using TestTypes = testing::Types<int8_t, uint8_t, int16_t>;
+TYPED_TEST_CASE(PackOpTestInt, TestTypes);
+
+TYPED_TEST(PackOpTestInt, ThreeInputs) {
+  PackOpModel<typename TestFixture::TypeToTest> model(
+      {TestFixture::TENSOR_TYPE, {2}}, 0, 3);
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
@@ -202,8 +215,9 @@ TEST(PackOpTest, Uint8ThreeInputs) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
 
-TEST(PackOpTest, Uint8ThreeInputsDifferentAxis) {
-  PackOpModel<uint8_t> model({TensorType_UINT8, {2}}, 1, 3);
+TYPED_TEST(PackOpTestInt, ThreeInputsDifferentAxis) {
+  PackOpModel<typename TestFixture::TypeToTest> model(
+      {TestFixture::TENSOR_TYPE, {2}}, 1, 3);
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
@@ -212,8 +226,9 @@ TEST(PackOpTest, Uint8ThreeInputsDifferentAxis) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(PackOpTest, Uint8ThreeInputsNegativeAxis) {
-  PackOpModel<uint8_t> model({TensorType_UINT8, {2}}, -1, 3);
+TYPED_TEST(PackOpTestInt, ThreeInputsNegativeAxis) {
+  PackOpModel<typename TestFixture::TypeToTest> model(
+      {TestFixture::TENSOR_TYPE, {2}}, -1, 3);
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
@@ -222,49 +237,9 @@ TEST(PackOpTest, Uint8ThreeInputsNegativeAxis) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(PackOpTest, Uint8MultilDimensions) {
-  PackOpModel<uint8_t> model({TensorType_UINT8, {2, 3}}, 1, 2);
-  model.SetInput(0, {1, 2, 3, 4, 5, 6});
-  model.SetInput(1, {7, 8, 9, 10, 11, 12});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
-}
-
-// int8
-TEST(PackOpTest, Int8ThreeInputs) {
-  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 0, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
-}
-
-TEST(PackOpTest, Int8ThreeInputsDifferentAxis) {
-  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
-}
-
-TEST(PackOpTest, Int8ThreeInputsNegativeAxis) {
-  PackOpModel<int8_t> model({TensorType_INT8, {2}}, -1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
-}
-
-TEST(PackOpTest, Int8MultilDimensions) {
-  PackOpModel<int8_t> model({TensorType_INT8, {2, 3}}, 1, 2);
+TYPED_TEST(PackOpTestInt, MultilDimensions) {
+  PackOpModel<typename TestFixture::TypeToTest> model(
+      {TestFixture::TENSOR_TYPE, {2, 3}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, 9, 10, 11, 12});
   model.Invoke();

@@ -37,7 +37,7 @@ TfLiteStatus ResetVariableTensor(TfLiteTensor* tensor) {
   memset(tensor->data.raw, value, tensor->bytes);
 #else
   char* raw_ptr = tensor->data.raw;
-  for (int i = 0; i < tensor->bytes; ++i) {
+  for (size_t i = 0; i < tensor->bytes; ++i) {
     *raw_ptr = value;
     raw_ptr++;
   }

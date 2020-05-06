@@ -207,12 +207,12 @@ absl::flat_hash_map<string, absl::flat_hash_set<int>> IdentityNTerminalPorts(
   // get pruned later on.
   absl::flat_hash_set<string> visited(terminal_nodes.begin(),
                                       terminal_nodes.end());
-  for (string terminal_node : terminal_nodes) {
+  for (const string& terminal_node : terminal_nodes) {
     NodeDef* node = node_map.GetNode(terminal_node);
     if (node == nullptr) {
       continue;
     }
-    for (string input : node->input()) {
+    for (const string& input : node->input()) {
       to_visit.push_back(input);
     }
   }
@@ -299,7 +299,7 @@ Status RewriteIdentityNAndInputsOutputs(
   // Rewrite IdentityN node and associated inputs and outputs. For inputs and
   // outputs that don't lead to a terminal node, a new Identity node is created
   // and those inputs and outputs are rewritten to use the new Identity node as
-  // their outputs and inputs respectively. For the remaining nodes, the ouputs
+  // their outputs and inputs respectively. For the remaining nodes, the outputs
   // have their inputs updated with the adjusted port, from the IdentityN node
   // having less inputs.
   struct NodeOutputUpdate {
@@ -353,7 +353,7 @@ Status RewriteIdentityNAndInputsOutputs(
     }
   }
 
-  for (NodeOutputUpdate update : updates) {
+  for (const NodeOutputUpdate& update : updates) {
     node_map->AddOutput(update.input, update.output);
   }
 

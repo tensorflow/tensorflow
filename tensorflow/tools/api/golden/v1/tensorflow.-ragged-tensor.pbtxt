@@ -2,6 +2,7 @@ path: "tensorflow.RaggedTensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.ragged_tensor.RaggedTensor\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"
@@ -28,12 +29,16 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "uniform_row_length"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "values"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'values\', \'row_splits\', \'cached_row_lengths\', \'cached_value_rowids\', \'cached_nrows\', \'internal\', \'uniform_row_length\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'self\', \'values\', \'row_partition\', \'internal\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "bounding_shape"
@@ -102,6 +107,10 @@ tf_class {
   member_method {
     name: "nrows"
     argspec: "args=[\'self\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "numpy"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "row_lengths"

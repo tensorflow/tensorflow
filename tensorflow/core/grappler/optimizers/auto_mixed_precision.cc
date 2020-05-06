@@ -44,7 +44,11 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+#if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
+#else
+const std::pair<int, int> kMinGPUArch = {0, 0};
+#endif
 
 const char kSuffix[] = "AutoMixedPrecision";
 const char kCastToFp16[] = "CastToFp16";
@@ -54,7 +58,7 @@ const char kCastToFp32[] = "CastToFp32";
 // node. It handles regular type attributes, list type attributes (where
 // type_index is set to the index in the type list), and fixed types.
 struct TypeAttrId {
-  static const int kSingleType = -1;
+  static constexpr int kSingleType = -1;
 
   explicit TypeAttrId(const string& _attr_name, int _type_index = kSingleType)
       : attr_name(_attr_name),
@@ -399,10 +403,9 @@ class GraphTypeTopologyView {
   // execution of dequeue/enqueue ops from the same queue resource, but we might
   // want to enforce ordering between them for the purpose of graph analysis.
   Status InitializeFromGraph(const GraphDef& graph,
-                             const NodeTypeAttrMap& node_type_map,
-                             absl::Span<const NodeTypeIdEdge> ephemeral_edges);
-  Status InitializeFromGraph(const GraphDef& graph,
                              const NodeTypeAttrMap& node_type_map);
+
+  Status AddEphemeralEdges(absl::Span<const NodeTypeIdEdge> ephemeral_edges);
 
   bool is_initialized() const { return graph_ != nullptr; }
   int num_nodes() const { return num_nodes_; }
@@ -474,8 +477,7 @@ inline void SortAndRemoveDuplicates(T* v) {
 }
 
 Status GraphTypeTopologyView::InitializeFromGraph(
-    const GraphDef& graph, const NodeTypeAttrMap& node_type_map,
-    absl::Span<const NodeTypeIdEdge> ephemeral_edges) {
+    const GraphDef& graph, const NodeTypeAttrMap& node_type_map) {
   if (graph_ != nullptr) {
     return errors::InvalidArgument(
         "GraphTypeTopologyView is already initialized.");
@@ -503,46 +505,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
   fanins_.resize(num_nodes_);
   fanouts_.resize(num_nodes_);
 
-  // 1. Add ephemeral edges to the adjacency lists.
-  for (const NodeTypeIdEdge& edge : ephemeral_edges) {
-    const auto src = node_name_to_index_.find(edge.src.node->name());
-    const bool valid_src = src != node_name_to_index_.end();
-
-    if (!valid_src) {
-      const string error_message =
-          absl::StrCat("Non-existent src node: ", edge.src.node->name());
-      if (skip_invalid_edges_) {
-        VLOG(0) << "Skip error: " << error_message;
-      } else {
-        return errors::InvalidArgument(error_message);
-      }
-    }
-
-    const auto dst = node_name_to_index_.find(edge.dst.node->name());
-    const bool valid_dst = dst != node_name_to_index_.end();
-
-    if (!valid_dst) {
-      const string error_message =
-          absl::StrCat("Non-existent dst node: ", edge.dst.node->name());
-      if (skip_invalid_edges_) {
-        VLOG(0) << "Skip error: " << error_message;
-      } else {
-        return errors::InvalidArgument(error_message);
-      }
-    }
-
-    if (valid_dst && valid_src) {
-      // TODO(benbarsdell): Check for failure.
-      int src_node_type_idx = node_type_name_to_index_.at(
-          NodeTypeKey(edge.src.node->name(), edge.src.type_attr));
-      int dst_node_type_idx = node_type_name_to_index_.at(
-          NodeTypeKey(edge.dst.node->name(), edge.dst.type_attr));
-      fanins_[dst_node_type_idx].push_back(src_node_type_idx);
-      fanouts_[src_node_type_idx].push_back(dst_node_type_idx);
-    }
-  }
-
-  // 2. Add graph edges to the adjacency lists.
+  // Add graph edges to the adjacency lists.
   for (int node_type_idx = 0; node_type_idx < num_nodes_; ++node_type_idx) {
     const NodeTypeId& node_type = node_type_attrs_.at(node_type_idx);
     auto input_ports =
@@ -597,10 +560,54 @@ Status GraphTypeTopologyView::InitializeFromGraph(
   return Status::OK();
 }
 
-Status GraphTypeTopologyView::InitializeFromGraph(
-    const GraphDef& graph, const NodeTypeAttrMap& node_type_map) {
-  return InitializeFromGraph(graph, node_type_map,
-                             absl::Span<const NodeTypeIdEdge>());
+Status GraphTypeTopologyView::AddEphemeralEdges(
+    absl::Span<const NodeTypeIdEdge> ephemeral_edges) {
+  // Add ephemeral edges to the adjacency lists.
+  for (const NodeTypeIdEdge& edge : ephemeral_edges) {
+    const auto src = node_name_to_index_.find(edge.src.node->name());
+    const bool valid_src = src != node_name_to_index_.end();
+
+    if (!valid_src) {
+      const string error_message =
+          absl::StrCat("Non-existent src node: ", edge.src.node->name());
+      if (skip_invalid_edges_) {
+        VLOG(0) << "Skip error: " << error_message;
+      } else {
+        return errors::InvalidArgument(error_message);
+      }
+    }
+
+    const auto dst = node_name_to_index_.find(edge.dst.node->name());
+    const bool valid_dst = dst != node_name_to_index_.end();
+
+    if (!valid_dst) {
+      const string error_message =
+          absl::StrCat("Non-existent dst node: ", edge.dst.node->name());
+      if (skip_invalid_edges_) {
+        VLOG(0) << "Skip error: " << error_message;
+      } else {
+        return errors::InvalidArgument(error_message);
+      }
+    }
+
+    if (valid_dst && valid_src) {
+      // TODO(benbarsdell): Check for failure.
+      int src_node_type_idx = node_type_name_to_index_.at(
+          NodeTypeKey(edge.src.node->name(), edge.src.type_attr));
+      int dst_node_type_idx = node_type_name_to_index_.at(
+          NodeTypeKey(edge.dst.node->name(), edge.dst.type_attr));
+      fanins_[dst_node_type_idx].push_back(src_node_type_idx);
+      fanouts_[src_node_type_idx].push_back(dst_node_type_idx);
+    }
+  }
+
+  // Dedup inputs and outputs for all the graph nodes.
+  for (int node_type_idx = 0; node_type_idx < num_nodes_; ++node_type_idx) {
+    SortAndRemoveDuplicates(&fanins_[node_type_idx]);
+    SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
+  }
+
+  return Status::OK();
 }
 
 bool GraphTypeTopologyView::HasNode(absl::string_view node_name,
@@ -856,11 +863,11 @@ Status ValidateLists(const gtl::FlatSet<string>& white_list,
   std::vector<gtl::FlatSet<string>> lists{white_list, black_list, gray_list,
                                           clear_list};
   std::multiset<string> counts;
-  for (auto list : lists) {
+  for (const auto& list : lists) {
     counts.insert(list.begin(), list.end());
   }
   bool duplicates = false;
-  for (auto s : counts) {
+  for (const auto& s : counts) {
     if (counts.count(s) > 1) {
       duplicates = true;
       LOG(ERROR) << "Op present in multiple lists: " << s;
@@ -938,6 +945,7 @@ class AutoMixedPrecisionImpl {
       : virtual_placer_(cluster->GetDevices()),
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
+        function_library_(OpRegistry::Global(), graph->library()),
         id_(id),
         graph_view_(graph),
         cuda_version_(GetCudaVersion(*cluster)),
@@ -947,11 +955,6 @@ class AutoMixedPrecisionImpl {
 
  private:
   typedef absl::flat_hash_set<NodeTypeId> NodeTypeIdSet;
-  // Maps data structure object ops (e.g., StackV2) to the sets of nodes that
-  // write (e.g., StackPushV2) and read (e.g., StackPopV2) from them.
-  typedef absl::flat_hash_map<NodeTypeId,
-                              std::pair<NodeTypeIdSet, NodeTypeIdSet>>
-      DataStructureOpsMap;
 
   Status PrintDebugLogs(bool preop, size_t timestamp);
   void LogSkippedNode(const NodeDef& node) const;
@@ -963,19 +966,19 @@ class AutoMixedPrecisionImpl {
   bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsFloat16(const NodeTypeId& node_type) const;
-  const NodeDef* GetTailOfChain(
-      const NodeDef& node, const absl::flat_hash_set<string>& match_ops) const;
-  Status AddDataStructureOpsToMap(
-      const absl::flat_hash_set<string>& data_structure_ops,
-      TypeAttrId data_structure_type_attr,
-      const absl::flat_hash_map<string, TypeAttrId>& write_ops,
-      const absl::flat_hash_map<string, TypeAttrId>& read_ops,
-      DataStructureOpsMap* object_clients_map) const;
+  const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
+  bool IsSourceOrSinkOp(const string& op) const;
+  void FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+      std::vector<absl::flat_hash_set<const NodeDef*>>* clusters,
+      absl::flat_hash_set<int>* black_set) const;
+  void FindTensorListImplicitFloat32Edges(
+      const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
+      std::vector<NodeTypeIdEdge>* implicit_data_edges) const;
   void AddWhitelistOps(absl::flat_hash_set<int>* white_set) const;
   void PropagateBlackFwdThroughClearAndGray(
       absl::flat_hash_set<int>* black_set) const;
-  void ForceColorMatchBetweenDataStructureOps(
-      const DataStructureOpsMap& object_clients_map,
+  void ForceColorMatchBetweenTensorListOps(
+      const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
       absl::flat_hash_set<int>* white_set,
       absl::flat_hash_set<int>* black_set) const;
   void AddClearAndGrayToWhiteIfBetweenWhite(
@@ -992,6 +995,7 @@ class AutoMixedPrecisionImpl {
   VirtualPlacer virtual_placer_;
   std::unordered_set<string> nodes_to_preserve_;
   GraphDef* graph_;
+  FunctionLibraryDefinition function_library_;
   string id_;
   MutableGraphView graph_view_;
   int cuda_version_;
@@ -1050,20 +1054,20 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     f << "WhiteList:\n";
-    for (auto x :
+    for (const auto& x :
          AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_)) {
       f << x << "\n";
     }
     f << "\nBlackList:\n";
-    for (auto x : AutoMixedPrecisionLists::BlackList()) {
+    for (const auto& x : AutoMixedPrecisionLists::BlackList()) {
       f << x << "\n";
     }
     f << "\nGrayList:\n";
-    for (auto x : AutoMixedPrecisionLists::GrayList()) {
+    for (const auto& x : AutoMixedPrecisionLists::GrayList()) {
       f << x << "\n";
     }
     f << "\nClearList:\n";
-    for (auto x : AutoMixedPrecisionLists::ClearList()) {
+    for (const auto& x : AutoMixedPrecisionLists::ClearList()) {
       f << x << "\n";
     }
     f.close();
@@ -1138,6 +1142,26 @@ bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
 bool IsFloat32(const NodeTypeId& node_type) {
   return GetDataType(*node_type.node, node_type.type_attr) ==
          DataType::DT_FLOAT;
+}
+
+bool IsTensorListOp(const string& op) {
+  return op.find("TensorList") != string::npos;
+}
+
+bool IsTensorListReaderOp(const string& op) {
+  static const gtl::FlatSet<string> tensor_list_reader_ops = {
+      "TensorListConcat",  "TensorListConcatV2", "TensorListGather",
+      "TensorListGetItem", "TensorListPopBack",  "TensorListStack"};
+  return tensor_list_reader_ops.count(op);
+}
+
+bool IsTensorListWriterOp(const string& op) {
+  static const gtl::FlatSet<string> tensor_list_writer_ops = {
+      "TensorListFromTensor",    "TensorListPushBack",
+      "TensorListPushBackBatch", "TensorListScatter",
+      "TensorListScatterV2",     "TensorListScatterIntoExistingList",
+      "TensorListSetItem",       "TensorListSplit"};
+  return tensor_list_writer_ops.count(op);
 }
 
 bool AutoMixedPrecisionImpl::SupportsFloat16(
@@ -1223,97 +1247,24 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Building node type map for graph";
   TF_RETURN_IF_ERROR(node_type_map_.Init(*graph_));
 
-  // Note: If an op is added to this list that has a data type attribute, it
-  // should also be added to the AddDataStructureOpsToMap call below (and to the
-  // clearlist if it involves data flow).
-  // TODO(benbarsdell): Add support for TensorListPushBackBatch and
-  // TensorListConcatLists. They require special handling because they connect
-  // multiple list objects together. Currently if they appear in the graph then
-  // we have no choice but to disallow changing any tensor list ops, as
-  // otherwise we risk breaking the graph if some are changed and some are not
-  // (within a connected cluster of tensor list nodes).
-  const gtl::FlatSet<string> supported_list_ops = {
-      "EmptyTensorList",
-      "TensorListSplit",
-      "TensorListFromTensor",
-      "TensorListReserve",
-      "TensorListScatter",
-      "TensorListScatterV2",
-      "TensorListPushBack",
-      "TensorListSetItem",
-      "TensorListScatterIntoExistingList",
-      "TensorListPopBack",
-      "TensorListStack",
-      "TensorListConcat",
-      "TensorListConcatV2",
-      "TensorListGetItem",
-      "TensorListGather",
-      "TensorListLength",
-      "TensorListElementShape",
-      "TensorListResize"};
-
-  bool can_change_tensor_list_ops = true;
-  for (const NodeDef& node : graph_->node()) {
-    if (absl::StartsWith(node.op(), "TensorList") &&
-        !supported_list_ops.count(node.op())) {
-      LOG(WARNING) << "Unsupported " << node.op() << " node found in graph ("
-                   << node.name()
-                   << "), tensor list ops will not be converted.";
-      can_change_tensor_list_ops = false;
-      break;
-    }
-  }
-
-  DataStructureOpsMap object_clients_map;
-  if (can_change_tensor_list_ops) {
-    VLOG(2) << "Identifying TensorList* nodes";
-    TF_RETURN_IF_ERROR(AddDataStructureOpsToMap(
-        {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
-         "TensorListReserve", "TensorListScatter", "TensorListScatterV2"},
-        TypeAttrId("element_dtype"),
-        {{"TensorListPushBack", TypeAttrId("element_dtype")},
-         {"TensorListSetItem", TypeAttrId("element_dtype")},
-         {"TensorListScatterIntoExistingList", TypeAttrId("element_dtype")}},
-        {{"TensorListPopBack", TypeAttrId("element_dtype")},
-         {"TensorListStack", TypeAttrId("element_dtype")},
-         {"TensorListConcat", TypeAttrId("element_dtype")},
-         {"TensorListConcatV2", TypeAttrId("element_dtype")},
-         {"TensorListGetItem", TypeAttrId("element_dtype")},
-         {"TensorListGather", TypeAttrId("element_dtype")}},
-        &object_clients_map));
-  } else {
-    for (const string& list_op : supported_list_ops) {
-      fp16_whitelist_.erase(list_op);
-      fp16_graylist_.erase(list_op);
-      fp16_clearlist_.erase(list_op);
-    }
-  }
-
-  // Create ephemeral edges between writers and readers of data structure ops.
-  std::vector<NodeTypeIdEdge> ephemeral_edges;
-  for (const auto& object_clients : object_clients_map) {
-    const auto& client_nodes = object_clients.second;
-    for (const NodeTypeId& write_node_type : client_nodes.first) {
-      for (const NodeTypeId& read_node_type : client_nodes.second) {
-        ephemeral_edges.emplace_back(write_node_type, read_node_type);
-      }
-    }
-    const NodeTypeId& object_node_type = object_clients.first;
-    // These object types also act as writers because they initialize the object
-    // from an input tensor.
-    if (object_node_type.node->op() == "TensorListSplit" ||
-        object_node_type.node->op() == "TensorListFromTensor" ||
-        object_node_type.node->op() == "TensorListScatter" ||
-        object_node_type.node->op() == "TensorListScatterV2") {
-      for (const NodeTypeId& read_node_type : client_nodes.second) {
-        ephemeral_edges.emplace_back(object_node_type, read_node_type);
-      }
-    }
-  }
-
   VLOG(2) << "Constructing graph type attribute topology view";
-  TF_RETURN_IF_ERROR(graph_type_view_.InitializeFromGraph(
-      *graph_, node_type_map_, ephemeral_edges));
+  TF_RETURN_IF_ERROR(
+      graph_type_view_.InitializeFromGraph(*graph_, node_type_map_));
+
+  absl::flat_hash_set<int> black_set;
+
+  std::vector<absl::flat_hash_set<const NodeDef*>> tensor_list_clusters;
+  FindFloat32TensorListOpClustersAndBlacklistUnsafe(&tensor_list_clusters,
+                                                    &black_set);
+  std::vector<NodeTypeIdEdge> ephemeral_edges;
+  for (const auto& cluster : tensor_list_clusters) {
+    VLOG(1) << "Found safe Tensor List cluster of size " << cluster.size();
+    for (const NodeDef* node : cluster) {
+      VLOG(2) << "Cluster member: " << node->op() << " node " << node->name();
+    }
+    FindTensorListImplicitFloat32Edges(cluster, &ephemeral_edges);
+  }
+  TF_RETURN_IF_ERROR(graph_type_view_.AddEphemeralEdges(ephemeral_edges));
 
   // The goal here is to change performance-critical ops to fp16, and to do so
   // with the minimal number of casts, subject to the constraint that the
@@ -1352,15 +1303,15 @@ Status AutoMixedPrecisionImpl::Optimize() {
     return Status::OK();
   }
 
-  absl::flat_hash_set<int> black_set;
   VLOG(2) << "Beginning pass 2 to propagate black forwards from blacklist ops "
              "through clear/graylist ops";
   PropagateBlackFwdThroughClearAndGray(&black_set);
   VLOG(2) << "Finished pass 2";
 
   VLOG(2) << "Forcing color match between data structure ops";
-  ForceColorMatchBetweenDataStructureOps(object_clients_map, &white_set,
-                                         &black_set);
+  for (const auto& cluster : tensor_list_clusters) {
+    ForceColorMatchBetweenTensorListOps(cluster, &white_set, &black_set);
+  }
 
   VLOG(2) << "Beginning pass 3 to set clear and gray nodes to white if they "
              "are between white ops";
@@ -1373,8 +1324,9 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Finished pass 4";
 
   VLOG(2) << "Forcing color match between data structure ops";
-  ForceColorMatchBetweenDataStructureOps(object_clients_map, &white_set,
-                                         &black_set);
+  for (const auto& cluster : tensor_list_clusters) {
+    ForceColorMatchBetweenTensorListOps(cluster, &white_set, &black_set);
+  }
 
   VLOG(2) << "Forcing color match on loop edges";
   TF_RETURN_IF_ERROR(ForceColorMatchOnRecurrentEdges(&white_set));
@@ -1392,35 +1344,133 @@ Status AutoMixedPrecisionImpl::Optimize() {
   return Status::OK();
 }
 
-// Finds data structure object ops (e.g., StackV2) and the sets of nodes that
-// write (e.g., StackPushV2) and read (e.g., StackPopV2) from them.
-Status AutoMixedPrecisionImpl::AddDataStructureOpsToMap(
-    const absl::flat_hash_set<string>& data_structure_ops,
-    TypeAttrId data_structure_type_attr,
-    const absl::flat_hash_map<string, TypeAttrId>& write_ops,
-    const absl::flat_hash_map<string, TypeAttrId>& read_ops,
-    DataStructureOpsMap* object_clients_map) const {
-  for (const NodeDef& node : graph_->node()) {
-    const auto write_iter = write_ops.find(node.op());
-    const auto read_iter = read_ops.find(node.op());
-    bool is_writer = write_iter != write_ops.end();
-    bool is_reader = read_iter != read_ops.end();
-    if (is_writer || is_reader) {
-      const NodeDef* object_node = GetTailOfChain(node, data_structure_ops);
-      if (!object_node) {
-        return errors::FailedPrecondition(
-            "No data structure op found upstream of ", node.op(), " node ",
-            node.name());
-      }
-      NodeTypeId object_node_type(object_node, data_structure_type_attr);
-      TypeAttrId type_attr = is_writer ? write_iter->second : read_iter->second;
-      NodeTypeId node_type(&node, type_attr);
-      auto* value = &(*object_clients_map)[object_node_type];
-      auto* node_set = is_writer ? &value->first : &value->second;
-      node_set->insert(node_type);
+// If node is a Tensor List op with a float32 data type attribute then this
+// returns a pointer to the NodeTypeId representing that type attribute. In
+// all other cases this returns nullptr.
+const NodeTypeId* AutoMixedPrecisionImpl::GetTensorListFloat32NodeTypeId(
+    const NodeDef& node) const {
+  if (!IsTensorListOp(node.op())) return nullptr;
+  for (const TypeAttrId& type_attr : node_type_map_.GetTypeAttrs(node)) {
+    const NodeTypeId* node_type =
+        graph_type_view_.GetNode(node.name(), type_attr);
+    // This assumes that the float32 data type on a Tensor List op is always a
+    // non-fixed type attribute containing a single type, and that this type
+    // attribute represents the dtype of the values in the list.
+    // TODO(benbarsdell): A new Tensor List op could theoretically break these
+    // assumptions.
+    if (node_type && node_type->type_attr.fixed_type == DT_INVALID &&
+        node_type->type_attr.type_index == TypeAttrId::kSingleType &&
+        IsFloat32(*node_type)) {
+      return node_type;
     }
   }
-  return Status::OK();
+  return nullptr;
+}
+
+bool AutoMixedPrecisionImpl::IsSourceOrSinkOp(const string& op) const {
+  const gtl::FlatSet<string> source_and_sink_ops = {
+      "_Arg",
+      "_Retval",
+      "OptionalFromValue",
+      "OptionalGetValue",
+      "PartitionedCall",
+      "Placeholder",
+      "StatefulPartitionedCall",
+  };
+  return source_and_sink_ops.count(op) || function_library_.Find(op);
+}
+
+// Finds all clusters of float32 Tensor List nodes that are connected via their
+// handle edges. Unsafe clusters (those with unprocessable nodes, or with edges
+// that cross untraversable boundaries via _Arg, _Ret, PartitionedCall etc.
+// nodes) are added to black_set. The caller should paint all nodes in a cluster
+// the same color, as they may all refer to the same Tensor List.
+void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+    std::vector<absl::flat_hash_set<const NodeDef*>>* tensor_list_clusters,
+    absl::flat_hash_set<int>* black_set) const {
+  absl::flat_hash_set<const NodeDef*> tensor_list_prop_set;
+  for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
+    const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
+    if (!ShouldProcess(*root.node) ||
+        root.type_attr.fixed_type != DataType::DT_VARIANT ||
+        !GetTensorListFloat32NodeTypeId(*root.node) ||
+        tensor_list_prop_set.count(root.node)) {
+      continue;
+    }
+    const NodeTypeId* root_fp32 = GetTensorListFloat32NodeTypeId(*root.node);
+    const absl::optional<int> maybe_root_fp32_idx =
+        graph_type_view_.GetNodeIndex(*root_fp32);
+    DCHECK(maybe_root_fp32_idx.has_value())
+        << "Type attribute " << root_fp32->type_attr.DebugString()
+        << " of node " << root.node->name() << " not found in graph view";
+    int root_fp32_idx = maybe_root_fp32_idx.value();
+    // Traverse Tensor List handle edges (DT_VARIANT) to find cluster of all
+    // connected Tensor List nodes.
+    absl::flat_hash_set<const NodeDef*> cluster({root.node});
+    DfsTypeTraversal(graph_type_view_, {&root},
+                     TypeTraversalDirection::kFollowInputsAndOutputs,
+                     DfsTypePredicates::Enter([&](int idx) -> bool {
+                       const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+                       return !tensor_list_prop_set.count(item.node);
+                     }),
+                     DfsTypeCallbacks::PreOrder([&](int idx) {
+                       const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+                       const NodeDef* node = item.node;
+                       if (GetTensorListFloat32NodeTypeId(*node)) {
+                         cluster.insert(node);
+                         if (!ShouldProcess(*node)) {
+                           // The cluster contains an un-processable node.
+                           black_set->insert(root_fp32_idx);
+                         }
+                         // TODO(benbarsdell): In a theoretical pathological
+                         // case of a Tensor List of Tensor List handles, the
+                         // Tensor List itself would need to be treated as a
+                         // sink.
+                       } else if (IsSourceOrSinkOp(node->op())) {
+                         // The cluster crosses an untraversable boundary.
+                         black_set->insert(root_fp32_idx);
+                       }
+                     }));
+    tensor_list_clusters->push_back(cluster);
+  }
+}
+
+// Finds all writer -> reader pairs in the given set that are connected via
+// their handles, and adds corresponding float32 edges to *implicit_fp32_edges.
+void AutoMixedPrecisionImpl::FindTensorListImplicitFloat32Edges(
+    const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
+    std::vector<NodeTypeIdEdge>* implicit_fp32_edges) const {
+  for (const NodeDef* root_node : tensor_list_nodes) {
+    if (!IsTensorListReaderOp(root_node->op())) continue;
+    NodeTypeId root(root_node, TypeAttrId(DataType::DT_VARIANT));
+    const NodeTypeId* root_fp32 = GetTensorListFloat32NodeTypeId(*root.node);
+    CHECK(root_fp32) << "No float32 type attribute found for "  // Crash OK
+                     << root.node->op() << " node " << root.node->name();
+    // Search backwards through handle edges (DT_VARIANT) for all writer ops,
+    // adding direct implicit edges between them and the reader.
+    DfsTypeTraversal(
+        graph_type_view_, {&root}, TypeTraversalDirection::kFollowInputs,
+        DfsTypePredicates::Enter([&](int idx) -> bool {
+          const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+          return ShouldProcess(*item.node);
+        }),
+        DfsTypeCallbacks::PreOrder([&](int idx) {
+          const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+          if (IsTensorListWriterOp(item.node->op())) {
+            const NodeTypeId* item_fp32 =
+                GetTensorListFloat32NodeTypeId(*item.node);
+            CHECK(item_fp32)  // Crash OK
+                << "No float32 type attribute found for " << item.node->op()
+                << " node " << item.node->name();
+            VLOG(2) << "Adding ephemeral float32 edge from "
+                    << item_fp32->node->op() << " node "
+                    << item_fp32->node->name() << " to "
+                    << root_fp32->node->op() << " node "
+                    << root_fp32->node->name();
+            implicit_fp32_edges->emplace_back(*item_fp32, *root_fp32);
+          }
+        }));
+  }
 }
 
 void AutoMixedPrecisionImpl::AddWhitelistOps(
@@ -1654,75 +1704,45 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
   return Status::OK();
 }
 
-// Returns the last node in the simple chain starting at node and traversing
-// backwards through the input(0) edge from each node until one with a matching
-// op is found, or nullptr if no matching node is found.
-const NodeDef* AutoMixedPrecisionImpl::GetTailOfChain(
-    const NodeDef& node, const absl::flat_hash_set<string>& match_ops) const {
-  const NodeDef* node_ptr = &node;
-  do {
-    GraphView::InputPort node_input(node_ptr, 0);
-    MutableGraphView::OutputPort prev_output =
-        graph_view_.GetRegularFanin(node_input);
-    node_ptr = prev_output.node;
-  } while (node_ptr && !match_ops.count(node_ptr->op()));
-  return node_ptr;
-}
-
-// Ensures that data structure nodes (e.g., StackV2) and all of their associated
-// client nodes (e.g., StackPushV2 and StackPopV2) are in the same color set.
-void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
-    const DataStructureOpsMap& object_clients_map,
+// Forces all of the given Tensor List nodes into the same color set.
+void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
+    const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
     absl::flat_hash_set<int>* white_set,
     absl::flat_hash_set<int>* black_set) const {
-  for (const auto& object_clients : object_clients_map) {
-    const NodeTypeId& object_node_type = object_clients.first;
-    const auto& client_nodes = object_clients.second;
-    NodeTypeIdSet all_client_nodes = client_nodes.first;
-    all_client_nodes.insert(client_nodes.second.begin(),
-                            client_nodes.second.end());
-    // The object node may be considered a client too (e.g.,
-    // TensorListFromTensor).
-    all_client_nodes.insert(object_node_type);
-    bool any_black = false;
-    bool any_white = false;
-    for (const NodeTypeId& node_type : all_client_nodes) {
-      const absl::optional<int> maybe_node_idx =
-          graph_type_view_.GetNodeIndex(node_type);
-      DCHECK(maybe_node_idx.has_value())
-          << "Type attribute " << node_type.type_attr.DebugString()
-          << " of node " << node_type.node->name()
-          << " not found in graph view";
-      int node_idx = maybe_node_idx.value();
-      if (black_set->count(node_idx)) {
-        any_black = true;
-        break;
-      } else if (white_set->count(node_idx)) {
-        any_white = true;
-      }
+  bool any_black = false;
+  bool any_white = false;
+  std::vector<int> node_type_idxs;
+  node_type_idxs.reserve(tensor_list_nodes.size());
+  for (const NodeDef* node : tensor_list_nodes) {
+    const NodeTypeId& node_type = *GetTensorListFloat32NodeTypeId(*node);
+    const absl::optional<int> maybe_node_type_idx =
+        graph_type_view_.GetNodeIndex(node_type);
+    DCHECK(maybe_node_type_idx.has_value())
+        << "Type attribute " << node_type.type_attr.DebugString() << " of node "
+        << node->name() << " not found in graph view";
+    node_type_idxs.push_back(maybe_node_type_idx.value());
+  }
+  for (int node_type_idx : node_type_idxs) {
+    if (black_set->count(node_type_idx)) {
+      any_black = true;
+      break;
+    } else if (white_set->count(node_type_idx)) {
+      any_white = true;
     }
-    if (any_black || any_white) {
-      for (const NodeTypeId& node_type : all_client_nodes) {
-        VLOG(2) << "Painting type " << node_type.type_attr.DebugString()
-                << " of " << node_type.node->op() << " node "
-                << node_type.node->name() << " "
-                << (any_black ? "BLACK" : "WHITE")
-                << " because at least one of its siblings is "
-                << (any_black ? "BLACK" : "WHITE");
-        const absl::optional<int> maybe_node_idx =
-            graph_type_view_.GetNodeIndex(node_type);
-        DCHECK(maybe_node_idx.has_value())
-            << "Type attribute " << node_type.type_attr.DebugString()
-            << " of node " << node_type.node->name()
-            << " not found in graph view";
-        int node_idx = maybe_node_idx.value();
-        if (any_black) {
-          white_set->erase(node_idx);
-          black_set->insert(node_idx);
-        } else {
-          white_set->insert(node_idx);
-        }
-      }
+  }
+  if (!any_black && !any_white) return;
+  for (int node_type_idx : node_type_idxs) {
+    const NodeTypeId& node_type = *graph_type_view_.GetNode(node_type_idx);
+    VLOG(2) << "Painting type " << node_type.type_attr.DebugString() << " of "
+            << node_type.node->op() << " node " << node_type.node->name() << " "
+            << (any_black ? "BLACK" : "WHITE")
+            << " because at least one of its siblings is "
+            << (any_black ? "BLACK" : "WHITE");
+    if (any_black) {
+      white_set->erase(node_type_idx);
+      black_set->insert(node_type_idx);
+    } else {
+      white_set->insert(node_type_idx);
     }
   }
 }

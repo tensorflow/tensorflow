@@ -24,7 +24,7 @@ import sys
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -71,21 +72,27 @@ def op_attr_type(op_type, attr_name):
   except KeyError:
     context.ensure_initialized()
     h = context.context()._handle  # pylint: disable=protected-access
-    attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
+    attr_type = pywrap_tfe.TFE_OpNameGetAttrType(h, op_type, attr_name)
   _op_attr_type_cache[(op_type, attr_name)] = attr_type
   return attr_type
 
 
 def make_attr(attr_type, value):
-  if attr_type == pywrap_tensorflow.TF_ATTR_TYPE:
+  # pybind11 enums do not return the raw value like SWIG enums do. They are
+  # useful when comparing amongst each other but not direct integers as we are
+  # doing in most tests.
+  # https://pybind11.readthedocs.io/en/stable/classes.html#enumerations-and-internal-types
+  # TODO(amitpatankar): After all SWIG transitions, convert the enum comparisons
+  # from integer value to class.
+  if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_TYPE]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == pywrap_tensorflow.TF_ATTR_SHAPE:
+  if attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
-  elif isinstance(value, str):
+  if isinstance(value, str):
     return value.encode()
   return value
 
@@ -117,7 +124,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads, skip_input_indices):
+                       out_grads, skip_input_indices, forward_pass_name_scope):
   """Calls the gradient function of the op.
 
   Args:
@@ -129,6 +136,7 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     out_grads: gradients of the operation wrt its outputs.
     skip_input_indices: a tuple that is passed to the gradient function,
       indicating which inputs to skip calculating the gradient for
+    forward_pass_name_scope: the namescope of the op in the forward pass.
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
@@ -138,19 +146,28 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  return grad_fn(mock_op, *out_grads)
+  # This does not work with v1 TensorArrays.
+  if ops.executing_eagerly_outside_functions(
+  ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    gradient_name_scope = "gradient_tape/"
+    if forward_pass_name_scope:
+      gradient_name_scope += forward_pass_name_scope + "/"
+    with ops.name_scope(gradient_name_scope):
+      return grad_fn(mock_op, *out_grads)
+  else:
+    return grad_fn(mock_op, *out_grads)
 
 
-pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
+pywrap_tfe.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 def _must_record_gradient():
-  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+  return not pywrap_tfe.TFE_Py_TapeSetIsEmpty()
 
 
 def _record_gradient(op_name, inputs, attrs, results):
-  return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
-                                                 results)
+  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results,
+                                          ops.get_name_scope())
 
 
 execute.must_record_gradient = _must_record_gradient
@@ -570,28 +587,27 @@ def aggregate_indexed_slices_gradients(grads):
   """Aggregates gradients containing `IndexedSlices`s."""
   if len(grads) < 1:
     return None
-  elif len(grads) == 1:
+  if len(grads) == 1:
     return grads[0]
-  else:
-    grads = [g for g in grads if g is not None]
-    # If any gradient is a `Tensor`, sum them up and return a dense tensor
-    # object.
-    if any(isinstance(g, ops.Tensor) for g in grads):
-      return math_ops.add_n(grads)
+  grads = [g for g in grads if g is not None]
+  # If any gradient is a `Tensor`, sum them up and return a dense tensor
+  # object.
+  if any(isinstance(g, ops.Tensor) for g in grads):
+    return math_ops.add_n(grads)
 
-    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
-    # int64. It is to make sure the inputs of `concat` all have same the data
-    # type.
-    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+  # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+  # int64. It is to make sure the inputs of `concat` all have same the data
+  # type.
+  grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
 
-    grads = [flatten_nested_indexed_slices(x) for x in grads]
-    # Form IndexedSlices out of the concatenated values and indices.
-    concat_grad = ops.IndexedSlices(
-        array_ops.concat([x.values for x in grads], axis=0),
-        array_ops.concat([x.indices for x in grads], axis=0),
-        grads[0].dense_shape)
+  grads = [flatten_nested_indexed_slices(x) for x in grads]
+  # Form IndexedSlices out of the concatenated values and indices.
+  concat_grad = ops.IndexedSlices(
+      array_ops.concat([x.values for x in grads], axis=0),
+      array_ops.concat([x.indices for x in grads], axis=0),
+      grads[0].dense_shape)
 
-    return concat_grad
+  return concat_grad
 
 
 def _aggregate_grads(gradients):
@@ -620,12 +636,13 @@ def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
   if isinstance(grad, ops.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
-    if shape_tuple is None or None in shape_tuple:
-      return 0
-    return functools.reduce(operator.mul, shape_tuple, 1)
-  if isinstance(grad, ops.IndexedSlices):
-    return functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
-  raise ValueError("`grad` not a Tensor or IndexedSlices.")
+  elif isinstance(grad, ops.IndexedSlices):
+    shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
+  else:
+    raise ValueError("`grad` not a Tensor or IndexedSlices.")
+  if shape_tuple is None or None in shape_tuple:
+    return 0
+  return functools.reduce(operator.mul, shape_tuple, 1)
 
 
 def _fast_fill(value, shape, dtype):
@@ -647,7 +664,7 @@ def _zeros(shape, dtype):
   device = ctx.device_name
 
   if tensor_util.is_tensor(shape):
-    shape_key = shape.experimental_ref()
+    shape_key = shape.ref()
   else:
     shape_key = shape
   cache_key = shape_key, dtype, device
@@ -688,7 +705,7 @@ _default_vspace = imperative_grad.VSpace(
     zeros_like_fn=default_gradient.zeros_like,
     ones_like_fn=default_gradient.ones_like,
     graph_shape_fn=gen_array_ops.shape)
-pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
+pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):

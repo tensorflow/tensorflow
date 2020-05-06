@@ -39,7 +39,7 @@ class FunctionWrappersTest(test.TestCase):
       t = constant_op.constant(1)
     self.assertIn('test_name', t.name)
 
-  def test_auto_cotrol_deps(self):
+  def test_auto_control_deps(self):
     v = variables.Variable(1)
     with function_wrappers.FunctionScope(
         '_', None,

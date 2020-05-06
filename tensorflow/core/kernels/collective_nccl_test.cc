@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -80,20 +81,18 @@ class NcclTestBase : public ::testing::Test {
   class DeviceInstance;
 
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
-      : collective_type_(collective_type), collective_name_(collective_name) {}
+      : collective_type_(collective_type),
+        collective_name_(collective_name),
+        col_exec_(nullptr) {}
+
   ~NcclTestBase() override {
     if (col_exec_) col_exec_->Unref();
   }
 
-  void InitGPUDevices() {
+  void SetUp() {
     std::vector<std::unique_ptr<Device>> all_devices;
-    SessionOptions session_options;
-    session_options.config.mutable_gpu_options()
-        ->set_per_process_gpu_memory_fraction(0.1);
-    session_options.env = Env::Default();
-    Status s = DeviceFactory::GetFactory(DEVICE_GPU)
-                   ->AddDevices(session_options, "", &all_devices);
-    TF_CHECK_OK(s);
+    TF_CHECK_OK(DeviceFactory::GetFactory(DEVICE_GPU)
+                    ->AddDevices(SessionOptions(), "", &all_devices));
     for (std::unique_ptr<Device>& d : all_devices) {
       if (d->device_type() == "GPU") {
         gpus_.emplace_back(std::move(d));
@@ -104,13 +103,11 @@ class NcclTestBase : public ::testing::Test {
   void Init(const int num_ranks, const int instance_key) {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
-    InitGPUDevices();
     std::vector<std::unique_ptr<Device>> local_devices;
     std::vector<string> device_names;
+    CHECK_LE(num_ranks, gpus_.size());
     for (int rank = 0; rank < num_ranks; ++rank) {
-      if (rank < gpus_.size()) {
-        local_devices.emplace_back(std::move(gpus_[rank]));
-      }
+      local_devices.emplace_back(std::move(gpus_[rank]));
     }
     int num_gpus = local_devices.size();
     for (const auto& device : local_devices) {
@@ -179,6 +176,11 @@ class NcclTestBase : public ::testing::Test {
   }
 
   void RunTest(int num_ranks, int input_length, int instance_key) {
+    if (num_ranks > gpus_.size()) {
+      LOG(WARNING) << "Skipping test because required " << num_ranks
+                   << " GPUs but found " << gpus_.size();
+      return;
+    }
     Init(num_ranks, instance_key);
     std::vector<float> expected;
     InitExpected(&expected, input_length, num_ranks);
@@ -203,15 +205,10 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << "rank " << rank << " output " << output << " buf "
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
-      Notification note;
       Device* dev = instances_[rank]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          output, /*tensor_name=*/"", dev, &actual, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
               << actual.DebugString(output_length);
       for (int i = 0; i < output_length; ++i) {
@@ -268,13 +265,8 @@ class NcclTestBase : public ::testing::Test {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
       auto* dev_info = device_->tensorflow_gpu_device_info();
-      Notification note;
-      dev_info->default_context->CopyCPUTensorToDevice(
-          &cpu_tensor, device_, &input_, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+          &cpu_tensor, device_, &input_));
     }
 
     void PrepareDeviceContext(OpKernelContext::Params* params) {
@@ -426,7 +418,7 @@ class NcclTestBase : public ::testing::Test {
   std::vector<std::unique_ptr<DeviceInstance>> instances_;
   CollectiveParams col_params_;
   mutex mu_;
-  int32 op_counter_ GUARDED_BY(mu_) = 0;
+  int32 op_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 class NcclReducerTest : public NcclTestBase {

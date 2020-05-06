@@ -38,7 +38,7 @@ namespace {
 
 class BatchNormExpanderTest : public HloTestBase {
  protected:
-  // BatchNorm should have a dynamic sized dividor for mean operations.
+  // BatchNorm should have a dynamic sized divider for mean operations.
   int64 CountGetDimensionSize(const HloModule& module) {
     int64 count = 0;
     for (HloComputation* comp : module.computations()) {

@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -65,6 +65,16 @@ def make_transpose_conv_tests(options):
           "data_format": ["NHWC"],
           "channel_multiplier": [1],
           "output_shape": [[1, 6, 6, 2]],
+          "fully_quantize": [True]
+      },
+      {
+          "input_shape": [[1, 4, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "strides": [[1, 2, 2, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 8, 6, 2]],
           "fully_quantize": [True]
       }
   ]

@@ -23,19 +23,22 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -97,8 +100,6 @@ string AttrSlice::DebugString() const {
   return absl::StrJoin(attr_key_vals, ", ");
 }
 
-string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
-
 string SummarizeNodeDef(const NodeDef& node_def) {
   string ret = strings::StrCat(errors::FormatNodeNameForError(node_def.name()),
                                " = ", node_def.op(), "[");
@@ -120,57 +121,20 @@ string SummarizeAttrs(const NodeDef& node_def) {
   return SummarizeAttrsHelper(node_def, node_def.device());
 }
 
-string FormatNodeForError(const NodeDebugInfo& debug_info) {
-  return debug_info.original_node_names.empty()
-             ? errors::FormatNodeNameForError(debug_info.name)
-             : errors::FormatNodeNamesForError(debug_info.original_node_names);
-}
-
-string FormatNodeForError(const Node& node) {
-  return FormatNodeForError(NodeDebugInfo(node));
-}
-
-string FormatNodeDefForError(const NodeDef& node_def) {
-  return FormatNodeForError(NodeDebugInfo(node_def));
-}
-
 string FormatNodeDefForError(
     StringPiece node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info) {
-  return FormatNodeForError(NodeDebugInfo(
-      node_name, has_experimental_debug_info, experimental_debug_info));
+  return !has_experimental_debug_info ||
+                 experimental_debug_info.original_node_names().empty()
+             ? errors::FormatNodeNameForError(string(node_name))
+             : errors::FormatNodeNamesForError(
+                   experimental_debug_info.original_node_names());
 }
 
-void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
-                                const NodeDebugInfo& to,
-                                std::set<string>* names) {
-  if (!from.original_node_names.empty()) {
-    names->insert(from.original_node_names.begin(),
-                  from.original_node_names.end());
-  } else {
-    names->insert(from.name);
-  }
-  names->insert(to.original_node_names.begin(), to.original_node_names.end());
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, Node* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->set_original_node_names({names.begin(), names.end()});
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->mutable_experimental_debug_info()->clear_original_node_names();
-  if (!names.empty()) {
-    *to->mutable_experimental_debug_info()->mutable_original_node_names() = {
-        names.begin(), names.end()};
-  }
-}
-
-void MergeDebugInfo(const NodeDef& from, NodeDef* to) {
-  MergeDebugInfo(NodeDebugInfo(from), to);
+string FormatNodeDefForError(const NodeDef& node_def) {
+  return FormatNodeDefForError(node_def.name(),
+                               node_def.has_experimental_debug_info(),
+                               node_def.experimental_debug_info());
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
@@ -192,6 +156,15 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
     }
   }
   return nullptr;
+}
+
+const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
+  auto iter = attrs_->find(attr_name);
+  if (iter != attrs_->end()) {
+    return &iter->second;
+  } else {
+    return nullptr;
+  }
 }
 
 Status AttrSlice::Find(StringPiece attr_name,
@@ -285,7 +258,8 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     }                                                                     \
     return true;                                                          \
   }
-
+DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
@@ -454,6 +428,13 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return true;
 }
 
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value) {
+  string str_value;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
+  return GetPaddingFromString(str_value, value);
+}
+
 namespace {  // Helper for InOutTypesForNode().
 
 template <class NodeDefOrAttrSlice>
@@ -506,6 +487,11 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
     for (size_t i = original_size; i < sig->size(); ++i) {
+      if (IsRefType((*sig)[i])) {
+        return errors::InvalidArgument(
+            "Requested reference to a reference type: ",
+            arg_def.ShortDebugString());
+      }
       (*sig)[i] = MakeRefType((*sig)[i]);
     }
   }
@@ -724,11 +710,6 @@ Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
   return Status::OK();
 }
 
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs) {
-  return NameRangesForNode(node.def(), op_def, inputs, outputs);
-}
-
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
   for (const auto& attr_def : op_def.attr()) {
     AttrSlice attrs(*node_def);
@@ -740,6 +721,7 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
 
 namespace {
 
+using ::tensorflow::tstring;
 using ::tensorflow::strings::Scanner;
 
 bool IsValidNodeName(StringPiece sp) {
@@ -753,7 +735,7 @@ bool IsValidNodeName(StringPiece sp) {
     if (scanner.empty())  // No error, but nothing left, good.
       return true;
 
-    // Absorb another piece, starting with a '>'
+    // Absorb another name/namespace, starting with a '>'
     scanner.One(Scanner::RANGLE)
         .One(Scanner::LETTER_DIGIT_DOT)
         .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
@@ -765,26 +747,46 @@ bool IsValidDataInputName(StringPiece sp) {
   Scanner scan(sp);
   scan.One(Scanner::LETTER_DIGIT_DOT)
       .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  if (scan.Peek() == ':') {
-    scan.OneLiteral(":");
-    if (scan.Peek() == '0') {
-      scan.OneLiteral("0");  // :0
+
+  while (true) {
+    if (!scan.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scan.empty())  // No error, but nothing left, good.
+      return true;
+
+    if (scan.Peek() == ':') {  // Absorb identifier after the colon
+      scan.OneLiteral(":");
+      if (scan.Peek() == '0') {
+        scan.OneLiteral("0");  // :0
+      } else {
+        scan.Many(Scanner::DIGIT);  // :[1-9][0-9]*
+      }
     } else {
-      scan.Many(Scanner::DIGIT);  // :[1-9][0-9]*
+      // Absorb another name/namespace, starting with a '>'
+      scan.One(Scanner::RANGLE)
+          .One(Scanner::LETTER_DIGIT_DOT)
+          .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
     }
   }
-  scan.Eos();
-
-  return scan.GetResult();
 }
 
 bool IsValidControlInputName(StringPiece sp) {
-  return Scanner(sp)
-      .OneLiteral("^")
+  Scanner scan(sp);
+  scan.OneLiteral("^")
       .One(Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scan.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scan.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another name/namespace, starting with a '>'
+    scan.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 }  // namespace
@@ -844,11 +846,6 @@ Status AttachDef(const Status& status, const NodeDef& node_def,
   }
   errors::AppendToMessage(&ret, strings::StrCat(" [[", node_error, "]]"));
   return ret;
-}
-
-Status AttachDef(const Status& status, const Node& node,
-                 bool allow_multiple_formatted_node) {
-  return AttachDef(status, node.def(), allow_multiple_formatted_node);
 }
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {

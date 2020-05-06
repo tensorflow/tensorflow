@@ -22,16 +22,108 @@ limitations under the License.
 #include "numpy/arrayobject.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "include/pybind11/numpy.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
+
+namespace xla {
+
+// Custom holder types.
+//
+// We must keep the PjRtClient object alive as long as any of the runtime
+// objects are alive. Since we don't have a lot of control over Python
+// destructor ordering, we keep the PjRtClient object as a std::shared_ptr<>,
+// and ensure that each Python runtime object holds a reference to the
+// PjRtClient. An alternative design would be to keep a single global
+// singleton PjRtClient, although this seems less flexible, especially for
+// writing tests.
+//
+// To maintain PjRtClient references, we define pybind11 holder classes that
+// are custom smart pointers that also keep a reference to a PjRtClient.
+// pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
+// seem sufficiently flexible to describe ownership relationships in cases where
+// the ownership doesn't pertain to a direct argument or return value of a
+// function. Another alternative to the holder classes would be to create proxy
+// objects that contain both a reference and a runtime class; holder classes
+// seem less tedious to define.
+
+// A pair of a PjRtClient reference and an unowned pointer to T.
+template <typename T>
+struct ClientAndPtr {
+  ClientAndPtr() = default;
+  // pybind11 requires that we define a constructor that takes a raw pointer,
+  // but it should be unreachable.
+  explicit ClientAndPtr(T*) {
+    LOG(FATAL) << "ClientAndPtr should constructed via WrapWithClient.";
+  }
+
+  ClientAndPtr(const ClientAndPtr&) = default;
+  ClientAndPtr(ClientAndPtr&&) = default;
+  ClientAndPtr& operator=(const ClientAndPtr&) = default;
+  ClientAndPtr& operator=(ClientAndPtr&&) = default;
+
+  std::shared_ptr<PjRtClient> client;
+  T* contents;
+
+  T* get() const { return contents; }
+  T* operator->() const { return contents; }
+  T& operator*() const { return *contents; }
+};
+
+// By defining a templated helper function, we can use return type deduction
+// and avoid specifying types at the caller.
+template <typename T>
+ClientAndPtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
+                               T* contents) {
+  ClientAndPtr<T> result;
+  result.client = std::move(client);
+  result.contents = contents;
+  return result;
+}
+
+// A pair of a PjRtClient reference and an owned pointer to T.
+template <typename T>
+struct ClientAndUniquePtr {
+  ClientAndUniquePtr() = default;
+  // pybind11 requires that we define a constructor that takes a raw pointer,
+  // but it should be unreachable.
+  explicit ClientAndUniquePtr(T*) {
+    LOG(FATAL) << "ClientAndUniquePtr should constructed via WrapWithClient.";
+  }
+  ClientAndUniquePtr(const ClientAndUniquePtr&) = delete;
+  ClientAndUniquePtr(ClientAndUniquePtr&&) = default;
+  ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
+  ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
+
+  std::shared_ptr<PjRtClient> client;
+  std::unique_ptr<T> contents;
+
+  T* get() const { return contents.get(); }
+  T* operator->() const { return contents.get(); }
+  T& operator*() const { return *contents; }
+};
+
+template <typename T>
+ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
+                                     std::unique_ptr<T> contents) {
+  ClientAndUniquePtr<T> result;
+  result.client = std::move(client);
+  result.contents = std::move(contents);
+  return result;
+}
+
+}  // namespace xla
+
+PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndPtr<T>);
+PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndUniquePtr<T>);
 
 namespace xla {
 
@@ -53,6 +145,15 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+
+// Returns a numpy-style format descriptor string for `type`.
+StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
+StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns the strides for `shape`.
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
@@ -87,7 +188,7 @@ std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::array array;  // Holds a reference to the array to keep it alive.
+  pybind11::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };
@@ -132,7 +233,7 @@ struct type_caster<absl::Span<const T>> {
     auto seq = reinterpret_borrow<sequence>(src);
     storage_.clear();
     storage_.reserve(seq.size());
-    for (auto it : seq) {
+    for (const auto& it : seq) {
       value_conv conv;
       if (!conv.load(it, convert)) {
         return false;
@@ -405,7 +506,7 @@ struct type_caster<xla::PaddingConfig> {
     sequence dimensions =
         reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
 
-    for (auto dimension : dimensions) {
+    for (const auto& dimension : dimensions) {
       xla::PaddingConfig::PaddingConfigDimension* config_dim =
           value.add_dimensions();
       config_dim->set_edge_padding_low(
@@ -460,7 +561,7 @@ struct type_caster<xla::PrecisionConfig> {
     sequence operand_precisions =
         reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
 
-    for (auto operand_precision : operand_precisions) {
+    for (const auto& operand_precision : operand_precisions) {
       value.add_operand_precision(
           operand_precision.cast<xla::PrecisionConfig::Precision>());
     }
@@ -505,7 +606,7 @@ struct type_caster<xla::OpSharding> {
     sequence tuple_shardings =
         reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
 
-    for (auto tuple_sharding : tuple_shardings) {
+    for (const auto& tuple_sharding : tuple_shardings) {
       xla::OpSharding* sharding = value.add_tuple_shardings();
 
       handle sharding_type = getattr(tuple_sharding, "type");

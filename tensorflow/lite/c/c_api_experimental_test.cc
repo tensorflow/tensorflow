@@ -18,17 +18,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {
 
 TfLiteRegistration* GetDummyRegistration() {
   static TfLiteRegistration registration = {
-      .init = nullptr,
-      .free = nullptr,
-      .prepare = nullptr,
-      .invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; },
-  };
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/nullptr,
+      /*invoke=*/[](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }};
   return &registration;
 }
 
@@ -40,6 +40,7 @@ TEST(CApiExperimentalTest, Smoke) {
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
                                        GetDummyRegistration(), 1, 1);
+  TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);

@@ -22,7 +22,7 @@ limitations under the License.
 // Example of a string tensor:
 // [
 //   2, 0, 0, 0,     # 2 strings.
-//   16, 0, 0, 0,    # 0-th string starts from index 12.
+//   16, 0, 0, 0,    # 0-th string starts from index 16.
 //   18, 0, 0, 0,    # 1-st string starts from index 18.
 //   18, 0, 0, 0,    # total length of array.
 //   'A', 'B',       # 0-th string [16..17]: "AB"

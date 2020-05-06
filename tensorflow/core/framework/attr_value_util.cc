@@ -216,7 +216,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
 
 string SummarizeFunc(const NameAttrList& func) {
   std::vector<string> entries;
-  for (auto p : func.attr()) {
+  for (const auto& p : func.attr()) {
     entries.push_back(
         strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
@@ -480,6 +480,17 @@ DEFINE_SET_ATTR_VALUE_BOTH(bool, b)
 DEFINE_SET_ATTR_VALUE_LIST(const std::vector<bool>&, b)
 DEFINE_SET_ATTR_VALUE_LIST(std::initializer_list<bool>, b)
 DEFINE_SET_ATTR_VALUE_BOTH(DataType, type)
+
+void SetAttrValue(const tstring& value, AttrValue* out) {
+  out->set_s(value.data(), value.size());
+}
+
+void SetAttrValue(gtl::ArraySlice<tstring> value, AttrValue* out) {
+  out->mutable_list()->Clear();
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
 
 void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());

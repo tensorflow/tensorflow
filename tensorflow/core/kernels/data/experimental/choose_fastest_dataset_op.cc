@@ -197,7 +197,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", i), &input_impls_[i]));
+              ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+              &input_impls_[i]));
         }
         return Status::OK();
       }
@@ -237,7 +238,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // TODO(rachelim): Save and restore histogram state as well. Currently,
       // if an iterator is saved and restored, the histograms start recording
       // from scratch.
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
                                                experiment_counter_));
@@ -245,13 +247,13 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("fastest_index"), fastest_index_));
         if (fastest_index_ != -1) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, fastest_input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, fastest_input_impl_));
         } else if (input_impls_.empty()) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
         } else {
           for (auto& input_impl : input_impls_) {
-            TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
+            TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
           }
         }
         return Status::OK();
@@ -266,7 +268,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
         if (fastest_index_ != -1) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[fastest_index_]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", fastest_index_),
+              ctx, this, strings::StrCat(prefix(), "[", fastest_index_, "]"),
               &fastest_input_impl_));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, fastest_input_impl_));
         } else if (reader->Contains(full_name("input_impls_empty"))) {
@@ -299,11 +301,11 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       std::vector<histogram::Histogram> histograms_;
 
       mutex mu_;
-      int64 experiment_counter_ GUARDED_BY(mu_) = 0;
+      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
       int64 fastest_index_ = -1;
 
       std::vector<ThreadInfo> StartThreads(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<ThreadInfo> threads(dataset()->inputs_.size());
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
@@ -317,6 +319,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       }
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
+        RecordStart(ctx);
+        auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
         int64 start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);
@@ -329,7 +333,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // Select the fastest input to use based on the histograms of timings
       // of the completed threads. The input with the best 90th percentile
       // iteration time is selected.
-      void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SelectFastestInputIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
         VLOG(2) << "90.0 percentile iteration time:";

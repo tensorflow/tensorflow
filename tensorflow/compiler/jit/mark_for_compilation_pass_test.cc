@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
@@ -28,15 +26,16 @@ limitations under the License.
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -1803,6 +1802,35 @@ TEST(XlaCompilationTest, StagePipelinePreservedByClusterScopingPass) {
     EXPECT_NE(clusters["relu0"], clusters["relu1"]);
   }
 }
+TEST(XlaCompilationTest, XLALiteWhitelist) {
+  auto* whitelist_table = tensorflow::GetWhitelistTable();
+  absl::flat_hash_set<string> hwhitelist;
+  std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
+  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
 
+  // Check that all the operations in the table are existing TF operations
+  for (auto pair : *whitelist_table) {
+    hwhitelist.insert(pair.second.begin(), pair.second.end());
+    for (auto op : pair.second) {
+      ASSERT_TRUE(all_ops.contains(op));
+    }
+  }
+
+  // Check that all registered XLA operation are in the whitelist
+  // table or are known to not be in it.
+
+  absl::flat_hash_set<string> known_not_in_list =
+      tensorflow::testing::GetKnownXLAWhitelistOp();
+  std::vector<string> unknow_op;
+  for (string op : vall_ops) {
+    if (!hwhitelist.contains(op) && !known_not_in_list.contains(op)) {
+      unknow_op.push_back(op);
+    }
+  }
+  EXPECT_TRUE(unknow_op.empty())
+      << "Someone added support for a new TF opeations inside XLA. They must "
+         "be included in the XLALite whitelist or blacklist:\n"
+      << absl::StrJoin(unknow_op, "\n");
+}
 }  // namespace
 }  // namespace tensorflow

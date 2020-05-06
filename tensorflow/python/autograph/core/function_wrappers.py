@@ -34,7 +34,7 @@ class FunctionScope(object):
     * optional TF name scopes - these name scopes match the name of the
         function, for easy visualization in tensorBoard;
     * optional automatic control dependencies - this adds the same mechanism
-        for control dependenecies that is used by `@tf.function`; it can be
+        for control dependencies that is used by `@tf.function`; it can be
         optionally enabled when using `tf.autograph.to_graph`;
     * tracking of autograph conversion state (whether it's enabled by the user,
         conversion options;

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -217,6 +216,12 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.unbatch()
     self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     self.assertDatasetProduces(data, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneComponent(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        (list(range(10)), None)).unbatch().map(lambda x, y: x)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
 
 
 if __name__ == "__main__":

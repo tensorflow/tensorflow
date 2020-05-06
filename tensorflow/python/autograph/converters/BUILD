@@ -19,15 +19,15 @@ filegroup(
 py_library(
     name = "converters",
     srcs = [
-        "arg_defaults.py",
         "asserts.py",
         "break_statements.py",
         "call_trees.py",
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
+        "control_flow_deprecated_py2.py",
         "directives.py",
-        "function_scopes.py",
+        "functions.py",
         "list_comprehensions.py",
         "lists.py",
         "logical_expressions.py",
@@ -44,18 +44,6 @@ py_library(
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
-    ],
-)
-
-py_test(
-    name = "arg_defaults_test",
-    srcs = ["arg_defaults_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
     ],
 )
 
@@ -134,6 +122,8 @@ py_test(
         ":converters",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        # TOODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
     ],
 )
 
@@ -151,8 +141,8 @@ py_test(
 )
 
 py_test(
-    name = "function_scopes_test",
-    srcs = ["function_scopes_test.py"],
+    name = "functions_test",
+    srcs = ["functions_test.py"],
     python_version = "PY3",
     deps = [
         ":converters",

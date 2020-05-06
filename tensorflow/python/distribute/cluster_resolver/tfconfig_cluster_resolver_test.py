@@ -22,7 +22,7 @@ import os
 
 from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -222,6 +222,21 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
     cluster_resolver = TFConfigClusterResolver()
+    self.assertEqual(1, cluster_resolver.task_id)
+
+  def testTaskIndexOverride(self):
+    os.environ['TF_CONFIG'] = """
+    {
+      "cluster": {
+        "worker": ["worker0:2222", "worker1:2222"]
+      },
+      "task": {
+        "type": "worker",
+        "index": "0"
+      }
+    }
+    """
+    cluster_resolver = TFConfigClusterResolver(task_id=1)
     self.assertEqual(1, cluster_resolver.task_id)
 
   def testZeroItemsInClusterSpecMasterRead(self):

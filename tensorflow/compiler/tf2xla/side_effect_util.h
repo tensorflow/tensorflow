@@ -64,6 +64,18 @@ bool HasSideEffectingNodes(const Graph& g);
 Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
                                 std::map<string, int>* host_compute_core);
 
+// XLA frontend attribute name which specifies TensorFlow rendezvous name.
+extern const char kXlaHostTransferRendezvousNameAttr[];
+
+// XLA frontend attribute name which specifies original host transfer type.
+// Value is XLA primitive type in lower case.
+extern const char kXlaHostTransferOriginalTypeAttr[];
+
+// XLA frontend attribute name which specifies whether a host transfer
+// instruction is lower bits for a splitted X64 host transfer. Value is "true"
+// or "false".
+extern const char kXlaHostTransferIsLowerBitsAttr[];
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SIDE_EFFECT_UTIL_H_

@@ -27,8 +27,10 @@ import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
@@ -103,14 +105,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
-    imported = cycle(root, cycles)
-    self.assertEqual(imported.v1.numpy(), 1.0)
+    self.evaluate([root.v1.initializer, root.v2.initializer])
+
+    for _ in range(cycles):
+      imported = cycle(root, 1)
+      self.evaluate([imported.v1.initializer, imported.v2.initializer])
+
+    if not context.executing_eagerly():
+      self.assertIsInstance(imported.v1.initializer, ops.Operation)
+      self.assertIsInstance(imported.v2.initializer, ops.Operation)
+
+    self.assertEqual(self.evaluate(imported.v1), 1.0)
     self.assertTrue(imported.v1.trainable)
-    self.assertEqual(imported.v2.numpy(), 2.0)
+    self.assertEqual(self.evaluate(imported.v2), 2.0)
     self.assertFalse(imported.v2.trainable)
 
   def test_variables_name(self, cycles):
@@ -994,9 +1006,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([6],
                         imported.f(constant_op.constant([3])).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_concrete_function_backprop(self, cycles):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
     def func(x):
       return x ** 2.
     root = tracking.AutoTrackable()
@@ -1009,10 +1022,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         output = function(inp)
       return tape.gradient(output, inp)
 
-    self.assertEqual(2., _compute_gradient(root.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(root.f))
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
     imported = cycle(root, cycles, signatures={})
-    self.assertEqual(2., _compute_gradient(imported.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(imported.f))
 
   def test_revived_concrete_function_kwargs(self, cycles):
 
@@ -1339,7 +1352,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
         self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
 
-  def test_perserve_argspec(self, cycles):
+  def test_preserve_argspec(self, cycles):
+
     def f(a, b, c):  # pylint: disable=unused-argument
       return None
 
@@ -1826,6 +1840,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     rt = ragged_factory_ops.constant([[1, 2], [3]])
     self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
 
+
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
@@ -1856,8 +1871,7 @@ class KerasLoadTest(test.TestCase, parameterized.TestCase):
         [feature_column_lib.DenseFeatures(columns),
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
-    model.compile(optimizer="adam", loss="mse", run_eagerly=True,
-                  experimental_run_tf_function=True)
+    model.compile(optimizer="adam", loss="mse", run_eagerly=True)
     model.fit(model_input, constant_op.constant([[3.]]))
     loaded = cycle(model, cycles)
     loaded._default_save_signature(model_input)
@@ -1942,6 +1956,68 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         ValueError,
         "object has an attribute named a, which is reserved."):
       save.save(root, path)
+
+  def test_save_cached_variable(self):
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      obj = tracking.AutoTrackable()
+      obj.v = variables.Variable(2., caching_device=lambda op: op.device)
+      obj.w = variables.Variable(3.)
+      session.run([obj.v.initializer, obj.w.initializer])
+
+      @def_function.function
+      def total():
+        return obj.v + obj.w
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+      def wrapped_total(x):
+        return total() + x
+
+      @def_function.function
+      def increment_v(x):
+        obj.v.assign_add(x)
+
+      session.run(increment_v(constant_op.constant(3.)))  # generate signatures
+      self.assertAllClose(8, total())
+      self.assertAllClose(13, wrapped_total(constant_op.constant(5.)))
+
+      obj.total = total
+      obj.wrapped_total = wrapped_total.get_concrete_function()
+      obj.increment_v = increment_v
+
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(obj, save_dir, signatures=total.get_concrete_function())
+      imported = load.load(save_dir)
+      session.run(variables.global_variables_initializer())
+      self.assertAllClose(8, imported.total())
+      session.run(imported.increment_v(4))
+      self.assertAllClose(12, imported.total())
+      self.assertAllClose(15, imported.wrapped_total(constant_op.constant(3.)))
+      self.assertAllClose({"output_0": 12},
+                          imported.signatures["serving_default"]())
+
+    # Try loading and running the function in eager mode
+    imported = load.load(save_dir)
+    self.assertAllClose(8, imported.total())
+    imported.increment_v(5)
+    self.assertAllClose(13, imported.total())
+    self.assertAllClose(13.5, imported.wrapped_total(constant_op.constant(.5)))
+    self.assertAllClose({"output_0": 13},
+                        imported.signatures["serving_default"]())
+
+  # TODO(allenl, kkb): Use the new memory checker here once it's fast enough (3
+  # iterations took hundreds of seconds). It would be really nice to check
+  # allocations at a lower level.
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def test_functions_cleaned(self):
+    if sys.version_info.major < 3:
+      self.skipTest("Not working in Python 2")
+    root = module.Module()
+    root.v = variables.Variable(1.)
+    root.f = def_function.function(
+        lambda x: x + root.v,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[], dtype=dtypes.float32)])
+    cycle(root, 1)
 
 
 if __name__ == "__main__":

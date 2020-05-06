@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 
-#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFControlFlow {

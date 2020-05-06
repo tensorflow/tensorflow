@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -13,8 +13,11 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@local_config_mlir//:subpackages"],
-    packages = ["//tensorflow/compiler/mlir/..."],
+    includes = ["//third_party/mlir:subpackages"],
+    packages = [
+        "//learning/brain/experimental/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/...",
+    ],
 )
 
 exports_files([
@@ -26,8 +29,8 @@ filegroup(
     name = "quantization_td_files",
     srcs = [
         "quantization.td",
-        "@local_config_mlir//:OpBaseTdFiles",
-        "@local_config_mlir//:QuantizationOpsTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:QuantizationOpsTdFiles",
     ],
 )
 
@@ -53,13 +56,13 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:QuantOps",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
@@ -71,18 +74,17 @@ cc_library(
         "quantization_utils.cc",
     ],
     hdrs = [
+        "quantization_traits.h",
         "quantization_utils.h",
     ],
     deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:QuantOps",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
-        # TODO(fengliuai): remove this dependence.
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -97,7 +99,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -107,8 +109,57 @@ tf_native_cc_binary(
         "tools/op_quant_spec_getters_gen.cc",
     ],
     deps = [
-        "@llvm//:support",
-        "@llvm//:tablegen",
-        "@local_config_mlir//:TableGen",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:tablegen",
+        "@llvm-project//mlir:TableGen",
+    ],
+)
+
+cc_library(
+    name = "numerical_utils",
+    srcs = ["numerical_utils.cc"],
+    hdrs = ["numerical_utils.h"],
+    deps = [
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "device_target",
+    srcs = ["device_target.cc"],
+    hdrs = ["device_target.h"],
+    deps = [
+        ":numerical_utils",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "quantization_context",
+    srcs = ["quantization_context.cc"],
+    hdrs = ["quantization_context.h"],
+    deps = [
+        ":device_target",
+        ":quantization_lib",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "numerical_utils_test",
+    srcs = ["numerical_utils_test.cc"],
+    deps = [
+        ":numerical_utils",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_main",
     ],
 )

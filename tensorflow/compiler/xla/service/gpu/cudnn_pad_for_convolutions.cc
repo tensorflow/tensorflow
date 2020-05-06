@@ -143,7 +143,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 // instruction to cuDNN convolution that may need padding to figure out the
 // desired padded input and output tensor shapes and store the desired
 // shapes in new_input_shapes and new_input_shapes.  Notice that
-// new_input_shapes is a vector for multiple input tesnsors. This function
+// new_input_shapes is a vector for multiple input tensors. This function
 // shall return true, if padding is necessary or false otherwise in addition to
 // status.
 static StatusOr<bool> ResolveAndPad(
@@ -175,7 +175,7 @@ static StatusOr<bool> ResolveAndPad(
 // Don't run this pass on GPUs without tensor cores -- it will make them slower!
 //
 // TODO(jlebar): Also pad dots.
-static StatusOr<bool> TryResolvePadedShapesForTensorCore(
+static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
@@ -278,7 +278,7 @@ static StatusOr<bool> TryResolvePadedShapesForTensorCore(
 
 // Adds padding to cudnn integer convolutions to make input and output feature
 // maps multiple of 4
-static StatusOr<bool> TryResolvePadedShapesForIntegerConvolution(
+static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
@@ -390,14 +390,14 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       TF_ASSIGN_OR_RETURN(
           bool local_changed,
-          ResolveAndPad(conv, TryResolvePadedShapesForIntegerConvolution));
+          ResolveAndPad(conv, TryResolvePaddedShapesForIntegerConvolution));
       changed |= local_changed;
     }
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       if (is_volta_or_later_) {
         TF_ASSIGN_OR_RETURN(
             bool local_changed,
-            ResolveAndPad(conv, TryResolvePadedShapesForTensorCore));
+            ResolveAndPad(conv, TryResolvePaddedShapesForTensorCore));
         changed |= local_changed;
       }
     }

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import os
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -246,6 +247,17 @@ class PoolingTest(test.TestCase):
     self._VerifyValues(
         nn_ops.avg_pool,
         input_sizes=[1, 3, 3, 3],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 2, 2, 1],
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=use_gpu)
+
+  def _testAvgPoolEmpty(self, use_gpu):
+    expected_output = [7.0, 8.0, 9.0]
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[1, 3, 3, 0],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="VALID",
@@ -593,6 +605,10 @@ class PoolingTest(test.TestCase):
         use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.xla_allow_fallback(
+      "Allow VECT_* data formats on newer hardware versions which XLA does not"
+      " handle."
+  )
   def testMaxPooling(self):
     for use_gpu in True, False:
       self._testMaxPoolValidPadding(use_gpu)
@@ -1453,7 +1469,7 @@ class PoolingTest(test.TestCase):
     # The functionality associated with TF_ENABLE_NANPROP is currently
     # not supported on the ROCm platform, so skip this part of the test
     # NANs in input lead to non-deterministic results, and hence skipping
-    # the remaining tests altogeher on the ROCm platform
+    # the remaining tests altogether on the ROCm platform
     if test.is_built_with_rocm():
       return
 
@@ -1540,7 +1556,7 @@ class PoolingTest(test.TestCase):
     # The functionality associated with TF_ENABLE_NANPROP is currently
     # not supported on the ROCm platform, so skip this part of the test
     # NANs in input lead to non-deterministic results, and hence skipping
-    # the remaining tests altogeher on the ROCm platform
+    # the remaining tests altogether on the ROCm platform
     if test.is_built_with_rocm():
       return
 

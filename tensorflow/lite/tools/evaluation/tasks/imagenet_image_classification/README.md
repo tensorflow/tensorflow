@@ -9,44 +9,22 @@ This binary evaluates the following parameters of TFLite models trained for the
 
 The binary takes the path to validation images and labels as inputs, along with
 the model and inference-specific parameters such as delegate and number of
-threads. It outputs the metrics as a text proto to a file, similar to the
-following:
+threads. It outputs the metrics to std-out as follows:
 
 ```
-num_runs: 300 # Total images evaluated
-process_metrics {
-  image_classification_metrics {
-    pre_processing_latency {
-      last_us: 8641
-      max_us: 42357
-      min_us: 2811
-      sum_us: 2449340
-      avg_us: 8164.4666666666662 # Avg Pre-processing latency in micro-seconds
-    }
-    inference_latency {
-      last_us: 27979
-      max_us: 40696
-      min_us: 27811
-      sum_us: 9142187
-      avg_us: 30473.956666666665 # Avg Inference latency in micro-seconds
-    }
-    inference_metrics {
-      num_inferences: 300
-    }
-    topk_accuracy_metrics {
-      topk_accuracies: 0.7033333 # Top-1 accuracy
-      topk_accuracies: 0.78
-      topk_accuracies: 0.8333333
-      topk_accuracies: 0.86
-      topk_accuracies: 0.88
-      topk_accuracies: 0.89
-      topk_accuracies: 0.9033333
-      topk_accuracies: 0.9033333
-      topk_accuracies: 0.92
-      topk_accuracies: 0.9266667 # Top-10 accuracy
-    }
-  }
-}
+Num evaluation runs: 300 # Total images evaluated
+Preprocessing latency: avg=13772.5(us), std_dev=0(us)
+Inference latency: avg=76578.4(us), std_dev=600(us)
+Top-1 Accuracy: 0.733333
+Top-2 Accuracy: 0.826667
+Top-3 Accuracy: 0.856667
+Top-4 Accuracy: 0.87
+Top-5 Accuracy: 0.89
+Top-6 Accuracy: 0.903333
+Top-7 Accuracy: 0.906667
+Top-8 Accuracy: 0.913333
+Top-9 Accuracy: 0.92
+Top-10 Accuracy: 0.923333
 ```
 
 To run the binary download the ILSVRC 2012 devkit
@@ -77,10 +55,6 @@ The binary takes the following parameters:
     `mobilenet_labels.txt` where each label is in the same order as the output
     1001 dimension tensor.
 
-*   `output_file_path`: `string` \
-    The final metrics are dumped into `output_file_path` as a string-serialized
-    instance of `tflite::evaluation::EvaluationStageMetrics`.
-
 and the following optional parameters:
 
 *   `blacklist_file_path`: `string` \
@@ -97,6 +71,10 @@ and the following optional parameters:
     number of TFLite Interpreter threads, but shards the dataset to speed up
     evaluation.
 
+*   `output_file_path`: `string` \
+    The final metrics are dumped into `output_file_path` as a string-serialized
+    instance of `tflite::evaluation::EvaluationStageMetrics`.
+
 The following optional parameters can be used to modify the inference runtime:
 
 *   `num_interpreter_threads`: `int` (default=1) \
@@ -105,7 +83,19 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
+
+This script also supports runtime/delegate arguments introduced by the
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+If there is any conflict (for example, `num_threads` vs
+`num_interpreter_threads` here), the parameters of this
+script are given precedence.
 
 ## Downloading ILSVRC
 
@@ -151,7 +141,7 @@ bazel build -c opt \
 directory if required):
 
 ```
-adb push bazel-bin/third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
+adb push bazel-bin/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.
@@ -204,7 +194,6 @@ adb shell /data/local/tmp/run_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

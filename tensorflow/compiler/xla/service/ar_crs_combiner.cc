@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,6 +34,96 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
+namespace {
+
+// In SPMD mode, if there's a cross-replica all-reduce that produces the same
+// value for all partitions, replaces it with a global all-reduce and then
+// divide by the number of partitions. Depending on the topology and the
+// implementation of the all-reduce for the backend, this may give a better
+// performance.
+StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
+                                          int64 replica_count,
+                                          int64 partition_count) {
+  TF_ASSIGN_OR_RETURN(
+      auto replication_analysis,
+      HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
+
+  bool changed = false;
+  int64 next_channel = hlo_query::NextChannelId(*module);
+  for (auto computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
+      if (auto ar = DynCast<HloAllReduceInstruction>(instruction)) {
+        const Shape& shape = ar->shape();
+        if (ar->channel_id()) {
+          continue;
+        }
+        if (ar->replica_groups().size() > 1) {
+          continue;
+        }
+        if (shape.IsTuple() || shape.element_type() != F32) {
+          continue;
+        }
+        // We would need a cost model for the target, but in general we want to
+        // rewrite only if the replica count in the original op was large.
+        if (replica_count < 8 * partition_count) {
+          continue;
+        }
+        if (replication_analysis->HloInstructionIsReplicatedAt(ar, {})) {
+          VLOG(2) << "Replaced replicated all-reduce:" << ar->ToString();
+          ar->set_channel_id(next_channel++);
+          auto divisor =
+              computation->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<float>(partition_count)));
+          auto bcast = computation->AddInstruction(
+              HloInstruction::CreateBroadcast(shape, divisor, {}));
+          auto div = computation->AddInstruction(HloInstruction::CreateBinary(
+              ar->shape(), HloOpcode::kDivide, ar, bcast));
+          TF_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
+          changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+// Returns true if the given instruction (must be a cross-partition all-reduce)
+// has a ReplicaGroup config that can be combined with cross-replica all-reduce.
+// We currently restrict to those groups where all partitions in each replica
+// belong to the same group.
+bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
+                               int64 num_partitions) {
+  auto all_reduce = Cast<HloAllReduceInstruction>(hlo);
+  auto replica_groups = all_reduce->replica_groups();
+  CHECK(all_reduce->IsCrossModuleAllReduce());
+
+  if (all_reduce->use_global_device_ids()) {
+    if (replica_groups.size() != num_replicas) {
+      return false;
+    }
+    for (const auto& group : replica_groups) {
+      if (group.replica_ids_size() != num_partitions) {
+        return false;
+      }
+      std::unordered_set<int64> partition_ids;
+      int64 replica_id = group.replica_ids(0) / num_partitions;
+      for (int64 i = 0; i < num_partitions; ++i) {
+        if (group.replica_ids(i) / num_partitions != replica_id) {
+          return false;
+        }
+        partition_ids.insert(group.replica_ids(i) % num_partitions);
+      }
+      if (partition_ids.size() != num_partitions) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return replica_groups.size() == num_replicas;
+}
+
+}  // namespace
 
 namespace m = match;
 
@@ -73,7 +165,8 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   // belongs to its own group, since the later cross-replica all-reduce combines
   // along the replica dimension.
   if (instruction->IsCrossModuleAllReduce() &&
-      instruction->replica_groups().size() == num_replicas_ &&
+      HasCombinableReplicaGroup(instruction, num_replicas_,
+                                num_spatial_partitions_) &&
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
@@ -366,12 +459,13 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
 }
 
 Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
-  for (auto it : all_reduce_map_) {
-    auto channel_id = it.first;
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
     VLOG(2)
         << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
         << channel_id << "\n";
-    auto pairs_vec = it.second;
+    auto pairs_vec = copy_it->second;
     TF_RET_CHECK(pairs_vec.size() == num_spatial_partitions_);
     auto instr_0 = pairs_vec[0].ar;
     for (int i = 1; i < pairs_vec.size(); ++i) {
@@ -381,7 +475,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       absl::flat_hash_map<int64, int64> visited_pairs;
       while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
-          all_reduce_map_.erase(channel_id);
+          all_reduce_map_.erase(copy_it);
           VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
                      "channel id: "
                   << channel_id << "\n";
@@ -406,12 +500,13 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
-  for (auto it : all_reduce_map_) {
-    auto channel_id = it.first;
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
     VLOG(2)
         << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
         << channel_id << "\n";
-    auto pairs_vec = it.second;
+    auto pairs_vec = copy_it->second;
     TF_RET_CHECK(pairs_vec.size() == 1);
     auto instr = pairs_vec[0].ar;
     auto next = instr->users()[0];
@@ -420,7 +515,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       // guarantee that the HLO produces an array.
       TF_RET_CHECK(next->shape().IsArray());
       if (!replication_analysis->HloInstructionIsReplicatedAt(next, {})) {
-        all_reduce_map_.erase(channel_id);
+        all_reduce_map_.erase(copy_it);
         VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
                    "channel id: "
                 << channel_id << "\n";
@@ -439,7 +534,7 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   if (all_reduce_map_.empty()) {
     return false;
   }
-  for (auto it : all_reduce_map_) {
+  for (const auto& it : all_reduce_map_) {
     auto pairs_vec = it.second;
     for (auto pair : pairs_vec) {
       auto all_reduce = pair.ar;
@@ -489,6 +584,12 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
         next = next->users()[0];
       }
       // The AllReduce and the CRS are combined to an all-core AllReduce.
+      //
+      // Note that we can just reuse the ReplicaGroup config of cross-replica
+      // all-reduce since we already checked that cross-partition all-reduce
+      // is always across all partitions (HasCombinableReplicaGroup). We need to
+      // combine ReplicaGroup configs using global ids here if we relax that
+      // restriction.
       next->set_channel_id(channel_id);
     }
   }
@@ -506,7 +607,16 @@ StatusOr<bool> ArCrsCombiner::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
   }
 
-  return RewriteGraph();
+  TF_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
+
+  if (num_replicas_ > 1 && spmd_partition_) {
+    TF_ASSIGN_OR_RETURN(auto replaced,
+                        ReplaceReplicatedAllReduce(module, num_replicas_,
+                                                   num_spatial_partitions_));
+    changed |= replaced;
+  }
+
+  return changed;
 }
 
 }  // namespace xla

@@ -4,7 +4,13 @@ package(licenses = ["notice"])
 
 glob_lit_tests(
     data = [":test_utilities"],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = ["load-quantization-recipe.mlir"],
+    tags_override = {
+        "legalize-tf.mlir": ["no_rocm"],
+        "optimize.mlir": ["no_rocm"],
+        "prepare-tf.mlir": ["no_rocm"],
+    },
     test_file_exts = ["mlir"],
 )
 
@@ -14,6 +20,7 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir:tf-opt",
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

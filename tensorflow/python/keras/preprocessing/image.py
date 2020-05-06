@@ -21,14 +21,20 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_preprocessing import image
+import numpy as np
 try:
   from scipy import linalg  # pylint: disable=unused-import
   from scipy import ndimage  # pylint: disable=unused-import
 except ImportError:
   pass
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -41,20 +47,129 @@ random_channel_shift = image.random_channel_shift
 apply_brightness_shift = image.apply_brightness_shift
 random_brightness = image.random_brightness
 apply_affine_transform = image.apply_affine_transform
-load_img = image.load_img
+
+
+def smart_resize(x, size, interpolation='bilinear'):
+  """Resize images to a target size without aspect ratio distortion.
+
+  TensorFlow image datasets typically yield images that have each a different
+  size. However, these images need to be batched before they can be
+  processed by Keras layers. To be batched, images need to share the same height
+  and width.
+
+  You could simply do:
+
+  ````python
+  size = (200, 200)
+  ds = ds.map(lambda img: tf.image.resize(img, size))
+  ```
+
+  However, if you do this, you distort the aspect ratio of your images, since
+  in general they do not all have the same aspect ratio. This is
+  fine in many cases, but not always (e.g. for GANs this can be a problem).
+
+  Note that passing the argument `preserve_aspect_ratio=True` to `resize`
+  will preserve the aspect ratio, but at the cost of no longer respecting the
+  provided target size. Because `tf.image.resize` doesn't crop images,
+  your output images will still have different sizes.
+
+  This calls for:
+
+  ```python
+  size = (200, 200)
+  ds = ds.map(lambda img: smart_resize(img, size))
+  ```
+
+  Your output images will actually be `(200, 200)`, and will not be distorted.
+  Instead, the parts of the image that do not fit within the target size
+  get cropped out.
+
+  The resizing process is:
+
+  1. Take the largest centered crop of the image that has the same aspect ratio
+  as the target size. For instance, if `size=(200, 200)` and the input image has
+  size `(340, 500)`, we take a crop of `(340, 340)` centered along the width.
+  2. Resize the cropped image to the target size. In the example above,
+  we resize the `(340, 340)` crop to `(200, 200)`.
+
+  Arguments:
+    x: Input image (as a tensor or NumPy array). Must be in format
+      `(height, width, channels)`.
+    size: Tuple of `(height, width)` integer. Target size.
+    interpolation: String, interpolation to use for resizing.
+      Defaults to `'bilinear'`. Supports `bilinear`, `nearest`, `bicubic`,
+      `area`, `lanczos3`, `lanczos5`, `gaussian`, `mitchellcubic`.
+
+  Returns:
+    Array with shape `(size[0], size[1], channels)`. If the input image was a
+    NumPy array, the output is a NumPy array, and if it was a TF tensor,
+    the output is a TF tensor.
+  """
+  if len(size) != 2:
+    raise ValueError('Expected `size` to be a tuple of 2 integers, '
+                     'but got: %s' % (size,))
+  img = ops.convert_to_tensor(x)
+  if img.shape.rank is not None:
+    if img.shape.rank != 3:
+      raise ValueError(
+          'Expected an image array with shape `(height, width, channels)`, but '
+          'got input with incorrect rank, of shape %s' % (img.shape,))
+  shape = array_ops.shape(img)
+  height, width = shape[0], shape[1]
+  target_height, target_width = size
+  target_ratio = float(target_height) / target_width
+  img_ratio = math_ops.cast(
+      height, 'float32') / math_ops.cast(width, 'float32')
+  if target_ratio < img_ratio:
+    crop_height = math_ops.cast(
+        math_ops.cast(width, 'float32') * target_height / target_width, 'int32')
+    crop_box_hstart = math_ops.cast(
+        math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
+    crop_box_start = [crop_box_hstart, 0, 0]
+    crop_box_size = [crop_height, -1, -1]
+  else:
+    crop_width = math_ops.cast(
+        math_ops.cast(height * target_width, 'float32') / target_height,
+        'int32')
+    crop_box_wstart = math_ops.cast((width - crop_width) / 2, 'int32')
+    crop_box_start = [0, crop_box_wstart, 0]
+    crop_box_size = [-1, crop_width, -1]
+  crop_box_start = array_ops.stack(crop_box_start)
+  crop_box_size = array_ops.stack(crop_box_size)
+  img = array_ops.slice(img, crop_box_start, crop_box_size)
+  img = image_ops.resize_images_v2(
+      images=img,
+      size=size,
+      method=interpolation)
+  if isinstance(x, np.ndarray):
+    return img.numpy()
+  return img
 
 
 @keras_export('keras.preprocessing.image.array_to_img')
 def array_to_img(x, data_format=None, scale=True, dtype=None):
   """Converts a 3D Numpy array to a PIL Image instance.
 
+  Usage:
+
+  ```python
+  from PIL import Image
+  img = np.random.random(size=(100, 100, 3))
+  pil_img = tf.keras.preprocessing.image.array_to_img(img)
+  ```
+
+
   Arguments:
       x: Input Numpy array.
-      data_format: Image data format.
-          either "channels_first" or "channels_last".
-      scale: Whether to rescale image values
-          to be within `[0, 255]`.
-      dtype: Dtype to use.
+      data_format: Image data format, can be either "channels_first" or
+        "channels_last". Defaults to `None`, in which case the global setting
+        `tf.keras.backend.image_data_format()` is used (unless you changed it,
+        it defaults to "channels_last").
+      scale: Whether to rescale image values to be within `[0, 255]`. Defaults
+        to `True`.
+      dtype: Dtype to use. Default to `None`, in which case the global setting
+      `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
+      to "float32")
 
   Returns:
       A PIL Image instance.
@@ -78,11 +193,25 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
 def img_to_array(img, data_format=None, dtype=None):
   """Converts a PIL Image instance to a Numpy array.
 
+  Usage:
+
+  ```python
+  from PIL import Image
+  img_data = np.random.random(size=(100, 100, 3))
+  img = tf.keras.preprocessing.image.array_to_img(img_data)
+  array = tf.keras.preprocessing.image.img_to_array(img)
+  ```
+
+
   Arguments:
-      img: PIL Image instance.
-      data_format: Image data format,
-          either "channels_first" or "channels_last".
-      dtype: Dtype to use for the returned array.
+      img: Input PIL Image instance.
+      data_format: Image data format, can be either "channels_first" or
+        "channels_last". Defaults to `None`, in which case the global setting
+        `tf.keras.backend.image_data_format()` is used (unless you changed it,
+        it defaults to "channels_last").
+      dtype: Dtype to use. Default to `None`, in which case the global setting
+      `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
+      to "float32")
 
   Returns:
       A 3D Numpy array.
@@ -129,6 +258,44 @@ def save_img(path,
                  data_format=data_format,
                  file_format=file_format,
                  scale=scale, **kwargs)
+
+
+def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
+             interpolation='nearest'):
+  """Loads an image into PIL format.
+
+  Usage:
+
+  ```
+  image = tf.keras.preprocessing.image.load_img(image_path)
+  input_arr = keras.preprocessing.image.img_to_array(image)
+  input_arr = np.array([input_arr])  # Convert single image to a batch.
+  predictions = model.predict(input_arr)
+  ```
+
+  Arguments:
+      path: Path to image file.
+      grayscale: DEPRECATED use `color_mode="grayscale"`.
+      color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
+          The desired image format.
+      target_size: Either `None` (default to original size)
+          or tuple of ints `(img_height, img_width)`.
+      interpolation: Interpolation method used to resample the image if the
+          target size is different from that of the loaded image.
+          Supported methods are "nearest", "bilinear", and "bicubic".
+          If PIL version 1.1.3 or newer is installed, "lanczos" is also
+          supported. If PIL version 3.4.0 or newer is installed, "box" and
+          "hamming" are also supported. By default, "nearest" is used.
+
+  Returns:
+      A PIL Image instance.
+
+  Raises:
+      ImportError: if PIL is not available.
+      ValueError: if interpolation method is not supported.
+  """
+  return image.load_img(path, grayscale=grayscale, color_mode=color_mode,
+                        target_size=target_size, interpolation=interpolation)
 
 
 @keras_export('keras.preprocessing.image.Iterator')
@@ -388,8 +555,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit_generator(datagen.flow(x_train, y_train, batch_size=32),
-                      steps_per_epoch=len(x_train) / 32, epochs=epochs)
+  model.fit(datagen.flow(x_train, y_train, batch_size=32),
+            steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
       print('Epoch', e)
@@ -422,7 +589,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           target_size=(150, 150),
           batch_size=32,
           class_mode='binary')
-  model.fit_generator(
+  model.fit(
           train_generator,
           steps_per_epoch=2000,
           epochs=50,

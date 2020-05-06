@@ -387,8 +387,20 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.stride_height = stride_height;
 
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
-                output_data, DimsToShape(im2col_dims), im2col_data);
+                DimsToShape(filter_dims), filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr,
+                DimsToShape(output_dims), output_data, DimsToShape(im2col_dims),
+                im2col_data);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  TransposeConv(params, input_shape, input_data, filter_shape, filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr, output_shape,
+                output_data, im2col_shape, im2col_data);
 }
 
 inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
@@ -613,9 +625,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -1085,7 +1097,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
   inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
                    const T* input2_data, const Dims<4>& input2_dims,          \
                    bool* output_data, const Dims<4>& output_dims) {           \
-    gemmlowp::ScopedProfilingLabel label(#name);                              \
+    ruy::profiler::ScopeLabel label(#name);                                   \
     Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
                             input2_dims, output_data, output_dims);           \
   }                                                                           \
@@ -1096,7 +1108,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
+    ruy::profiler::ScopeLabel label(#name "/8bit");                           \
     Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
                             input1_offset, input1_multiplier, input1_shift,   \
                             input2_data, input2_dims, input2_offset,          \
@@ -1108,7 +1120,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
       const Dims<4>& input2_dims, bool* output_data,                          \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
+    ruy::profiler::ScopeLabel label("Broadcast" #name);                       \
     BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
                                      input2_dims, output_data, output_dims);  \
   }                                                                           \
@@ -1119,7 +1131,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
+    ruy::profiler::ScopeLabel label("Broadcast" #name "/8bit");               \
     BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
                                      input1_offset, input1_multiplier,        \
                                      input1_shift, input2_data, input2_dims,  \
@@ -1325,7 +1337,7 @@ template <FusedActivationFunctionType Ac>
 void Add(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,
          int32* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Add/int32");
+  ruy::profiler::ScopeLabel label("Add/int32");
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
 
   tflite::ArithmeticParams op_params;
@@ -2012,6 +2024,7 @@ inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const Dims<4>& output_dims, bool align_corners) {
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = align_corners;
+  op_params.half_pixel_centers = false;
   ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
                  DimsToShape(output_size_dims), output_size_data,
                  DimsToShape(output_dims), output_data);
@@ -2146,9 +2159,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
                               const T* input2_data, const Dims<4>& input2_dims,
                               T* output_data, const Dims<4>& output_dims,
                               Op op) {
-  MaximumMinimumBroadcast4DSlow(DimsToShape(input1_dims), input1_data,
-                                DimsToShape(input2_dims), input2_data,
-                                DimsToShape(output_dims), output_data, op);
+  MaximumMinimumBroadcastSlow(DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data, op);
 }
 
 template <typename T1, typename T2, typename T3>

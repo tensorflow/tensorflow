@@ -55,9 +55,14 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   auto config_factory = [this, &optimizations]() {
     return CreateConfig(optimizations, optimization_configs_);
   };
-  OP_REQUIRES_OK(ctx, RewriteDataset(ctx, input, std::move(config_factory),
-                                     /*optimize_function_library=*/true,
-                                     /*record_fingerprint=*/true, output));
+  Status s = RewriteDataset(ctx, input, std::move(config_factory),
+                            /*record_fingerprint=*/true, output);
+  if (errors::IsDeadlineExceeded(s)) {
+    // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
+    // long which should not prevent further computation.
+    return;
+  }
+  OP_REQUIRES_OK(ctx, s);
 }
 
 RewriterConfig OptimizeDatasetOp::CreateConfig(

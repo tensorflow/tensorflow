@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {
 namespace {
@@ -235,6 +236,61 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   TF_EXPECT_OK(writer->Close());
 }
 
+TEST_F(HadoopFileSystemTest, HarSplit) {
+  string har_path =
+      "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/dir0/dir1/file.txt", path);
+}
+
+TEST_F(HadoopFileSystemTest, NoHarExtension) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  EXPECT_EQ(errors::InvalidArgument("").code(),
+            SplitArchiveNameAndPath(path, nn).code());
+}
+
+TEST_F(HadoopFileSystemTest, HarRootPath) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive.har";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/", path);
+}
+
+TEST_F(HadoopFileSystemTest, WriteBigFile) {
+  const string fname = TmpDir("BigFile");
+  const size_t file_len =
+      static_cast<size_t>(std::numeric_limits<tSize>::max()) + 1024;
+  // Fake a test string .
+  char* p = new char[file_len];
+  for (size_t i = 0; i < file_len; ++i) {
+    *(p + i) = (i % 128);
+  }
+  string file_write_content(p, file_len);
+  TF_ASSERT_OK(WriteString(fname, file_write_content));
+  string file_read_content;
+  TF_EXPECT_OK(ReadAll(fname, &file_read_content));
+  EXPECT_EQ(file_write_content, file_read_content);
+  delete p;
+}
 // NewAppendableFile() is not testable. Local filesystem maps to
 // ChecksumFileSystem in Hadoop, where appending is an unsupported operation.
 

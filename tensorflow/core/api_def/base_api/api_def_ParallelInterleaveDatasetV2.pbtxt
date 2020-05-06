@@ -33,7 +33,7 @@ END
     name: "num_parallel_calls"
     description: <<END
 Determines the number of threads that should be used for fetching data from
-input datasets in parallel. The Python API `tf.data.experimental.AUTOTUNE` 
+input datasets in parallel. The Python API `tf.data.experimental.AUTOTUNE`
 constant can be used to indicate that the level of parallelism should be autotuned.
 END
   }
@@ -68,7 +68,7 @@ is set to any value other than `None`.
 
 By default, the output of this dataset will be deterministic, which may result
 in the dataset blocking if the next data item to be returned isn't available.
-In order to avoid head-of-line blocking, one can set the 
+In order to avoid head-of-line blocking, one can set the
 `experimental_deterministic` parameter of `tf.data.Options` to `False`,
 which can improve performance at the expense of non-determinism.
 END

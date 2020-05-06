@@ -15,27 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
-/*static*/ constexpr const char* const
-    LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
-/*static*/ constexpr const char* const
-    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
-
 namespace {
 
 constexpr const char* const kLowerUsingSwitchMergeAttr =
-    LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
+    LowerFunctionalOpsConstants::kLowerUsingSwitchMergeAttr;
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
 
 constexpr const char* const kTpuReplicateAttr = "_tpu_replicate";
 constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
@@ -171,7 +169,7 @@ Status LowerFunctionalOpsPass::Run(
       DCHECK(!lower_control_flow(n))
           << "Node " << FormatNodeForError(*n) << " of type "
           << n->type_string() << " has '"
-          << LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr
+          << LowerFunctionalOpsConstants::kLowerUsingSwitchMergeAttr
           << "' attr set but it does not support lowering.\n";
     }
   }

@@ -18,10 +18,14 @@ limitations under the License.
 #include <complex>
 #include <memory>
 #include <vector>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
+#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
@@ -256,11 +260,11 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
   auto* quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
   const float scale = quantization->scale->data[0];
-  const int32 zero_point = quantization->zero_point->data[0];
+  const int32_t zero_point = quantization->zero_point->data[0];
 
   bool good_result = true;
   for (int i = 0; i < tensor.bytes; i++) {
-    const int32 computed = tensor.data.int8[i];
+    const int32_t computed = tensor.data.int8[i];
     const float dequantized =
         static_cast<float>(scale * (computed - zero_point));
     const float reference = Value<float>(data_.get(), i);
@@ -319,6 +323,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("RFFT2D",
                                    tflite::ops::custom::Register_RFFT2D());
+    tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
   }
 
   switch (delegate_type) {
@@ -328,13 +333,15 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       delegate_ = evaluation::CreateNNAPIDelegate();
       break;
     case DelegateType::kGpu:
-      delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
+      delegate_ = evaluation::CreateGPUDelegate();
       break;
     case DelegateType::kFlex:
+#if !defined(__APPLE__)
       delegate_ = Interpreter::TfLiteDelegatePtr(
           FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
             delete static_cast<tflite::FlexDelegate*>(delegate);
           });
+#endif
       break;
   }
 }

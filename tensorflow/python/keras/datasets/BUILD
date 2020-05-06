@@ -2,7 +2,9 @@
 #   Contains the Keras datasets package (internal TensorFlow version).
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -27,7 +29,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine_utils",
+        "//tensorflow/python/keras/utils:engine_utils",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

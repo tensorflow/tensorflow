@@ -54,11 +54,7 @@ class ZeroDivisionTest(test.TestCase):
             #
             # XLA constant folds integer division by zero to 1.
             self.assertTrue(test.is_gpu_available())
-            if not test.is_built_with_rocm():
-              # division by zero yields a different pattern on AMD GPUs
-              # TODO(rocm) : investigate whether the resulting bit pattern on
-              # AMD GPUs is deterministic
-              self.assertIn(result, (-1, 1, 0xff, 0xffffffff))
+            self.assertIn(result, (-1, 1, 2, 0xff, 0xffffffff))
 
 
 if __name__ == '__main__':

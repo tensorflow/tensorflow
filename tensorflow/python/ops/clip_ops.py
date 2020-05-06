@@ -49,29 +49,58 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   For example:
 
-  ```python
-  A = tf.constant([[1, 20, 13], [3, 21, 13]])
-  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
-  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError`
-  as input and clip_values are of different dtype
-  ```
+  Basic usage passes a scalar as the min and max value.
+
+  >>> t = tf.constant([[-10., -1., 0.], [0., 2., 10.]])
+  >>> t2 = tf.clip_by_value(t, clip_value_min=-1, clip_value_max=1)
+  >>> t2.numpy()
+  array([[-1., -1.,  0.],
+         [ 0.,  1.,  1.]], dtype=float32)
+
+  The min and max can be the same size as `t`, or broadcastable to that size.
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[2],[1]]
+  >>> t3 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  >>> t3.numpy()
+  array([[ 2.,  2., 10.],
+         [ 1.,  1., 10.]], dtype=float32)
+
+  Broadcasting fails, intentionally, if you would expand the dimensions of `t`
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[[2, 1]]] # Has a third axis
+  >>> t4 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError: Incompatible shapes: [2,3] vs. [1,1,2]
+
+  It throws a `TypeError` if you try to clip an `int` to a `float` value
+  (`tf.cast` the input to `float` first).
+
+  >>> t = tf.constant([[1, 2], [3, 4]], dtype=tf.int32)
+  >>> t5 = tf.clip_by_value(t, clip_value_min=-3.1, clip_value_max=3.1)
+  Traceback (most recent call last):
+  ...
+  TypeError: Cannot convert ...
+
 
   Args:
     t: A `Tensor` or `IndexedSlices`.
-    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The maximum value to clip by.
+    clip_value_min: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
+    clip_value_max: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
     name: A name for the operation (optional).
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
 
   Raises:
-    ValueError: If the clip tensors would trigger array broadcasting
-      that would make the returned tensor larger than the input.
+    `tf.errors.InvalidArgumentError`: If the clip tensors would trigger array
+      broadcasting that would make the returned tensor larger than the input.
     TypeError: If dtype of the input is `int32` and dtype of
-    the `clip_value_min` or `clip_value_max` is `float32`
+      the `clip_value_min` or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -91,12 +120,12 @@ def clip_by_value(t, clip_value_min, clip_value_max,
       t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
-  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+  # TODO(scottzhu): switch to use new implementation in 2 weeks.
   # return gen_math_ops.clip_by_value(
   #     t, clip_value_min, clip_value_max, name=name)
 
 
-# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# TODO(scottzhu): switch to use new implementation in 2 weeks.
 # @ops.RegisterGradient("ClipByValue")
 def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""
@@ -142,12 +171,33 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   of the output will have L2-norm less than or equal to `clip_norm`. If
   `axes == [0]` instead, each column of the output will be clipped.
 
+  Code example:
+
+  >>> some_nums = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float32)
+  >>> tf.clip_by_norm(some_nums, 2.0).numpy()
+  array([[0.26967996, 0.5393599 , 0.80903983, 1.0787199 , 1.3483998 ]],
+        dtype=float32)
+
   This operation is typically used to clip gradients before applying them with
-  an optimizer.
+  an optimizer.  Most gradient data is a collection of different shaped tensors
+  for different parts of the model.  Thus, this is a common usage:
+
+  ```
+  # Get your gradients after training
+  loss_value, grads = grad(model, features, labels)
+
+  # Apply some clipping
+  grads = [tf.clip_by_norm(g, norm)
+               for g in grads]
+
+  # Continue on with training
+  optimizer.apply_gradients(grads)
+  ```
 
   Args:
-    t: A `Tensor` or `IndexedSlices`.
-    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+    t: A `Tensor` or `IndexedSlices`.  This must be a floating point type.
+    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value, also
+      floating point
     axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
       dimensions.
@@ -297,11 +347,9 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
-    scale = array_ops.where(
-        math_ops.is_finite(use_norm),
-        scale_for_finite,
-        # Return NaN if use_norm is not finite.
-        constant_op.constant(float("nan"), dtype=use_norm.dtype))
+    # If use_norm is any finite number, this is a no-op. For inf/-inf/NaN,
+    # this will make scale NaN.
+    scale = scale_for_finite + (use_norm - use_norm)
 
     values = [
         ops.convert_to_tensor(

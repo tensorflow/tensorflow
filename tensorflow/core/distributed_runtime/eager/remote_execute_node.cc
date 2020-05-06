@@ -58,8 +58,8 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
 
   eager_client_->StreamingEnqueueAsync(
       request_.get(), response,
-      [inputs, retvals, response, device, rpc_description,
-       done](const Status& status) {
+      [inputs, retvals, response, device, context_view_id = context_view_id_,
+       rpc_description, done](const Status& status) {
         for (auto handle : inputs) {
           handle->Unref();
         }
@@ -72,16 +72,18 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
         for (size_t i = 0; i < retvals.size(); ++i) {
           if (status.ok()) {
             Status s = retvals[i]->SetRemoteShape(
-                response->queue_response(0).shape(i), device);
+                response->queue_response(0).shape(i), device, context_view_id);
             if (!s.ok()) {
               LOG(ERROR) << "Ignoring an error encountered when setting "
                             "remote shape of tensor handle: "
-                         << retvals[i] << " with status: " << status.ToString()
+                         << retvals[i]
+                         << " with execute status: " << status.ToString()
+                         << " and SetRemoteShape status: " << s.ToString()
                          << "\nThis should never happen. "
                             "Please file an issue with the TensorFlow Team.";
             }
           } else {
-            retvals[i]->Poison(status);
+            retvals[i]->PoisonRemote(status, device, context_view_id);
           }
           retvals[i]->Unref();
         }

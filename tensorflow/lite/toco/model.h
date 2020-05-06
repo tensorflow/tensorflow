@@ -146,7 +146,9 @@ enum class OperatorType : uint8 {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSegmentSum,
   kSelect,
+  kSelectV2,
   kSparseToDense,
   kEqual,
   kNotEqual,
@@ -177,7 +179,10 @@ enum class OperatorType : uint8 {
   kMatrixDiagV2,
   kMatrixSetDiagV2,
   kMatrixDiagV3,
-  kMatrixSetDiagV3
+  kMatrixSetDiagV3,
+  kScatterNd,
+  // Debugging operators.
+  kNumericVerify
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -230,6 +235,7 @@ enum class ArrayDataType : uint8 {
   kString,
   kComplex64,
   kFloat16,
+  kFloat64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -486,7 +492,7 @@ struct ConvOperator : Operator {
 //   inputs[4]: optional: merge repeated.
 //
 //  Outputs:
-//    outputs[0]: deocoded.
+//    outputs[0]: decoded.
 //    outputs[1]: log probability.
 //
 // TensorFlow equivalent: CTCBeamSearchDecoder
@@ -587,6 +593,21 @@ struct FullyConnectedOperator : Operator {
 // TensorFlow equivalent: Dequantize
 struct DequantizeOperator : Operator {
   DequantizeOperator() : Operator(OperatorType::kDequantize) {}
+};
+
+// Numeric verification operator, converting a quantized array of integers with
+// quantization parameters specifying how these integers correspond to real
+// numbers
+// (see QuantizationParams) and verify them with an array of floating-point
+// values.
+
+// Inputs:
+//   inputs[0]: required: the input quantized activations array
+//   inputs[1]: required: the input reference activations array
+//
+// TensorFlow equivalent: Dequantize
+struct NumericVerifyOperator : Operator {
+  NumericVerifyOperator() : Operator(OperatorType::kNumericVerify) {}
 };
 
 // Batch-normalization operator.
@@ -1180,6 +1201,8 @@ struct SqueezeOperator : Operator {
 //   inputs[0]: required: the output shape
 //   inputs[1]: required: the weights
 //   inputs[2]: required: the input activations array
+//   inputs[3]: optional: the bias vector, specifying the biases for each output
+//                        channel.
 //   NOTE: The input activations is NOT the first input.
 //
 //
@@ -1192,6 +1215,7 @@ struct TransposeConvOperator : Operator {
     OUTPUT_SHAPE = 0,
     WEIGHTS = 1,
     DATA_INPUT = 2,
+    BIAS = 3,
   };
 
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
@@ -1239,7 +1263,7 @@ struct ExpandDimsOperator : Operator {
   ExpandDimsOperator() : Operator(OperatorType::kExpandDims) {}
 };
 
-// Ceates a tensor of shape dims and fills it with the given scalar value.
+// Creates a tensor of shape dims and fills it with the given scalar value.
 // Output type will be the same as the given scalar value.
 //
 // Inputs:
@@ -1821,6 +1845,7 @@ struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // ResizeNearestNeighborOperator operator. It resizes input images with nearest
@@ -1836,6 +1861,7 @@ struct ResizeNearestNeighborOperator : Operator {
       : Operator(OperatorType::kResizeNearestNeighbor) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of
@@ -2170,6 +2196,14 @@ struct MatrixSetDiagV2Operator : Operator {
 // skipped. (It has never been, and should never be, exposed in the public API.)
 struct MatrixSetDiagV3Operator : Operator {
   MatrixSetDiagV3Operator() : Operator(OperatorType::kMatrixSetDiagV3) {}
+};
+
+struct ScatterNdOperator : Operator {
+  ScatterNdOperator() : Operator(OperatorType::kScatterNd) {}
+};
+
+struct SegmentSumOperator : Operator {
+  SegmentSumOperator() : Operator(OperatorType::kSegmentSum) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

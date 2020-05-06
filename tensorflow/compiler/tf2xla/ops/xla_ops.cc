@@ -84,7 +84,7 @@ lower: a boolean specifies whether the calculation is done with the lower
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  been argued that approximately logN sweeps are needed in practice (Ref: Golub &
   van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -116,7 +116,7 @@ a: the input tensor.
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  been argued that approximately log(min (M, N)) sweeps are needed in practice
   (Ref: Golub & van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -610,7 +610,7 @@ REGISTER_OP("XlaDequantize")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Takes the packed uint32 input and unpacks the input to uint8 to do
-Dequantization on deivce.
+Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
 output: Output tensors whose types is bloat16. If transpose_output is true,
@@ -644,8 +644,64 @@ REGISTER_OP("XlaEinsum")
     .Doc(R"doc(
 An op which supports basic einsum op with 2 inputs and 1 output.
 
-This op has better TPU performnce since it doesn't have explicitly reshape and
+This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
+)doc");
+
+REGISTER_OP("XlaSpmdFullToShardShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto input_handle = c->input(0);
+      if (!c->RankKnown(input_handle)) {
+        return shape_inference::UnknownShape(c);
+      }
+      string sharding_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      std::vector<shape_inference::DimensionHandle> dims;
+      for (int64 i = 0; i < c->Rank(input_handle); ++i) {
+        auto dim = c->Value(c->Dim(input_handle, i));
+        xla::OpSharding sharding;
+        sharding.ParseFromString(sharding_attr);
+        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+        if (dim != shape_inference::InferenceContext::kUnknownDim &&
+            sharding.type() == xla::OpSharding::OTHER && partitions_i != 1) {
+          dim = (dim + partitions_i - 1) / partitions_i;
+        }
+        dims.push_back(c->MakeDim(dim));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from automatic partitioning to
+manual partitioning. It annotates the input (full-shape, to be automatically
+partitioned) with the same sharding used by manual partitioning, and outputs a
+shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+shape is not evenly partitionable, the padding region will be masked with 0s.
+)doc");
+
+REGISTER_OP("XlaSpmdShardToFullShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .Attr("full_shape: shape")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      TensorShape shape_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from manual partitioning to
+automatic partitioning. It converts the shard-shaped, manually partitioned input
+into full-shaped tensor to be partitioned automatically with the same sharding
+used by manual partitioning.
 )doc");
 
 REGISTER_OP("XlaSharding")
@@ -664,6 +720,51 @@ REGISTER_OP("XlaReplicaId")
       return Status::OK();
     })
     .Doc("Replica ID.");
+
+REGISTER_OP("XlaGather")
+    .Input("operand: T")
+    .Input("start_indices: Tindices")
+    .Input("slice_sizes: Tindices")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Wraps the XLA Gather operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#gather
+operand: The array we're gathering from.
+start_indices: Array containing the starting indices of the slices we gather.
+dimension_numbers: A serialized xla::GatherDimensionNumbers proto.
+slice_sizes: slice_sizes[i] is the bounds for the slice on dimension i.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaScatter")
+    .Input("operand: T")
+    .Input("scatter_indices: Tindices")
+    .Input("updates: T")
+    .Attr("update_computation: func")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Scatter operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#scatter.
+
+operand: Array to be scattered into.
+scatter_indices: Array containing the starting indices of the slices that must
+  be scattered to.
+updates: Array containing the values that must be used for scattering.
+update_computation: Computation to be used for combining the existing values in
+  the input array and the updates during scatter.
+dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
 
 }  // namespace
 }  // namespace tensorflow

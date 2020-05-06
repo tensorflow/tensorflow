@@ -41,8 +41,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -67,7 +69,6 @@ class WhileContext;
 
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
-struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:
@@ -229,14 +230,11 @@ class Node {
     while_ctx_ = while_ctx;
   }
 
+  std::shared_ptr<NodeProperties> properties() const { return props_; }
+
  private:
   friend class Graph;
   Node();
-
-  NodeProperties* properties() const { return props_.get(); }
-
-  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
-                  bool is_function_op);
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -289,7 +287,8 @@ class Node {
     NC_OTHER  // Not a special kind of node
   };
 
-  static const std::unordered_map<string, NodeClass>& kNodeClassTable;
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
+                  NodeClass node_class);
 
   static NodeClass GetNodeClassForOp(const string& ts);
 
@@ -677,6 +676,10 @@ class Graph {
   // Builds a node name to node pointer index for all nodes in the graph.
   std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
+  absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
+    return const_arg_indices_cache_;
+  }
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -686,7 +689,7 @@ class Graph {
   //
   // Ownership of the returned Node is not transferred to caller.
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
-                     const Node* cost_node, bool is_function_op);
+                     const Node* cost_node, Node::NodeClass node_class);
   void ReleaseNode(Node* node);
   // Insert edge in free_edges_ for possible reuse.
   void RecycleEdge(const Edge* edge);
@@ -749,6 +752,10 @@ class Graph {
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
+
+  // Cache of the indices of the arguments which need to be constant for the XLA
+  // compilation.
+  mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/threadpool.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -538,8 +538,13 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, c_shape, &c_t));
 
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-
-    if (b_outer_dim == 1) {
+    bool use_matrix_vector_multiply = (b_outer_dim == 1);
+#if TENSORFLOW_USE_ROCM
+    // ROCm hipsparse does not implement csrmv with transposed input a
+    use_matrix_vector_multiply =
+        use_matrix_vector_multiply && !this->transpose_a_;
+#endif
+    if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
       TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
                                                  2);
@@ -694,7 +699,7 @@ REGISTER_CPU(complex128)
 
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(T)                                                     \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -703,14 +708,16 @@ REGISTER_CPU(complex128)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
+#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
+#endif
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 
@@ -723,7 +730,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
   Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
                  typename TTypes<T>::UnalignedConstMatrix b,
                  typename TTypes<T>::UnalignedMatrix c) {
-    CudaSparse cuda_sparse(ctx);
+    GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     {
       // Use Csrmm to calculate:
@@ -741,19 +748,19 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       // transA must be non-transpose if transB is transpose (cusparse
       // limitation).
-      const cusparseOperation_t transA = CUSPARSE_OPERATION_NON_TRANSPOSE;
+      const gpusparseOperation_t transA = GPUSPARSE(OPERATION_NON_TRANSPOSE);
 
       // transB: b is row-major, and cusparse requires col-major b (or
       // equivalently transB == transpose).  this version is actually more
       // efficient.
-      const cusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
+      const gpusparseOperation_t transB = GPUSPARSE(OPERATION_TRANSPOSE);
 
-      cusparseMatDescr_t descrA;
-      TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_CUSPARSE_ERROR(
-          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_CUSPARSE_ERROR(
-          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(gpusparse(CreateMatDescr)(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          gpusparse(SetMatType)(descrA, GPUSPARSE(MATRIX_TYPE_GENERAL)));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          gpusparse(SetMatIndexBase)(descrA, GPUSPARSE(INDEX_BASE_ZERO)));
 
       // A is (m, k), Bt is (ldb, k) and Ct is (ldc, n)
       const int k = b.dimension(0);
@@ -796,13 +803,13 @@ template <typename T>
 class CSRSparseMatrixMatVec<GPUDevice, T> {
  public:
   CSRSparseMatrixMatVec(bool transpose_a, bool conjugate_a)
-      : transA_(TransposeAndConjugateToCuSparseOp(transpose_a, conjugate_a,
-                                                  &status_)) {}
+      : transA_(TransposeAndConjugateToGpuSparseOp(transpose_a, conjugate_a,
+                                                   &status_)) {}
 
   Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
                  const T* x, T* y) {
     TF_RETURN_IF_ERROR(status_);
-    CudaSparse cuda_sparse(ctx);
+    GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     {
       // Use Csrmv to calculate:
@@ -815,12 +822,12 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const T alpha = 1;
       const T beta = 0;
 
-      cusparseMatDescr_t descrA;
-      TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_CUSPARSE_ERROR(
-          cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_CUSPARSE_ERROR(
-          cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(gpusparse(CreateMatDescr)(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          gpusparse(SetMatType)(descrA, GPUSPARSE(MATRIX_TYPE_GENERAL)));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          gpusparse(SetMatIndexBase)(descrA, GPUSPARSE(INDEX_BASE_ZERO)));
 
       const int m = a.dense_shape_host(0);
       const int n = a.dense_shape_host(1);
@@ -836,11 +843,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 
  private:
   Status status_;
-  const cusparseOperation_t transA_;
+  const gpusparseOperation_t transA_;
 };
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

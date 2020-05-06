@@ -1,7 +1,9 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
-// CHECK:  error: 'tf.Div' op is neither a custom op nor a flex op
-// CHECK:  error: failed while converting: 'main'
-// CHECK:  Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag): Div.
+// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s --dump-input-on-failure
+
+// CHECK: error: 'tf.Div' op is neither a custom op nor a flex op
+// CHECK: error: failed while converting: 'main'
+// CHECK: Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag):
+// CHECK: tf.Div {name = "div"}
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):

@@ -25,7 +25,7 @@ limitations under the License.
 #include <type_traits>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
@@ -350,10 +350,10 @@ void ReferenceGemm(
   cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
   cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
 
-  ruy::BasicSpec<AccumScalar, DstScalar> ruy_spec;
-  cpu_backend_gemm::detail::MakeRuySpec(params, &ruy_spec);
+  ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
+  cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
 
-  ruy::Mul<ruy::Path::kReference>(ruy_lhs, ruy_rhs, ruy_spec,
+  ruy::Mul<ruy::Path::kReference>(ruy_lhs, ruy_rhs, ruy_mul_params,
                                   context->ruy_context(), &ruy_dst);
 }
 

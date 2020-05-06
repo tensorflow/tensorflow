@@ -18,15 +18,16 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+
 #include <gtest/gtest.h>
 #include "re2/re2.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tflite {
 namespace testing {
@@ -90,9 +91,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
       // ResizeBilinear looks completely incompatible with Tensorflow
       {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
 
-      // Transpose only supports 1D-4D input tensors.
-      {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
-
       // Relu does not support int32.
       // These test cases appends a Relu after the tested ops when
       // activation=True. The tests are failing since Relu doesn't support
@@ -108,9 +106,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
       {R"(^\/add.*dtype=tf\.int64)", "119126484"},
       {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
-
-      // Select kernel doesn't support broadcasting yet.
-      {R"(^\/where.*1,2,3,1)", "134692786"},
 
       // Strided slice doesn't support ellipsis.
       {R"(strided_slice.*Ellipsis)", "138098220"},

@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_INT32 -tf-input-shapes=8 -tf-output-arrays=input -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input -tf-input-data-types=DT_INT32 -tf-input-shapes=8 -tf-output-arrays=input -o - | FileCheck %s --dump-input=fail
 
 node {
   name: "input"
@@ -14,8 +14,11 @@ versions {
   producer: 27
 }
 
-# CHECK: func @main(%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
-# CHECK: attributes {tf.entry_function = {inputs = "input", outputs = "input"}} {
-# CHECK:   %[[GRAPH:[0-9]+]] = tf_executor.graph
-# CHECK:     tf_executor.fetch %[[ARG_0]]
-# CHECK:   return %[[GRAPH]]
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input"
+# CHECK-SAME:  outputs = "input"
+# CHECK:         %[[GRAPH:[0-9]+]] = tf_executor.graph
+# CHECK:           tf_executor.fetch %[[ARG_0]]
+# CHECK:         return %[[GRAPH]]

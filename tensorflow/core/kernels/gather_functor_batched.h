@@ -155,7 +155,7 @@ struct GatherFunctorBatchedCPU {
   } while (0)
 
     // TODO(rmlarsen): Investigate whether these specializations are still
-    // needed and, if yes, whether the slice sizes are apropriate.
+    // needed and, if yes, whether the slice sizes are appropriate.
     if (slice_size == 10)
       CALL(10);
     else if (slice_size == 20)

@@ -47,9 +47,9 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-4);
+  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-3);
 #else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-4);
+  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-3);
 #endif
 };
 
@@ -1148,7 +1148,7 @@ TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes,
 }
 
 template <typename T>
-class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
+class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     : public ConvolutionTest {
  public:
   void RunTest() {
@@ -1210,9 +1210,9 @@ class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
                 TestTypes);
-TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
            Types) {
   this->RunTest();
 }
@@ -2004,6 +2004,59 @@ ENTRY Test {
   %kernel = f32[672,7,7,64] parameter(1)
   %reverse = f32[672,7,7,64]{3,2,1,0} reverse(f32[672,7,7,64]{3,2,1,0} %kernel), dimensions={1,2}
   ROOT %convolution = f32[672,9,9,64]{3,2,1,0} convolution(f32[3,3,64,64]{3,2,1,0} %output, f32[672,7,7,64]{3,2,1,0} %reverse), window={size=7x7 pad=6_6x6_6}, dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,21,2,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_25x3_6},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,11,2,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_26x3_6 stride=2x1},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve2) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,11,4,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_25x3_6 lhs_dilate=1x2 rhs_dilate=2x1},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestConv0D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %parameter.1 = f32[10,5]{1,0} parameter(0)
+  %parameter.2 = f32[5,7]{1,0} parameter(1)
+  ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

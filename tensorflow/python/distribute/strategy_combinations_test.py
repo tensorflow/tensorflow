@@ -56,8 +56,7 @@ class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
       mode=["graph", "eager"]))
   def testMirrored2CPUs(self, distribution):
     with distribution.scope():
-      one_per_replica = distribution.experimental_run_v2(
-          lambda: constant_op.constant(1))
+      one_per_replica = distribution.run(lambda: constant_op.constant(1))
       num_replicas = distribution.reduce(
           reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
       self.assertEqual(2, self.evaluate(num_replicas))

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -146,13 +149,38 @@ xla::StatusOr<InputBuffers> GetChainedOpInputs(
 xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     OpKernelContext* context, XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed) {
+    se::Stream* stream, int rng_seed, int replica_id) {
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(device_ref->backend()->memory_allocator());
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
+  if (executable->executable()
+          ->module_config()
+          .has_static_device_assignment()) {
+    run_options.set_device_assignment(
+        &executable->executable()->module_config().static_device_assignment());
+  }
+  xla::GpuExecutableRunOptions gpu_options;
+  std::vector<xla::GlobalDeviceId> gpu_global_ids;
+  if (replica_id >= 0) {
+    gpu_global_ids.emplace_back(replica_id);
+    gpu_options.set_gpu_global_device_ids(gpu_global_ids);
+  }
+  std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
+  if (nccl_factory != nullptr) {
+    auto uid_callback =
+        [&](const xla::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
+      std::vector<xla::int64> replicas;
+      for (auto& device : key.devices()) {
+        replicas.push_back(device.value());
+      }
+      return nccl_factory->GetUniqueId(replicas);
+    };
+    gpu_options.set_nccl_unique_id_callback(uid_callback);
+  }
+  run_options.set_gpu_executable_run_options(&gpu_options);
 
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
@@ -194,10 +222,10 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     OpKernelContext* context, XRTMemoryManager* memory_manager,
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed) {
+    se::Stream* stream, int rng_seed, int replica_id) {
   auto runfn = [&]() {
     return RunExecutable(context, device_ref, executable, input_buffers, stream,
-                         rng_seed);
+                         rng_seed, replica_id);
   };
 
   // We pass zero as requested_free_size as there is no simple way to get the
@@ -213,13 +241,14 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
-    se::Stream* stream, int rng_seed) {
+    se::Stream* stream, int rng_seed, int replica_id) {
   XRTMemoryManager::WorkingSet working_set(memory_manager);
   TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
                       GetInputBuffers(&working_set, device_ref->backend(),
                                       input_coords, release_inputs));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
-                            executable, input_buffers, stream, rng_seed);
+                            executable, input_buffers, stream, rng_seed,
+                            replica_id);
 }
 
 // XRTExecuteOp
@@ -248,6 +277,7 @@ void XRTExecuteOp::ComputeAsync(OpKernelContext* context, DoneCallback done) {
 
 Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));
@@ -260,7 +290,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTExecutionConfig config_proto;
   TF_RET_CHECK(
-      config_proto.ParseFromString(execution_config.scalar<tstring>()()));
+      ParseFromTString(execution_config.scalar<tstring>()(), &config_proto));
 
   int core_index_in_replica = config_proto.core_index_in_replica();
   TF_RET_CHECK(core_index_in_replica == 0);
@@ -299,7 +329,8 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple,
       ExecuteComputation(context, memory_manager, &device_ref, executable,
-                         input_coords, release_inputs, stream, rng_seed));
+                         input_coords, release_inputs, stream, rng_seed,
+                         config_proto.replica_id()));
 
   return CreateExecuteOutput(context, memory_manager.get(),
                              std::move(output_tuple),
@@ -333,6 +364,7 @@ void XRTExecuteChainedOp::ComputeAsync(OpKernelContext* context,
 
 Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteChainedOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteChainedCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));
@@ -340,12 +372,12 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   const Tensor& execution_plan = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_plan.shape()));
   xrt::XRTChainedExecutePlan plan;
-  TF_RET_CHECK(plan.ParseFromString(execution_plan.scalar<tstring>()()));
+  TF_RET_CHECK(ParseFromTString(execution_plan.scalar<tstring>()(), &plan));
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTChainedExecuteConfig config;
-  TF_RET_CHECK(config.ParseFromString(execution_config.scalar<tstring>()()));
+  TF_RET_CHECK(ParseFromTString(execution_config.scalar<tstring>()(), &config));
 
   TF_ASSIGN_OR_RETURN(
       auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
@@ -375,7 +407,8 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
     xla::LocalExecutable* executable = entry->get().get_executable();
 
     return ExecuteComputation(context, memory_manager.get(), &device_ref,
-                              executable, input_buffers, stream, rng_seed);
+                              executable, input_buffers, stream, rng_seed,
+                              config.replica_id());
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),

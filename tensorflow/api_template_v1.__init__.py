@@ -22,12 +22,14 @@ import distutils as _distutils
 import inspect as _inspect
 import os as _os
 import site as _site
+import six as _six
 import sys as _sys
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.platform import tf_logging as _logging
+from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -64,13 +66,14 @@ elif _tf_api_dir not in __path__:
 # reexport_tf_summary can get compat from sys.modules. Only needed if using
 # lazy loading.
 _current_module.compat.v2  # pylint: disable=pointless-statement
-try:
-  from tensorflow_estimator.python.estimator.api._v1 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
-  setattr(_current_module, "estimator", estimator)
-except ImportError:
-  pass
+
+# Lazy-load estimator.
+_estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
+estimator = _LazyLoader("estimator", globals(), _estimator_module)
+_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "estimator", estimator)
 
 try:
   from .python.keras.api._v1 import keras
@@ -80,6 +83,13 @@ try:
 except ImportError:
   pass
 
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if not _six.PY2:
+  import typing as _typing
+  if _typing.TYPE_CHECKING:
+    from tensorflow_estimator.python.estimator.api._v1 import estimator
+# pylint: enable=g-import-not-at-top
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
@@ -104,6 +114,8 @@ from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
 
+_major_api_version = 1
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin
@@ -114,7 +126,7 @@ from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
-_site_packages_dirs += [_site.USER_SITE]
+_site_packages_dirs += [] if _site.USER_SITE is None else [_site.USER_SITE]
 _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
@@ -132,8 +144,14 @@ def _running_from_pip_package():
       _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
 
 if _running_from_pip_package():
+  # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
-    # TODO(gunan): Add sanity checks to loaded modules here.
+    # Load first party dynamic kernels.
+    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
+    if _fi.file_exists(_main_dir):
+      _ll.load_library(_main_dir)
+
+    # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _fi.file_exists(_plugin_dir):
       _ll.load_library(_plugin_dir)

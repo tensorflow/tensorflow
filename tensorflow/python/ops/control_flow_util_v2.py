@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilties for V2 control flow."""
+"""Utilities for V2 control flow."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,13 +26,15 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.util import tf_contextlib
 
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
+_KERAS_LAYER_CONTEXT_FUNCTION = None
+_DISABLE_LOWER_USING_SWITCH_MERGE = False
+
 
 CondBranchFuncGraph = control_flow_v2_func_graphs.CondBranchFuncGraph
 WhileCondFuncGraph = control_flow_v2_func_graphs.WhileCondFuncGraph
@@ -45,9 +47,17 @@ def in_defun():
 
   graph = ops.get_default_graph()
   while (isinstance(graph, CondBranchFuncGraph) or
-         isinstance(graph, WhileBodyFuncGraph)):
+         isinstance(graph, WhileBodyFuncGraph) or
+         isinstance(graph, WhileCondFuncGraph)):
     graph = graph.outer_graph
   return isinstance(graph, FuncGraph)
+
+
+def in_while_loop_defun(graph):
+  """Returns if the graph is a while loop FuncGraph."""
+  if context.executing_eagerly(): return False
+  return (isinstance(graph, WhileCondFuncGraph) or
+          isinstance(graph, WhileBodyFuncGraph))
 
 
 def create_new_tf_function(func_graph):
@@ -102,7 +112,8 @@ def maybe_set_lowering_attr(op):
   Args:
     op: An `If` or `While` Operation.
   """
-  if (not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
+  if (not _DISABLE_LOWER_USING_SWITCH_MERGE and
+      not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
       context.context().function_call_options.executor_type !=
       "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
@@ -224,8 +235,19 @@ def _is_tpu_strategy(strategy):
           strategy.__class__.__name__.startswith("TPUStrategy"))
 
 
+def _register_keras_layer_context_function(func):
+  global _KERAS_LAYER_CONTEXT_FUNCTION
+  if _KERAS_LAYER_CONTEXT_FUNCTION is None:
+    _KERAS_LAYER_CONTEXT_FUNCTION = func
+
+
 def _is_building_keras_layer():
-  return base_layer_utils.call_context().layer is not None
+  # TODO(srbs): Remove this function when we no long support session with Keras.
+  global _KERAS_LAYER_CONTEXT_FUNCTION
+  if _KERAS_LAYER_CONTEXT_FUNCTION is not None:
+    return _KERAS_LAYER_CONTEXT_FUNCTION().layer is not None
+  else:
+    return False
 
 
 def output_all_intermediates():
@@ -263,6 +285,7 @@ def output_all_intermediates():
 
 def get_func_graph(op, input_shapes, func_name):
   """Generates and returns a FuncGraph for the given op and input_shapes."""
+  fdef = None
   graph = op.graph
   # Recursively search the func in graphs.
   while graph is not None:
@@ -274,6 +297,9 @@ def get_func_graph(op, input_shapes, func_name):
       graph = graph.outer_graph
     else:
       break
+
+  if fdef is None:
+    raise KeyError("%s cannot be found in the graph" % func_name)
 
   # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
   # in the case of nested if ops or when the gradient is being computed

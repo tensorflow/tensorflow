@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import warnings
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -28,9 +29,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.types import internal
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -53,13 +54,10 @@ tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
 
-# pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
-# pylint: enable=protected-access
 
-
+# TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
+class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -83,7 +81,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   (e.g. `tf.gather`).
 
   Contrast this representation with
-  `tf.SparseTensor`,
+  `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
@@ -308,7 +306,8 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, _TensorLike):
+  # TODO(mdan): Name says tensor_or_indexed_slices. So do explicitly just that?
+  elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %

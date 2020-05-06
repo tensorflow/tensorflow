@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/eager/c_api.h"
-
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/tfe_tensor_debug_info_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/platform/status.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/jit/xla_device.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA
@@ -28,19 +31,22 @@ using tensorflow::string;
 
 namespace {
 
-std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
-                                       TF_Status* status) {
+std::vector<int64> TensorShapeAsVector(const tensorflow::TensorHandle& handle,
+                                       tensorflow::Status* status) {
   std::vector<int64> shape;
-  int rank = TFE_TensorHandleNumDims(handle, status);
-  if (TF_GetCode(status) != TF_OK) {
+  int rank = -1;
+  *status = handle.NumDims(&rank);
+  if (!status->ok()) {
     return shape;
   }
   shape.reserve(rank);
   for (int i = 0; i < rank; ++i) {
-    shape.push_back(TFE_TensorHandleDim(handle, i, status));
-    if (TF_GetCode(status) != TF_OK) {
+    tensorflow::int64 dim;
+    *status = handle.Dim(i, &dim);
+    if (!status->ok()) {
       return shape;
     }
+    shape.push_back(dim);
   }
   return shape;
 }
@@ -50,19 +56,20 @@ std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
 extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
-    TFE_TensorHandle* handle, TF_Status* status) {
+    TFE_TensorHandle* h, TF_Status* status) {
+  tensorflow::TensorHandle* handle =
+      TensorHandleFromInterface(tensorflow::unwrap(h));
   const tensorflow::Tensor* tensor;
-  status->status = handle->handle->Tensor(&tensor);
-  if (TF_GetCode(status) != TF_OK) {
+  status->status = handle->Tensor(&tensor);
+  if (!status->status.ok()) {
     return nullptr;
   }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Device* device = handle->handle->device();
+  auto* device = absl::get<tensorflow::Device*>(handle->device());
 
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
-  tensorflow::XlaDevice* xla_device =
-      dynamic_cast<tensorflow::XlaDevice*>(device);
+  auto* xla_device = dynamic_cast<tensorflow::XlaDevice*>(device);
   if (xla_device != nullptr) {
     tensorflow::XlaDevice::PaddedShapeFn shape_fn =
         xla_device->metadata().padded_shape_fn();
@@ -72,7 +79,8 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       return nullptr;
     }
     if (VLOG_IS_ON(3)) {
-      std::vector<int64> shape_to_log = TensorShapeAsVector(handle, status);
+      std::vector<int64> shape_to_log =
+          TensorShapeAsVector(*handle, &status->status);
       if (!status->status.ok()) {
         // Ignore the status here as we are simply logging.
         status->status = tensorflow::Status::OK();
@@ -138,8 +146,8 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
 
   // If the tensor is not an XLA tensor, the device shape is
   // the same as regular tensor shape.
-  std::vector<int64> dev_dims = TensorShapeAsVector(handle, status);
-  if (TF_GetCode(status) != TF_OK) {
+  std::vector<int64> dev_dims = TensorShapeAsVector(*handle, &status->status);
+  if (!status->status.ok()) {
     return nullptr;
   }
   return new TFE_TensorDebugInfo(dev_dims);
