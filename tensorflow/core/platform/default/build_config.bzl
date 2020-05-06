@@ -717,12 +717,6 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
-def tf_protobuf_full_deps():
-    return tf_protobuf_deps()
-
-def tf_protobuf_lite_deps():
-    return tf_protobuf_deps()
-
 def tf_protobuf_deps():
     return if_static(
         [

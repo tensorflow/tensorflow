@@ -600,7 +600,6 @@ cc_library(
         ":error_util",
         ":parse_text_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
     ],
