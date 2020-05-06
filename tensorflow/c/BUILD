@@ -87,6 +87,13 @@ tf_cuda_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
+        "//tensorflow:chromiumos": [
+            ":tf_attrtype",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core/platform:platform",
+        ],
         "//conditions:default": [
             ":tf_attrtype",
             "//tensorflow/core:core_cpu",
