@@ -63,10 +63,7 @@ class AnonymousResourceOp : public OpKernel {
 
     if (create_deleter_) {
       Tensor* deleter_t;
-      AllocatorAttributes attr;
-      attr.set_on_host(true);
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
       deleter_t->scalar<Variant>()() =
           ResourceDeleter(handle, ctx->resource_manager());
     }
