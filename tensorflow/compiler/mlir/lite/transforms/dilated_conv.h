@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -114,14 +113,11 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
 
     // Make sure that the axis in `expand_op` is constant.
-    DenseIntElementsAttr axis_attr;
     if (auto const_op =
             llvm::dyn_cast<TF::ConstOp>(expand_op.dim().getDefiningOp())) {
       expand_axis =
           (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
               .getSExtValue();
-    } else if (matchPattern(expand_op.dim(), m_Constant(&axis_attr))) {
-      expand_axis = (*axis_attr.begin()).getSExtValue();
     } else {
       return failure();
     }
