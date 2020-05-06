@@ -133,8 +133,9 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        ":tensorflow_ops_td_files",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
 )
 
@@ -216,6 +217,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_attributes",
+    srcs = [
+        "ir/tf_attributes.cc",
+    ],
+    hdrs = [
+        "ir/tf_attributes.h",
+    ],
+    deps = ["@llvm-project//mlir:IR"],
+)
+
+cc_library(
     name = "tensorflow_types",
     srcs = [
         "ir/tf_types.cc",
@@ -226,6 +238,7 @@ cc_library(
     ],
     deps = [
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -266,6 +279,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
+        ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -396,6 +410,8 @@ cc_library(
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
+        "transforms/tpu_extract_head_tail_outside_compilation.cc",
+        "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
@@ -530,6 +546,7 @@ cc_library(
         ":mangling_util",
         ":mlir_roundtrip_flags",
         ":tensorflow",
+        ":tensorflow_attributes",
         ":tensorflow_passes",
         ":tensorflow_types",
         ":translate_utils",
@@ -583,7 +600,6 @@ cc_library(
         ":error_util",
         ":parse_text_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
     ],
@@ -602,6 +618,7 @@ cc_library(
         ":convert_type",
         ":mangling_util",
         ":tensorflow",
+        ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -770,6 +787,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":mangling_util",
+        ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -789,10 +807,14 @@ tf_cc_test(
     srcs = ["utils/convert_tensor_test.cc"],
     deps = [
         ":convert_tensor",
+        ":tensorflow",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -1091,6 +1113,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/stream_executor/lib",
     "//tensorflow/compiler/xla:xla_data_proto_cc",
     "//tensorflow/compiler/xla/service:hlo",
+    ":convert_tensor",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary

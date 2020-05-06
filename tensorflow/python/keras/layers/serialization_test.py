@@ -165,5 +165,6 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
       self.assertIsInstance(new_layer, rnn_v1.GRU)
       self.assertNotIsInstance(new_layer, rnn_v2.GRU)
 
+
 if __name__ == '__main__':
   test.main()

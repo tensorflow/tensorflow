@@ -10,7 +10,7 @@ def initialize_rbe_configs():
     tensorflow_rbe_config(
         name = "ubuntu16.04-manylinux2010-py3",
         os = "ubuntu16.04-manylinux2010",
-        python_version = "3",
+        python_versions = ["3"],
         compiler = "",
     )
 
@@ -21,11 +21,27 @@ def initialize_rbe_configs():
         cuda_version = "10.0",
         cudnn_version = "7",
         os = "ubuntu16.04-manylinux2010",
-        python_version = "3",
+        python_versions = ["3"],
         tensorrt_install_path = "/usr",
         tensorrt_version = "5.1",
     )
 
+    tensorflow_rbe_config(
+        name = "ubuntu16.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
+        compiler = "/dt7/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "10.1",
+        cudnn_version = "7",
+        os = "ubuntu16.04-manylinux2010-multipython",
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "6.0",
+        python_install_path = "/usr/local",
+    )
+
+    # TODO(klimek): Delete this once all users are migrated to a python-version
+    # independent configuration. In the future, use
+    # "ubuntu16.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0" instead.
     tensorflow_rbe_config(
         name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
         compiler = "/dt7/usr/bin/gcc",
@@ -33,28 +49,29 @@ def initialize_rbe_configs():
         cuda_version = "10.1",
         cudnn_version = "7",
         os = "ubuntu16.04-manylinux2010",
-        python_version = "3",
+        python_versions = ["3"],
         tensorrt_install_path = "/usr",
         tensorrt_version = "6.0",
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
+        name = "ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
         compiler = "/clang_r42cab985fd95ba4f3f290e7bb26b93805edb447d/bin/clang",
         cuda_version = "10.1",
         cudnn_version = "7",
-        os = "ubuntu16.04-manylinux2010",
-        python_version = "3",
+        os = "ubuntu16.04-manylinux2010-multipython",
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
         tensorrt_install_path = "/usr",
         tensorrt_version = "6.0",
         sysroot = "/dt7",
+        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
         name = "ubuntu16.04-py3_opt-gcc5-rocm",
         compiler = "gcc",
         os = "ubuntu16.04",
-        python_version = "3",
+        python_versions = ["3"],
         rocm_version = "2.5",  # Any version will do.
     )
 

@@ -91,15 +91,9 @@ android_library(
     proguard_specs = ["proguard.flags"],
     deps = [
         ":tensorflowlite_java",
+        ":tensorflowlite_native_gpu",
         "@org_checkerframework_qual",
-    ] + select({
-        # For non-Android builds (e.g., Robolectric), it can be useful to build
-        # the Java library but not actually use/link the full native impl.
-        "//tensorflow:android": [
-            ":tensorflowlite_native_gpu",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 android_library(
@@ -217,6 +211,8 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/string.bin",
+        # Takes a scalar string and reshapes to a rank-1, single element string.
+        "src/testdata/string_scalar.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],
@@ -348,6 +344,14 @@ filegroup(
     name = "portable_flex_tests",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_gpu_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
     ],
     visibility = ["//visibility:public"],
 )

@@ -126,7 +126,7 @@ class MomentumOptimizerTest(test.TestCase):
     with self.cached_session():
       self.doTestBasic(use_resource=False)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
@@ -229,7 +229,7 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var0_np, self.evaluate(var0))
           self.assertAllClose(var1_np, self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # This test invokes the ResourceSparseApplyMomentum operation, which
@@ -259,7 +259,7 @@ class MomentumOptimizerTest(test.TestCase):
       # Validate updated params
       self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testMinimizeWith2DIndicesForEmbeddingLookup(self):
     # This test invokes the ResourceSparseApplyMomentum operation, which
     # did not have a registered GPU kernel as of April 2018. With graph

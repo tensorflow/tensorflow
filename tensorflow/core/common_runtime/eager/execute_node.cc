@@ -36,7 +36,8 @@ Status ExecuteNodeArgs::Init(
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
         uint64 context_view_id = ctx->GetContextViewId();
-        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
+        if (in->Type() == TensorHandle::REMOTE ||
+            in->HasRemoteMirror(d, context_view_id)) {
           if (!has_remote_inputs_) {
             has_remote_inputs_ = true;
           }
@@ -51,9 +52,14 @@ Status ExecuteNodeArgs::Init(
 #if !defined(IS_MOBILE_PLATFORM)
   if (has_remote_inputs_) {
     serialize_remote_handle_ =
-        [ctx, &op_inputs](const int i,
+        [ctx, &op_inputs](const FunctionArgIndex& index,
                           eager::RemoteTensorHandle* handle) -> Status {
-      VariantDevice variant_device = op_inputs[i]->device();
+      if (index.sub_index >= 0) {
+        return errors::InvalidArgument("Got unexpected sub_index ",
+                                       index.sub_index, " for argument ",
+                                       index.index);
+      }
+      VariantDevice variant_device = op_inputs[index.index]->device();
       if (VariantDeviceIsCustom(variant_device)) {
         return errors::Internal(
             "Custom devices and remote execution are currently not supported "
@@ -61,7 +67,7 @@ Status ExecuteNodeArgs::Init(
       }
       Device* device = absl::get<Device*>(variant_device);
       return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          op_inputs[i], handle, device, device->name());
+          op_inputs[index.index], handle, device, device->name());
     };
   }
 #endif  // !IS_MOBILE_PLATFORM

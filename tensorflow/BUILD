@@ -523,6 +523,12 @@ package_group(
     ],
 )
 
+package_group(name = "ndarray_tensor_allow_list")
+
+# Packages that use composite tensors or dispatch.
+# TODO(b/154762408) Remove this package group once it's no longer needed.
+package_group(name = "composite_tensor_whitelist")
+
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(

@@ -42,6 +42,7 @@ class ReplicateHelper {
       Node* replicated_node = graph->AddNode(node_def, &status);
       TF_RETURN_IF_ERROR(status);
       replicated_node->set_assigned_device_name(device);
+      replicated_node->AddAttr("sub_index", i);
       replicated_nodes[i] = replicated_node;
     }
     replicated_nodes_map_.emplace(node, std::move(replicated_nodes));
@@ -180,7 +181,8 @@ Status ReplicateEdges(const ReplicateHelper& helper,
 }  // namespace
 
 Status ReplicatePerReplicaNodesInFunctionGraph(
-    const absl::flat_hash_map<string, std::vector<string>>& composite_devices,
+    const absl::flat_hash_map<string, const std::vector<string>*>&
+        composite_devices,
     Graph* graph) {
   std::set<string> composite_device_names;
   for (const auto& it : composite_devices) {
@@ -198,7 +200,8 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
   }
 
   for (const auto& it : composite_device_to_cluster_nodes) {
-    const std::vector<string>& allowed_devices = composite_devices.at(it.first);
+    const std::vector<string>& allowed_devices =
+        *composite_devices.at(it.first);
     if (allowed_devices.empty()) {
       return errors::InvalidArgument("No allowed device of composite device: ",
                                      it.first);
@@ -208,6 +211,7 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
       // Reuse the original nodes if there is only one allowed device.
       for (Node* n : cluster_nodes) {
         n->set_assigned_device_name(allowed_devices.at(0));
+        n->AddAttr("sub_index", 0);
       }
       continue;
     }

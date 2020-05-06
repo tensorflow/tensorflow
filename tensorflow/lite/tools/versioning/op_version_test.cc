@@ -429,7 +429,8 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
@@ -439,6 +440,14 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
                                              TensorType_INT8, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  const auto none_type = static_cast<::tflite::TensorType>(-1);
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8, none_type},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 
 TEST(OpVersionTest, VersioningSVDFOperatorTest) {

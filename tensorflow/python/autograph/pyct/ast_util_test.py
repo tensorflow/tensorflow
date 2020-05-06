@@ -90,6 +90,14 @@ class AstUtilTest(test.TestCase):
 
     self.assertIs(anno.getanno(node, 'foo'), orig_anno)
 
+  def test_rename_symbols_function(self):
+    node = parser.parse('def f():\n  pass')
+    node = ast_util.rename_symbols(node,
+                                   {qual_names.QN('f'): qual_names.QN('f1')})
+
+    source = parser.unparse(node, include_encoding_marker=False)
+    self.assertEqual(source.strip(), 'def f1():\n    pass')
+
   def test_copy_clean(self):
     node = parser.parse(
         textwrap.dedent("""

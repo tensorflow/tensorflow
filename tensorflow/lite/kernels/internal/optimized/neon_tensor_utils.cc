@@ -39,7 +39,8 @@ limitations under the License.
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+// Neither Apple nor Windows provide aligned_alloc.
+#if !defined(__APPLE__) && !defined(_WIN32)
 #define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
@@ -1041,7 +1042,7 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = n_output;
   lhs_params.cols = n_input;
-  lhs_params.cacheable = true;
+  lhs_params.cache_policy = cpu_backend_gemm::CachePolicy::kCacheIfLargeSpeedup;
 
   MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;

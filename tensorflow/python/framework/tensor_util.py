@@ -260,8 +260,12 @@ def _check_quantized(values):
 
 def _generate_isinstance_check(expected_types):
   def inner(values):
-    _ = [_check_failed(v) for v in nest.flatten(values)
-         if not isinstance(v, expected_types)]
+    for v in nest.flatten(values):
+      if not (isinstance(v, expected_types) or
+              (isinstance(v, np.ndarray) and
+               issubclass(v.dtype.type, expected_types))):
+        _check_failed(v)
+
   return inner
 
 _check_int = _generate_isinstance_check(
@@ -790,9 +794,7 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
-  elif tensor.op.type == "Identity":
-    return constant_value(tensor.op.inputs[0], partial)
-  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2"):
+  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2", "Identity"):
     return constant_value(tensor.op.inputs[0], partial)
   else:
     return None

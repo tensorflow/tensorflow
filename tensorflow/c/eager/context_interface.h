@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -68,8 +70,22 @@ class AbstractContextInterface {
   // Create an operation to perform op execution
   virtual AbstractOperationInterface* CreateOperation() = 0;
 
+  // Load a SavedModelAPI object from the given directory and tags
+  virtual std::unique_ptr<SavedModelAPI> LoadSavedModelAPI(
+      const std::string& directory,
+      const absl::optional<std::unordered_set<std::string>>& tags,
+      tensorflow::Status* status) = 0;
+
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
+
+  virtual void ClearCachesAndThreadExecutors() = 0;
+
+  // Initialize the step resource container for a training step. This is used
+  // in current TF runtime. For tfrt, it is used by fallback op handler.
+  virtual void StartStep() = 0;
+  // Destroy the step resource container for a training step.
+  virtual void EndStep() = 0;
 
  protected:
   virtual ~AbstractContextInterface() {}

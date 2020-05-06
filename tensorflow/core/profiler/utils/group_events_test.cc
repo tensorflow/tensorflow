@@ -159,7 +159,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   // Eagerly executed CPU TF op.
   CreateXEvent(&host_plane_builder, &main_thread,
                HostEventType::kEagerKernelExecute, 120, 80, {});
-  CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80, {});
+  CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80);
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
@@ -208,7 +208,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 30,
                {{StatType::kCorrelationId, 100}});
   // CPU TF op executed inside tf.function.
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "add:Add", 70, 20, {});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "add:Add", 70, 20);
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);

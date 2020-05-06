@@ -3255,6 +3255,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   See: https://en.wikipedia.org/wiki/Softmax_function
 
   Example usage:
+
   >>> tf.nn.softmax([-1, 0., 1.])
   <tf.Tensor: shape=(3,), dtype=float32,
   numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
@@ -3397,6 +3398,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
   one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
 
   Usage:
+
   >>> logits = [[4.0, 2.0, 1.0], [0.0, 5.0, 1.0]]
   >>> labels = [[1.0, 0.0, 0.0], [0.0, 0.8, 0.2]]
   >>> tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)

@@ -22,7 +22,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -749,10 +748,22 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   ASSERT_EQ(interpreter.SetOutputs({4}), kTfLiteOk);
 
   TfLiteQuantizationParams quantized;
-  char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'A', 'B', 'C'};
+
+  // String tensor with one string of length 3
+  union {
+    char raw_bytes[15];
+    struct {
+      int32_t num_strs;
+      int32_t offsets[2];
+      char str_data[3];
+    } tensor_data;
+  } data;
+  data.tensor_data = {1, {12, 15}, {'A', 'B', 'C'}};
+
   // Read only string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadOnly(0, kTfLiteString, "", {1},
-                                                    quantized, data, 15),
+                                                    quantized, data.raw_bytes,
+                                                    sizeof(data.raw_bytes)),
             kTfLiteOk);
   // Read-write string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "", {1},

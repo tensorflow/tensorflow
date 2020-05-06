@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -1456,12 +1456,13 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
                                   absl::string_view name,
                                   nvinfer1::ITensor** output_tensor) {
   const auto dims = input_tensor->getDimensions();
-
-  if (order_with_batch_dim.size() - 1 != size_t(dims.nbDims)) {
+  const int order_size = use_implicit_batch_ ? order_with_batch_dim.size() - 1
+                                             : order_with_batch_dim.size();
+  if (order_size != size_t(dims.nbDims)) {
     return errors::InvalidArgument(
         "Rank of perm for transpose does not match with that of the input.");
   }
-  if (order_with_batch_dim[0] != 0) {
+  if (use_implicit_batch_ && order_with_batch_dim[0] != 0) {
     return errors::Unimplemented(
         "Transpose at batch dimension is not supported.");
   }
@@ -1472,8 +1473,13 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
   MarkQuantizationRangesAsInferrable(input_tensor, layer->getOutput(0));
 
   nvinfer1::Permutation permutation;
-  for (int32_t i = 0; i < dims.nbDims; ++i) {
-    permutation.order[i] = order_with_batch_dim[i + 1] - 1;
+  if (use_implicit_batch_) {
+    for (int32_t i = 0; i < dims.nbDims; ++i) {
+      permutation.order[i] = order_with_batch_dim[i + 1] - 1;
+    }
+  } else {
+    std::copy(order_with_batch_dim.begin(), order_with_batch_dim.end(),
+              permutation.order);
   }
   VLOG(1) << "TransposeTensor permutation: "
           << DebugString(permutation, dims.nbDims);
@@ -2271,11 +2277,13 @@ Status ConvertTranspose(OpConverterParams* params) {
 
   // Verify the permutation.
   nvinfer1::ITensor* input_tensor = inputs.at(0).tensor();
-  if (perm.size() - 1 != size_t(input_tensor->getDimensions().nbDims)) {
+  const int perm_size =
+      params->use_implicit_batch ? perm.size() - 1 : perm.size();
+  if (perm_size != size_t(input_tensor->getDimensions().nbDims)) {
     return errors::InvalidArgument(
         "Rank of perm for transpose does not match with that of the input.");
   }
-  if (perm[0] != 0) {
+  if (params->use_implicit_batch && perm[0] != 0) {
     return errors::Unimplemented(
         "Transpose at batch dimension is not supported.");
   }

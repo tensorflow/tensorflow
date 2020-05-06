@@ -188,21 +188,25 @@ class InterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
     if (num_inputs() <= 1) {
-      return self_processing_time;
+      total_processing_times->insert(
+          std::make_pair(long_name(), self_processing_time));
+      return;
     }
     double processing_time =
-        (TotalProcessingTimeForInputs(processing_times) -
-         inputs_.front()->TotalProcessingTime(/*processing_times=*/nullptr)) /
+        (TotalProcessingTimeForInputs(*total_processing_times) -
+         (*total_processing_times)[inputs_.front()->long_name()]) /
         static_cast<double>(num_inputs() - 1);
-    return self_processing_time + processing_time;
+    total_processing_times->insert(
+        std::make_pair(long_name(), self_processing_time + processing_time));
   }
 };
 
@@ -311,21 +315,25 @@ class AsyncInterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
     if (num_inputs() <= 1) {
-      return self_processing_time;
+      total_processing_times->insert(
+          std::make_pair(long_name(), self_processing_time));
+      return;
     }
     double processing_time =
-        TotalProcessingTimeForInputs(processing_times) -
-        inputs_.front()->TotalProcessingTime(/*processing_times=*/nullptr);
-    return self_processing_time +
-           processing_time / static_cast<double>(num_inputs() - 1);
+        (TotalProcessingTimeForInputs(*total_processing_times) -
+         (*total_processing_times)[inputs_.front()->long_name()]) /
+        static_cast<double>(num_inputs() - 1);
+    total_processing_times->insert(
+        std::make_pair(long_name(), self_processing_time + processing_time));
   }
 };
 
@@ -351,7 +359,7 @@ class KnownRatio : public Node {
       return SelfProcessingTimeLocked();
     }
     double old_input_time = input_times->back();
-    input_times->back() +=
+    input_times->back() =
         (old_input_time + SelfProcessingTimeLocked()) / ratio_;
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
@@ -381,15 +389,18 @@ class KnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
-    return self_processing_time +
-           ratio_ * TotalProcessingTimeForInputs(processing_times);
+    double processing_time =
+        ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
+    total_processing_times->insert(
+        std::make_pair(long_name(), self_processing_time + processing_time));
   }
 
  private:
@@ -518,15 +529,18 @@ class AsyncKnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
-    return self_processing_time +
-           ratio_ * TotalProcessingTimeForInputs(processing_times);
+    double processing_time =
+        ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
+    total_processing_times->insert(
+        std::make_pair(long_name(), self_processing_time + processing_time));
   }
 
  private:
@@ -587,23 +601,28 @@ class UnknownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
     if (inputs_.empty() || num_elements_ == 0) {
-      return self_processing_time;
+      total_processing_times->insert(
+          std::make_pair(long_name(), self_processing_time));
+      return;
     }
     // TODO(jsimsa): The current implementation assumes that the number of input
     // elements consumed per output is the same across all inputs.
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return self_processing_time +
-           ratio * TotalProcessingTimeForInputs(processing_times);
+    double processing_time =
+        ratio * TotalProcessingTimeForInputs(*total_processing_times);
+    total_processing_times->insert(
+        std::make_pair(long_name(), self_processing_time + processing_time));
   }
 };
 
@@ -627,10 +646,14 @@ class Unknown : public Node {
   }
 
   // The processing time is the sum of processing times of inputs.
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
-    return TotalProcessingTimeForInputs(processing_times);
+    double processing_time =
+        TotalProcessingTimeForInputs(*total_processing_times);
+    total_processing_times->insert(
+        std::make_pair(long_name(), processing_time));
   }
 };
 
@@ -761,8 +784,21 @@ double Node::TotalMaximumBufferedBytes() const {
 
 double Node::TotalProcessingTime(
     absl::flat_hash_map<string, double>* processing_times) {
-  tf_shared_lock l(mu_);
-  return TotalProcessingTimeLocked(processing_times);
+  // Create a hash map to store the per-element CPU time spent in the subtree
+  // rooted in each node.
+  absl::flat_hash_map<string, double> total_processing_times;
+
+  // Computes per-element CPU time spent in the subtree rooted in the node from
+  // the leaves of the nodes tree to the root.
+  for (const auto& node : CollectNodes()) {
+    tf_shared_lock l(node->mu_);
+    node->TotalProcessingTimeLocked(processing_times, &total_processing_times);
+  }
+  {
+    tf_shared_lock l(mu_);
+    TotalProcessingTimeLocked(processing_times, &total_processing_times);
+  }
+  return total_processing_times[long_name()];
 }
 
 double Node::AverageBufferedElementSize() const {
@@ -787,7 +823,7 @@ double Node::OutputTimeForInputs(
 }
 
 double Node::TotalProcessingTimeForInputs(
-    absl::flat_hash_map<string, double>* processing_times) {
+    const absl::flat_hash_map<string, double>& total_processing_times) {
   // If the number of elements produced by an input is smaller than this
   // constant, then its processing time is estimated using a weighted average
   // of the empirical processing time and processing time history.
@@ -802,7 +838,7 @@ double Node::TotalProcessingTimeForInputs(
     // Inputs for which autotuning is disabled are excluded.
     if (input->autotune()) {
       double input_processing_time =
-          input->TotalProcessingTime(processing_times);
+          total_processing_times.at(input->long_name());
       int64 num_elements = input->num_elements();
       if (num_elements < kNumElementsThreshold) {
         if (input_processing_time_count_ < kCountThreshold) {

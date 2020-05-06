@@ -783,11 +783,13 @@ void RemoveDescriptionsFromOpList(OpList* op_list) {
 }
 
 bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2) {
-#ifndef TENSORFLOW_LITE_PROTOS
-  DCHECK_EQ(7, a1.GetDescriptor()->field_count())
-      << "Please modify these equality and hash functions to reflect the "
-         "changes to the AttrDef protobuf";
-#endif  // TENSORFLOW_LITE_PROTOS
+  if (std::is_base_of<protobuf::Message, OpDef::AttrDef>()) {
+    DCHECK_EQ(7, reinterpret_cast<const protobuf::Message*>(&a1)
+                     ->GetDescriptor()
+                     ->field_count())
+        << "Please modify these equality and hash functions to reflect the "
+           "changes to the AttrDef protobuf";
+  }
 
   if (a1.name() != a2.name()) return false;
   if (a1.type() != a2.type()) return false;

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -285,13 +286,15 @@ inline void FullyConnected(
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = input_rows;
   rhs_params.cols = input_shape.FlatSize() / input_rows;
-  rhs_params.cacheable = params.rhs_cacheable;
+  rhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable);
   TFLITE_DCHECK_EQ(input_shape.FlatSize(), rhs_params.rows * rhs_params.cols);
   cpu_backend_gemm::MatrixParams<float> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.cols = weights_shape.Dims(dims_count - 1);
   lhs_params.rows = FlatSizeSkipDim(weights_shape, dims_count - 1);
-  lhs_params.cacheable = params.lhs_cacheable;
+  lhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable);
   cpu_backend_gemm::MatrixParams<float> dst_params;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = output_shape.Dims(output_shape.DimensionsCount() - 1);
@@ -344,13 +347,15 @@ inline void FullyConnected(
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
-  lhs_params.cacheable = params.lhs_cacheable;
+  lhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable);
   cpu_backend_gemm::MatrixParams<uint8> rhs_params;
   rhs_params.rows = filter_cols;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
-  rhs_params.cacheable = params.rhs_cacheable;
+  rhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable);
   cpu_backend_gemm::MatrixParams<uint8> dst_params;
   dst_params.rows = filter_rows;
   dst_params.cols = batches;
@@ -403,13 +408,15 @@ inline void FullyConnected(
   lhs_params.cols = accum_depth;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
-  lhs_params.cacheable = params.lhs_cacheable;
+  lhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable);
   cpu_backend_gemm::MatrixParams<uint8> rhs_params;
   rhs_params.rows = accum_depth;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
-  rhs_params.cacheable = params.rhs_cacheable;
+  rhs_params.cache_policy =
+      cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable);
   cpu_backend_gemm::MatrixParams<int16> dst_params;
   dst_params.rows = output_depth;
   dst_params.cols = batches;
@@ -5915,13 +5922,21 @@ inline void TransposeConvV2(
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented
 // in fixed-point and thus approximated, |in_x| or |in_y| may differ from the
 // reference version. Debug checks are in place to test if this occurs.
+// NOTE: If align_corners or half_pixel_centers is true, we use the reference
+// version.
 inline void ResizeNearestNeighbor(
     const tflite::ResizeNearestNeighborParams& op_params,
     const RuntimeShape& unextended_input_shape, const uint8* input_data,
     const RuntimeShape& output_size_shape, const int32* output_size_data,
     const RuntimeShape& unextended_output_shape, uint8* output_data) {
-  // Align corners = true is not supported.
-  TFLITE_DCHECK(!op_params.align_corners);
+  if (op_params.align_corners || op_params.half_pixel_centers) {
+    // TODO(b/149823713): Add support for align_corners & half_pixel_centers in
+    // this kernel.
+    reference_ops::ResizeNearestNeighbor(
+        op_params, unextended_input_shape, input_data, output_size_shape,
+        output_size_data, unextended_output_shape, output_data);
+    return;
+  }
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
 

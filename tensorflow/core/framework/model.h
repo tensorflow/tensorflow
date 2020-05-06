@@ -384,27 +384,28 @@ class Node {
                                   absl::flat_hash_map<string, double>* gradient)
       const TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  // Returns the sum of per-element processing time for the inputs of this node.
-  // Processing time for a given input is a weighted combination of a statistic
-  // based on history of input processing time and the actual time. This is done
-  // to improve accuracy of processing time estimation for newly created inputs.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each input node.
+  // Returns the sum of per-element processing time for the inputs of this node
+  // by adding values for input nodes in `total_processing_times`. Processing
+  // time for a given input is a weighted combination of a statistic based on
+  // history of input processing time and the actual time. This is done to
+  // improve accuracy of processing time estimation for newly created inputs.
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
   double TotalProcessingTimeForInputs(
-      absl::flat_hash_map<string, double>* processing_times)
+      const absl::flat_hash_map<string, double>& total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTimeLocked() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each node of the subtree.
-  virtual double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times)
+  // Computes the per-element CPU time spent in the subtree rooted in this node
+  // and stores it in `total_processing_times`. If `processing_times` is not
+  // `nullptr`, collects the per-element CPU time spent in each node of the
+  // subtree.
+  virtual void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns a vector of nodes of the subtree rooted in this node.

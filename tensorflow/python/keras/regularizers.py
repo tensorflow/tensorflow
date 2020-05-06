@@ -197,10 +197,10 @@ class L1L2(Regularizer):
   r"""A regularizer that applies both L1 and L2 regularization penalties.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l1 * reduce_sum(abs(x))`
 
   The L2 regularization penalty is computed as
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l2 * reduce_sum(square(x))`
 
   Attributes:
       l1: Float; L1 regularization factor.
@@ -233,7 +233,7 @@ def l1(l=0.01):
   r"""Create a regularizer that applies an L1 regularization penalty.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l * reduce_sum(abs(x))`
 
   Arguments:
       l: Float; L1 regularization factor.
@@ -249,7 +249,7 @@ def l2(l=0.01):
   r"""Create a regularizer that applies an L2 regularization penalty.
 
   The L2 regularization penalty is computed as:
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l * reduce_sum(square(x))`
 
   Arguments:
       l: Float; L2 regularization factor.
@@ -265,10 +265,10 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   r"""Create a regularizer that applies both L1 and L2 penalties.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l1 * reduce_sum(abs(x))`
 
   The L2 regularization penalty is computed as:
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l2 * reduce_sum(square(x))`
 
   Arguments:
       l1: Float; L1 regularization factor.
@@ -312,4 +312,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret regularizer identifier:', identifier)
+    raise ValueError(
+        'Could not interpret regularizer identifier: {}'.format(identifier))

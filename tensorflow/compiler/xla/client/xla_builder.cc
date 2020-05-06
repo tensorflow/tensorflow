@@ -1792,8 +1792,6 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
                         absl::Span<const XlaOp> parameters,
                         const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     // Check the number of parameters per RNG distribution.
     switch (distribution) {
       case RandomDistribution::RNG_NORMAL:
@@ -1809,12 +1807,18 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
     }
 
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
-    *instr.mutable_shape() = shape.ToProto();
-
-    instr.set_distribution(distribution);
-
-    return AddInstruction(std::move(instr), HloOpcode::kRng, parameters);
+    return RngOpInternal(distribution, parameters, shape);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::RngOpInternal(RandomDistribution distribution,
+                                          absl::Span<const XlaOp> parameters,
+                                          const Shape& shape) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_distribution(distribution);
+
+  return AddInstruction(std::move(instr), HloOpcode::kRng, parameters);
 }
 
 XlaOp XlaBuilder::RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape) {
@@ -2307,7 +2311,8 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
 
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
-                           const std::vector<ReplicaGroup>& replica_groups) {
+                           const std::vector<ReplicaGroup>& replica_groups,
+                           const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -2342,7 +2347,21 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
+
+    if (layout) {
+      TF_RET_CHECK(shape.IsTuple() && !ShapeUtil::IsNestedTuple(shape));
+      for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        if (layout->minor_to_major().size() != shape.tuple_shapes(i).rank()) {
+          return InvalidArgument(
+              "Provided layout must be compatible with the operand shape: %s "
+              "vs %s",
+              layout->ToString(), operand_shape->ToString());
+        }
+        *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
+      }
+    }
     *instr.mutable_shape() = shape.ToProto();
+
     for (const ReplicaGroup& group : replica_groups) {
       *instr.add_replica_groups() = group;
     }
@@ -3466,9 +3485,10 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups) {
+               const std::vector<ReplicaGroup>& replica_groups,
+               const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
-                                     split_count, replica_groups);
+                                     split_count, replica_groups, layout);
 }
 
 XlaOp CollectivePermute(
@@ -3554,6 +3574,9 @@ XlaOp Imag(const XlaOp operand) {
 }
 XlaOp Sqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Cbrt(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand);
 }
 XlaOp Rsqrt(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);

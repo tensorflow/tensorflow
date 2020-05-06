@@ -43,9 +43,6 @@ TF_CAPI_EXPORT extern TF_OutputList* TF_ConcreteFunctionGetCaptures(
 TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
     TF_ConcreteFunction* func);
 
-// Deletes `func`.
-TF_CAPI_EXPORT extern void TF_DeleteConcreteFunction(TF_ConcreteFunction* func);
-
 #ifdef __cplusplus
 }  // end extern "C"
 #endif  // __cplusplus

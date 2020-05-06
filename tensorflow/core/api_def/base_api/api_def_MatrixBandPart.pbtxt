@@ -26,10 +26,8 @@ END
 Rank `k` tensor of the same shape as input. The extracted banded tensor.
 END
   }
-  summary: "Copy a tensor setting everything outside a central band in each innermost matrix"
+  summary: "Copy a tensor setting everything outside a central band in each innermost matrix to zero."
   description: <<END
-to zero.
-
 The `band` part is computed as follows:
 Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
 tensor with the same shape where

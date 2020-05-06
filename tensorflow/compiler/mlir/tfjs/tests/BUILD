@@ -15,5 +15,6 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir:tf-opt",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

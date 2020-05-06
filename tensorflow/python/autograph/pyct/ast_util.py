@@ -121,6 +121,12 @@ class SymbolRenamer(gast.NodeTransformer):
     # Renaming attributes is not supported.
     return self.generic_visit(node)
 
+  def visit_FunctionDef(self, node):
+    qn = qual_names.QN(node.name)
+    if qn in self.name_map:
+      node.name = str(self.name_map[qn])
+    return self.generic_visit(node)
+
 
 def rename_symbols(node, name_map):
   """Renames symbols in an AST. Requires qual_names annotations."""

@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1332,16 +1333,19 @@ class ConvertFusedBatchNormV3Op
     auto feature_dim =
         getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
 
-    auto input_type_tensor = op.x().getType().dyn_cast<TensorType>();
+    auto input_type_tensor = op.x().getType().cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();
 
-    auto scale_type_tensor = op.scale().getType().dyn_cast<TensorType>();
+    auto scale_type_tensor = op.scale().getType().cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
+
+    auto mean_type_tensor = op.mean().getType().cast<TensorType>();
+    auto mean_element_type = mean_type_tensor.getElementType();
     // In the training case, dimensions of input tensors must be static.
-    if (op.is_training() && ((!input_type_tensor.hasStaticShape()) ||
-                             (!scale_type_tensor.hasStaticShape()))) {
+    if (op.is_training() && (!input_type_tensor.hasStaticShape() ||
+                             !scale_type_tensor.hasStaticShape() ||
+                             !mean_type_tensor.hasStaticShape()))
       return failure();
-    }
 
     // TODO(b/69928690): Support mixed precision in the XLA batch
     // normalization operators. As a workaround, create a new x with the same
@@ -1375,6 +1379,7 @@ class ConvertFusedBatchNormV3Op
           op.getLoc(), bn_train_op_result, 0);
       Value batch_mean = rewriter.create<xla_hlo::GetTupleElementOp>(
           op.getLoc(), bn_train_op_result, 1);
+      Value reserve_space_1 = batch_mean;
       Value batch_variance = rewriter.create<xla_hlo::GetTupleElementOp>(
           op.getLoc(), bn_train_op_result, 2);
 
@@ -1388,14 +1393,47 @@ class ConvertFusedBatchNormV3Op
       auto factor_const_op = rewriter.create<xla_hlo::ConstOp>(
           op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
 
-      auto corrected_variance = rewriter.create<xla_hlo::MulOp>(
+      Value corrected_variance = rewriter.create<xla_hlo::MulOp>(
           op.getLoc(), batch_variance.getType(), batch_variance,
-          factor_const_op, /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+          factor_const_op, /*broadcast_dimensions=*/DenseIntElementsAttr());
 
       // Convert back to input type to stay aligned with expected output type
       // for TF op.
       y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), y_out,
                                                   input_element_type);
+
+      float exponential_avg_factor =
+          op.exponential_avg_factor().convertToFloat();
+      if (exponential_avg_factor != 1.0f) {
+        auto alpha = rewriter.create<xla_hlo::ConstOp>(
+            op.getLoc(), rewriter.getFloatAttr(mean_element_type,
+                                               1.0f - exponential_avg_factor));
+        auto beta = rewriter.create<xla_hlo::ConstOp>(
+            op.getLoc(),
+            rewriter.getFloatAttr(mean_element_type, exponential_avg_factor));
+
+        // new_running_mean = alpha * old_mean + beta * batch_mean.
+        auto alpha_mul_old_mean = rewriter.create<MulOp>(
+            op.getLoc(), op.mean().getType(), alpha, op.mean(),
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        auto beta_mul_batch_mean = rewriter.create<MulOp>(
+            op.getLoc(), batch_mean.getType(), beta, batch_mean,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        batch_mean = rewriter.create<AddOp>(
+            op.getLoc(), alpha_mul_old_mean, beta_mul_batch_mean,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+
+        // new_running_variance = alpha * old_variance + beta * batch_variance.
+        auto alpha_mul_old_variance = rewriter.create<MulOp>(
+            op.getLoc(), op.variance().getType(), alpha, op.variance(),
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        auto beta_mul_batch_variance = rewriter.create<MulOp>(
+            op.getLoc(), corrected_variance.getType(), beta, corrected_variance,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        corrected_variance = rewriter.create<AddOp>(
+            op.getLoc(), alpha_mul_old_variance, beta_mul_batch_variance,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+      }
 
       // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
       // currently marked as "reserved spaces 1 and 2". They are used to
@@ -1405,8 +1443,8 @@ class ConvertFusedBatchNormV3Op
       // matter what we pass there.
       rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
                               /*batch_variance=*/corrected_variance,
-                              /*reserve_space_1=*/batch_mean,
-                              /*reserve_space_2=*/corrected_variance,
+                              /*reserve_space_1=*/reserve_space_1,
+                              /*reserve_space_2=*/batch_variance,
                               /*reserve_space_3=*/op.x()});
     } else {  // Inference case.
       auto bn_train_op = rewriter.create<BatchNormInferenceOp>(
@@ -1432,16 +1470,18 @@ class ConvertFusedBatchNormV3Op
                              : 0;
       auto const_attr_type = RankedTensorType::get(
           {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-      auto dummy_const = rewriter.create<ConstOp>(
-          op.getLoc(), reserve_space_3_type,
-          DenseFPElementsAttr::get(const_attr_type,
-                                   std::vector<float>(num_elements, 0)));
+
+      Value dummy_const = rewriter.create<ConstOp>(
+          op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
+      if (const_attr_type != reserve_space_3_type)
+        dummy_const = rewriter.create<TensorCastOp>(
+            op.getLoc(), reserve_space_3_type, dummy_const);
       rewriter.replaceOp(op, {/*y=*/y_out,
                               /*batch_mean=*/op.mean(),
                               /*batch_variance=*/op.variance(),
                               /*reserve_space_1=*/op.mean(),
                               /*reserve_space_2=*/op.variance(),
-                              /*reserve_space_3=*/dummy_const.getResult()});
+                              /*reserve_space_3=*/dummy_const});
     }
     return success();
   }
@@ -1709,13 +1749,12 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
         op.getLoc(),
         rewriter.getFloatAttr(getElementTypeOrSelf(operand.getType()), 0.5));
 
-    auto shaped_type = operand.getType().cast<ShapedType>();
+    auto type = operand.getType().dyn_cast<RankedTensorType>();
+    if (!type)
+      return rewriter.notifyMatchFailure(op, "requires ranked tensor type");
     auto constant_ones = rewriter.create<BroadcastOp>(
-        op.getLoc(), shaped_type, scalar_one,
-        DenseIntElementsAttr::get(
-            RankedTensorType::get({shaped_type.getRank()},
-                                  rewriter.getIntegerType(64)),
-            shaped_type.getShape()));
+        op.getLoc(), type, scalar_one,
+        GetI64ElementsAttr(type.getShape(), &rewriter));
 
     auto scaled_input = rewriter.create<MulOp>(
         op.getLoc(), operand, constant_ones, DenseIntElementsAttr());
@@ -1867,29 +1906,63 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
+  // The dimension structure of the relevant operands to a tf.BatchMatMulV2 is:
+  // - lhs: [LHSBATCHDIMS..., LHSROWS, LHSCOLS]
+  // - rhs: [RHSBATCHDIMS..., RHSROWS, RHSCOLS]
+  // - result: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, RHSCOLS]
+  // To perform the matmul, we need to first broadcast lhs and rhs to a common
+  // set of leading dimensions before doing the actual matmul.
+  // That's what the code below does.
+  // In particular, we populate out_lhs and out_rhs to have dimension structure:
+  // - out_lhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, LHSCOLS]
+  // - out_rhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., RHSROWS, RHSCOLS]
+  // To do this, we need to calculate those output shapes, which involves
+  // slicing off the leading batch dims of each operand, broadcasting them,
+  // then concatenating the broadcasted leading dims back to the row/col dims.
+  // Finally, we create a TF::BroadcastTo op that does the actual broadcast.
+
+  // TODO(silvasean): Reduce duplication across reified shape calculations and
+  // the static computation of output types needed to create ops.
+  Value lhs_shape = rewriter->create<shape::ShapeOfOp>(loc, lhs);
+  Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
+  Value const_neg2 =
+      rewriter->create<ConstantOp>(loc, rewriter->getI32IntegerAttr(-2));
+  auto lhs_splitted =
+      rewriter->create<shape::SplitAtOp>(loc, lhs_shape, const_neg2);
+  auto rhs_splitted =
+      rewriter->create<shape::SplitAtOp>(loc, rhs_shape, const_neg2);
   auto lhs_type = lhs.getType().cast<RankedTensorType>();
   auto rhs_type = rhs.getType().cast<RankedTensorType>();
-  // The last two dimensions are the matrix row/col dimensions. Don't
-  // broadcast them.
-  SmallVector<int64_t, 6> result_batch_shape;
+  // The last two dimensions are the matrix row/col dimensions. Don't broadcast
+  // them.
+  SmallVector<int64_t, 6> result_batch_shape_compile_time_extents;
   OpTrait::util::getBroadcastedShape(lhs_type.getShape().drop_back(2),
                                      rhs_type.getShape().drop_back(2),
-                                     result_batch_shape);
-  auto handle_one_side = [rewriter, &result_batch_shape, loc](
-                             Value side, RankedTensorType type,
-                             Value *out_side) {
+                                     result_batch_shape_compile_time_extents);
+  auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
+      loc, lhs_splitted.head(), rhs_splitted.head(),
+      /*error=*/nullptr);
+  // Lambda which handles the broadcasting of one side to the common
+  // leading-batch dimensions.
+  auto broadcast_one_side = [&](Value side, RankedTensorType type,
+                                Value tail_shape, Value *out_side) {
     ArrayRef<int64_t> matrix_dims = type.getShape().take_back(2);
-    auto result_shape = result_batch_shape;
+    auto result_shape = result_batch_shape_compile_time_extents;
     result_shape.append(matrix_dims.begin(), matrix_dims.end());
     auto result_type =
         RankedTensorType::get(result_shape, type.getElementType());
-    auto shape = rewriter->create<TF::ConstOp>(
-        loc, GetI64ElementsAttr(result_shape, rewriter));
-    *out_side =
-        rewriter->create<TF::BroadcastToOp>(loc, result_type, side, shape);
+    auto shape =
+        rewriter->create<shape::ConcatOp>(loc, result_batch_shape, tail_shape);
+    auto shape_tensor = rewriter->create<shape::ToExtentTensorOp>(
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(result_shape.size())},
+                              rewriter->getIndexType()),
+        shape);
+    *out_side = rewriter->create<TF::BroadcastToOp>(loc, result_type, side,
+                                                    shape_tensor);
   };
-  handle_one_side(lhs, lhs_type, out_lhs);
-  handle_one_side(rhs, rhs_type, out_rhs);
+  broadcast_one_side(lhs, lhs_type, lhs_splitted.tail(), out_lhs);
+  broadcast_one_side(rhs, rhs_type, rhs_splitted.tail(), out_rhs);
 }
 
 class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
@@ -1908,10 +1981,6 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     }
     if (rhs_type.getElementType().isa<ComplexType>() && op.adj_y()) {
       rhs = rewriter.create<TF::ConjOp>(op.getLoc(), rhs_type, rhs);
-    }
-    // TODO(silvasean): Support dynamic shapes.
-    if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape()) {
-      return failure();
     }
 
     // Broadcast both operands.
@@ -1933,6 +2002,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
         /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
         /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
         rewriter.getContext());
+    // TODO(silvasean): Emit shape checks for contracting dimensions.
+    // (The batch dimensions are checked by the broadcasting logic)
     rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
                                               dimension_numbers,
                                               /*precision_config=*/nullptr);
@@ -4714,6 +4785,17 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Performs the lowering to XLA dialect.
+void LegalizeTF::runOnFunction() {
+  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
+    signalPassFailure();
+}
+
+static PassRegistration<LegalizeTF> pass(
+    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
+
+}  // end namespace
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -4751,7 +4833,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
+  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
+  target.addLegalOp<TensorCastOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
@@ -4761,17 +4846,6 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   return applyPartialConversion(op, target, patterns);
 }
-
-/// Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
-    signalPassFailure();
-}
-
-static PassRegistration<LegalizeTF> pass(
-    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
-
-}  // end namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {

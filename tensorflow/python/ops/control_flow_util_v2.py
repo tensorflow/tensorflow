@@ -285,6 +285,7 @@ def output_all_intermediates():
 
 def get_func_graph(op, input_shapes, func_name):
   """Generates and returns a FuncGraph for the given op and input_shapes."""
+  fdef = None
   graph = op.graph
   # Recursively search the func in graphs.
   while graph is not None:
@@ -296,6 +297,9 @@ def get_func_graph(op, input_shapes, func_name):
       graph = graph.outer_graph
     else:
       break
+
+  if fdef is None:
+    raise KeyError("%s cannot be found in the graph" % func_name)
 
   # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
   # in the case of nested if ops or when the gradient is being computed

@@ -132,7 +132,6 @@ def tflite_jni_binary(
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
             "-Wl,-soname," + name,
-            "-z defs",  # Prevent unresolved symbols.
         ],
     })
     native.cc_binary(
@@ -152,29 +151,17 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = [],
-        visibility = None,
         per_os_targets = False,
-        tags = None):
+        **kwargs):
     """Builds a shared object for TFLite."""
-    linkopts = linkopts + select({
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:macos"): [],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "-z defs",  # Prevent unresolved symbols.
-        ],
-    })
     tf_cc_shared_object(
         name = name,
         copts = copts,
         linkstatic = linkstatic,
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
-        deps = deps,
-        visibility = visibility,
-        tags = tags,
         per_os_targets = per_os_targets,
+        **kwargs
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -339,12 +326,14 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "resize_nearest_neighbor",
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
         "rfft2d",
         "round",
         "rsqrt",
+        "scatter_nd",
         "shape",
         "sigmoid",
         "sin",

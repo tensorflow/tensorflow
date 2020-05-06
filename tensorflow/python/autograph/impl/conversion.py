@@ -41,9 +41,14 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
+from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cache
+from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transpiler
+from tensorflow.python.autograph.pyct.static_analysis import activity
+from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
@@ -58,24 +63,35 @@ class AutoGraphTranspiler(transpiler.FunctionTranspiler):
     # TODO(mdan): Insert list_comprehensions somewhere.
     unsupported_features_checker.verify(node)
 
-    node = converter.standard_analysis(node, ctx, is_initial=True)
-    node = converter.apply_(node, ctx, functions)
-    node = converter.apply_(node, ctx, directives)
-    node = converter.apply_(node, ctx, break_statements)
+    # Run initial analysis.
+    graphs = cfg.build(node)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx, None)
+    node = reaching_definitions.resolve(node, ctx, graphs)
+    anno.dup(
+        node,
+        {
+            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
+        },
+    )
+
+    node = functions.transform(node, ctx)
+    node = directives.transform(node, ctx)
+    node = break_statements.transform(node, ctx)
     if ctx.user.options.uses(converter.Feature.ASSERT_STATEMENTS):
-      node = converter.apply_(node, ctx, asserts)
+      node = asserts.transform(node, ctx)
     # Note: sequencing continue canonicalization before for loop one avoids
     # dealing with the extra loop increment operation that the for
     # canonicalization creates.
-    node = converter.apply_(node, ctx, continue_statements)
-    node = converter.apply_(node, ctx, return_statements)
+    node = continue_statements.transform(node, ctx)
+    node = return_statements.transform(node, ctx)
     if ctx.user.options.uses(converter.Feature.LISTS):
-      node = converter.apply_(node, ctx, lists)
-      node = converter.apply_(node, ctx, slices)
-    node = converter.apply_(node, ctx, call_trees)
-    node = converter.apply_(node, ctx, control_flow)
-    node = converter.apply_(node, ctx, conditional_expressions)
-    node = converter.apply_(node, ctx, logical_expressions)
+      node = lists.transform(node, ctx)
+      node = slices.transform(node, ctx)
+    node = call_trees.transform(node, ctx)
+    node = control_flow.transform(node, ctx)
+    node = conditional_expressions.transform(node, ctx)
+    node = logical_expressions.transform(node, ctx)
     return node
 
 

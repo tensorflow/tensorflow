@@ -180,6 +180,7 @@ enum class OperatorType : uint8 {
   kMatrixSetDiagV2,
   kMatrixDiagV3,
   kMatrixSetDiagV3,
+  kScatterNd,
   // Debugging operators.
   kNumericVerify
 };
@@ -1860,6 +1861,7 @@ struct ResizeNearestNeighborOperator : Operator {
       : Operator(OperatorType::kResizeNearestNeighbor) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of
@@ -2194,6 +2196,10 @@ struct MatrixSetDiagV2Operator : Operator {
 // skipped. (It has never been, and should never be, exposed in the public API.)
 struct MatrixSetDiagV3Operator : Operator {
   MatrixSetDiagV3Operator() : Operator(OperatorType::kMatrixSetDiagV3) {}
+};
+
+struct ScatterNdOperator : Operator {
+  ScatterNdOperator() : Operator(OperatorType::kScatterNd) {}
 };
 
 struct SegmentSumOperator : Operator {

@@ -53,7 +53,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for idx, (shape_signature, final_shape) in enumerate(input_shapes):
         self.assertTrue(
             (input_details[idx]['shape_signature'] == shape_signature).all())
-        interpreter.resize_tensor_input(idx, final_shape)
+        interpreter.resize_tensor_input(idx, final_shape, strict=True)
     interpreter.allocate_tensors()
 
     output_details = interpreter.get_output_details()

@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/tasks:task_executor",
         "@com_google_absl//absl/types:optional",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(

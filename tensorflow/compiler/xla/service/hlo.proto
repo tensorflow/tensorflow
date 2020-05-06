@@ -171,7 +171,7 @@ message HloInstructionProto {
   xla.OpSharding sharding = 40;
 
   // Backend configuration for the instruction. Has backend-specific meaning.
-  string backend_config = 43;
+  bytes backend_config = 43;
 
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
