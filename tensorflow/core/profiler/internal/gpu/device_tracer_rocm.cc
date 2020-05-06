@@ -136,8 +136,12 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               break;
             case RocmTracerEventSource::Activity:
               // Use the start/stop time from the HCC_OPS domain
-              // iter->second.start_time_ns = event.start_time_ns;
-              // iter->second.end_time_ns = event.end_time_ns;
+              // unless this is one of those events for which we do not
+              // receive any HCC activity record callback
+              if (IsEventTypeWithoutHCCActivityRecordCallback(event.type)) {
+                iter->second.start_time_ns = event.start_time_ns;
+                iter->second.end_time_ns = event.end_time_ns;
+              }
               iter->second.annotation = event.annotation;
               break;
           }
@@ -182,7 +186,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   void OnEventsDropped(const std::string& reason,
                        uint32 correlation_id) override {
     LOG(INFO) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
-              << ") : " << reason << ".";
+              << ",) : " << reason << ".";
   }
 
   void Flush() override {
@@ -196,7 +200,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     for (auto& iter : aggregated_events_) {
       auto& event = iter.second;
-      uint32 physical_id = event.device_id;
 
       // sliently drop events that we capture via roctracer
       // but do not yet know how to export to either stepstats or xplane
@@ -204,50 +207,61 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       // when we drop events because they are somehow invalid
       if (event.type == RocmTracerEventType::Memset) continue;
 
+      // For some hip API events, we never get a corresponding HCC
+      // activity record callback and hence we currently do not have a way
+      // of associating a valid device_id and stream_id with those events.
+      // For such events, explcitly set those id sto 0 for now
+      if (IsEventTypeWithoutHCCActivityRecordCallback(event.type)) {
+        DumpRocmTracerEvent(event, 0, 0);
+        if (event.device_id == RocmTracerEvent::kInvalidDeviceId) {
+          VLOG(kRocmTracerVlog) << "Explicitly setting device_id to 0 for "
+                                   "event with correlation_id="
+                                << event.correlation_id << ",";
+          event.device_id = 0;
+        } else {
+          VLOG(kRocmTracerVlog) << "Unexpectedly found a non-default "
+                                   "device_id for event with correlation_id="
+                                << event.correlation_id << ",";
+        }
+        if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
+          VLOG(kRocmTracerVlog) << "Explicitly setting stream_id to 0 for "
+                                   "event with correlation_id="
+                                << event.correlation_id << ",";
+          event.stream_id = 0;
+        } else {
+          VLOG(kRocmTracerVlog) << "Unexpectedly found a non-default "
+                                   "stream_id for event with correlation_id="
+                                << event.correlation_id << ",";
+        }
+      }
+
       // determine the logical device id
+      uint32 physical_id = event.device_id;
       uint32 logical_id = options_.num_gpus;
       auto kv_pair = device_id_map_.find(physical_id);
       if (kv_pair == device_id_map_.end()) {
         logical_id = next_logical_device_id_++;
-        LOG(INFO) << "Mapping physical device id " << physical_id
-                  << " to logical device id " << logical_id;
+        VLOG(kRocmTracerVlog) << "Mapping physical device id " << physical_id
+                              << " to logical device id " << logical_id;
         device_id_map_[physical_id] = logical_id;
       } else {
         logical_id = kv_pair->second;
       }
+      event.device_id = logical_id;
 
-      // hack
-      // if the logical_id is the default value (kInvalidDeviceId)
-      // and num_gpus == 1, set the logical_id to 0
-      if ((logical_id == RocmTracerEvent::kInvalidDeviceId) &&
-          (options_.num_gpus == 1)) {
-        VLOG(kRocmTracerVlog) << "Explicitly setting device_id to 0 for event "
-                                 "with correlation_id="
-                              << event.correlation_id;
-        logical_id = 0;
-      }
-
-      if (logical_id >= options_.num_gpus) {
+      if (event.device_id >= options_.num_gpus) {
         OnEventsDropped("logical device id >= num gpus", event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0);
-      } else if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
-        if (event.type == RocmTracerEventType::MemoryAlloc) {
-          // For hipMalloc/hipFree events, we never get a HCC activity record
-          // callback and hence we currently do not have a way of associating
-          // a valid stream_id with those events.
-          // set the stream_id to 0 for now
-          VLOG(kRocmTracerVlog) << "Explicitly setting stream_id to 0 for "
-                                   "MemoryAlloc event with correlation_id="
-                                << event.correlation_id;
-          event.stream_id = 0;
-        } else {
-          OnEventsDropped("invalid stream id", event.correlation_id);
-          DumpRocmTracerEvent(event, 0, 0);
-        }
-      } else {
-        event.device_id = logical_id;
-        per_device_collector_[logical_id].AddEvent(event);
+        continue;
       }
+
+      if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
+        OnEventsDropped("invalid stream id", event.correlation_id);
+        DumpRocmTracerEvent(event, 0, 0);
+        continue;
+      }
+
+      per_device_collector_[logical_id].AddEvent(event);
     }
     aggregated_events_.clear();
 
@@ -303,6 +317,18 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   // mapping here, so we determine it empirically
   std::map<uint32, uint32> device_id_map_;
   uint32 next_logical_device_id_;
+
+  bool IsEventTypeWithoutHCCActivityRecordCallback(RocmTracerEventType type) {
+    switch (type) {
+      case RocmTracerEventType::MemcpyH2D:
+      case RocmTracerEventType::MemoryAlloc:
+        return true;
+        break;
+      default:
+        break;
+    }
+    return false;
+  }
 
   struct PerDeviceCollector {
     void AddEvent(const RocmTracerEvent& event) {
