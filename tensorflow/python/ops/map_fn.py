@@ -375,6 +375,13 @@ def map_fn(fn,
 
   # Flatten the input tensors, and get the TypeSpec for each one.
   elems_flat = nest.flatten(elems)
+
+  # Check in case this is an empty list
+  if len(elems_flat) == 0:
+    raise ValueError(
+        "elems must be a Tensor or (possibly nested) sequence of Tensors. "
+        "Got {}, which does not contain any Tensors.".format(elems))
+
   elems_flat_signature = [type_spec.type_spec_from_value(e) for e in elems_flat]
   elems_unflatten = lambda x: nest.pack_sequence_as(elems, x)
 
