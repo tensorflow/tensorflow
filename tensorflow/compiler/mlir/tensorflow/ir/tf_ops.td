@@ -777,4 +777,133 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
+//===----------------------------------------------------------------------===//
+// tf.data ops
+//===----------------------------------------------------------------------===//
+
+def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that batches `batch_size` elements from `input_dataset`.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$batch_size,
+    I1Tensor:$drop_remainder,
+
+    DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
+def TF_MapDatasetOp : TF_Op<"MapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_MapAndBatchDatasetOp : TF_Op<"MapAndBatchDataset", [NoSideEffect]> {
+  let summary = "Creates a dataset that fuses mapping with batching.";
+
+  let description = [{
+Creates a dataset that applies `f` to the outputs of `input_dataset` and then
+batches `batch_size` of them.
+
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `batch_size * num_parallel_batches` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I64Tensor:$batch_size,
+    I64Tensor:$num_parallel_calls,
+    I1Tensor:$drop_remainder,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let description = [{
+    Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes
+    up to `num_parallel_calls` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I32Tensor:$num_parallel_calls,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$sloppy,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
+  let summary = [{
+    Creates a dataset that emits each dim-0 slice of `components` once.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
+
 #endif // TF_OPS

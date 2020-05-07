@@ -342,6 +342,38 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "tf_data_optimization_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_tf_data_optimization.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_data_optimization.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "tf_data_optimization",
+    srcs = [
+        "transforms/tf_data_optimization.cc",
+    ],
+    hdrs = [
+        "transforms/tf_data_optimization.h",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_types",
+        ":tf_data_optimization_inc_gen",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "unroll_batch_matmul_pass",
     srcs = [
@@ -406,6 +438,7 @@ cc_library(
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_list_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
+        "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
@@ -444,6 +477,7 @@ cc_library(
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
+        ":tf_data_optimization",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
