@@ -1322,10 +1322,14 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   // We verify the batch size only for the input nodes, and rely on individual
   // op converter to ensure the batch size of the outputs is not changed.
   // TODO(laigd): we need to test this properties.
-  Status status = MaybeUpdateBatchSize(batch_size);
-  if (!status.ok()) {
-    return Status(status.code(), StrCat("Batch size doesn't match for tensor ",
-                                        name, ": ", status.error_message()));
+  Status status;
+  if (use_implicit_batch_) {
+    status = MaybeUpdateBatchSize(batch_size);
+    if (!status.ok()) {
+      return Status(status.code(),
+                    StrCat("Batch size doesn't match for tensor ", name, ": ",
+                           status.error_message()));
+    }
   }
   nvinfer1::ITensor* tensor = network()->addInput(name.c_str(), dtype, dims);
   if (tensor == nullptr) {
@@ -5013,14 +5017,16 @@ Status ConvertGather(OpConverterParams* params) {
                                    node_def.name());
   }
   int trt_axis = 0;
-  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], params_input.GetTrtDims().nbDims,
-                                 node_def.name(), params_input.is_tensor(),
-                                 &trt_axis));
-  if (params_input.is_weights() && trt_axis != 0) {
+  TF_RETURN_IF_ERROR(ConvertAxis(
+      axis[0], params_input.GetTrtDims().nbDims, node_def.name(),
+      params->use_implicit_batch && params_input.is_tensor(), &trt_axis));
+  if (params->use_implicit_batch && params_input.is_weights() &&
+      trt_axis != 0) {
     return errors::Unimplemented(
         "The input axis must be zero when params is a weight.");
   }
-  if (params_input.is_tensor() && indices_input.batch_size() != 1) {
+  if (params->use_implicit_batch && params_input.is_tensor() &&
+      indices_input.batch_size() != 1) {
     return errors::Unimplemented(
         "Indices must have a batch size of 1 when params is a tensor.");
   }
@@ -5029,10 +5035,13 @@ Status ConvertGather(OpConverterParams* params) {
   // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
   // the TF rank so we don't have to add + 1.
   const int params_tf_rank =
-      params_input.GetTrtDims().nbDims + (params_input.is_tensor() ? 1 : 0);
-  const int indices_tf_rank = indices_input.GetTrtDims().nbDims + 1;
+      params_input.GetTrtDims().nbDims +
+      (params->use_implicit_batch && params_input.is_tensor() ? 1 : 0);
+  const int indices_tf_rank =
+      indices_input.GetTrtDims().nbDims + (params->use_implicit_batch ? 1 : 0);
   const int tf_gather_output_rank = params_tf_rank + indices_tf_rank - 1;
-  if (tf_gather_output_rank > nvinfer1::Dims::MAX_DIMS + 1) {
+  if (tf_gather_output_rank >
+      nvinfer1::Dims::MAX_DIMS + (params->use_implicit_batch ? 1 : 0)) {
     return errors::InvalidArgument(
         "Result of gather has dimension greater than ",
         nvinfer1::Dims::MAX_DIMS + 1);
@@ -5064,7 +5073,8 @@ Status ConvertGather(OpConverterParams* params) {
   // because of the implicit batch dim in the indices (see the above note).
   const int expected_trt_output_rank =
       tf_gather_output_rank - (params_input.is_tensor() ? 2 : 1);
-  if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
+  if (params->use_implicit_batch &&
+      trt_gather_output_dims.nbDims != expected_trt_output_rank) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
         expected_trt_output_rank,
@@ -5072,7 +5082,7 @@ Status ConvertGather(OpConverterParams* params) {
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
-  if (params_input.is_tensor()) {
+  if (params->use_implicit_batch && params_input.is_tensor()) {
     for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
       trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
     }
