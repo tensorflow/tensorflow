@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ctc_ops.ctc_decoder_ops."""
+"""Tests for tensorflow.ctc_ops.ctc_loss_op."""
 
 from __future__ import absolute_import
 from __future__ import division
