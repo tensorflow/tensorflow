@@ -3070,10 +3070,10 @@ TEST_P(OpConverterTest1, ConvertActivation) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertExpandDims) {
+TEST_P(OpConverterTest1, ConvertExpandDims) {
   // Get the NodeDef for ExpandDims.
   Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_dtype);
   auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
   auto expanddims =
       ops::ExpandDims(s.WithOpName("my_expanddims"), input, weights);
@@ -3090,85 +3090,60 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   {
     // Axis is a tensor, should fail.
     Reset();
-    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("input", {3, 2, 1});
     AddTestTensor("weights", {3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"axis\" for ExpandDims must be a "
                                "constant, at my_expanddims");
   }
-  {
-    // Add dim at batch dimension, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", {1}, {0});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "TensorRT does not allow manipulation of the batch dimension, at "
-        "my_expanddims");
-  }
-  {
-    // Add dim at batch dimension via negative axis, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    // Input is rank 4 (batch dim included)
-    AddTestWeights<int32>("weights", {1}, {-5});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "TensorRT does not allow manipulation of the batch dimension, at "
-        "my_expanddims");
-  }
-  {
-    // Axis > rank(input), should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    // Input is rank 4 (batch dim included)
-    AddTestWeights<int32>("weights", {1}, {5});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Axis value of 5 is out of bounds, must be in range [-5, 5), at "
-        "my_expanddims");
-  }
-  {
-    // Axis < -rank(input)-1, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    // Input is rank 4 (batch dim included)
-    AddTestWeights<int32>("weights", {1}, {-6});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Axis value of -6 is out of bounds, must be in range [-5, 5), at "
-        "my_expanddims");
-  }
-
-  struct TestParams {
-    std::vector<int> input_dims;
-    int axis;
-    std::vector<int> expected_output_dims;
+  std::vector<TestParamBase> test_params = {
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {1, 1, 1, 2, 3},
+                    {0},
+                    trt_mode == TrtTestMode::kImplicitBatch
+                        ? Status(error::UNIMPLEMENTED,
+                                 "TensorRT does not allow manipulation of the "
+                                 "batch dimension, at my_expanddims")
+                        : Status::OK()},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {1, 1, 1, 2, 3},
+                    {-5},
+                    trt_mode == TrtTestMode::kImplicitBatch
+                        ? Status(error::UNIMPLEMENTED,
+                                 "TensorRT does not allow manipulation of the "
+                                 "batch dimension, at my_expanddims")
+                        : Status::OK()},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {5},
+                    Status(error::INVALID_ARGUMENT,
+                           "Axis value of 5 is out of bounds, must be in range"
+                           " [-5, 5), at my_expanddims")},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {-6},
+                    Status(error::INVALID_ARGUMENT,
+                           "Axis value of -6 is out of bounds, must be in range"
+                           " [-5, 5), at my_expanddims")},
+      TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {1}},
+      TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {-3}},
+      TestParamBase{{1, 2, 3}, {}, {1, 2, 3, 1}, {3}},
+      TestParamBase{{1, 2, 3}, {}, {1, 2, 3, 1}, {-1}},
+      TestParamBase{{1, 2, 3}, {}, {1, 2, 1, 3}, {2}},
+      TestParamBase{{1, 2, 3}, {}, {1, 2, 1, 3}, {-2}},
+      TestParamBase{{1, 6}, {}, {1, 1, 6}, {1}},
+      TestParamBase{{1, 6}, {}, {1, 6, 1}, {-1}},
   };
-
-  // Ok.
-  std::vector<TestParams> ok_params = {
-      TestParams{{2, 3}, 1, {1, 2, 3}}, TestParams{{2, 3}, -3, {1, 2, 3}},
-      TestParams{{2, 3}, 3, {2, 3, 1}}, TestParams{{2, 3}, -1, {2, 3, 1}},
-      TestParams{{2, 3}, 2, {2, 1, 3}}, TestParams{{2, 3}, -2, {2, 1, 3}},
-      TestParams{{6}, 1, {1, 6}},       TestParams{{6}, -1, {6, 1}},
-  };
-  for (int i = 0; i < ok_params.size(); ++i) {
+  for (auto p : test_params) {
     Reset();
-    AddTestTensor("input", ok_params[i].input_dims);
-    AddTestWeights<int32>("weights", {1}, {ok_params[i].axis});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                             output.tensor()->getDimensions());
-
-    const DataVec input_data{{"input", AsTensor<float>({1, 2, 3, 4, 5, 6})}};
-    DataVec output_data{{"my_expanddims", ConstructTensor<float>(6)}};
-    TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(1, 2, 3, 4, 5, 6));
+    AddTestTensor("input", p.input_dims, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<int32>("weights", {1}, {p.param[0]});
+    TestOpConverter("my_expanddims", node_def, p.expected_output_dims, p.status,
+                    p.runtime_status, ElementsAreArray({1, 2, 3, 4, 5, 6}));
   }
 }
 
