@@ -420,7 +420,8 @@ public final class Tensor {
       // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
       // In such cases, we only care that the raw byte capacity matches the tensor byte capacity.
       int oBytes = isByteBuffer(o) ? oBuffer.capacity() : oBuffer.capacity() * dtype.byteSize();
-      if (bytes != oBytes) {
+      // Allow dynamic output sizes, but be sure to allocate enough bytes in the destination
+      if (bytes > oBytes) {
         throw new IllegalArgumentException(
             String.format(
                 "Cannot convert between a TensorFlowLite buffer with %d bytes and a "
