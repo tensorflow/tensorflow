@@ -346,15 +346,9 @@ class TFLiteConverterBase(object):
           self.representative_dataset.input_gen, inference_input_type,
           inference_output_type, allow_float)
 
-  def _is_unknown_shapes_allowed(self, fp32_execution):
-    # TODO(b/128319310): Investigate which quantization methods work.
-    if not fp32_execution:
-      return False
-
+  def _is_unknown_shapes_allowed(self):
     # Unknown dimensions are only allowed with the new converter.
-    if not self.experimental_new_converter:
-      return False
-    return True
+    return self.experimental_new_converter
 
   def _get_base_converter_args(self):
     """Returns the base converter args.
@@ -657,7 +651,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, graph_def)
 
-    if not self._is_unknown_shapes_allowed(quant_mode.fp32_execution()):
+    if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
       for tensor in input_tensors:
         # Note that shape_list might be empty for scalar shapes.
@@ -1197,8 +1191,7 @@ class TFLiteConverter(TFLiteConverterBase):
                                   self.representative_dataset, self._graph_def)
 
     # Checks dimensions in input tensor.
-    if (not self._is_unknown_shapes_allowed(quant_mode.fp32_execution()) and
-        self._has_valid_tensors()):
+    if (not self._is_unknown_shapes_allowed() and self._has_valid_tensors()):
       for tensor in self._input_tensors:
         shape = tensor.shape
         if not shape:
@@ -1399,13 +1392,12 @@ class TFLiteConverter(TFLiteConverterBase):
         shape[0] = batch_size
         tensor.set_shape(shape)
 
-  def _is_unknown_shapes_allowed(self, fp32_execution):
+  def _is_unknown_shapes_allowed(self):
     # Ophint Converted nodes will need the shapes to be known.
     if _is_ophint_converted(self._graph_def):
       return False
 
-    if not super(TFLiteConverter,
-                 self)._is_unknown_shapes_allowed(fp32_execution):
+    if not super(TFLiteConverter, self)._is_unknown_shapes_allowed():
       return False
 
     # `conversion_summary_dir` calls TOCO. Unknown shapes are only supported by
