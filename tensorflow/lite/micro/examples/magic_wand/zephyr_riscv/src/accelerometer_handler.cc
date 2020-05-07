@@ -34,9 +34,9 @@ bool initial = true;
 TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   sensor = device_get_binding(DT_INST_0_ADI_ADXL345_LABEL);
   if(sensor == NULL) {
-    error_reporter->Report("Failed to get accelerometer, label: %s\n", DT_INST_0_ADI_ADXL345_LABEL);
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to get accelerometer, label: %s\n", DT_INST_0_ADI_ADXL345_LABEL);
   } else {
-    error_reporter->Report("Got accelerometer, label: %s\n", DT_INST_0_ADI_ADXL345_LABEL);
+    TF_LITE_REPORT_ERROR(error_reporter, "Got accelerometer, label: %s\n", DT_INST_0_ADI_ADXL345_LABEL);
   }
   return kTfLiteOk;
 }
@@ -49,7 +49,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
 
   rc = sensor_sample_fetch(sensor);
   if(rc < 0) {
-    error_reporter -> Report("Fetch failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Fetch failed\n");
     return false;
   }
    //skip if there is no data
@@ -63,7 +63,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
                             SENSOR_CHAN_ACCEL_XYZ,
                             accel);
     if (rc < 0) {
-      error_reporter->Report("ERROR: Update failed: %d\n", rc);
+      TF_LITE_REPORT_ERROR(error_reporter, "ERROR: Update failed: %d\n", rc);
       return false;
     }
     bufx[begin_index] = (float)sensor_value_to_double(&accel[0]);
