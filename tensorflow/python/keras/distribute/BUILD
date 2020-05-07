@@ -430,6 +430,11 @@ py_test(
     srcs = ["multi_worker_tutorial_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],  # TODO(b/156029134)
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python/data/ops:dataset_ops",
