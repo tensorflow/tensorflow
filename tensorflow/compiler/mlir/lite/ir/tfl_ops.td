@@ -2999,7 +2999,8 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
   let arguments = (ins
     TFL_TensorOf<[F32, I8, TFL_Uint8, QUI8, QI8]>:$input,
     TFL_TensorOf<[I32]>:$size,
-    BoolAttr:$align_corners
+    BoolAttr:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs

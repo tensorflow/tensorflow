@@ -59,9 +59,11 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-import-not-at-top
@@ -524,8 +526,15 @@ class Network(base_layer.Layer):
         layer.reset_states()
 
   @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='This property should not be used in TensorFlow 2.0, '
+      'as updates are applied automatically.')
+  @doc_controls.do_not_generate_docs
   def state_updates(self):
-    """Returns the `updates` from all layers that are stateful.
+    """Deprecated, do NOT use!
+
+    Returns the `updates` from all layers that are stateful.
 
     This is useful for separating training updates and
     state updates, e.g. when we need to update a layer's internal state

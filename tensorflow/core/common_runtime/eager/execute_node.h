@@ -54,10 +54,12 @@ class ExecuteNodeArgs : public EagerKernelArgs {
               const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
               const core::RefCountPtr<KernelAndDevice>& kernel);
 
-  bool HasRemoteInputs() const override { return has_remote_inputs_; };
+  bool HasRemoteOrPackedInputs() const override {
+    return has_remote_inputs_ || has_packed_inputs_;
+  };
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetRemoteArg(const int index,
+  Status GetRemoteArg(const FunctionArgIndex& index,
                       eager::RemoteTensorHandle* val) const override {
     return serialize_remote_handle_(index, val);
   }
@@ -65,8 +67,9 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 
  private:
   bool has_remote_inputs_ = false;
+  bool has_packed_inputs_ = false;
 #if !defined(IS_MOBILE_PLATFORM)
-  std::function<Status(const int, eager::RemoteTensorHandle*)>
+  std::function<Status(const FunctionArgIndex&, eager::RemoteTensorHandle*)>
       serialize_remote_handle_;
 #endif  // IS_MOBILE_PLATFORM
 };

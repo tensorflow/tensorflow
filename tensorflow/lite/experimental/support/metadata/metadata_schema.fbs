@@ -195,7 +195,7 @@ enum CoordinateType : byte {
 
 table BoundingBoxProperties {
   // Denotes the order of the elements defined in each bounding box type. An
-  // empty index array represent the defualt order of each bounding box type.
+  // empty index array represent the default order of each bounding box type.
   // For example, to denote the default order of BOUNDARIES, {left, top, right,
   // bottom}, the index should be {0, 1, 2, 3}. To denote the order {left,
   // right, top, bottom}, the order should be {0, 2, 1, 3}.

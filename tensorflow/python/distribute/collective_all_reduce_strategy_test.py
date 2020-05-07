@@ -594,14 +594,14 @@ class LocalCollectiveAllReduceStrategy(
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph', 'eager'], required_gpus=2, use_dataset=[True, False]))
+          mode=['graph'], required_gpus=2, use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * required_gpus)
     else:
       def fn():
         dataset = dataset_ops.Dataset.range(5 * required_gpus)
-        it = dataset.make_one_shot_iterator()
+        it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
 
     expected_values = [

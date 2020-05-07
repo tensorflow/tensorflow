@@ -299,7 +299,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ]
         self._testBinary(bitwise_ops.right_shift, lhs, rhs, expected=expected)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testAdd(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -326,7 +325,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=np.array([3.0269620882574744, 3.3149631512242195],
                               dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testMultiply(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -390,7 +388,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -934,7 +931,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
       expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool)
       self._testBinary(op, lhs, rhs, expected=expected)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testBroadcasting(self):
     """Tests broadcasting behavior of an operator."""
 
@@ -1102,6 +1098,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             x,
             expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155097273): Handle complex dtype constants")
   def testExpandDims(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1199,6 +1197,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.full([1, 1, 3, 5], 3., dtype=np.float32),
         expected=np.full([4, 5, 1, 2, 5], 18., dtype=np.float32))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155097273): Handle complex dtype constants")
   def testPad(self):
     for dtype, pad_type in itertools.product(
         self.numeric_types, [np.int32, np.int64]):
@@ -1230,6 +1230,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1261,6 +1263,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[0, 0], [0, 0]], dtype=np.int32),
           expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
@@ -1335,6 +1339,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155097273): Handle complex dtype constants")
   def testReshape(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1414,6 +1420,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             ],
             equality_test=self.ListsAreClose)
 
+  @test_util.disable_mlir_bridge("TODO(b/155097657): Debug incorrect answer")
   def testTile(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1466,6 +1473,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [1, 2]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155097273): Handle complex dtype constants")
   def testTranspose(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1484,6 +1493,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155097273): Handle complex dtype constants")
   def testConjugateTranspose(self):
     for dtype in self.complex_types:
       self._testBinary(
@@ -1572,6 +1583,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                      np.array([2, 1, 5], dtype=np.int32),
                      expected=np.array([2, 3, 5], dtype=np.int32))
 
+  @test_util.disable_mlir_bridge("Error handling")
+  def testBroadcastArgsError(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                              "Incompatible shapes"):
       self._testBinary(array_ops.broadcast_dynamic_shape,
@@ -1579,6 +1592,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
+  @test_util.disable_mlir_bridge(
+      "Requires BroadcastInDim method in MlirHloBuilder")
   def testBroadcastTo(self):
     for dtype in self.all_types:
       x = np.random.randint(0, high=100, size=[2, 3])

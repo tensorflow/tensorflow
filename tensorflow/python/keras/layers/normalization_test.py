@@ -354,6 +354,13 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
       # Updates should be tracked in a `wrap_function`.
       self.assertLen(layer.updates, 2)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):
+    # Test case for GitHub issue for 32380
+    norm = normalization_v2.BatchNormalization(virtual_batch_size=8)
+    inp = keras.layers.Input(shape=(None, None, 3))
+    _ = norm(inp)
+
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()

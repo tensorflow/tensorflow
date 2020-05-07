@@ -286,22 +286,29 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_AddOp;
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_AddOp {
+  let hasFolder = 1;
+}
 
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp {
+}
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp;
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp {
+}
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp;
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp {
+}
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp {
+  let hasFolder = 1;
+}
 
 def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PowOp;
@@ -319,7 +326,9 @@ def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp {
+  let hasFolder = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.

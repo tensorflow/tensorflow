@@ -1,0 +1,256 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-output-arrays=BatchDatasetV2 -o - | FileCheck %s --dump-input-on-failure
+
+# CHECK-LABEL: func @main() -> tensor<*x!tf.variant>
+# CHECK: %[[tensor_slice:.*]], %[[tensor_slice_control:.*]] = tf_executor.island wraps "tf.TensorSliceDataset"
+# CHECK: %[[map_dataset:.*]], %[[map_dataset_control:.*]] = tf_executor.island wraps "tf.MapDataset"(%[[tensor_slice]]
+# CHECK: %[[batch_dataset:.*]], %[[batch_dataset_control:.*]] = tf_executor.island wraps "tf.BatchDatasetV2"(%[[map_dataset]]
+
+node {
+  name: "tensors/normalize_tensors/component_0"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 3
+          }
+        }
+        tensor_content: "\000\000\000\000\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "TensorSliceDataset"
+  op: "TensorSliceDataset"
+  input: "tensors/normalize_tensors/component_0"
+  attr {
+    key: "Toutput_types"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MapDataset"
+  op: "MapDataset"
+  input: "TensorSliceDataset"
+  attr {
+    key: "Targuments"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference_Dataset_map_<lambda>_8"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "preserve_cardinality"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "use_inter_op_parallelism"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "batch_size"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 5
+      }
+    }
+  }
+}
+node {
+  name: "drop_remainder"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BOOL
+        tensor_shape {
+        }
+        bool_val: false
+      }
+    }
+  }
+}
+node {
+  name: "BatchDatasetV2"
+  op: "BatchDatasetV2"
+  input: "MapDataset"
+  input: "batch_size"
+  input: "drop_remainder"
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "parallel_copy"
+    value {
+      b: false
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "__inference_Dataset_map_<lambda>_8"
+      input_arg {
+        name: "args_0"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "identity"
+        type: DT_INT32
+      }
+    }
+    node_def {
+      name: "mul/y"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 2
+          }
+        }
+      }
+    }
+    node_def {
+      name: "mul"
+      op: "Mul"
+      input: "args_0"
+      input: "mul/y:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "mul:z:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "args_0"
+          }
+        }
+      }
+    }
+  }
+}
+versions {
+  producer: 134
+  min_consumer: 12
+}
+

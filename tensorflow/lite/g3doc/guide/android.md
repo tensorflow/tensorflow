@@ -208,3 +208,18 @@ dependencies {
 Note that the `0.1.100` version here is purely for the sake of
 testing/development. With the local AAR installed, you can use the standard
 [TensorFlow Lite Java inference APIs](../guide/inference.md) in your app code.
+
+##### Build C++ libraries
+
+If you want to use TFLite through C++ libraries, you can build the shared
+libraries:
+
+32bit armeabi-v7a:
+```
+bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
+```
+
+64bit arm64-v8a:
+```
+bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
+```

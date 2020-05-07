@@ -707,6 +707,10 @@ class XlaBuilder {
   XlaOp RngOp(RandomDistribution distribution,
               absl::Span<const XlaOp> parameters, const Shape& shape);
 
+  virtual StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
+                                        absl::Span<const XlaOp> parameters,
+                                        const Shape& shape);
+
   virtual StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions);

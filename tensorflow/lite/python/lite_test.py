@@ -450,8 +450,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
+    # Resize tensor with strict checking.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
     # Resize tensor and invoke.
-    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
     interpreter.allocate_tensors()
     interpreter.invoke()
 
@@ -464,6 +471,34 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     output_details = interpreter.get_output_details()
     self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
+
+  def testResizeTensorInputStrict(self):
+    # Ensures that resize_tensor_input(strict=True) works as expected.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+
+    # Resize incorrect value.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
+    # Resize correct value.
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
+    interpreter.allocate_tensors()
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():
@@ -2281,6 +2316,43 @@ class ImportOpsUtilTest(LiteTest):
 
   def testGetPotentiallySupportedOps(self):
     self.assertIsNotNone(lite.get_potentially_supported_ops())
+
+
+class DefaultConverterAttrsTest(LiteTest):
+
+  def testAttrs(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+
+    # Assert output format.
+    self.assertEqual(converter.output_format, lite_constants.TFLITE)
+
+    # Assert the default inference type is float.
+    self.assertEqual(converter.inference_type, lite_constants.FLOAT)
+
+    # Assert the default inference type overrides are None.
+    self.assertIsNone(converter.inference_input_type)
+    self.assertIsNone(converter.inference_output_type)
+
+    # Assert the default quantization options are not set.
+    self.assertEqual(converter.quantized_input_stats, {})
+    self.assertIsNone(converter.default_ranges_stats)
+    self.assertFalse(converter.reorder_across_fake_quant)
+    self.assertFalse(converter.change_concat_input_ranges)
+
+    # Assert dropping control dependency is enabled by default.
+    self.assertTrue(converter.drop_control_dependency)
+
+    # Assert dumping extra information is disabled by default.
+    self.assertIsNone(converter.dump_graphviz_dir)
+    self.assertFalse(converter.dump_graphviz_video)
+    self.assertIsNone(converter.conversion_summary_dir)
 
 
 if __name__ == '__main__':

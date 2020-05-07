@@ -109,6 +109,14 @@ void MatrixBatchVectorMultiplyAccumulate(
                                               per_channel_scale, input_offset);
 }
 
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
+      matrix, segments, indices, m_rows, m_cols, vector, n_batch, result);
+}
+
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,

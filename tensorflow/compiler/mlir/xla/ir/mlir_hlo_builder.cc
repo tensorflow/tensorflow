@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -100,6 +101,29 @@ StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::RngOpInternal(
+    RandomDistribution distribution, absl::Span<const XlaOp> parameters,
+    const Shape& shape) {
+  // TODO(hinsu): Introduce RngOp in the HLO dialect in MLIR and then RngUniform
+  // and RngNormal can be mapped to the new op.
+  std::string op_name;
+  if (distribution == xla::RandomDistribution::RNG_UNIFORM) {
+    op_name = "xla_hlo.rng_uniform";
+  } else {
+    TF_RET_CHECK(distribution == xla::RandomDistribution::RNG_NORMAL)
+        << "Unexpected distribution: " << distribution;
+    op_name = "xla_hlo.rng_normal";
+  }
+
+  if (shape.is_dynamic())
+    return Unimplemented("RngOp with dynamic dims not supported");
+  llvm::SmallVector<XlaOp, 3> operands;
+  operands.append(parameters.begin(), parameters.end());
+  operands.push_back(
+      ConstantLiteral(LiteralUtil::CreateR1<int64>(shape.dimensions())));
+  return CreateOp(op_name, shape, operands);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {
@@ -154,15 +178,14 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
 XlaOp MlirHloBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
                                           XlaOp lhs, XlaOp rhs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
+    return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs});
   });
 }
 
 StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
     HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
   return CreateOp(GetMlirOpName(opcode), shape,
-                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()),
-                  /*attributes=*/{});
+                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()));
 }
 
 XlaOp MlirHloBuilder::CreateToken() {

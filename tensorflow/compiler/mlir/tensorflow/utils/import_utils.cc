@@ -31,12 +31,17 @@ inline llvm::StringRef StringViewToRef(absl::string_view view) {
 }
 }  // namespace
 
-Status LoadProtoFromBuffer(absl::string_view input,
-                           protobuf::MessageLite* proto) {
+Status LoadProtoFromBuffer(absl::string_view input, protobuf::Message* proto) {
   // Attempt to parse as text.
   if (ParseTextProto(input, "", proto).ok()) return Status::OK();
 
   // Else attempt to parse as binary.
+  return LoadProtoFromBuffer(input, static_cast<protobuf::MessageLite*>(proto));
+}
+
+Status LoadProtoFromBuffer(absl::string_view input,
+                           protobuf::MessageLite* proto) {
+  // Attempt to parse as binary.
   protobuf::io::ArrayInputStream binary_stream(input.data(), input.size());
   if (proto->ParseFromZeroCopyStream(&binary_stream)) return Status::OK();
 
@@ -44,8 +49,8 @@ Status LoadProtoFromBuffer(absl::string_view input,
   return errors::InvalidArgument("Could not parse input proto");
 }
 
-Status LoadProtoFromFile(absl::string_view input_filename,
-                         protobuf::MessageLite* proto) {
+template <class T>
+Status LoadProtoFromFileImpl(absl::string_view input_filename, T* proto) {
   const auto file_or_err =
       llvm::MemoryBuffer::getFileOrSTDIN(StringViewToRef(input_filename));
   if (std::error_code error = file_or_err.getError()) {
@@ -58,6 +63,16 @@ Status LoadProtoFromFile(absl::string_view input_filename,
   absl::string_view content(input_file->getBufferStart(),
                             input_file->getBufferSize());
   return LoadProtoFromBuffer(content, proto);
+}
+
+Status LoadProtoFromFile(absl::string_view input_filename,
+                         protobuf::Message* proto) {
+  return LoadProtoFromFileImpl(input_filename, proto);
+}
+
+Status LoadProtoFromFile(absl::string_view input_filename,
+                         protobuf::MessageLite* proto) {
+  return LoadProtoFromFileImpl(input_filename, proto);
 }
 
 }  // namespace tensorflow

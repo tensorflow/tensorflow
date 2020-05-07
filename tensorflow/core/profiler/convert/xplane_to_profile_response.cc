@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -47,6 +48,7 @@ const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
 const absl::string_view kMemoryProfile = "memory_profile";
+const absl::string_view kXPlane = "xplane";
 
 HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
   if (run_env.device_type() == "GPU") return HardwareType::GPU;
@@ -62,6 +64,18 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
   tool_output.SerializeToString(tool_data->mutable_data());
 }
 
+template <typename Proto>
+Status AddJsonToolData(absl::string_view tool_name, const Proto& tool_output,
+                       ProfileResponse* response) {
+  std::string json_output;
+  TF_RETURN_IF_ERROR(ProtoToHumanReadableJson(tool_output, &json_output,
+                                              /*ignore_accuracy_loss=*/true));
+  auto* tool_data = response->add_tool_data();
+  tool_data->set_name(string(tool_name));
+  tool_data->mutable_data()->append(json_output.data(), json_output.size());
+  return Status::OK();
+}
+
 // Returns the tool name with extension.
 string ToolName(absl::string_view tool) {
   if (tool == kTraceViewer) return "trace.json.gz";
@@ -75,6 +89,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                       ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
+  AddToolData(ToolName(kXPlane), xspace, response);
   if (tools.empty()) return Status::OK();
   if (tools.contains(kTraceViewer)) {
     Trace trace;
@@ -115,7 +130,8 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   if (tools.contains(kMemoryProfile)) {
     if (const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreads)) {
       MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
-      AddToolData(ToolName(kMemoryProfile), memory_profile, response);
+      TF_RETURN_IF_ERROR(
+          AddJsonToolData(ToolName(kMemoryProfile), memory_profile, response));
     }
   }
   return Status::OK();

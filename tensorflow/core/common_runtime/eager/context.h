@@ -346,8 +346,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
-  void StartStep();
-  void EndStep();
+  void StartStep() override;
+  void EndStep() override;
   ScopedStepContainer* StepContainer();
 
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }

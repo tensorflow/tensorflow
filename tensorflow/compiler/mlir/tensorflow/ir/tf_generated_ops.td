@@ -1065,6 +1065,26 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BroadcastArgsOp : TF_Op<"BroadcastArgs", [NoSideEffect]> {
+  let summary = "Return the shape of s0 op s1 with broadcast.";
+
+  let description = [{
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$s0,
+    TF_I32OrI64Tensor:$s1
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$r0
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
   let summary = [{
 Return the reduction indices for computing gradients of s0 op s1 with broadcast.
@@ -1736,6 +1756,169 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_DataFormatDimMapOp : TF_Op<"DataFormatDimMap", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Returns the dimension index in the destination data format given the one in
+  }];
+
+  let description = [{
+the source data format.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x,
+
+    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
+    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_DecodeAndCropJpegOp : TF_Op<"DecodeAndCropJpeg", [NoSideEffect]> {
+  let summary = "Decode and Crop a JPEG-encoded image to a uint8 tensor.";
+
+  let description = [{
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+
+If needed, the JPEG-encoded image is transformed to match the requested number
+of color channels.
+
+The attr `ratio` allows downscaling the image by an integer factor during
+decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+downscaling the image later.
+
+
+It is equivalent to a combination of decode and crop, but much faster by only
+decoding partial jpeg image.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$contents,
+    I32Tensor:$crop_window,
+
+    DefaultValuedAttr<I64Attr, "0">:$channels,
+    DefaultValuedAttr<I64Attr, "1">:$ratio,
+    DefaultValuedAttr<BoolAttr, "true">:$fancy_upscaling,
+    DefaultValuedAttr<BoolAttr, "false">:$try_recover_truncated,
+    DefaultValuedAttr<F32Attr, "1.0f">:$acceptable_fraction,
+    StrAttr:$dct_method
+  );
+
+  let results = (outs
+    TF_Uint8Tensor:$image
+  );
+}
+
+def TF_DecodeGifOp : TF_Op<"DecodeGif", [NoSideEffect]> {
+  let summary = "Decode the frame(s) of a GIF-encoded image to a uint8 tensor.";
+
+  let description = [{
+GIF images with frame or transparency compression are not supported.
+On Linux and MacOS systems, convert animated GIFs from compressed to
+uncompressed by running:
+
+    convert $src.gif -coalesce $dst.gif
+
+This op also supports decoding JPEGs and PNGs, though it is cleaner to use
+`tf.io.decode_image`.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$contents
+  );
+
+  let results = (outs
+    TF_Uint8Tensor:$image
+  );
+}
+
+def TF_DecodeJpegOp : TF_Op<"DecodeJpeg", [NoSideEffect]> {
+  let summary = "Decode a JPEG-encoded image to a uint8 tensor.";
+
+  let description = [{
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+
+If needed, the JPEG-encoded image is transformed to match the requested number
+of color channels.
+
+The attr `ratio` allows downscaling the image by an integer factor during
+decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+downscaling the image later.
+
+
+This op also supports decoding PNGs and non-animated GIFs since the interface is
+the same, though it is cleaner to use `tf.io.decode_image`.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$contents,
+
+    DefaultValuedAttr<I64Attr, "0">:$channels,
+    DefaultValuedAttr<I64Attr, "1">:$ratio,
+    DefaultValuedAttr<BoolAttr, "true">:$fancy_upscaling,
+    DefaultValuedAttr<BoolAttr, "false">:$try_recover_truncated,
+    DefaultValuedAttr<F32Attr, "1.0f">:$acceptable_fraction,
+    StrAttr:$dct_method
+  );
+
+  let results = (outs
+    TF_Uint8Tensor:$image
+  );
+}
+
+def TF_DecodePngOp : TF_Op<"DecodePng", [NoSideEffect]> {
+  let summary = "Decode a PNG-encoded image to a uint8 or uint16 tensor.";
+
+  let description = [{
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the PNG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+If needed, the PNG-encoded image is transformed to match the requested number
+of color channels.
+
+This op also supports decoding JPEGs and non-animated GIFs since the interface
+is the same, though it is cleaner to use `tf.io.decode_image`.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$contents,
+
+    DefaultValuedAttr<I64Attr, "0">:$channels
+  );
+
+  let results = (outs
+    TensorOf<[TF_Uint16, TF_Uint8]>:$image
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_DepthToSpaceOp : TF_Op<"DepthToSpace", [NoSideEffect]> {
   let summary = "DepthToSpace for tensors of type T.";
 
@@ -2197,6 +2380,51 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_EluGradOp : TF_Op<"EluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes gradients for the exponential linear (Elu) operation.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$gradients,
+    TF_FpTensor:$outputs
+  );
+
+  let results = (outs
+    TF_FpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_EmptyOp : TF_Op<"Empty", []> {
+  let summary = [{
+Creates a tensor with the given shape.
+
+This operation creates a tensor of `shape` and `dtype`.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$shape,
+
+    DefaultValuedAttr<BoolAttr, "false">:$init
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
@@ -3601,6 +3829,28 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   let hasFolder = 1;
 }
 
+def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes rectified linear gradients for a LeakyRelu operation.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$gradients,
+    TF_FpTensor:$features,
+
+    DefaultValuedAttr<F32Attr, "0.2f">:$alpha
+  );
+
+  let results = (outs
+    TF_FpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_LeftShiftOp : TF_Op<"LeftShift", [NoSideEffect, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = "Elementwise computes the bitwise left-shift of `x` and `y`.";
@@ -4980,12 +5230,12 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6099,6 +6349,24 @@ def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes rectified linear 6 gradients for a Relu6 operation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$gradients,
+    TF_IntOrFpTensor:$features
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear gradients for a Relu operation.";
 
@@ -7106,6 +7374,52 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   ];
 }
 
+def TF_SeluOp : TF_Op<"Selu", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+  }];
+
+  let description = [{
+if < 0, `scale * features` otherwise.
+
+To be used together with
+`initializer = tf.variance_scaling_initializer(factor=1.0, mode='FAN_IN')`.
+For correct dropout, use `tf.contrib.nn.alpha_dropout`.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SeluGradOp : TF_Op<"SeluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes gradients for the scaled exponential linear (Selu) operation.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$gradients,
+    TF_FpTensor:$outputs
+  );
+
+  let results = (outs
+    TF_FpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ShapeOp : TF_Op<"Shape", [NoSideEffect]> {
   let summary = "Returns the shape of a tensor.";
 
@@ -7739,6 +8053,26 @@ I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SqrtGradOp : TF_Op<"SqrtGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the gradient for the sqrt of `x` wrt its input.";
+
+  let description = [{
+Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
+is the corresponding input gradient.
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$y,
+    TF_FpOrComplexTensor:$dy
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -9299,6 +9633,30 @@ y + truncate_mod(x, y) = x`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TruncatedNormalOp : TF_Op<"TruncatedNormal", []> {
+  let summary = "Outputs random values from a truncated normal distribution.";
+
+  let description = [{
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {

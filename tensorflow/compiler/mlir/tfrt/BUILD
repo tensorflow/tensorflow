@@ -13,6 +13,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/runtime_fallback/...",
+        "//tensorflow/core/tfrt/experimental/saved_model/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
