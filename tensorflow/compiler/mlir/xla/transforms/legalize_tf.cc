@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -4785,6 +4786,51 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Emits debug information which includes the number of ops of each type which
+// failed to legalize.
+void EmitLegalizationErrors(Operation *op,
+                            const DenseSet<Operation *> &nonlegalized_ops) {
+  // Track the legalization failures by mapping op name to information about
+  // that failure: the number of unlegalized occurances of the op, and one
+  // example operation that failed.
+  std::map<StringRef, std::pair<int, Operation *>> op_name_to_error_info;
+  DenseSet<Operation *> error_ops;
+  for (Operation *nonlegalized_op : nonlegalized_ops) {
+    // Increment count of this legalization failure.
+    StringRef op_name = nonlegalized_op->getName().getStringRef();
+    // If this emplace is successful, it's the first time we've encountered
+    // this op type. Initialize count to 0 so that after increment, it is 1.
+    auto insertion_result = op_name_to_error_info.emplace(
+        op_name, std::make_pair(0, nonlegalized_op));
+    ++insertion_result.first->second.first;
+  }
+  std::vector<std::string> error_messages;
+  error_messages.reserve(op_name_to_error_info.size());
+  for (const auto &op_info : op_name_to_error_info) {
+    error_messages.push_back(
+        llvm::formatv("{0} (count: {1})", op_info.first, op_info.second.first));
+  }
+  Location loc = op->getLoc();
+  emitError(loc) << "The following operations cannot be legalized: "
+                 << llvm::join(error_messages, "; ")
+                 << ". These legalization failure(s) may be due to missing TF "
+                    "to HLO lowerings and/or unsupported attributes, etc.";
+  // Emit more information about the missing ops. This error message
+  // contains useful details beyond the op name (input and output shapes,
+  // attributes, etc.).
+  if (!VLOG_IS_ON(1) && nonlegalized_ops.size() != 1) {
+    emitError(loc)
+        << "Emitting more detail about one op that failed to legalize...";
+  } else if (VLOG_IS_ON(1)) {
+    emitError(loc) << "Emitting more detail about one of each type of op "
+                      "that failed to legalize...";
+  }
+  for (const auto &op_info : op_name_to_error_info) {
+    op_info.second.second->emitOpError() << "is not legalizable";
+    if (!VLOG_IS_ON(1)) break;
+  }
+}
+
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
   if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
@@ -4841,7 +4887,16 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
     target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
-    return applyFullConversion(op, target, patterns);
+    DenseSet<Operation *> nonlegalized_ops;
+    LogicalResult result = applyPartialConversion(
+        op, target, patterns, /*converter=*/nullptr, &nonlegalized_ops);
+    // In order to enforce that the conversion result is fully converted,
+    // fail if there are any nonlegalized ops in the set.
+    if (failed(result) || !nonlegalized_ops.empty()) {
+      EmitLegalizationErrors(op, nonlegalized_ops);
+      return failure();
+    }
+    return result;
   }
 
   return applyPartialConversion(op, target, patterns);
