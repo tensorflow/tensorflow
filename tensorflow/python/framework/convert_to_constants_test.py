@@ -37,6 +37,7 @@ from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -1180,6 +1181,41 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
                 node_def {name: "ReadVariableOp" op: "Identity"
                   input: "readvariableop_z"}}}""")
 
+  def testGraphWithResourceScatter(self):
+    """ Freezes a graph which contains resource scatter op """
+    frozen_value = None
+    value = None
+    frozen_graph = None
+    with ops.Graph().as_default():
+      with variable_scope.variable_scope("", use_resource=True):
+        x = variable_scope.get_variable("var_x", initializer=[1.0])
+        y = x.scatter_add(indexed_slices.IndexedSlices([1], [0]))
+        
+        z = math_ops.multiply(y, 2.0, name="output_node")
+        with session_lib.Session() as sess:
+          sess.run(variables.global_variables_initializer())
+          value = sess.run(z)
+
+          variable_graph_def = sess.graph.as_graph_def()
+          with self.assertRaisesRegexp(
+              ValueError,
+              "Input 0 of node ResourceScatterAdd was passed float from"
+              ".+:0 incompatible with expected resource"):
+            frozen_graph = convert_to_constants.convert_variables_to_constants_from_session_graph(
+              sess, variable_graph_def, ["output_node"])
+          
+            with ops.Graph().as_default() as graph:
+              importer.import_graph_def(frozen_graph, name="")
+
+          frozen_graph = convert_to_constants.convert_variables_to_constants_from_session_graph(
+              sess, variable_graph_def, ["output_node"],
+              check_and_revert_if_type_mismatch=True)
+
+    with ops.Graph().as_default() as graph:
+      importer.import_graph_def(frozen_graph, name="")
+      with session_lib.Session(graph=graph) as sess:
+        frozen_value = sess.run("output_node:0")
+    assert frozen_value == value
 
 if __name__ == "__main__":
   test.main()

@@ -248,7 +248,8 @@ def convert_variables_to_constants(sess,
                                    input_graph_def,
                                    output_node_names,
                                    variable_names_whitelist=None,
-                                   variable_names_blacklist=None):
+                                   variable_names_blacklist=None,
+                                   check_and_revert_if_type_mismatch=False):
   """Replaces all the variables in a graph with constants of the same values.
 
   If you have a trained graph containing Variable ops, it can be convenient to
@@ -277,11 +278,17 @@ def convert_variables_to_constants(sess,
       graph_def=input_graph_def,
       output_node_names=output_node_names,
       variable_names_allowlist=variable_names_whitelist,
-      variable_names_denylist=variable_names_blacklist)
+      variable_names_denylist=variable_names_blacklist,
+      check_and_revert_if_type_mismatch=check_and_revert_if_type_mismatch)
   # The previous code logic generated an empty versions field, we clear it here
   # to maintain backwards compatibility.
   ret.versions.Clear()
   return ret
+
+
+def _get_tensor_name(tensor):
+  """Returns a list of string names for the tensors specified."""
+  return tensor.name.split(":")[0]
 
 
 @deprecation.deprecated(

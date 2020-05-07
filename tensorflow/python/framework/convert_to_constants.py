@@ -23,17 +23,20 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
@@ -852,12 +855,15 @@ class _SessionConverterData(_ConverterData):
                graph_def,
                output_node_names,
                variable_names_allowlist=None,
-               variable_names_denylist=None):
+               variable_names_denylist=None,
+               check_and_revert_if_type_mismatch=False):
     graph_def = graph_util.extract_sub_graph(graph_def, output_node_names)
     super(_SessionConverterData, self).__init__(
         graph_def,
         variable_names_allowlist=variable_names_allowlist,
         variable_names_denylist=variable_names_denylist)
+
+    self.check_and_revert_if_type_mismatch = check_and_revert_if_type_mismatch
 
     nodes_to_convert = []
     tensor_names_to_convert = []
@@ -1008,6 +1014,101 @@ def _construct_concrete_function(func, output_graph_def,
     input_tensor.set_shape(not_converted_inputs_map[input_tensor.name].shape)
   return new_func
 
+def _fix_types_match_conversion(input_graph_def,
+                                variables_data_map, output_graph_def):
+  """
+  This function compares the converted variables between initial and final graph
+  If converted, operators that are connected should have been modified to accept
+    new change. If not, add back the variable, tie it to an assign, and put
+    a control edge to the calling operator.
+
+  1. List of variables to constants
+  2. Get operations with new constants as inputs
+  3. If input type of that tensor is Resource, check if nodedef has
+      changed in outputgraphdef
+  4. if not return ops to change and variable names
+  """
+
+  def _get_tensor_name(tensor):
+    """Returns a list of string names for the tensors specified."""
+    return tensor.name.split(":")[0]
+
+  recreated_vars = {}
+  filtered_operators = {}
+  variables = {}
+  with ops.Graph().as_default() as input_graph:
+    try:
+      importer.import_graph_def(input_graph_def, name="")
+    except ValueError as e:
+      logging.warning(
+          "The input graph can't be imported because of the following error %s"
+          % (e))
+      return False
+
+    operators_with_vars = {}
+    for input_node in input_graph.get_operations():
+      input_types = input_node._input_types
+      if input_node.type == "VarHandleOp":
+        variables[input_node.name] = input_node.node_def
+      for ii, input_t in enumerate(input_node.inputs):
+        if _get_tensor_name(input_t) in variables_data_map:
+          # Found a variable as input
+          if input_types[ii] == dtypes.resource:
+            operators_with_vars[input_node.name] = (
+                input_node, ii, _get_tensor_name(input_t))
+  for node in output_graph_def.node:
+    if node.name in operators_with_vars:
+      if node == operators_with_vars[node.name][0].node_def:
+        filtered_operators[node.name] = (
+            operators_with_vars[node.name][2],
+            operators_with_vars[node.name][1])
+
+  # Now we will recreate output graphdef with fixed nodes
+  def create_var_assign(old_var_node_def, graph_def):
+    """ Creates Variable and assign operators """
+
+    new_var = node_def_pb2.NodeDef()
+    new_var.CopyFrom(old_var_node_def)
+    new_var.name = old_var_node_def.name+"_recreated"
+
+    assign_op = node_def_pb2.NodeDef()
+    assign_op.name = old_var_node_def.name+"_assign"
+    assign_op.op = "AssignVariableOp"
+    inputs_to_assign = [new_var.name+":0", old_var_node_def.name+":0"]
+    assign_op.input.extend(inputs_to_assign)
+    assign_op.attr["dtype"].CopyFrom(new_var.attr["dtype"])
+
+    graph_def.node.append(new_var)
+    graph_def.node.append(assign_op)
+    return new_var.name, assign_op.name
+
+  new_output_graph_def = graph_pb2.GraphDef()
+  how_many_converted = 0
+  for input_node in output_graph_def.node:
+    output_node = node_def_pb2.NodeDef()
+    output_node.CopyFrom(input_node)
+    if input_node.name in filtered_operators:
+      if filtered_operators[input_node.name][0] not in recreated_vars:
+        # Create var assign
+        new_var_name, assign_name = create_var_assign(
+            variables[filtered_operators[input_node.name][0]],
+            new_output_graph_def)
+        recreated_vars[filtered_operators[input_node.name][0]] = (
+            new_var_name, assign_name)
+      output_node.input[filtered_operators[input_node.name][1]] = \
+        recreated_vars[filtered_operators[input_node.name][0]][0]
+      output_node.input.append(
+          "^"+recreated_vars[filtered_operators[input_node.name][0]][1])
+      how_many_converted += 1
+
+    else:
+      output_node.CopyFrom(input_node)
+    new_output_graph_def.node.append(output_node)
+
+  logging.info("Fixed %d type mismatches.", how_many_converted)
+  return new_output_graph_def
+
+
 
 def _replace_variables_by_constants(converter_data):
   """Replaces variables by constants on a given graph.
@@ -1035,6 +1136,19 @@ def _replace_variables_by_constants(converter_data):
       for t in converter_data.tensor_data.values()
       if t.index is not None
   }
+
+  if (isinstance(converter_data, _SessionConverterData) and
+      converter_data.check_and_revert_if_type_mismatch):
+    converted_graph = _fix_types_match_conversion(
+        converter_data.graph_def, converter_data._tensor_data, converted_graph)
+  #converted_graph.library.CopyFrom(converter_data.graph_def.library)
+  # Final check if graph is importable, This will validate if the conversion was done correctly
+  try:
+    with ops.Graph().as_default():
+      importer.import_graph_def(converted_graph)
+  except ValueError as e:
+    logging.warning(
+        "This graph can't be imported because of the following error %s" % (e))
 
   return converted_graph, converted_input_indices
 
@@ -1117,7 +1231,8 @@ def convert_variables_to_constants_from_session_graph(
     graph_def,
     output_node_names,
     variable_names_allowlist=None,
-    variable_names_denylist=None):
+    variable_names_denylist=None,
+    check_and_revert_if_type_mismatch=False):
   """Replaces all the variables in a graph with constants of the same values.
 
   This function works similarly to convert_variables_to_constants_v2, but it
@@ -1145,5 +1260,6 @@ def convert_variables_to_constants_from_session_graph(
           graph_def=graph_def,
           output_node_names=output_node_names,
           variable_names_allowlist=variable_names_allowlist,
-          variable_names_denylist=variable_names_denylist))
+          variable_names_denylist=variable_names_denylist,
+          check_and_revert_if_type_mismatch=check_and_revert_if_type_mismatch))
   return graph_def
