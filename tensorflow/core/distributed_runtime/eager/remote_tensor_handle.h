@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_TENSOR_HANDLE_H_
 
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 
 namespace tensorflow {
 namespace eager {

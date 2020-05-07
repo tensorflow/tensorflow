@@ -46,8 +46,13 @@ void ShapeLayout::SetToDefaultLayout() {
   LayoutUtil::SetToDefaultLayout(&shape_);
 }
 
-bool ShapeLayout::MatchesLayoutInShape(const Shape& shape) const {
-  return ShapeUtil::Equal(shape, shape_);
+bool ShapeLayout::MatchesLayoutInShape(const Shape& shape,
+                                       bool minor_to_major_only) const {
+  auto equal = Shape::Equal().IgnoreDynamicDimension();
+  if (minor_to_major_only) {
+    equal.MinorToMajorOnlyInLayout();
+  }
+  return equal(shape, shape_);
 }
 
 const Layout& ShapeLayout::layout() const {
@@ -76,11 +81,11 @@ void ShapeLayout::ResetLayout(const Layout& layout,
 }
 
 bool ShapeLayout::operator==(const ShapeLayout& other) const {
-  return ShapeUtil::Equal(shape_, other.shape_);
+  return Shape::Equal().IgnoreDynamicDimension()(shape_, other.shape_);
 }
 
 bool ShapeLayout::operator!=(const ShapeLayout& other) const {
-  return !ShapeUtil::Equal(shape_, other.shape_);
+  return !Shape::Equal().IgnoreDynamicDimension()(shape_, other.shape_);
 }
 
 }  // namespace xla

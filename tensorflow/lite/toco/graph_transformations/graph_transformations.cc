@@ -128,7 +128,8 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
 }
 
 bool GraphTransformationsPass(int increment, Model* model,
-                              const GraphTransformationsSet& transformations) {
+                              const GraphTransformationsSet& transformations,
+                              tensorflow::Status* status) {
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
@@ -142,7 +143,10 @@ bool GraphTransformationsPass(int increment, Model* model,
     for (const auto& transformation : transformations) {
       CHECK(!changed_now);
       CHECK(transformation->Messages().empty());
-      CHECK(transformation->Run(model, op_index, &changed_now).ok());
+      *status = transformation->Run(model, op_index, &changed_now);
+      if (!status->ok()) {
+        return false;
+      }
       const char* made_a_change_msg =
           changed_now ? "made a change" : "did NOT make a change";
       const int log_level =
@@ -186,18 +190,21 @@ bool GraphTransformationsPass(int increment, Model* model,
 
 }  // namespace
 
-void RunGraphTransformations(Model* model, const string& msg,
-                             const GraphTransformationsSet& transformations) {
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations) {
   PrintModelStats(toco::port::StringF("Before %s", msg), *model);
   int pass_index = 0;
+  tensorflow::Status status;
   while (GraphTransformationsPass((pass_index % 2) ? -1 : 1, model,
-                                  transformations)) {
+                                  transformations, &status)) {
     pass_index++;
     const auto& label =
         toco::port::StringF("After %s pass %d", msg, pass_index);
     PrintModelStats(label, *model);
     CheckInvariants(*model);
   }
+  return status;
 }
 
 }  // namespace toco

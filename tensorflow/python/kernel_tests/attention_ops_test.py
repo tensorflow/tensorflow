@@ -226,7 +226,7 @@ class ExtractGlimpseTest(test.TestCase):
       # [  0.  10.  11.  12.  13.  14.   0.]
       # [  0.  15.  16.  17.  18.  19.   0.]
       # [  0.  20.  21.  22.  23.  24.   0.]
-      # [  0.   0.   0.   0.   0.   0.   0.]]
+      # [  0.   0.   0.   0.   0.   0.   0.]
       result2 = image_ops.extract_glimpse_v2(
           img, [7, 7], [[0, 0]], normalized=False, noise='zero')
       self.assertAllEqual(

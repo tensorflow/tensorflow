@@ -107,7 +107,7 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(2.0, sess.run(v1))
 
   def _useRPCConfig(self):
-    """Return a `tf.ConfigProto` that ensures we use the RPC stack for tests.
+    """Return a `tf.compat.v1.ConfigProto` that ensures we use the RPC stack for tests.
 
     This configuration ensures that we continue to exercise the gRPC
     stack when testing, rather than using the in-process optimization,
@@ -115,7 +115,7 @@ class GrpcServerTest(test.TestCase):
     master in the same process.
 
     Returns:
-      A `tf.ConfigProto`.
+      A `tf.compat.v1.ConfigProto`.
     """
     return config_pb2.ConfigProto(rpc_options=config_pb2.RPCOptions(
         use_rpc_for_inprocess_master=True))

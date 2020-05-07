@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -42,6 +43,9 @@ class RandomShuffleQueueTest(test.TestCase):
     # Useful for debugging when a test times out.
     super(RandomShuffleQueueTest, self).setUp()
     tf_logging.error("Starting: %s", self._testMethodName)
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
 
   def tearDown(self):
     super(RandomShuffleQueueTest, self).tearDown()
@@ -1197,7 +1201,7 @@ class RandomShuffleQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(
             data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32))
@@ -1237,6 +1241,9 @@ class RandomShuffleQueueTest(test.TestCase):
       self.evaluate(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q_empty = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.float32, (
           (),))

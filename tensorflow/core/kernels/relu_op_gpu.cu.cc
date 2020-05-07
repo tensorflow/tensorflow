@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -23,20 +23,27 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/relu_op_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_fp16.h"
+typedef __half2 half2;
+#endif
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
 // It also tries to use native half2 primitives as much as possible.
-__global__ void ReluGradHalfKernel(const Eigen::half* gradient,
-                                   const Eigen::half* feature,
-                                   Eigen::half* backprop, int32 count) {
+__global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
+                                   const Eigen::half* __restrict__ feature,
+                                   Eigen::half* __restrict__ backprop,
+                                   int32 count) {
   int32 half2_count = count >> 1;
   int32 index = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_device_threads = gridDim.x * blockDim.x;
@@ -59,8 +66,9 @@ __global__ void ReluGradHalfKernel(const Eigen::half* gradient,
     // Fall back: convert half2 to float2 for processing.
     float2 feature_f2 = __half22float2(feature_h2);
     float2 gradient_f2 = __half22float2(gradient_h2);
-    float2 backprop_f2 = make_float2((feature_f2.x > 0) ? gradient_f2.x : 0,
-                                     (feature_f2.y > 0) ? gradient_f2.y : 0);
+    float2 backprop_f2 =
+        make_float2((feature_f2.x > 0.0f) ? float(gradient_f2.x) : 0.0f,
+                    (feature_f2.y > 0.0f) ? float(gradient_f2.y) : 0.0f);
     // Convert back to half2.
     half2 backprop_h2 = __float22half2_rn(backprop_f2);
 #endif
@@ -104,18 +112,29 @@ struct ReluGrad<Device, Eigen::half> {
     if (count == 0) return;
     int32 half2_count = Eigen::divup(count, 2);
     constexpr int32 kThreadInBlock = 512;
-    CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         half2_count, d, ReluGradHalfKernel, 0, kThreadInBlock);
-    ReluGradHalfKernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(gradient.data(), feature.data(),
-                                       backprop.data(), count);
+    TF_CHECK_OK(GpuLaunchKernel(
+        ReluGradHalfKernel, config.block_count, config.thread_per_block, 0,
+        d.stream(), gradient.data(), feature.data(), backprop.data(), count));
   }
 };
 
-__global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
-                                   int32* output) {
+__global__ void Relu_int8x4_kernel(int vect_count,
+                                   const int32* __restrict__ input,
+                                   int32* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
+#if GOOGLE_CUDA
     output[index] = __vmaxs4(input[index], 0);
+#else
+    uint32 signs = (~input[index]) & 0x80808080;
+    signs = signs >> 7;
+    signs |= signs << 1;
+    signs |= signs << 2;
+    signs |= signs << 4;
+    signs &= 0x7f7f7f7f;
+    output[index] = input[index] & signs;
+#endif
   }
 }
 
@@ -133,12 +152,12 @@ struct Relu<Device, qint8> {
 
     int32 vect_count = Eigen::divup(count, 4);
     constexpr int32 kThreadInBlock = 512;
-    CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
-    Relu_int8x4_kernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(
-        vect_count, reinterpret_cast<const int32*>(input.data()),
-        reinterpret_cast<int32*>(output.data()));
+    TF_CHECK_OK(GpuLaunchKernel(
+        Relu_int8x4_kernel, config.block_count, config.thread_per_block, 0,
+        d.stream(), vect_count, reinterpret_cast<const int32*>(input.data()),
+        reinterpret_cast<int32*>(output.data())));
   }
 };
 
@@ -158,9 +177,8 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-
 template struct functor::Relu<GPUDevice, qint8>;
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

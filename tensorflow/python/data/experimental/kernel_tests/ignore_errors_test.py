@@ -19,13 +19,16 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -34,9 +37,9 @@ from tensorflow.python.util import compat
 _NUMPY_RANDOM_SEED = 42
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class IgnoreErrorsTest(test_base.DatasetTestBase):
+class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -51,6 +54,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -65,6 +69,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadFileIgnoreError(self):
 
     def write_string_to_file(value, filename):
@@ -97,6 +102,44 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     get_next = self.getNext(dataset)
     for filename in filenames[1:]:
       self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTFRecordDatasetIgnoreError(self):
+    filenames = []
+    for i in range(5):
+      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+      filenames.append(fn)
+      writer = python_io.TFRecordWriter(fn)
+      for j in range(10):
+        writer.write(b"record")
+      writer.close()
+      # Append corrupted data
+      with open(fn, "a") as f:
+        f.write("corrupted data")
+
+    dataset = readers.TFRecordDataset(filenames).apply(
+        error_ops.ignore_errors())
+    get_next = self.getNext(dataset)
+
+    # All of the files are present.
+    for filename in filenames:
+      for j in range(10):
+        self.assertEqual(b"record", self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZipIgnoreError(self):
+    a = dataset_ops.Dataset.from_tensor_slices([1., 2., 0., 4.])
+    b = a.map(lambda x: array_ops.check_numerics(1. / x, "error"))
+
+    dataset = dataset_ops.Dataset.zip((b, a)).apply(error_ops.ignore_errors())
+    get_next = self.getNext(dataset)
+
+    for x in [1., 2., 4.]:
+      self.assertEqual((1. / x, x), self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 

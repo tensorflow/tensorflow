@@ -2,9 +2,11 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "tensorflow/compiler/xla/xla_data.proto";
+
 // Backend configs for XLA:GPU.
 //
-// These are metadata that the GPU backend attaches to HloInstrucitons and later
+// These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
 //
 // Remember that proto3 doesn't give clients a way to tell the difference
@@ -29,7 +31,7 @@ message CudnnConvBackendConfig {
   double conv_result_scale = 4;
 
   // Below are the fields related to cuDNN's fused convolution. Refer to
-  // CudnnConvParams for their meanings.
+  // GpuConvParams for their meanings.
 
   // The requested activation (e.g. relu) after the convolution. It is with type
   // stream_executor::dnn::ActivationMode.
@@ -38,4 +40,23 @@ message CudnnConvBackendConfig {
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.
   double side_input_scale = 5;
+}
+
+// Backend config for the GEMM operation running through cuBLAS.
+message GemmBackendConfig {
+  // Opaque optional algorithm number. No chosen number indicates that a
+  // different cuBLAS API will be used, which does not allow for choosing an
+  // algorithm.
+  oneof algorithm {
+    int64 selected_algorithm = 1;
+  }
+
+  double alpha_real = 2;
+  double alpha_imag = 9;
+
+  double beta = 3;
+
+  xla.DotDimensionNumbers dot_dimension_numbers = 7;
+
+  int64 batch_size = 8;
 }

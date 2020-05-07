@@ -381,8 +381,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "input image must be 4-D"))
-      << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "input image must be 4-D")) << s;
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
@@ -394,7 +393,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "box_index has incompatible shape"))
+      absl::StrContains(s.ToString(), "box_index has incompatible shape"))
       << s;
 }
 
@@ -406,8 +405,8 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(
-      s.ToString(), "box_index has values outside [0, batch_size)"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(),
+                                "box_index has values outside [0, batch_size)"))
       << s;
 }
 
@@ -423,7 +422,7 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
   //  ... (altogether 999 lines)
   //  0, 1, 2, ..., 998
   AddInput<float>(TensorShape({1, kLength, kLength, 1}),
-                  [kLength](int i) -> float { return i % kLength; });
+                  [=](int i) -> float { return i % kLength; });
   AddInputFromArray<float>(TensorShape({2, 4}),
                            {0, 0, 0.5, 0.5, 0.5, 0.5, 1, 1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
@@ -437,15 +436,15 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
   //  ... (altogether 500 lines)
   //  0, 1, 2, ..., 499
   Tensor result1(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
-  test::FillFn<float>(&result1, [kHalf](int i) -> float { return i % kHalf; });
+  test::FillFn<float>(&result1, [=](int i) -> float { return i % kHalf; });
 
   // Result 2:
   //  499, 500, 501, ..., 998
   //  ... (altogether 500 lines)
   //  499, 500, 501, ..., 998
   Tensor result2(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
-  test::FillFn<float>(
-      &result2, [kHalf](int i) -> float { return i % kHalf + kHalf - 1; });
+  test::FillFn<float>(&result2,
+                      [=](int i) -> float { return i % kHalf + kHalf - 1; });
 
   // Expected result is the concat of the two tensors.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, kHalf, kHalf, 1}));

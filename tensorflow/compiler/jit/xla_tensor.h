@@ -102,6 +102,10 @@ class XlaTensor {
   void ResetDefinitionEvent(std::shared_ptr<se::Event> event,
                             se::Stream* stream);
 
+  // Refresh the status of streams_defined_on_. Return the first not-OK stream's
+  // status or OK.
+  Status RefreshStatusOfStreams();
+
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);
   // Convert to a raw pointer from an XlaTensor, adding the pointer tag.
@@ -118,7 +122,7 @@ class XlaTensor {
   std::shared_ptr<se::Event> definition_event_;
   // A list of all streams for which the tensor's content is defined for any
   // newly enqueued command.
-  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ GUARDED_BY(mu_);
+  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ TF_GUARDED_BY(mu_);
   mutex mu_;
 };
 

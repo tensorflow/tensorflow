@@ -38,13 +38,13 @@ class TestableSizeTrackingAllocator : public Allocator {
     size_map_.erase(iter);
     port::Free(ptr);
   }
-  bool TracksAllocationSizes() override { return true; }
-  size_t RequestedSize(const void* ptr) override {
+  bool TracksAllocationSizes() const override { return true; }
+  size_t RequestedSize(const void* ptr) const override {
     const auto& iter = size_map_.find(ptr);
     EXPECT_NE(size_map_.end(), iter);
     return iter->second;
   }
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
+  absl::optional<AllocatorStats> GetStats() override { return absl::nullopt; }
 
  private:
   std::unordered_map<const void*, size_t> size_map_;
@@ -57,8 +57,8 @@ class NoMemoryAllocator : public Allocator {
     return nullptr;
   }
   void DeallocateRaw(void* ptr) override {}
-  bool TracksAllocationSizes() override { return true; }
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
+  bool TracksAllocationSizes() const override { return true; }
+  absl::optional<AllocatorStats> GetStats() override { return absl::nullopt; }
 };
 
 TEST(TrackingAllocatorTest, SimpleNoTracking) {

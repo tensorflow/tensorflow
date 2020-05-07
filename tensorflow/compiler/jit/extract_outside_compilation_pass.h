@@ -46,10 +46,11 @@ class RewriteOutsideCompilationSubgraphFn {
   RewriteOutsideCompilationSubgraphFn(
       const string& xla_cluster_attr_name,
       const string& outside_compilation_attr_name,
-      const string& xla_cluster_name)
+      const string& xla_cluster_name, const string& new_function_name)
       : xla_cluster_attr_name_(xla_cluster_attr_name),
         outside_compilation_attr_name_(outside_compilation_attr_name),
-        xla_cluster_name_(xla_cluster_name) {}
+        xla_cluster_name_(xla_cluster_name),
+        new_function_name_(new_function_name) {}
 
   Status operator()(const std::vector<OutputTensor>&,
                     std::unique_ptr<Graph>* graph,
@@ -60,6 +61,7 @@ class RewriteOutsideCompilationSubgraphFn {
   string xla_cluster_attr_name_;
   string outside_compilation_attr_name_;
   string xla_cluster_name_;
+  string new_function_name_;
 };
 
 // For an XLA computation function, replace all outside compilations with
@@ -101,7 +103,8 @@ Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
-    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld);
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    bool* modified);
 
 }  // namespace tensorflow
 

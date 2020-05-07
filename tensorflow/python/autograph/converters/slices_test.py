@@ -43,7 +43,7 @@ class SliceTest(converter_testing.TestCase):
     }
     node = slices.transform(node, ctx)
 
-    with self.compiled(node, {}, dtypes.int32) as result:
+    with self.compiled(node, {}, (dtypes.int32,)) as result:
       with self.cached_session() as sess:
         tl = list_ops.tensor_list_from_tensor(
             [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))

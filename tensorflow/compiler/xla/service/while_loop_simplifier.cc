@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -21,8 +23,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
@@ -46,7 +50,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
+  if (!while_op->parent()->IsSafelyRemovable(while_op)) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -300,8 +304,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   }
   HloInstruction* new_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(new_tuple_elems));
-  TF_RETURN_IF_ERROR(while_op->ReplaceAllUsesWith(new_tuple));
-
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, new_tuple));
   return true;
 }
 
@@ -454,27 +457,29 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //
 // Returns true if it made a change to the graph.
 static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
-  // Cowardly refuse to remove loops that are not removable.  In practice,
-  // this means that we can't remove loops that contain side-effecting
-  // instructions or have control predecessors/successors.
+  // Cowardly refuse to remove loops that are not removable.  In practice, this
+  // means that we can't remove loops that have control predecessors/successors.
+  if (!while_op->parent()->IsSafelyRemovable(while_op)) {
+    VLOG(2) << "Not attempting to remove while loop that is not removable: "
+            << while_op->ToShortString();
+    return false;
+  }
+
+  // Refuse to remove while loops with a condition that contain side-effects,
+  // because removing a while loop is tantamount to removing its condition.
   //
-  // This is not a fundamental limitation.  The control operands can be moved
-  // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.  But
-  // moving an op out of the loop also removes implicit control dependencies
-  // between the op and the ops outside the loop, so we'd have to add those back
-  // for things like infeed/outfeed.  It gets complicated.  So for now we just
-  // avoid it.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
-    VLOG(2) << "Not attempting to remove while loop it is not removable: "
+  // TODO(jlebar): This is conservative: We could instead just run the while
+  // condition once (trip-count == 0) or twice (trip-count == 1).
+  if (while_op->while_condition()->HasSideEffect()) {
+    VLOG(2) << "Not attempting to remove while loop whose condition contains "
+               "side-effecting instructions: "
             << while_op->ToShortString();
     return false;
   }
 
   // Remove while loops with static trip count of 0.
   optional<int64> trip_count =
-      ComputeWhileLoopTripCount(while_op,
-                                /*max_value_returned=*/1);
+      ComputeWhileLoopTripCount(while_op, /*max_brute_force_iters=*/1);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
     // "init" operand.
@@ -491,14 +496,43 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // Transform while loops with static trip count of 1 into a call op, then
   // inline the call.
   if (trip_count && *trip_count == 1) {
-    auto computation = while_op->parent();
-    auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
-        while_op->shape(), while_op->operands(), while_op->while_body()));
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
-                        CallInliner::Inline(call_op));
-    (void)inlined_instructions_map;
-    return true;
+    // Do not simplify the loop away when there is a side-effectful op,
+    // otherwise the infeed op may not inherit the data dependency from
+    // the while loop.
+    //
+    // Example: while_body (param_a) {
+    //   param_a = parameter(0)
+    //   infeed2 = infeed()
+    // }
+    //
+    // infeed1 = ...
+    // while = while(infeed1), body=while_body // infeed2 has implicit
+    // dependency on infeed1.
+    //
+    // After simplification:
+    //
+    // infeed1 = ...
+    // infeed2 = infeed() // no dependency between infeed1 and infeed2. infeed1
+    //                    // can be scheduled after infeed2.
+    //
+    bool has_side_effects = absl::c_any_of(
+        while_op->called_computations(), [](const HloComputation* computation) {
+          return computation->HasSideEffect();
+        });
+    if (!has_side_effects) {
+      auto computation = while_op->parent();
+      auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
+          while_op->shape(), while_op->operands(), while_op->while_body()));
+      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
+      TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                          CallInliner::Inline(call_op));
+      (void)inlined_instructions_map;
+      return true;
+    } else {
+      VLOG(2) << "Not attempting to simplify while loop because it contains a "
+                 "side-effecting node: "
+              << while_op->ToShortString();
+    }
   }
   return false;
 }

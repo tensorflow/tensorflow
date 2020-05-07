@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !GOOGLE_CUDA
-#error This file must only be included when building with Cuda support
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error This file must only be included when building with Cuda or ROCm support
 #endif
 
 #ifndef TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
@@ -39,7 +39,8 @@ struct MaxPoolForwardWithOptionalArgmax {
                   const int pooled_width, const int kernel_h,
                   const int kernel_w, const int stride_h, const int stride_w,
                   const int pad_t, const int pad_l, T* top_data, int64* mask,
-                  const Eigen::GpuDevice& d, bool propagate_nans);
+                  const Eigen::GpuDevice& d, bool propagate_nans,
+                  const bool include_batch_in_index);
 };
 
 struct MaxPoolForwardNoMask_NCHW_VECT_C {
@@ -56,7 +57,7 @@ struct MaxPoolBackwardWithArgmax {
   bool operator()(const int output_size, const int input_size,
                   const T* top_diff, const int64* mask, const int top_offset,
                   const int bottom_offset, T* bottom_diff,
-                  const Eigen::GpuDevice& d);
+                  const Eigen::GpuDevice& d, const bool include_batch_in_index);
 };
 
 template <typename T>
@@ -74,7 +75,7 @@ struct MaxPoolGradBackwardWithArgmax {
   bool operator()(const int output_size, const int input_size,
                   const T* top_diff, const int64* mask, const int top_offset,
                   const int bottom_offset, T* bottom_diff,
-                  const Eigen::GpuDevice& d);
+                  const Eigen::GpuDevice& d, const bool include_batch_in_index);
 };
 
 template <typename T>

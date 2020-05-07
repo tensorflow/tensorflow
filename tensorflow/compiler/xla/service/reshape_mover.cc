@@ -29,11 +29,6 @@ limitations under the License.
 //
 // Where the instruction must be elementwise, and both reshapes and transposes
 // are moved.
-//
-// Most elementwise instructions support implicit broadcast of scalar operands,
-// but select is a special-case.  The signature is Select(Pred, A, B), and the
-// only implicit scalar broadcast is on Pred, not on A or B. Since reshapes or
-// transposes to a scalar should be cheap, we simply never move them.
 
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
@@ -64,19 +59,13 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
   //
   // But it's not that simple. E.g. reshape(reshape(rng)) is only trivially
   // reshapable if *all* instructions in the chain have user_count == 1. And
-  // reshape(scalar) isn't trivial at all if the reshape itself isn't scalar; we
-  // rely on implicit scalar broadcast for scalars to be trivial. In addition,
-  // these cases make it harder to maintain correctness of the UpdateOperand
-  // logic below.
+  // reshape(scalar) isn't trivial at all if the reshape itself isn't scalar.
+  // In addition, these cases make it harder to maintain correctness of the
+  // UpdateOperand logic below.
   //
   // So don't handle these chains, unless you update the tests and code to deal
   // with these properly. One idea is to add a pass immediately beforehand that
   // collapses trivial runs of reshapes / transposes.
-
-  // Scalars can operate with any shape.
-  if (ShapeUtil::IsScalar(instruction->shape())) {
-    return true;
-  }
 
   // A constant can trivially reshape the literal it holds.
   if (instruction->opcode() == HloOpcode::kConstant) {
@@ -91,7 +80,7 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
     return true;
   }
 
-  // A broadcase of scalar can trivially change its shape.
+  // A broadcast of scalar can trivially change its shape.
   if (instruction->opcode() == HloOpcode::kBroadcast &&
       ShapeUtil::IsScalar(instruction->operand(0)->shape())) {
     return true;
@@ -143,8 +132,8 @@ bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
 
 // This function is called once we've decided to sink reshape/transpose operands
 // across an instruction. It returns an updated `operand` with a shape that
-// plays nicely with `new_operand_shape`; either it has the same shape (of the
-// correct type), or it is a scalar that may be implicitly broadcast.
+// plays nicely with `new_operand_shape`; it has the same shape (of the
+// correct type).
 HloInstruction* UpdateOperand(const HloInstruction* first_reshape_operand,
                               const Shape& new_operand_shape,
                               HloInstruction* operand) {
@@ -221,9 +210,8 @@ StatusOr<bool> PerformSinkReshapeOrTranspose(
         UpdateOperand(first_reshape_operand, new_operand_shape, operands[i]);
   }
   if (HloOpcode::kFusion == instruction->opcode()) {
-    // Here we already know `instruction` is elementwise, and no operand is
-    // implicit broadcast as if it were the operands would not have easy shape
-    // changes, so all the fused instructions have the same dimensions.
+    // Here we already know `instruction` is elementwise, and all the fused
+    // instructions have the same dimensions.
     for (const auto& fused_instruction : instruction->fused_instructions()) {
       Shape* shape = fused_instruction->mutable_shape();
       shape->clear_dimensions();
@@ -287,21 +275,17 @@ bool IsReshapeMoveCandidate(HloInstruction* instruction) {
   }
 
   // Check whether all operands:
-  //    0. Have the same dimensions as the output -- if not, they may be
-  //       implicitly broadcast, which can confound the movement's
-  //       correctness.
+  //    0. Have the same dimensions as the output.
   //
   // And one of the following:
   //    1. Are reshapes or transposes that have the same input and
   //       output shapes as all other reshaped or transposed operands.
   //     or
-  //    2. Are one of kConstant, kRng, broadcast of a scalar value, and scalars
-  //     that can change shape trivially.
+  //    2. Are one of kConstant, kRng, broadcast of a scalar value.
   const HloInstruction* first_reshape_operand = nullptr;
   for (const HloInstruction* operand : instruction->operands()) {
     if (!ShapeUtil::SameDimensions(operand->shape(), instruction->shape())) {
-      VLOG(5) << "Operand shape differs from output shape; may be "
-                 "implicitly broadcast, so preventing "
+      VLOG(5) << "Operand shape differs from output shape; so preventing "
                  "movement\n\toperand: "
               << operand->ToString(print_no_metadata) << "\n\tinstruction: "
               << instruction->ToString(print_no_metadata);

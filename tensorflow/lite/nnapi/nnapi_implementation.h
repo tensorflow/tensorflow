@@ -695,6 +695,25 @@ struct NnApi {
       const ANeuralNetworksDevice* device, int64_t* featureLevel);
 
   /**
+   * Get the type of a given device.
+   *
+   * The device type can be used to help application developers to distribute
+   * Machine Learning workloads and other workloads such as graphical rendering.
+   * E.g., for an app which renders AR scenes based on real time object
+   * detection results, the developer could choose an ACCELERATOR type device
+   * for ML workloads, and reserve GPU for graphical rendering.
+   *
+   * @param device The representation of the specified device.
+   * @param type The returned {@link DeviceTypeCode} of the specified device.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 29.
+   */
+  int (*ANeuralNetworksDevice_getType)(const ANeuralNetworksDevice* device,
+                                       int32_t* type);
+
+  /**
    * Get the supported operations for a specified set of devices. If multiple
    * devices are selected, the supported operation list is a union of supported
    * operations of all selected devices.
@@ -984,6 +1003,79 @@ struct NnApi {
   int (*ANeuralNetworksExecution_getDuration)(
       const ANeuralNetworksExecution* execution, int32_t durationCode,
       uint64_t* duration);
+
+  /**
+   * Queries whether an extension is supported by the driver implementation of
+   * the specified device.
+   *
+   * @param device The representation of the specified device.
+   * @param extension The extension name.
+   * @param isExtensionSupported The boolean value indicating whether the
+   * extension is supported.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 29.
+   */
+  int (*ANeuralNetworksDevice_getExtensionSupport)(
+      const ANeuralNetworksDevice* device, const char* extensionName,
+      bool* isExtensionSupported);
+
+  /**
+   * Creates an operand type from an extension name and an extension operand
+   * code.
+   *
+   * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to contain the operand.
+   * @param extensionName The extension name.
+   * @param operandCodeWithinExtension The extension operand code.
+   * @param type The operand type.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_getExtensionOperandType)(
+      ANeuralNetworksModel* model, const char* extensionName,
+      uint16_t operandCodeWithinExtension, int32_t* type);
+
+  /**
+   * Creates an operation type from an extension name and an extension operation
+   * code.
+   *
+   * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to contain the operation.
+   * @param extensionName The extension name.
+   * @param operationCodeWithinExtension The extension operation code.
+   * @param type The operation type.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_getExtensionOperationType)(
+      ANeuralNetworksModel* model, const char* extensionName,
+      uint16_t operationCodeWithinExtension,
+      ANeuralNetworksOperationType* type);
+
+  /**
+   * Sets extension operand parameters.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to be modified.
+   * @param index The index of the model operand we're setting.
+   * @param data A pointer to the extension operand data.
+   *             The data does not have to outlive the call to this function.
+   * @param length The size in bytes of the data value.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_setOperandExtensionData)(
+      ANeuralNetworksModel* model, int32_t index, const void* data,
+      size_t length);
 
   /**/
 };

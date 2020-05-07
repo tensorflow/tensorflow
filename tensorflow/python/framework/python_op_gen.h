@@ -28,8 +28,8 @@ namespace tensorflow {
 // Optional fourth argument is the name of the original C++ source file
 // where the ops' REGISTER_OP() calls reside.
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops, bool require_shapes,
-                    const string& source_file_name = "");
+                    const std::vector<string>& hidden_ops,
+                    const string& source_file_name);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing

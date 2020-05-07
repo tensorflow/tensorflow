@@ -240,6 +240,9 @@ def for_subclass_implementers(obj):
   return obj
 
 
+do_not_doc_in_subclasses = for_subclass_implementers
+
+
 def should_skip(obj):
   """Returns true if docs generation should be skipped for this object.
 

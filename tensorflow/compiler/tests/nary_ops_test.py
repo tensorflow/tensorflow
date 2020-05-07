@@ -32,7 +32,7 @@ from tensorflow.python.platform import googletest
 class NAryOpsTest(xla_test.XLATestCase):
 
   def _testNAry(self, op, args, expected, equality_fn=None):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -126,7 +126,7 @@ class NAryOpsTest(xla_test.XLATestCase):
             [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], dtype=np.float32))
 
   def testOneHot(self):
-    with self.cached_session() as session, self.test_scope():
+    with self.session() as session, self.test_scope():
       indices = array_ops.constant(np.array([[2, 3], [0, 1]], dtype=np.int32))
       op = array_ops.one_hot(indices,
                              np.int32(4),
@@ -148,7 +148,7 @@ class NAryOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(output, expected)
 
   def testSplitV(self):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = session.run(
             array_ops.split(np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 0, 1, 2]],

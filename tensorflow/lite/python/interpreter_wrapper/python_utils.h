@@ -16,22 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
 #define TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
 
-#include "tensorflow/lite/context.h"
-
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
 #include <Python.h>
 
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
+#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace python_utils {
 
-int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type);
+struct PyDecrefDeleter {
+  void operator()(PyObject* p) const { Py_DECREF(p); }
+};
 
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
+int ConvertFromPyString(PyObject* obj, char** data, Py_ssize_t* length);
+PyObject* ConvertToPyString(const char* data, size_t length);
 
 }  // namespace python_utils
 }  // namespace tflite

@@ -51,7 +51,7 @@ class SnapshotOp : public OpKernel {
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_KERNEL(TYPE)                                        \
   REGISTER_KERNEL_BUILDER(                                           \
       Name("Snapshot").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \

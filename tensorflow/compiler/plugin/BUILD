@@ -28,10 +28,9 @@
   ** Please don't remove this file - it is supporting some 3rd party plugins **
 """
 
-licenses(["notice"])
-
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
 )
 
 cc_library(

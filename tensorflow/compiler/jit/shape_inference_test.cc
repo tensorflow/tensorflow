@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -118,6 +120,54 @@ TEST(ShapeInferenceTest, WhileLoop) {
       {"while/add", {PartialTensorShape({})}},
   };
   TF_EXPECT_OK(ShapeAnnotationsMatch(graph, shape_info, expected));
+}
+
+TEST(ShapeInferenceTest, WhileLoopWithResource) {
+  // Graph:
+  // x = resource_variable_ops.var_handle_op(dtype=dtypes.float32, shape=[2, 3])
+  // y = control_flow_ops.while_loop(lambda _: true, lambda x: x, [x])
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto x =
+        ops::VarHandleOp(scope.WithOpName("x"), DT_FLOAT, TensorShape({2, 3}));
+    auto enter =
+        ops::internal::Enter(scope.WithOpName("while/Enter"), x, "aloop");
+    auto dummy = ops::Placeholder(scope.WithOpName("dummy"), DT_RESOURCE);
+    auto merge = ops::Merge(scope.WithOpName("while/Merge"),
+                            std::initializer_list<Input>{enter, dummy});
+    auto false_value = ops::Const<bool>(scope.WithOpName("false"), false);
+    auto loop_cond =
+        ops::LoopCond(scope.WithOpName("while/LoopCond"), false_value);
+    auto switch_node =
+        ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
+    auto exit = ops::internal::Exit(scope.WithOpName("while/Exit"),
+                                    switch_node.output_false);
+    auto identity = ops::Identity(scope.WithOpName("while/Identity"),
+                                  switch_node.output_true);
+    auto next_iteration =
+        ops::NextIteration(scope.WithOpName("while/NextIteration"), identity);
+    auto sink = ops::Identity(scope.WithOpName("sink"), exit);
+
+    // Remove the dummy node and add the loop backedge.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
+
+    TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  // Check that we can infer shape for "sink" node (Merge node output).
+  GraphShapeInfo shape_info;
+  TF_ASSERT_OK(InferShapes(&graph, /*arg_shapes=*/{}, /*fnlib_def=*/nullptr,
+                           &shape_info));
+  auto iter = shape_info.find("sink");
+  EXPECT_NE(iter, shape_info.end());
+  EXPECT_EQ(iter->second.size(), 1);
+  EXPECT_EQ(iter->second.at(0).handle_type, DT_FLOAT);
+  TensorShape resource_shape;
+  EXPECT_TRUE(iter->second.at(0).handle_shape.AsTensorShape(&resource_shape));
+  EXPECT_EQ(resource_shape, TensorShape({2, 3}));
 }
 
 }  // namespace

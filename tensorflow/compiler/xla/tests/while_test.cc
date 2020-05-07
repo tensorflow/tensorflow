@@ -1265,7 +1265,7 @@ void BM_WhileLoop(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
@@ -1314,9 +1314,10 @@ void BM_WhileLoop(int num_iters) {
   While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, {}, ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      client->Compile(computation, {}, ExecutableBuildOptions()));
+  auto executable = std::move(executables[0]);
 
   // Run some warm-up executions.
   ExecutableRunOptions options;

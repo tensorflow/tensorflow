@@ -21,9 +21,12 @@ from __future__ import print_function
 import abc
 
 import collections
+
 import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
@@ -37,11 +40,20 @@ def format_master_url(master, rpc_layer=None):
 
 
 def get_accelerator_devices(master, config_proto):
-  # TODO(frankchn): Add support for eager mode as well as graph mode.
-  with ops.Graph().as_default():
-    with session.Session(master, config=config_proto) as s:
-      devices = s.list_devices()
-  return devices
+  """Returns accelerator devices given a master and a configuration."""
+  if context.executing_eagerly():
+    logical_devices = config.list_logical_devices()
+    devices = []
+    for d in logical_devices:
+      if d.device_type == 'CPU' or d.device_type == 'XLA_CPU':  # Filter CPUs
+        continue
+      devices.append(session._DeviceAttributes(d.name, d.device_type, 0, 0))  # pylint: disable=protected-access
+    return devices
+  else:
+    with ops.Graph().as_default():
+      with session.Session(master, config=config_proto) as s:
+        devices = s.list_devices()
+    return devices
 
 
 @tf_export('distribute.cluster_resolver.ClusterResolver')
@@ -72,7 +84,7 @@ class ClusterResolver(object):
 
   @abc.abstractmethod
   def cluster_spec(self):
-    """Retrieve the current state of the cluster and returns a ClusterSpec.
+    """Retrieve the current state of the cluster and return a ClusterSpec.
 
     Returns:
       A ClusterSpec representing the state of the cluster at the moment this
@@ -133,6 +145,11 @@ class ClusterResolver(object):
     devices = get_accelerator_devices(master, config_proto)
     mapping = collections.defaultdict(int)
     for device in devices:
+      if task_type is not None and task_id is not None:
+        job_path = '/job:%s' % task_type
+        task_path = '/task:%s' % task_id
+        if job_path not in device.name or task_path not in device.name:
+          continue
       mapping[device.device_type] += 1
     return mapping
 
@@ -160,7 +177,7 @@ class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
   def __init__(self, cluster_spec, master='', task_type=None, task_id=None,
-               environment='', num_accelerators=0,
+               environment='', num_accelerators=None,
                rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
@@ -168,6 +185,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._task_type = task_type
     self._task_id = task_id
     self._environment = environment
+
     self._num_accelerators = num_accelerators
     self._rpc_layer = rpc_layer
 
@@ -227,23 +245,23 @@ class SimpleClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     The SimpleClusterResolver does not do automatic detection of accelerators,
     so a TensorFlow session will never be created, and thus all arguments are
-    unused and we simply return whatever was passed in when this object was
-    initialized.
+    unused and we simply assume that the type of accelerator is a GPU and return
+    the value in provided to us in the constructor.
 
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Unused.
     """
     # Unused
-    del task_type, task_id, accelerator_type, config_proto
+    del task_type, task_id, config_proto
+    if self._num_accelerators is None:
+      return {}
     return self._num_accelerators
 
   @property
@@ -264,7 +282,7 @@ class UnionClusterResolver(ClusterResolver):
   when cluster_spec is called. The details of the merge function is
   documented in the cluster_spec function.
 
-  For additional Cluster Resolver properties such as task type, task index,
+  For additional ClusterResolver properties such as task type, task index,
   rpc layer, environment, etc..., we will return the value from the first
   ClusterResolver in the union.
   """
@@ -419,10 +437,9 @@ class UnionClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     return self._cluster_resolvers[0].num_accelerators(
-        task_type, task_id, accelerator_type, config_proto)
+        task_type, task_id, config_proto)
 
   @property
   def rpc_layer(self):

@@ -110,7 +110,7 @@ Status ValidateGraphHasNoCycle(const Graph& graph) {
     return errors::InvalidArgument(
         "Graph is invalid, contains a cycle with ",
         graph.num_nodes() - processed,
-        " nodes, including: ", str_util::Join(nodes_in_cycle, ", "));
+        " nodes, including: ", absl::StrJoin(nodes_in_cycle, ", "));
   }
   return Status::OK();
 }

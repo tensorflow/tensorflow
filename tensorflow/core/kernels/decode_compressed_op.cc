@@ -34,7 +34,7 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   ~MemoryInputStream() override {}
 
-  Status ReadNBytes(int64 bytes_to_read, string* result) override {
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override {
     result->clear();
     if (bytes_to_read < 0) {
       return errors::InvalidArgument("Can't read a negative number of bytes: ",
@@ -84,13 +84,13 @@ class DecodeCompressedOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* bytes_tensor;
     OP_REQUIRES_OK(context, context->input("bytes", &bytes_tensor));
-    const auto& bytes_flat = bytes_tensor->flat<string>();
+    const auto& bytes_flat = bytes_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", bytes_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
     if (compression_type_.empty()) {
       for (int64 i = 0; i < bytes_flat.size(); i++) {
         output_flat(i) = bytes_flat(i);
@@ -106,10 +106,10 @@ class DecodeCompressedOp : public OpKernel {
             new io::ZlibInputStream(
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
-        string output_string;
+        tstring output_string;
         Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
-        output_flat(i) = output_string;
+        output_flat(i) = std::move(output_string);
       }
     }
   }

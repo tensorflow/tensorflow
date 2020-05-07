@@ -39,7 +39,7 @@ class DelegateData {
 
   // The EagerContext that is required for execution of Flex Ops.
   // Note: The context is lazily created after the first call to |Prepare()|.
-  tensorflow::EagerContext* GetEagerContext() { return eager_context_.get(); }
+  tensorflow::EagerContext* GetEagerContext() { return eager_context_; }
 
   // Map from TF Lite tensor index to TensorFlow tensor for a given context.
   BufferMap* GetBufferMap(const TfLiteContext* context) {
@@ -48,7 +48,7 @@ class DelegateData {
 
  private:
   // Will be null until Prepare() is called and completes successfully.
-  std::unique_ptr<tensorflow::EagerContext> eager_context_;
+  tensorflow::EagerContext* eager_context_ = nullptr;
   // TODO(b/112439500): Clean up stale BufferMap instances after adding the
   // necessary cleanup hook from a TfLiteContext to a TfLiteDelegate.
   std::unordered_map<const TfLiteContext*, BufferMap> buffer_map_;

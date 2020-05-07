@@ -252,7 +252,7 @@ void TestFloatIPow(const int max_exponent, const T start, const T end,
                    const T step) {
   for (T f = start; f < end; f += step) {
     for (int i = 0; i < max_exponent; ++i) {
-      EXPECT_FLOAT_EQ(MathUtil::IPow(f, i), pow(f, i));
+      EXPECT_FLOAT_EQ(MathUtil::IPow(f, i), std::pow(f, i));
     }
   }
 }

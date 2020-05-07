@@ -1,0 +1,25 @@
+op {
+  name: "MlirPassthroughOp"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "Tinputs"
+  }
+  output_arg {
+    name: "outputs"
+    type_list_attr: "Toutputs"
+  }
+  attr {
+    name: "mlir_module"
+    type: "string"
+  }
+  attr {
+    name: "Tinputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Toutputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+}

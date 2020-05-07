@@ -8,5 +8,5 @@ filegroup(
 sh_binary(
     name = "nasm",
     srcs = ["nasm"],
-    visibility = ["@jpeg//:__pkg__"],
+    visibility = ["@libjpeg_turbo//:__pkg__"],
 )

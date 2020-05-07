@@ -15,10 +15,10 @@ limitations under the License.
 using System;
 using System.Runtime.InteropServices;
 
-using TFL_Interpreter = System.IntPtr;
-using TFL_InterpreterOptions = System.IntPtr;
-using TFL_Model = System.IntPtr;
-using TFL_Tensor = System.IntPtr;
+using TfLiteInterpreter = System.IntPtr;
+using TfLiteInterpreterOptions = System.IntPtr;
+using TfLiteModel = System.IntPtr;
+using TfLiteTensor = System.IntPtr;
 
 namespace TensorFlowLite
 {
@@ -29,15 +29,15 @@ namespace TensorFlowLite
   {
     private const string TensorFlowLibrary = "tensorflowlite_c";
 
-    private TFL_Model model;
-    private TFL_Interpreter interpreter;
+    private TfLiteModel model;
+    private TfLiteInterpreter interpreter;
 
     public Interpreter(byte[] modelData) {
       GCHandle modelDataHandle = GCHandle.Alloc(modelData, GCHandleType.Pinned);
       IntPtr modelDataPtr = modelDataHandle.AddrOfPinnedObject();
-      model = TFL_NewModel(modelDataPtr, modelData.Length);
+      model = TfLiteModelCreate(modelDataPtr, modelData.Length);
       if (model == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Model");
-      interpreter = TFL_NewInterpreter(model, /*options=*/IntPtr.Zero);
+      interpreter = TfLiteInterpreterCreate(model, /*options=*/IntPtr.Zero);
       if (interpreter == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
     }
 
@@ -46,46 +46,46 @@ namespace TensorFlowLite
     }
 
     public void Dispose() {
-      if (interpreter != IntPtr.Zero) TFL_DeleteInterpreter(interpreter);
+      if (interpreter != IntPtr.Zero) TfLiteInterpreterDelete(interpreter);
       interpreter = IntPtr.Zero;
-      if (model != IntPtr.Zero) TFL_DeleteModel(model);
+      if (model != IntPtr.Zero) TfLiteModelDelete(model);
       model = IntPtr.Zero;
     }
 
     public void Invoke() {
-      ThrowIfError(TFL_InterpreterInvoke(interpreter));
+      ThrowIfError(TfLiteInterpreterInvoke(interpreter));
     }
 
     public int GetInputTensorCount() {
-      return TFL_InterpreterGetInputTensorCount(interpreter);
+      return TfLiteInterpreterGetInputTensorCount(interpreter);
     }
 
     public void SetInputTensorData(int inputTensorIndex, Array inputTensorData) {
       GCHandle tensorDataHandle = GCHandle.Alloc(inputTensorData, GCHandleType.Pinned);
       IntPtr tensorDataPtr = tensorDataHandle.AddrOfPinnedObject();
-      TFL_Tensor tensor = TFL_InterpreterGetInputTensor(interpreter, inputTensorIndex);
-      ThrowIfError(TFL_TensorCopyFromBuffer(
+      TfLiteTensor tensor = TfLiteInterpreterGetInputTensor(interpreter, inputTensorIndex);
+      ThrowIfError(TfLiteTensorCopyFromBuffer(
           tensor, tensorDataPtr, Buffer.ByteLength(inputTensorData)));
     }
 
     public void ResizeInputTensor(int inputTensorIndex, int[] inputTensorShape) {
-      ThrowIfError(TFL_InterpreterResizeInputTensor(
+      ThrowIfError(TfLiteInterpreterResizeInputTensor(
           interpreter, inputTensorIndex, inputTensorShape, inputTensorShape.Length));
     }
 
     public void AllocateTensors() {
-      ThrowIfError(TFL_InterpreterAllocateTensors(interpreter));
+      ThrowIfError(TfLiteInterpreterAllocateTensors(interpreter));
     }
 
     public int GetOutputTensorCount() {
-      return TFL_InterpreterGetOutputTensorCount(interpreter);
+      return TfLiteInterpreterGetOutputTensorCount(interpreter);
     }
 
     public void GetOutputTensorData(int outputTensorIndex, Array outputTensorData) {
       GCHandle tensorDataHandle = GCHandle.Alloc(outputTensorData, GCHandleType.Pinned);
       IntPtr tensorDataPtr = tensorDataHandle.AddrOfPinnedObject();
-      TFL_Tensor tensor = TFL_InterpreterGetOutputTensor(interpreter, outputTensorIndex);
-      ThrowIfError(TFL_TensorCopyToBuffer(
+      TfLiteTensor tensor = TfLiteInterpreterGetOutputTensor(interpreter, outputTensorIndex);
+      ThrowIfError(TfLiteTensorCopyToBuffer(
           tensor, tensorDataPtr, Buffer.ByteLength(outputTensorData)));
     }
 
@@ -96,60 +96,60 @@ namespace TensorFlowLite
     #region Externs
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TFL_Interpreter TFL_NewModel(IntPtr model_data, int model_size);
+    private static extern unsafe TfLiteInterpreter TfLiteModelCreate(IntPtr model_data, int model_size);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TFL_Interpreter TFL_DeleteModel(TFL_Model model);
+    private static extern unsafe TfLiteInterpreter TfLiteModelDelete(TfLiteModel model);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TFL_Interpreter TFL_NewInterpreter(
-        TFL_Model model,
-        TFL_InterpreterOptions optional_options);
+    private static extern unsafe TfLiteInterpreter TfLiteInterpreterCreate(
+        TfLiteModel model,
+        TfLiteInterpreterOptions optional_options);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe void TFL_DeleteInterpreter(TFL_Interpreter interpreter);
+    private static extern unsafe void TfLiteInterpreterDelete(TfLiteInterpreter interpreter);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_InterpreterGetInputTensorCount(
-        TFL_Interpreter interpreter);
+    private static extern unsafe int TfLiteInterpreterGetInputTensorCount(
+        TfLiteInterpreter interpreter);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TFL_Tensor TFL_InterpreterGetInputTensor(
-        TFL_Interpreter interpreter,
+    private static extern unsafe TfLiteTensor TfLiteInterpreterGetInputTensor(
+        TfLiteInterpreter interpreter,
         int input_index);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_InterpreterResizeInputTensor(
-        TFL_Interpreter interpreter,
+    private static extern unsafe int TfLiteInterpreterResizeInputTensor(
+        TfLiteInterpreter interpreter,
         int input_index,
         int[] input_dims,
         int input_dims_size);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_InterpreterAllocateTensors(
-        TFL_Interpreter interpreter);
+    private static extern unsafe int TfLiteInterpreterAllocateTensors(
+        TfLiteInterpreter interpreter);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_InterpreterInvoke(TFL_Interpreter interpreter);
+    private static extern unsafe int TfLiteInterpreterInvoke(TfLiteInterpreter interpreter);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_InterpreterGetOutputTensorCount(
-        TFL_Interpreter interpreter);
+    private static extern unsafe int TfLiteInterpreterGetOutputTensorCount(
+        TfLiteInterpreter interpreter);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TFL_Tensor TFL_InterpreterGetOutputTensor(
-        TFL_Interpreter interpreter,
+    private static extern unsafe TfLiteTensor TfLiteInterpreterGetOutputTensor(
+        TfLiteInterpreter interpreter,
         int output_index);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_TensorCopyFromBuffer(
-        TFL_Tensor tensor,
+    private static extern unsafe int TfLiteTensorCopyFromBuffer(
+        TfLiteTensor tensor,
         IntPtr input_data,
         int input_data_size);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe int TFL_TensorCopyToBuffer(
-        TFL_Tensor tensor,
+    private static extern unsafe int TfLiteTensorCopyToBuffer(
+        TfLiteTensor tensor,
         IntPtr output_data,
         int output_data_size);
 

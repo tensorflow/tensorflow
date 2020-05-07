@@ -22,7 +22,7 @@ import six
 
 from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -55,9 +55,9 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   device_name = ctx.device_name
   # pylint: disable=protected-access
   try:
-    tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                               op_name, inputs, attrs,
-                                               num_outputs)
+    ctx.ensure_initialized()
+    tensors = pywrap_tfe.TFE_Py_Execute(ctx._handle, device_name, op_name,
+                                        inputs, attrs, num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
@@ -65,8 +65,69 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
   except TypeError as e:
-    if any(ops._is_keras_symbolic_tensor(x) for x in inputs):
-      raise core._SymbolicException
+    keras_symbolic_tensors = [
+        x for x in inputs if ops._is_keras_symbolic_tensor(x)
+    ]
+    if keras_symbolic_tensors:
+      raise core._SymbolicException(
+          "Inputs to eager execution function cannot be Keras symbolic "
+          "tensors, but found {}".format(keras_symbolic_tensors))
+    raise e
+  # pylint: enable=protected-access
+  return tensors
+
+
+def execute_with_cancellation(op_name,
+                              num_outputs,
+                              inputs,
+                              attrs,
+                              ctx,
+                              cancellation_manager,
+                              name=None):
+  """Execute a TensorFlow operation.
+
+  Args:
+    op_name: Name of the TensorFlow operation (see REGISTER_OP in C++ code) to
+      execute.
+    num_outputs: The number of outputs of the operation to fetch. (Explicitly
+      provided instead of being inferred for performance reasons).
+    inputs: A list of inputs to the operation. Each entry should be a Tensor, or
+      a value which can be passed to the Tensor constructor to create one.
+    attrs: A tuple with alternating string attr names and attr values for this
+      operation.
+    ctx: The value of context.context().
+    cancellation_manager: a `CancellationManager` object that can be used to
+      cancel the operation.
+    name: Customized name for the operation.
+
+  Returns:
+    List of output Tensor objects. The list is empty if there are no outputs
+
+  Raises:
+    An exception on error.
+  """
+  device_name = ctx.device_name
+  # pylint: disable=protected-access
+  try:
+    ctx.ensure_initialized()
+    tensors = pywrap_tfe.TFE_Py_ExecuteCancelable(ctx._handle, device_name,
+                                                  op_name, inputs, attrs,
+                                                  cancellation_manager._impl,
+                                                  num_outputs)
+  except core._NotOkStatusException as e:
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    six.raise_from(core._status_to_exception(e.code, message), None)
+  except TypeError as e:
+    keras_symbolic_tensors = [
+        x for x in inputs if ops._is_keras_symbolic_tensor(x)
+    ]
+    if keras_symbolic_tensors:
+      raise core._SymbolicException(
+          "Inputs to eager execution function cannot be Keras symbolic "
+          "tensors, but found {}".format(keras_symbolic_tensors))
     raise e
   # pylint: enable=protected-access
   return tensors
@@ -75,8 +136,8 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
 def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Monkey-patch to execute to enable execution callbacks."""
   tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
-  for callback in ctx.post_execution_callbacks:
-    callback(op_name, inputs, attrs, tensors, name)
+  for callback in ctx.op_callbacks:
+    callback(op_name, tuple(inputs), attrs, tensors, name)
 
   return tensors
 
@@ -84,8 +145,13 @@ def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
 execute = quick_execute
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_name):
+def must_record_gradient():
+  """Import backprop if you want gradients recorded."""
+  return False
+
+
+def record_gradient(unused_op_name, unused_inputs, unused_attrs,
+                    unused_results):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -169,6 +235,8 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  if (not l) and (default_dtype is not None):
+    return default_dtype, []  # List is empty; assume default dtype.
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
     if not isinstance(x, EagerTensor):
@@ -185,27 +253,33 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
       dtype = t.dtype
       break
 
-  internal_convert_to_tensor = ops.internal_convert_to_tensor
   if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(internal_convert_to_tensor(
-          t, dtype,
-          preferred_dtype=default_dtype,
-          ctx=ctx,
-          accept_symbolic_tensors=False))
+      ret.append(
+          ops.convert_to_tensor(
+              t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
+    ret = [ops.convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
+  # TODO(slebedev): consider removing this as it leaks a Keras concept.
+  # pylint: disable=protected-access
+  keras_symbolic_tensors = [x for x in ret if
+                            ops._is_keras_symbolic_tensor(x)]
+  if keras_symbolic_tensors:
+    raise core._SymbolicException(
+        "Using symbolic output of a Keras layer during eager execution "
+        "{}".format(keras_symbolic_tensors))
+  # pylint: enable=protected-access
   return dtype.as_datatype_enum, ret
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
-  v = [ops.internal_convert_to_tensor(t, ctx=ctx) for t in values]
+  v = [ops.convert_to_tensor(t, ctx=ctx) for t in values]
   types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
@@ -234,15 +308,15 @@ def args_to_mixed_eager_tensors(lists, ctx):
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(ops.internal_convert_to_tensor(lists[0][i], ctx=ctx))
+      lists_ret[0].append(ops.convert_to_tensor(lists[0][i], ctx=ctx))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     types.append(dtype.as_datatype_enum)
   return types, lists_ret

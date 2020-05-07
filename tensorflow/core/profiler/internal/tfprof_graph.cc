@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_graph.h"
 
 #include <stdio.h>
+
 #include <utility>
 
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
@@ -74,13 +74,14 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   root_->show_children.clear();
 
   if (opts.output_type == kOutput[3]) {
-    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    absl::FPrintF(stderr, "Only 'code' view supports pprof output now.\n");
     return root_;
   }
   if (timeline && timeline->step() < 0) {
     // TODO(xpan): Maybe pick a default step for users.
-    fprintf(stderr,
-            "Must specify -step option to generate timeline in graph view.\n");
+    absl::FPrintF(
+        stderr,
+        "Must specify -step option to generate timeline in graph view.\n");
     return root_;
   }
   // 1. Account and aggregate the stats based on the graph structure.
@@ -188,9 +189,8 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
           node->AggregateTotalStats(sc);
         }
       }
-      node->formatted_str =
-          strings::Printf("%s%s\n", string(last_ident, ' ').c_str(),
-                          FormatNode(node, opts).c_str());
+      node->formatted_str = absl::StrFormat(
+          "%s%s\n", std::string(last_ident, ' '), FormatNode(node, opts));
 
       if (opts.select.find(kShown[4]) != opts.select.end()) {
         std::unique_ptr<TFProfTensor> tfprof_tensor;

@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
 
-// Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
-
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
+
+Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
+                                      PyObject** out_ndarray);
 
 Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 

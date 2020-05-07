@@ -35,6 +35,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+// We don't support integers for convolutions, so we list the supported types
+// here.
+absl::Span<const DataType> GetXlaConvTypes();
+
 // ConvOpAttrs contains all of the metadata necessary to specify a TF or XLA
 // convolution.
 struct ConvOpAttrs {
@@ -47,22 +51,25 @@ struct ConvOpAttrs {
   std::vector<int32> dilations;
   std::vector<int32> strides;
   Padding padding;
+  std::vector<int64> explicit_paddings;
   TensorFormat data_format;
 };
 
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece type_string,
-                                               xla::XlaOp conv_input,
-                                               xla::XlaOp filter,
-                                               const ConvOpAttrs& attrs);
+xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
+    StringPiece type_string, xla::XlaOp conv_input, xla::XlaOp filter,
+    const ConvOpAttrs& attrs,
+    const xla::PrecisionConfig* precision_config = nullptr);
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs);
+    xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
+    const xla::PrecisionConfig* precision_config = nullptr);
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     StringPiece type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs);
+    const ConvOpAttrs& attrs,
+    const xla::PrecisionConfig* precision_config = nullptr);
 
 }  // namespace tensorflow
 

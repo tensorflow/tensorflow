@@ -1,0 +1,11 @@
+op {
+  name: "TensorListLength"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "length"
+    type: DT_INT32
+  }
+}

@@ -17,13 +17,23 @@ limitations under the License.
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/kernels.h"
+
+// A create function. This will never actually get called in this test, it's
+// just nice to know that it compiles.
+void* create(TF_OpKernelConstruction* ctx) {
+  TF_DataType type;
+  TF_Status* s = TF_NewStatus();
+  TF_OpKernelConstruction_GetAttrType(ctx, "foobar", &type, s);
+  TF_DeleteStatus(s);
+  return NULL;
+}
 
 // A compute function. This will never actually get called in this test, it's
 // just nice to know that it compiles.
@@ -32,12 +42,7 @@ void compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_Status* s = TF_NewStatus();
   TF_GetInput(ctx, 0, &input, s);
   TF_DeleteTensor(input);
-
-  TF_DataType type;
-  TF_OpKernelContext_GetAttrType(ctx, "foobar", &type, s);
-
   TF_DeleteStatus(s);
-
 }
 
 // Exercises tensorflow's C API.
@@ -53,12 +58,8 @@ int main(int argc, char** argv) {
   }
 
   char file_name[100];
-  struct timeval t;
-  if (gettimeofday(&t, NULL)) {
-    perror("gettimeofday failed");
-    return 1;
-  }
-  snprintf(file_name, sizeof(file_name), "test-%d-%ld.txt", getpid(), t.tv_sec);
+  time_t t = time(NULL);
+  snprintf(file_name, sizeof(file_name), "test-%d-%ld.txt", getpid(), t);
 
   size_t length = 2 + strlen(path) + strlen(file_name);
   char* full_path = malloc(length);
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
   TF_StringStreamDone(s);
 
   TF_KernelBuilder* b =
-      TF_NewKernelBuilder("SomeOp", "SomeDevice", NULL, &compute, NULL);
+      TF_NewKernelBuilder("SomeOp", "SomeDevice", &create, &compute, NULL);
   TF_RegisterKernelBuilder("someKernel", b, status);
 
   TF_DeleteStatus(status);

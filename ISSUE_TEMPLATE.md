@@ -32,7 +32,7 @@ https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
 You can obtain the TensorFlow version with:
 
 ```bash
-python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
+python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"
 ```
 
 ### Describe the problem

@@ -207,7 +207,12 @@ func tensorData(c *C.TF_Tensor) []byte {
 		return nil
 	}
 	length := int(C.TF_TensorByteSize(c))
-	slice := (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
+	var slice []byte
+	if unsafe.Sizeof(unsafe.Pointer(nil)) == 8 {
+		slice = (*[1<<50 - 1]byte)(unsafe.Pointer(cbytes))[:length:length]
+	} else {
+		slice = (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
+	}
 	return slice
 }
 

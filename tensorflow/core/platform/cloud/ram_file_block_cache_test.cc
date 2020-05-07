@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
+
 #include <cstring>
-#include "tensorflow/core/lib/core/blocking_counter.h"
+
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
@@ -99,10 +101,12 @@ TEST(RamFileBlockCacheTest, PassThrough) {
     *bytes_transferred = got_n;
     return Status::OK();
   };
-  // If block_size, max_bytes, or both are zero, the cache is a pass-through.
+  // If block_size, max_bytes, or both are zero, or want_n is larger than
+  // max_bytes the cache is a pass-through.
   RamFileBlockCache cache1(1, 0, 0, fetcher);
   RamFileBlockCache cache2(0, 1, 0, fetcher);
   RamFileBlockCache cache3(0, 0, 0, fetcher);
+  RamFileBlockCache cache4(1000, 1000, 0, fetcher);
   std::vector<char> out;
   TF_EXPECT_OK(ReadCache(&cache1, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 1);
@@ -110,6 +114,8 @@ TEST(RamFileBlockCacheTest, PassThrough) {
   EXPECT_EQ(calls, 2);
   TF_EXPECT_OK(ReadCache(&cache3, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 3);
+  TF_EXPECT_OK(ReadCache(&cache4, want_filename, want_offset, want_n, &out));
+  EXPECT_EQ(calls, 4);
 }
 
 TEST(RamFileBlockCacheTest, BlockAlignment) {

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import node_def_pb2
@@ -417,7 +418,7 @@ class ShapeOpsTest(test.TestCase):
       self.assertRaises(ValueError, array_ops.squeeze, a, [100])
 
 
-class TileTest(test.TestCase):
+class TileTest(test.TestCase, parameterized.TestCase):
 
   def testScalar(self):
     for use_gpu in False, True:
@@ -495,6 +496,8 @@ class TileTest(test.TestCase):
         "complex64": (dtypes.complex64, complex),
         "complex128": (dtypes.complex128, complex),
         "uint8": (dtypes.uint8, int),
+        "int8": (dtypes.int8, int),
+        "int16": (dtypes.int16, int),
         "int32": (dtypes.int32, int),
         "int64": (dtypes.int64, int),
         bytes: (dtypes.string, bytes)
@@ -556,13 +559,15 @@ class TileTest(test.TestCase):
     for _ in range(5):
       self._RunAndVerifyResult(10, use_gpu=True)
 
+  @parameterized.parameters(dtypes.int32, dtypes.int64)
   @test_util.run_deprecated_v1
-  def testGradientSimpleReduction(self):
+  def testGradientSimpleReduction(self, multiples_dtype):
     with self.cached_session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 1], dtype=dtypes.float32)
-      tiled = array_ops.tile(a, [1, 4])
+      multiples = constant_op.constant([1, 4], dtype=multiples_dtype)
+      tiled = array_ops.tile(a, multiples)
       grad_shape = [4, 4]
       grad_inp = np.random.rand(*grad_shape).astype("f")
       grad_tensor = constant_op.constant(
@@ -660,11 +665,13 @@ class TileTest(test.TestCase):
       err = gradient_checker.compute_gradient_error(a, [4, 2], tiled, [4, 4])
     self.assertLess(err, 1e-3)
 
+  @parameterized.parameters(dtypes.int32, dtypes.int64)
   @test_util.run_deprecated_v1
-  def testGradientWithSparseGradWithRank1(self):
+  def testGradientWithSparseGradWithRank1(self, multiples_dtype):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
                                   dtype=dtypes.float32)
-    outputs = array_ops.gather(array_ops.tile(inputs, [3]),
+    multiples = constant_op.constant([3], dtype=dtypes.int64)
+    outputs = array_ops.gather(array_ops.tile(inputs, multiples),
                                [1, 5, 9, 3, 7, 2, 2, 2])
     with self.cached_session():
       error = gradient_checker.compute_gradient_error(

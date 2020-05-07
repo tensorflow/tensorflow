@@ -44,11 +44,8 @@ TEST(MfccDctTest, AgreesWithMatlab) {
 TEST(MfccDctTest, InitializeFailsOnInvalidInput) {
   MfccDct dct1;
   EXPECT_FALSE(dct1.Initialize(-50, 1));
-  MfccDct dct2;
   EXPECT_FALSE(dct1.Initialize(10, -4));
-  MfccDct dct3;
   EXPECT_FALSE(dct1.Initialize(-1, -1));
-  MfccDct dct4;
   EXPECT_FALSE(dct1.Initialize(20, 21));
 }
 

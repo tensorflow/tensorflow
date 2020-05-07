@@ -51,6 +51,27 @@ void TensorShape::CheckDimsAtLeast(int NDIMS) const {
                           << " dimensions";
 }
 
+// TODO(slebedev): Consider merging IsValid implementations.
+template <class Shape>
+bool TensorShapeBase<Shape>::IsValid() {
+  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // unknown_shape() set, and it seems hard to remove this without backwards
+  // compatibility issues.
+  if (kIsPartial && unknown_rank()) return dims() == 0;
+  int64 num_elements = 1;
+  if (dims() > MaxDimensions()) return false;
+  for (auto d : dim_sizes()) {
+    if (d < (kIsPartial ? -1 : 0)) return false;
+    if (d == -1) {
+      num_elements = -1;
+    } else if (!kIsPartial || num_elements >= 0) {
+      num_elements = MultiplyWithoutOverflow(num_elements, d);
+      if (num_elements < 0) return false;
+    }
+  }
+  return true;
+}
+
 template <class Shape>
 bool TensorShapeBase<Shape>::IsValid(const TensorShapeProto& proto) {
   // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
@@ -759,7 +780,7 @@ Status TensorShapeUtils::NumElements(gtl::ArraySlice<int64> shape,
     n = MultiplyWithoutOverflow(n, dim);
     if (n < 0) {
       return errors::InvalidArgument("Can't compute total size of shape [",
-                                     str_util::Join(shape, ","),
+                                     absl::StrJoin(shape, ","),
                                      "]; product would overflow int64");
     }
   }

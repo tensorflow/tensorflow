@@ -28,9 +28,6 @@ limitations under the License.
 
 // This module contains a minimal subset of gmock functionality just
 // sufficient to execute the currently existing tests.
-namespace util {
-class Status;
-}  // namespace util
 
 namespace xla {
 template <typename T>

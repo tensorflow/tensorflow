@@ -9,9 +9,9 @@ The demos in this folder are designed to give straightforward samples of using
 TensorFlow in mobile applications.
 
 Inference is done using the [TensorFlow Android Inference
-Interface](../../../tensorflow/contrib/android), which may be built separately
-if you want a standalone library to drop into your existing application. Object
-tracking and efficient YUV -> RGB conversion are handled by
+Interface](../../tools/android/inference_interface), which may be built
+separately if you want a standalone library to drop into your existing
+application. Object tracking and efficient YUV -> RGB conversion are handled by
 `libtensorflow_demo.so`.
 
 A device running Android 5.0 (API 21) or higher is required to run the demo due
@@ -45,11 +45,11 @@ on API >= 14 devices.
 
 ## Prebuilt Components:
 
-The fastest path to trying the demo is to download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
+The fastest path to trying the demo is to download the [prebuilt demo APK](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Also available are precompiled native libraries, and a jcenter package that you
 may simply drop into your own applications. See
-[tensorflow/contrib/android/README.md](../../../tensorflow/contrib/android/README.md)
+[tensorflow/tools/android/inference_interface/README.md](../../tools/android/inference_interface/README.md)
 for more details.
 
 ## Running the Demo
@@ -89,7 +89,7 @@ For any project that does not include custom low level TensorFlow code, this is
 likely sufficient.
 
 For details on how to include this JCenter package in your own project see
-[tensorflow/contrib/android/README.md](../../../tensorflow/contrib/android/README.md)
+[tensorflow/tools/android/inference_interface/README.md](../../tools/android/inference_interface/README.md)
 
 ## Building the Demo with TensorFlow from Source
 
@@ -109,7 +109,9 @@ protobuf compilation.
 
 NOTE: Bazel does not currently support building for Android on Windows. Full
 support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
+that Windows users download the
+[prebuilt demo APK](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk)
+instead.
 
 ##### Install Bazel and Android Prerequisites
 
@@ -210,4 +212,4 @@ NDK).
 
 Full CMake support for the demo is coming soon, but for now it is possible to
 build the TensorFlow Android Inference library using
-[tensorflow/contrib/android/cmake](../../../tensorflow/contrib/android/cmake).
+[tensorflow/tools/android/inference_interface/cmake](../../tools/android/inference_interface/cmake).

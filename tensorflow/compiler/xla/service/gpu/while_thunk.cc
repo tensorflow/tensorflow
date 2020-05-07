@@ -39,6 +39,12 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(absl::make_unique<SequentialThunk>(
           std::move(*body_thunk_sequence), nullptr)) {}
 
+void WhileThunk::ComputeAnnotations() {
+  Thunk::ComputeAnnotations();
+  condition_thunk_sequence_->ComputeAnnotations();
+  body_thunk_sequence_->ComputeAnnotations();
+}
+
 Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {
   TF_RETURN_IF_ERROR(
@@ -47,29 +53,30 @@ Status WhileThunk::Initialize(const GpuExecutable& executable,
   return Status::OK();
 }
 
-Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream,
-                                   HloExecutionProfiler* profiler) {
-  se::DeviceMemoryBase condition_result_data =
-      buffer_allocations.GetDeviceAddress(condition_result_buffer_index_);
+Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& profiler = *params.profiler;
+  auto& stream = *params.stream;
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  se::DeviceMemoryBase condition_result_data =
+      params.buffer_allocations->GetDeviceAddress(
+          condition_result_buffer_index_);
+
+  auto op_profiler = profiler.MakeScopedInstructionProfiler(hlo_instruction());
   while (true) {
     // Invoke thunk sequence for while 'condition' computation.
-    profiler->StartHloComputation();
+    profiler.StartHloComputation();
     VLOG(3) << "Executing condition computation";
-    TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(
-        buffer_allocations, stream, profiler));
-    profiler->FinishHloComputation(hlo_instruction()->while_condition());
+    TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
+    profiler.FinishHloComputation(hlo_instruction()->while_condition());
 
     // Copy the result of condition computation and break the loop if 'false'.
     bool condition_result;
-    stream->ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
+    stream.ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
     VLOG(3) << "condition_result = " << condition_result;
-    Status block_status = stream->BlockHostUntilDone();
+    Status block_status = stream.BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
-          "Failed to complete all kernels launched on stream %p: %s", stream,
+          "Failed to complete all kernels launched on stream %p: %s", &stream,
           block_status.error_message());
     }
 
@@ -79,13 +86,12 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
 
     // We measure the time of one execution of the while body computation. The
     // while body may be executed more than once, the last measurement "wins".
-    profiler->StartHloComputation();
+    profiler.StartHloComputation();
     VLOG(3) << "Executing body computation";
     // Invoke thunk sequence for while 'body' computation, and pass on
     // 'profiler' to measure the timing of the thunks in 'body_thunk_sequence_'.
-    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(buffer_allocations,
-                                                             stream, profiler));
-    profiler->FinishHloComputation(hlo_instruction()->while_body());
+    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
+    profiler.FinishHloComputation(hlo_instruction()->while_body());
   }
   return Status::OK();
 }

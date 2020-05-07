@@ -119,7 +119,7 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
 
   AddMessageF("Reordered axes for array %s", input_array_name);
 
-  DeleteOpAndArraysIfUnused(model, op);
+  DeleteOpAndArrays(model, op);
   RenameArray(model, output_array_name, input_array_name);
 
   *modified = true;

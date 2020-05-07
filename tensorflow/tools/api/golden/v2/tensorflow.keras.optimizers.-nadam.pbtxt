@@ -2,7 +2,7 @@ path: "tensorflow.keras.optimizers.Nadam"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.optimizer_v2.nadam.Nadam\'>"
   is_instance: "<class \'tensorflow.python.keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "iterations"
@@ -26,7 +26,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'experimental_aggregate_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_config"

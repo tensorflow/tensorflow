@@ -47,6 +47,9 @@ class DeviceAssignment : public Array2D<int> {
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
 
+  // Finds the replica ID for the given device.
+  StatusOr<int> ReplicaIdForDeviceOrdinal(int device_ordinal) const;
+
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;
 
@@ -68,7 +71,7 @@ class ComputationPlacer {
 
   // Returns the device id assigned to the given replica and computation
   // instance for [replica_count x computation_count] setup. The returned device
-  // id must match the assignement from PlaceReplicatedComputation().
+  // id must match the assignment from PlaceReplicatedComputation().
   virtual StatusOr<int> DeviceId(int replica, int computation,
                                  int replica_count, int computation_count);
 

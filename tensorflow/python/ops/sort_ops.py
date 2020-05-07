@@ -36,7 +36,17 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export('sort')
 def sort(values, axis=-1, direction='ASCENDING', name=None):
   """Sorts a tensor.
+  
+  Usage:
 
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.sort(a,axis=-1,direction='ASCENDING',name=None)
+  c = tf.keras.backend.eval(b)
+  # Here, c = [  1.     2.8   10.    26.9   62.3  166.32]
+  ```
+  
   Args:
     values: 1-D or higher numeric `Tensor`.
     axis: The axis along which to sort. The default is -1, which sorts the last
@@ -64,6 +74,16 @@ def argsort(values, axis=-1, direction='ASCENDING', stable=False, name=None):
   `tf.sort(values)`. For higher dimensions, the output has the same shape as
   `values`, but along the given axis, values represent the index of the sorted
   element in that slice of the tensor at the given position.
+  
+  Usage:
+
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.argsort(a,axis=-1,direction='ASCENDING',stable=False,name=None)
+  c = tf.keras.backend.eval(b)
+  # Here, c = [0 3 1 2 5 4]
+  ```
 
   Args:
     values: 1-D or higher numeric `Tensor`.

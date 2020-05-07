@@ -32,15 +32,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace barrier {
-class Barrier;
-}  // namespace barrier
-
 // Functionality common to asynchronous QueueInterface implementations.
 class QueueBase : public QueueInterface {
  public:
   // As a possible value of 'capacity'.
-  static const int32 kUnbounded = INT_MAX;
+  static constexpr int32 kUnbounded = INT_MAX;
 
   // Args:
   //   component_dtypes: The types of each component in a queue-element tuple.
@@ -130,7 +126,7 @@ class QueueBase : public QueueInterface {
   void CloseAndCancel();
 
   bool TryAttemptLocked(Action action, std::vector<CleanUp>* clean_up)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Tries to make progress on the enqueues or dequeues at the front
   // of the *_attempts_ queues.
@@ -151,7 +147,7 @@ class QueueBase : public QueueInterface {
   const std::vector<TensorShape> component_shapes_;
   const string name_;
   mutable mutex mu_;
-  bool closed_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
 
   struct Attempt;
   typedef std::function<RunResult(Attempt*)> RunCallback;
@@ -178,8 +174,8 @@ class QueueBase : public QueueInterface {
           run_callback(run_callback),
           is_cancelled(false) {}
   };
-  std::deque<Attempt> enqueue_attempts_ GUARDED_BY(mu_);
-  std::deque<Attempt> dequeue_attempts_ GUARDED_BY(mu_);
+  std::deque<Attempt> enqueue_attempts_ TF_GUARDED_BY(mu_);
+  std::deque<Attempt> dequeue_attempts_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(QueueBase);
 };

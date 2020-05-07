@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -55,9 +56,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;
 
-  StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) override;
-
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
@@ -76,6 +74,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                    llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                   llvm::Value* value) override;
+
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
                                  llvm::Value* rhs) override;
 
@@ -85,6 +89,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
+                                        llvm::Value* value) override;
+
   llvm::Value* EmitThreadId() override;
 
  private:
@@ -93,13 +100,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                      llvm::Value* lhs_value,
                                      llvm::Value* rhs_value);
 
-  // Emits IR to call a device function named "callee_name" on the given
-  // operand. Returns the IR value that represents the return value.
-  llvm::Value* EmitDeviceFunctionCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-      absl::Span<const llvm::Attribute::AttrKind> attributes);
-
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
@@ -107,11 +107,11 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
+  // Emits IR to call a device function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
-  StatusOr<llvm::Value*> EmitLibdeviceMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
+  StatusOr<llvm::Value*> EmitDeviceMathCall(
+      TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
@@ -120,7 +120,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
 };
 

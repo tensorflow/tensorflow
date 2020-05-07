@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -33,6 +34,29 @@ struct NonMaxSuppression {
 };
 
 }  // namespace functor
+
+#if GOOGLE_CUDA
+extern const int kNmsBoxesPerTread;
+
+// Given descending sorted box list, apply non-maximal-suppression with given
+// threshold and select boxes to keep.
+// - d_sorted_boxes_float_ptr: a pointer to device memory float array
+//   containing the box corners for N boxes sorted in descending order of
+//   scores.
+// - num_boxes: number of boxes.
+// - iou_threshold: the intersection-over-union (iou) threshold for elimination.
+// - d_selected_indices: is a device pointer to int array containing sorted
+//   indices of the boxes to keep.
+// - h_num_boxes_to_keep: is a host pointer for returning number of items
+//   to keep.
+// - flip_boxes: flag reorders the boxes use lower left and upper right
+//   corners if they are given in mixed format.
+Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
+              const float iou_threshold, int* d_selected_indices,
+              int* h_num_boxes_to_keep, OpKernelContext* context,
+              const int max_boxes, bool flip_boxes = false);
+#endif
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_NON_MAX_SUPPRESSION_OP_H_

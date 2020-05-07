@@ -33,7 +33,7 @@ void CopyToBuffer(const string& src, char* dest) {
 }
 
 #ifdef PLATFORM_GOOGLE
-void CopyToBuffer(const Cord& src, char* dest) { src.CopyToArray(dest); }
+void CopyToBuffer(const absl::Cord& src, char* dest) { src.CopyToArray(dest); }
 #endif
 }  // namespace port
 }  // namespace toco

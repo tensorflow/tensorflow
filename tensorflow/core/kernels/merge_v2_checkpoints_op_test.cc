@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
@@ -79,10 +80,10 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     // Now merges.
     MakeOp(delete_old_dirs);
     // Add checkpoint_prefixes.
-    AddInput<string>(TensorShape({2}),
-                     [&prefixes](int i) -> string { return prefixes[i]; });
+    AddInput<tstring>(TensorShape({2}),
+                      [&prefixes](int i) -> tstring { return prefixes[i]; });
     // Add destination_prefix.
-    AddInput<string>(TensorShape({}), [kMergedPrefix](int unused) -> string {
+    AddInput<tstring>(TensorShape({}), [kMergedPrefix](int unused) -> tstring {
       return kMergedPrefix;
     });
     TF_ASSERT_OK(RunOpKernel());

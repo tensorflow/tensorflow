@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -29,7 +31,9 @@ namespace {
 class ShapeOptimizerTest : public GrapplerTest {};
 
 TEST_F(ShapeOptimizerTest, OptimizeShapeProduct) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // Set the device to CPU zero, because the shape optimizer will only optimize
+  // Prod to Size when a concrete Size kernel is available.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
   Output a = ops::Const(s.WithOpName("a"), 3.14f, {32, 16});
   Output c = ops::Shape(s.WithOpName("c"), a);
   Output d = ops::Const(s.WithOpName("d"), 0, {1});
@@ -66,6 +70,63 @@ TEST_F(ShapeOptimizerTest, OptimizeShapeProduct) {
               tensors_actual[0].scalar<int>()(), 0);
   EXPECT_NEAR(tensors_expected[1].scalar<int>()(),
               tensors_actual[1].scalar<int>()(), 0);
+}
+
+TEST_F(ShapeOptimizerTest, OptimizeShapeProductMissingKernel) {
+  {
+    // Skip this test if no GPU is available.
+    std::vector<std::unique_ptr<Device>> devices;
+    SessionOptions session_options;
+    session_options.config.mutable_gpu_options()
+        ->set_per_process_gpu_memory_fraction(0.1);
+    session_options.env = Env::Default();
+    TF_CHECK_OK(DeviceFactory::GetFactory(DEVICE_GPU)
+                    ->AddDevices(session_options, "", &devices));
+    bool found_gpu = false;
+    for (const auto& d : devices) {
+      if (d->device_type() == DEVICE_GPU) {
+        found_gpu = true;
+        break;
+      }
+    }
+    if (!found_gpu) {
+      LOG(INFO) << "Skipping test that requires GPU.";
+      return;
+    }
+  }
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output a = ops::Const(s.WithOpName("a"), string("Hello"), {32, 16});
+  Output c = ops::Shape(s.WithOpName("c"), a);
+  Output d = ops::Const(s.WithOpName("d"), 0, {1});
+  ops::ReduceProd::Attrs attrs;
+  Output e = ops::ReduceProd(s.WithDevice("/gpu:0").WithOpName("e"), c, d,
+                             attrs.KeepDims(false));
+
+  GrapplerItem item;
+  item.fetch = {"e"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ShapeOptimizer optimizer;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "e") {
+      found++;
+      EXPECT_EQ("Size", node.op());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("/cpu:0", node.device());
+    }
+  }
+  EXPECT_EQ(1, found);
+
+  auto tensors_actual = EvaluateNodes(output, item.fetch);
+  EXPECT_NEAR(tensors_expected[0].scalar<int>()(),
+              tensors_actual[0].scalar<int>()(), 0);
 }
 
 TEST_F(ShapeOptimizerTest, OptimizeShapeRatio) {

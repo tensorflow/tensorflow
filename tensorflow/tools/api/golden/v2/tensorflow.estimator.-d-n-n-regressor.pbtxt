@@ -2,6 +2,7 @@ path: "tensorflow.estimator.DNNRegressor"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn.DNNRegressorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -21,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'hidden_units\', \'feature_columns\', \'model_dir\', \'label_dimension\', \'weight_column\', \'optimizer\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'config\', \'warm_start_from\', \'loss_reduction\', \'batch_norm\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'Adagrad\', \'<function relu instance>\', \'None\', \'None\', \'None\', \'None\', \'weighted_sum_over_batch_size\', \'False\'], "
+    argspec: "args=[\'self\', \'hidden_units\', \'feature_columns\', \'model_dir\', \'label_dimension\', \'weight_column\', \'optimizer\', \'activation_fn\', \'dropout\', \'config\', \'warm_start_from\', \'loss_reduction\', \'batch_norm\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'Adagrad\', \'<function relu instance>\', \'None\', \'None\', \'None\', \'sum_over_batch_size\', \'False\'], "
   }
   member_method {
     name: "eval_dir"

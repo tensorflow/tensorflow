@@ -17,25 +17,13 @@ limitations under the License.
 
 #include <complex>
 #include <vector>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
-
-template <>
-inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr
-             ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
-             : nullptr;
-}
-
-template <>
-inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr
-             ? reinterpret_cast<const std::complex<float>*>(tensor->data.c64)
-             : nullptr;
-}
 
 inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
   return RuntimeShape(data.size(), data.data());
@@ -107,6 +95,48 @@ class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
  private:
   std::vector<int32> zero_point_;
   std::vector<float> scale_;
+};
+
+// Writes randomly accessed values from `input` sequentially into `output`.
+template <typename T>
+class SequentialTensorWriter {
+ public:
+  SequentialTensorWriter(const TfLiteTensor* input, TfLiteTensor* output) {
+    input_data_ = GetTensorData<T>(input);
+    output_ptr_ = GetTensorData<T>(output);
+  }
+  SequentialTensorWriter(const T* input_data, T* output_data)
+      : input_data_(input_data), output_ptr_(output_data) {}
+
+  void Write(int position) { *output_ptr_++ = input_data_[position]; }
+  void WriteN(int position, int len) {
+    memcpy(output_ptr_, &input_data_[position], sizeof(T) * len);
+    output_ptr_ += len;
+  }
+
+ private:
+  const T* input_data_;
+  T* output_ptr_;
+};
+
+template <>
+class SequentialTensorWriter<string> {
+ public:
+  SequentialTensorWriter(const TfLiteTensor* input, TfLiteTensor* output)
+      : input_(input), output_(output) {}
+  ~SequentialTensorWriter() { buffer_.WriteToTensor(output_, nullptr); }
+
+  void Write(int position) { this->WriteN(position, 1); }
+  void WriteN(int position, int len) {
+    for (int i = 0; i < len; i++) {
+      buffer_.AddString(GetString(input_, position + i));
+    }
+  }
+
+ private:
+  const TfLiteTensor* input_;
+  TfLiteTensor* output_;
+  DynamicBuffer buffer_;
 };
 
 }  // namespace tflite

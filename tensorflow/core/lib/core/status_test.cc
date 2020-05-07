@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/status.h"
+
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -55,6 +56,19 @@ TEST(Status, Assign) {
   Status b;
   b = a;
   ASSERT_EQ(a.ToString(), b.ToString());
+}
+
+TEST(Status, Move) {
+  Status a(errors::InvalidArgument("Invalid"));
+  Status b(std::move(a));
+  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
+}
+
+TEST(Status, MoveAssign) {
+  Status a(errors::InvalidArgument("Invalid"));
+  Status b;
+  b = std::move(a);
+  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
 }
 
 TEST(Status, Update) {
@@ -98,72 +112,67 @@ TEST(Status, EqualsDifferentMessage) {
   ASSERT_NE(a, b);
 }
 
-TEST(StatusGroup, AcceptsFirstCode) {
+TEST(StatusGroup, OKStatusGroup) {
   StatusGroup c;
-  const Status internal(errors::Internal("Original error."));
-  c.Update(internal);
   c.Update(Status::OK());
   c.Update(Status::OK());
-  c.Update(Status::OK());
-  ASSERT_EQ(c.as_status().code(), internal.code());
-  ASSERT_EQ(c.ok(), false);
+  ASSERT_EQ(c.as_summary_status(), Status::OK());
+  ASSERT_EQ(c.as_concatenated_status(), Status::OK());
 }
 
-TEST(StatusGroup, ContainsChildMessages) {
+TEST(StatusGroup, AggregateWithSingleErrorStatus) {
+  StatusGroup c;
+  const Status internal(errors::Internal("Original error."));
+
+  c.Update(internal);
+  ASSERT_EQ(c.as_summary_status(), internal);
+
+  Status concat_status = c.as_concatenated_status();
+  ASSERT_EQ(concat_status.code(), internal.code());
+  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
+                                internal.error_message()));
+
+  // Add derived error status
+  const Status derived =
+      StatusGroup::MakeDerived(errors::Internal("Derived error."));
+  c.Update(derived);
+
+  ASSERT_EQ(c.as_summary_status(), internal);
+
+  concat_status = c.as_concatenated_status();
+  ASSERT_EQ(concat_status.code(), internal.code());
+  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
+                                internal.error_message()));
+}
+
+TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
   StatusGroup c;
   const Status internal(errors::Internal("Original error."));
   const Status cancelled(errors::Cancelled("Cancelled after 10 steps."));
   const Status aborted(errors::Aborted("Aborted after 10 steps."));
+
   c.Update(internal);
-  for (size_t i = 0; i < 5; ++i) {
-    c.Update(cancelled);
-  }
-  for (size_t i = 0; i < 10; ++i) {
-    c.Update(aborted);
-  }
-  for (size_t i = 0; i < 100; ++i) {
-    c.Update(Status::OK());
-  }
+  c.Update(cancelled);
+  c.Update(aborted);
 
-  ASSERT_EQ(c.as_status().code(), internal.code());
-  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
-                                    internal.error_message()));
-  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
-                                    cancelled.error_message()));
-  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
-                                    aborted.error_message()));
-  StatusGroup d;
-  d.Update(c.as_status());
-  c.Update(errors::FailedPrecondition("Failed!"));
-  d.Update(c.as_status());
-  c.Update(errors::DataLoss("Data loss!"));
-  d.Update(c.as_status());
-  LOG(INFO) << d.as_status();
-}
+  Status summary = c.as_summary_status();
 
-TEST(StatusGroup, ContainsIdenticalMessage) {
-  StatusGroup sg;
-  const Status internal(errors::Internal("Original error"));
-  for (size_t i = 0; i < 10; i++) {
-    sg.Update(internal);
-  }
-  EXPECT_EQ(sg.as_status(), internal);
-}
+  ASSERT_EQ(summary.code(), internal.code());
+  ASSERT_TRUE(
+      absl::StrContains(summary.error_message(), internal.error_message()));
+  ASSERT_TRUE(
+      absl::StrContains(summary.error_message(), cancelled.error_message()));
+  ASSERT_TRUE(
+      absl::StrContains(summary.error_message(), aborted.error_message()));
 
-TEST(StatusGroup, ContainsCommonPrefix) {
-  StatusGroup sg;
-  const Status a(errors::Internal("Original error"));
-  const Status b(errors::Internal("Original error is"));
-  const Status c(errors::Internal("Original error is invalid"));
-  sg.Update(a);
-  sg.Update(c);
-  sg.Update(c);
-  sg.Update(b);
-  sg.Update(c);
-  sg.Update(b);
-  sg.Update(a);
-  sg.Update(b);
-  EXPECT_EQ(sg.as_status(), c);
+  Status concat_status = c.as_concatenated_status();
+  ASSERT_EQ(concat_status.code(), internal.code());
+  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
+                                internal.error_message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
+                                cancelled.error_message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
+                                aborted.error_message()));
 }
 
 static void BM_TF_CHECK_OK(int iters) {

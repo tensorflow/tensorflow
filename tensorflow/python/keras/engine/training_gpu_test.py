@@ -18,18 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.platform import test
 
 
-class TrainingGPUTest(test.TestCase):
+class TrainingGPUTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_model_with_crossentropy_losses_channels_first(self):
     """Tests use of all crossentropy losses with `channels_first`.
 
@@ -46,7 +49,7 @@ class TrainingGPUTest(test.TestCase):
       if loss_name == 'sparse_categorical_crossentropy':
         loss = lambda y_true, y_pred: K.sparse_categorical_crossentropy(  # pylint: disable=g-long-lambda
             y_true, y_pred, axis=axis)
-        num_channels = np.amax(target) + 1
+        num_channels = int(np.amax(target) + 1)
         activation = 'softmax'
       elif loss_name == 'categorical_crossentropy':
         loss = lambda y_true, y_pred: K.categorical_crossentropy(  # pylint: disable=g-long-lambda
@@ -57,13 +60,13 @@ class TrainingGPUTest(test.TestCase):
         loss = lambda y_true, y_pred: K.binary_crossentropy(y_true, y_pred)  # pylint: disable=unnecessary-lambda
         num_channels = target.shape[axis]
         activation = 'sigmoid'
+
       predictions = Conv2D(num_channels,
                            1,
                            activation=activation,
                            kernel_initializer='ones',
                            bias_initializer='ones')(input_tensor)
-      simple_model = keras.models.Model(inputs=input_tensor,
-                                        outputs=predictions)
+      simple_model = training.Model(inputs=input_tensor, outputs=predictions)
       simple_model.compile(optimizer='rmsprop', loss=loss)
       return simple_model
 
@@ -95,7 +98,7 @@ class TrainingGPUTest(test.TestCase):
         data = np.moveaxis(data_channels_first, 1, -1)
         for index, loss_function in enumerate(losses_to_test):
           labels = np.moveaxis(labels_channels_first[index], 1, -1)
-          inputs = keras.Input(shape=(3, 3, 1))
+          inputs = input_layer.Input(shape=(3, 3, 1))
           model = prepare_simple_model(inputs, loss_function, labels)
           loss_channels_last[index] = model.evaluate(x=data, y=labels,
                                                      batch_size=1, verbose=0)
@@ -106,18 +109,19 @@ class TrainingGPUTest(test.TestCase):
         data = data_channels_first
         for index, loss_function in enumerate(losses_to_test):
           labels = labels_channels_first[index]
-          inputs = keras.Input(shape=(1, 3, 3))
+          inputs = input_layer.Input(shape=(1, 3, 3))
           model = prepare_simple_model(inputs, loss_function, labels)
           loss_channels_first[index] = model.evaluate(x=data, y=labels,
                                                       batch_size=1, verbose=0)
 
         K.set_image_data_format(old_data_format)
 
-        np.testing.assert_allclose(loss_channels_first,
-                                   loss_channels_last,
-                                   err_msg='{}{}'.format(
-                                       'Computed different losses for ',
-                                       'channels_first and channels_last'))
+        np.testing.assert_allclose(
+            loss_channels_first,
+            loss_channels_last,
+            rtol=1e-06,
+            err_msg='{}{}'.format('Computed different losses for ',
+                                  'channels_first and channels_last'))
 
 
 if __name__ == '__main__':

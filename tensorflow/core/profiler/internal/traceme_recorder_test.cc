@@ -15,12 +15,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
 #include <atomic>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/synchronization/notification.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -32,7 +33,7 @@ MATCHER_P(Named, name, "") { return arg.name == name; }
 constexpr static uint64 kNanosInSec = 1000000000;
 
 TEST(RecorderTest, SingleThreaded) {
-  uint64 start_time = static_cast<uint64>(absl::GetCurrentTimeNanos());
+  uint64 start_time = Env::Default()->NowNanos();
   uint64 end_time = start_time + kNanosInSec;
 
   TraceMeRecorder::Record({1, "before", start_time, end_time});
@@ -47,34 +48,9 @@ TEST(RecorderTest, SingleThreaded) {
               ::testing::ElementsAre(Named("during1"), Named("during2")));
 }
 
-TEST(RecorderTest, CollectionBeforeStop) {
-  uint64 start_time = static_cast<uint64>(absl::GetCurrentTimeNanos());
-  uint64 end_time = start_time + kNanosInSec;
-
-  TraceMeRecorder::Record({1, "ignored", start_time, end_time});
-  TraceMeRecorder::Start(/*level=*/1);
-  TraceMeRecorder::Record({2, "during1", start_time, end_time});
-  TraceMeRecorder::Record({3, "during2", start_time, end_time});
-  auto collected_results = TraceMeRecorder::Collect();
-  TraceMeRecorder::Record({4, "after_collect", start_time, end_time});
-  auto stopped_results = TraceMeRecorder::Stop();
-  TraceMeRecorder::Record({5, "after_stop", start_time, end_time});
-  auto results_after_stop = TraceMeRecorder::Collect();
-
-  ASSERT_EQ(collected_results.size(), 1);
-  EXPECT_THAT(collected_results[0].events,
-              ::testing::ElementsAre(Named("during1"), Named("during2")));
-
-  ASSERT_EQ(stopped_results.size(), 1);
-  EXPECT_THAT(stopped_results[0].events,
-              ::testing::ElementsAre(Named("after_collect")));
-
-  ASSERT_EQ(results_after_stop.size(), 0);
-}
-
 void SpinNanos(int nanos) {
-  uint64 deadline = absl::GetCurrentTimeNanos() + nanos;
-  while (absl::GetCurrentTimeNanos() < deadline) {
+  uint64 deadline = Env::Default()->NowNanos() + nanos;
+  while (Env::Default()->NowNanos() < deadline) {
   }
 }
 
@@ -94,8 +70,8 @@ TEST(RecorderTest, Multithreaded) {
   constexpr static int kNumThreads = 4;
 
   // Start several threads writing events.
-  absl::Notification start;
-  absl::Notification stop;
+  tensorflow::Notification start;
+  tensorflow::Notification stop;
   thread::ThreadPool pool(Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {
@@ -103,10 +79,10 @@ TEST(RecorderTest, Multithreaded) {
       uint64 j = 0;
       bool was_active = false;
       auto record_event = [&j, i]() {
-        uint64 start_time = static_cast<uint64>(absl::GetCurrentTimeNanos());
+        uint64 start_time = Env::Default()->NowNanos();
         uint64 end_time = start_time + kNanosInSec;
         TraceMeRecorder::Record({/*activity_id=*/j++,
-                                 /*name=*/strings::StrCat(i), start_time,
+                                 /*name=*/absl::StrCat(i), start_time,
                                  end_time});
       };
       thread_count.fetch_add(1, std::memory_order_relaxed);
@@ -154,7 +130,7 @@ TEST(RecorderTest, Multithreaded) {
   // Wait while all the threads are spun up.
   while (thread_count.load(std::memory_order_relaxed) < kNumThreads) {
     LOG(INFO) << "Waiting for all threads to spin up...";
-    absl::SleepFor(absl::Milliseconds(1));
+    Env::Default()->SleepForMicroseconds(1 * EnvTime::kMillisToMicros);
   }
 
   // We will probably be done after two iterations (with each thread getting
@@ -165,7 +141,7 @@ TEST(RecorderTest, Multithreaded) {
   for (int iters = 0; iters < kMaxIters && !done(); ++iters) {
     LOG(INFO) << "Looping until convergence, iteration: " << iters;
     TraceMeRecorder::Start(/*level=*/1);
-    absl::SleepFor(absl::Milliseconds(100));
+    Env::Default()->SleepForMicroseconds(100 * EnvTime::kMillisToMicros);
     auto results = TraceMeRecorder::Stop();
     for (const auto& thread : results) {
       if (thread.events.empty()) continue;
@@ -194,7 +170,7 @@ TEST(RecorderTest, Multithreaded) {
         }
       }
     }
-    absl::SleepFor(absl::Milliseconds(1));
+    Env::Default()->SleepForMicroseconds(1 * EnvTime::kMillisToMicros);
   }
   stop.Notify();
 

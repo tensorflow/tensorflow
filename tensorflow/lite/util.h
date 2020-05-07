@@ -21,8 +21,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <string>
 #include <vector>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -42,7 +44,7 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
 // Converts an array (of the given size) to a `TfLiteIntArray`. The caller
 // takes ownership of the returned pointer, and must make sure 'dims' has at
-// least 'rank' elemnts.
+// least 'rank' elements.
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
@@ -58,6 +60,22 @@ struct TfLiteIntArrayDeleter {
   }
 };
 
+// Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
+// valid types, and kTfLiteError otherwise.
+TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
+                           size_t* bytes);
+
+// Creates a stub TfLiteRegistration instance with the provided
+// `custom_op_name`. The op will fail if invoked, and is useful as a
+// placeholder to defer op resolution.
+// Note that `custom_op_name` must remain valid for the returned op's lifetime..
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name);
+
+// Checks whether the provided op is an unresolved custom op.
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration);
+
+// Returns a descriptive name with the given op TfLiteRegistration.
+std::string GetOpNameByRegistration(const TfLiteRegistration& registration);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

@@ -41,7 +41,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -101,7 +101,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testNesterovMomentum(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([0.1, 0.2], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([0.3, 0.4], dtype=dtype)
         var0_np = np.array([0.1, 0.2], dtype=dtype)
@@ -126,7 +126,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testTensorLearningRateAndMomentum(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

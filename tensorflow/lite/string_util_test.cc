@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -33,13 +33,22 @@ TEST(StringUtil, TestStringUtil) {
   t1->type = kTfLiteString;
   t1->allocation_type = kTfLiteDynamic;
 
-  char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'X', 'Y', 'Z'};
+  // String tensor with one string of length 3
+  union {
+    char raw_bytes[15];
+    struct {
+      int32_t num_strs;
+      int32_t offsets[2];
+      char str_data[3];
+    } tensor_data;
+  } data;
+  data.tensor_data = {1, {12, 15}, {'X', 'Y', 'Z'}};
 
   TfLiteQuantization quant;
   quant.type = kTfLiteNoQuantization;
   quant.params = nullptr;
-  interpreter.SetTensorParametersReadOnly(2, kTfLiteString, "", {1}, quant,
-                                          data, 15);
+  interpreter.SetTensorParametersReadOnly(
+      2, kTfLiteString, "", {1}, quant, data.raw_bytes, sizeof(data.raw_bytes));
   TfLiteTensor* t2 = interpreter.tensor(2);
   interpreter.AllocateTensors();
 

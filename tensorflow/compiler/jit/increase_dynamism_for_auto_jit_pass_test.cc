@@ -432,5 +432,26 @@ TEST(SliceToDynamicSliceRewriteTest, WithControlDepsToConstant) {
                                                       Name("dependency")))));
 }
 
+TEST(SliceToDynamicSliceRewriteTest, DontRewriteSliceWithConstBegin) {
+  Scope root = Scope::NewRootScope()
+                   .ExitOnError()
+                   .WithAssignedDevice(kDeviceName)
+                   .WithXlaCluster("cluster_0");
+
+  Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
+  Output begin = ops::Const(root.WithOpName("begin"), {10, 10});
+  Output size = ops::Const(root.WithOpName("size"), {-1, 500});
+  Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
+
+  Node* slice_node = testing::FindNodeByName(result.get(), "slice");
+  EXPECT_THAT(slice_node,
+              NodeWith(Op("Slice"), Inputs(Out(NodeWith(Op("Placeholder"))),
+                                           Out(NodeWith(Op("Const"))),
+                                           Out(NodeWith(Op("Const"))))));
+}
+
 }  // namespace
 }  // namespace tensorflow

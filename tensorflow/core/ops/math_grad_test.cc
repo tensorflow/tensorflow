@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -224,6 +225,29 @@ class MathGradTest : public ::testing::Test {
     *di = outputs[1];
   }
 
+  Tensor ReduceSum(const Tensor& x, gtl::ArraySlice<int32> axes) {
+    int num_axes = axes.length();
+    Tensor y(DT_INT32, TensorShape({num_axes}));
+    for (size_t i = 0; i < axes.size(); ++i) {
+      y.flat<int32>()(i) = axes[i];
+    }
+    auto T = x.dtype();
+    auto gdef = test::function::GDef(
+        {
+            f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+            f::NDef("y", "Const", {}, {{"dtype", DT_INT32}, {"value", y}}),
+            f::NDef("z", "Sum", {"x", "y"}, {{"T", T}}),
+        },
+        {});
+    auto sess = NewSession();
+    TF_CHECK_OK(sess->Create(gdef));
+    std::vector<Tensor> outputs;
+    TF_CHECK_OK(sess->Run({{"x:0", x}}, {"z:0"}, {}, &outputs));
+    CHECK_EQ(outputs.size(), 1);
+    TF_CHECK_OK(sess->Close());
+    return outputs[0];
+  }
+
   Tensor MatMulCommon(const string& opname, const string& attr_adj_x,
                       const string& attr_adj_y, const Tensor& x, bool ax,
                       const Tensor& y, bool ay) {
@@ -251,6 +275,10 @@ class MathGradTest : public ::testing::Test {
 
   Tensor BatchMatMul(const Tensor& x, bool ax, const Tensor& y, bool ay) {
     return MatMulCommon("BatchMatMul", "adj_x", "adj_y", x, ax, y, ay);
+  }
+
+  Tensor BatchMatMulV2(const Tensor& x, bool ax, const Tensor& y, bool ay) {
+    return MatMulCommon("BatchMatMulV2", "adj_x", "adj_y", x, ax, y, ay);
   }
 
   void MatMulGradCommon(const string& opname, const string& attr_adj_x,
@@ -325,6 +353,12 @@ class MathGradTest : public ::testing::Test {
                             dy);
   }
 
+  void BatchMatMulV2Grad(const Tensor& x, bool ax, const Tensor& y, bool ay,
+                         Tensor* dx, Tensor* dy) {
+    return MatMulGradCommon("BatchMatMulV2", "adj_x", "adj_y", x, ax, y, ay, dx,
+                            dy);
+  }
+
   void SelectGrad(const Tensor& c, const Tensor& x, const Tensor& y, Tensor* dc,
                   Tensor* dx, Tensor* dy) {
     auto T = DT_FLOAT;
@@ -379,7 +413,7 @@ class MathGradTest : public ::testing::Test {
 };
 
 void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -928,6 +962,29 @@ TEST_F(MathGradTest, Xlogy) {
                                 TensorShape({2, 1})));
 }
 
+TEST_F(MathGradTest, Xlog1py) {
+  auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float {
+    return x == 0. ? 0. : std::log1p(y);
+  };
+  auto h = [](float x, float y) -> float {
+    return x == 0. ? 0. : x / (y + 1.);
+  };
+  SymGrad("Xlog1py", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(0.f, .5f), g(0.f, 0.f), g(2.f, .5f),
+                                 g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(0.f, .5f) + h(0.f, 0.f) + h(2.f, .5f),
+                                 h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                TensorShape({2, 1})));
+}
+
 TEST_F(MathGradTest, Xdivy) {
   auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));
@@ -946,6 +1003,25 @@ TEST_F(MathGradTest, Xdivy) {
   test::ExpectClose(
       dy, test::AsTensor<float>({h(0.f, .5f) + h(0.f, 0.f) + h(2.f, .5f),
                                  h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                TensorShape({2, 1})));
+}
+
+TEST_F(MathGradTest, SquaredDifference) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float { return 2. * (x - y); };
+  auto h = [](float x, float y) -> float { return 2. * (y - x); };
+  SymGrad("SquaredDifference", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(-3.f, .5f), g(-2.f, .5f), g(-1.f, .5f),
+                                 g(1.f, 2.f), g(2.f, 2.f), g(3.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(-3.f, .5f) + h(-2.f, .5f) + h(-1.f, .5f),
+                                 h(1.f, 2.f) + h(2.f, 2.f) + h(3.f, 2.f)},
                                 TensorShape({2, 1})));
 }
 
@@ -1159,6 +1235,139 @@ TEST_F(MathGradTest, BatchMatMul_11) {
   test::ExpectClose(dy, BatchMatMul(dz, true, x, true));
 }
 #endif  // TENSORFLOW_USE_SYCL
+
+TEST_F(MathGradTest, BatchMatMulV2_00) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 2, 3}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 3, 1}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, false, y, false, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMulV2(dz, false, y, true));
+  test::ExpectClose(dy, BatchMatMulV2(x, true, dz, false));
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_01) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 2, 3}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 1, 3}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, false, y, true, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMulV2(dz, false, y, false));
+  test::ExpectClose(dy, BatchMatMulV2(dz, true, x, false));
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_10) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 3, 2}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 3, 1}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, true, y, false, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMulV2(y, false, dz, true));
+  test::ExpectClose(dy, BatchMatMulV2(x, false, dz, false));
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_11) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 3, 2}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 1, 3}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, true, y, true, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMulV2(y, true, dz, true));
+  test::ExpectClose(dy, BatchMatMulV2(dz, true, x, true));
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_LhsBroadcasts) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>(
+      {1.f, 2.4, 3.f, -1.f, .5f, 2.f, 3.f, 1.f, -1.f, 2.f, -.1f, 0},
+      TensorShape({2, 3, 2}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, false, y, false, &dx, &dy);
+  EXPECT_TRUE(dx.shape().IsSameSize(x.shape()));
+  EXPECT_TRUE(dy.shape().IsSameSize(y.shape()));
+  auto dz = test::AsTensor<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f},
+                                  TensorShape({2, 2, 2}));
+  Tensor ans_dx;
+  CHECK(ans_dx.CopyFrom(ReduceSum(BatchMatMulV2(dz, false, y, true), {0}),
+                        dx.shape()));
+  Tensor ans_dy = BatchMatMulV2(x, true, dz, false);
+  test::ExpectClose(dx, ans_dx);
+  test::ExpectClose(dy, ans_dy);
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_RhsBroadcasts) {
+  auto x = test::AsTensor<float>(
+      {1.f, 2.4, 3.f, -1.f, .5f, 2.f, 3.f, 1.f, -1.f, 2.f, -.1f, 0},
+      TensorShape({2, 2, 3}));
+  auto y = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({3, 2}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, false, y, false, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f},
+                                  TensorShape({2, 2, 2}));
+  Tensor ans_dx = BatchMatMulV2(dz, false, y, true);
+  Tensor ans_dy;
+  CHECK(ans_dy.CopyFrom(ReduceSum(BatchMatMulV2(x, true, dz, false), {0}),
+                        dy.shape()));
+  test::ExpectClose(dx, ans_dx);
+  test::ExpectClose(dy, ans_dy);
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_BothLhsAndRhsBroadcast) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({2, 1, 1, 3}));
+  auto y = test::AsTensor<float>({3.f, 1.f, -1.f, 2.f, -.1f, 0},
+                                 TensorShape({1, 2, 3, 1}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, false, y, false, &dx, &dy);
+  EXPECT_TRUE(dx.shape().IsSameSize(x.shape()));
+  EXPECT_TRUE(dy.shape().IsSameSize(y.shape()));
+  auto dz =
+      test::AsTensor<float>({1.f, 1.f, 1.f, 1.f}, TensorShape({2, 2, 1, 1}));
+  Tensor ans_dx;
+  Tensor ans_dy;
+  CHECK(ans_dx.CopyFrom(ReduceSum(BatchMatMulV2(dz, false, y, true), {1}),
+                        dx.shape()));
+  CHECK(ans_dy.CopyFrom(ReduceSum(BatchMatMulV2(x, true, dz, false), {0}),
+                        dy.shape()));
+  test::ExpectClose(dx, ans_dx);
+  test::ExpectClose(dy, ans_dy);
+}
+
+TEST_F(MathGradTest, BatchMatMulV2_BroadcastWhileAdjointed) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({2, 1, 3, 1}));
+  auto y = test::AsTensor<float>({3.f, 1.f, -1.f, 2.f, -.1f, 0},
+                                 TensorShape({1, 2, 1, 3}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulV2Grad(x, true, y, true, &dx, &dy);
+  EXPECT_TRUE(dx.shape().IsSameSize(x.shape()));
+  EXPECT_TRUE(dy.shape().IsSameSize(y.shape()));
+
+  auto dz =
+      test::AsTensor<float>({1.f, 1.f, 1.f, 1.f}, TensorShape({2, 2, 1, 1}));
+  Tensor ans_dx;
+  Tensor ans_dy;
+  CHECK(ans_dx.CopyFrom(ReduceSum(BatchMatMulV2(y, true, dz, true), {1}),
+                        dx.shape()));
+  CHECK(ans_dy.CopyFrom(ReduceSum(BatchMatMulV2(dz, true, x, true), {0}),
+                        dy.shape()));
+  test::ExpectClose(dx, ans_dx);
+  test::ExpectClose(dy, ans_dy);
+}
 
 TEST_F(MathGradTest, Sum_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},

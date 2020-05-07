@@ -206,6 +206,37 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
   EXPECT_FALSE(reachability->IsReachable(send_done, recv));
 }
 
+TEST_F(HloReachabilityTest, ReplaceInstructions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = f32[28,28]{1,0} parameter(0)
+      ROOT add = f32[28,28]{1,0} add(p0, p0)
+    })")
+                    .ValueOrDie();
+  auto computation = module->entry_computation();
+  auto reachability = HloReachabilityMap::Build(computation);
+  auto* add = module->entry_computation()->root_instruction();
+  auto* p0 = add->operand(0);
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Replacing an instruction with itself is a noop.
+  reachability->Replace(add, add);
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Introduce a fusion instruction taking the place of `add`.
+  auto* fusion = computation->AddInstruction(HloInstruction::CreateFusion(
+      add->shape(), HloInstruction::FusionKind::kLoop, add));
+  EXPECT_FALSE(reachability->IsPresent(fusion));
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Replace `add` with `fusion` in the readability map.
+  reachability->Replace(add, fusion);
+  EXPECT_FALSE(reachability->IsPresent(add));
+  EXPECT_TRUE(reachability->IsReachable(p0, fusion));
+}
+
 }  // namespace
 
 }  // namespace xla

@@ -129,8 +129,9 @@ class GrapplerTest(test.TestCase):
       mg = meta_graph.create_meta_graph_def(graph=g)
       grappler_item = item.Item(mg)
       op_properties = grappler_item.GetOpProperties()
-      self.assertEqual(tensor_shape.scalar(),
-                       op_properties['IteratorGetNext'][0].shape)
+      self.assertEqual(
+          tensor_shape.TensorShape([]),
+          op_properties['IteratorGetNext'][0].shape)
 
   def _testTransformation(self, fn):
     test_cases = [{

@@ -1,0 +1,24 @@
+--- a/Eigen/src/Geometry/arch/Geometry_SSE.h
++++ b/Eigen/src/Geometry/arch/Geometry_SSE.h
+@@ -33,13 +33,14 @@
+     Packet4f b = be.template packet<BAlignment,Packet4f>(0);
+     Packet4f s1 = pmul(vec4f_swizzle1(a,1,2,0,2),vec4f_swizzle1(b,2,0,1,2));
+     Packet4f s2 = pmul(vec4f_swizzle1(a,3,3,3,1),vec4f_swizzle1(b,0,1,2,1));
+-    pstoret<float,Packet4f,ResAlignment>(
+-              &res.x(),
+-              padd(psub(pmul(a,vec4f_swizzle1(b,3,3,3,3)),
+-                                    pmul(vec4f_swizzle1(a,2,0,1,0),
+-                                               vec4f_swizzle1(b,1,2,0,0))),
+-                         pxor(mask,padd(s1,s2))));
+-    
++    pstoret<float, Packet4f, ResAlignment>(
++        &res.x(),
++        padd<Packet4f>(
++            psub<Packet4f>(pmul<Packet4f>(a, vec4f_swizzle1(b, 3, 3, 3, 3)),
++                           pmul<Packet4f>(vec4f_swizzle1(a, 2, 0, 1, 0),
++                                          vec4f_swizzle1(b, 1, 2, 0, 0))),
++            pxor<Packet4f>(mask, padd(s1, s2))));
++
+     return res;
+   }
+ };

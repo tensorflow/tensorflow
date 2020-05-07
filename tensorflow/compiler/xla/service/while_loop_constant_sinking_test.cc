@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -25,8 +25,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
-
-class WhileLoopConstantSinkingTest : public ::testing::Test {};
+using WhileLoopConstantSinkingTest = HloTestBase;
 
 TEST_F(WhileLoopConstantSinkingTest, SinkOneConstant) {
   const char* const hlo_string = R"(
@@ -54,8 +53,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -94,8 +93,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -135,8 +134,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -183,8 +182,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -225,8 +224,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -260,7 +259,7 @@ condition {
   p_cond = (f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
   p_cond.1 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=1
-  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+  ROOT result = pred[] compare(p_cond.0, p_cond.1), direction=LT
 }
 
 ENTRY entry {
@@ -271,8 +270,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -300,7 +299,7 @@ condition {
   p_c.0 = f32[] get-tuple-element((f32[],(f32[],f32[])) p_c), index=0
   p_c.1 = (f32[],f32[]) get-tuple-element((f32[],(f32[],f32[])) p_c), index=1
   p_c.1.1 = f32[] get-tuple-element((f32[],f32[]) p_c.1), index=1
-  ROOT result = pred[] less-than(p_c.0, p_c.1.1)
+  ROOT result = pred[] compare(p_c.0, p_c.1.1), direction=LT
 }
 
 ENTRY entry {
@@ -311,8 +310,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -342,7 +341,7 @@ condition {
   p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
   p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
   p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+  ROOT result = pred[] compare(p_cond.0, p_cond.1), direction=LT
 }
 
 ENTRY entry {
@@ -354,8 +353,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -389,10 +388,10 @@ condition {
   p_cond = (f32[],f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
   p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  lt.0 = pred[] less-than(p_cond.0, p_cond.2)
+  lt.0 = pred[] compare(p_cond.0, p_cond.2), direction=LT
   p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
   p_cond.2.c = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  lt.1 = pred[] less-than(p_cond.1, p_cond.2.c)
+  lt.1 = pred[] compare(p_cond.1, p_cond.2.c), direction=LT
   ROOT result = pred[] and(lt.0, lt.1)
 }
 
@@ -405,8 +404,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);

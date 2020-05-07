@@ -31,73 +31,76 @@ T AlignTo(size_t alignment, T offset) {
 }  // namespace
 
 namespace tflite {
-
-TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
-                                         size_t alignment, size_t size,
-                                         ArenaAlloc* new_alloc) {
+TfLiteStatus SimpleMemoryArena::Allocate(
+    TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
+    int32_t first_node, int32_t last_node,
+    ArenaAllocWithUsageInterval* new_alloc) {
   TF_LITE_ENSURE(context, alignment <= arena_alignment_);
-
+  new_alloc->tensor = tensor;
+  new_alloc->first_node = first_node;
+  new_alloc->last_node = last_node;
+  new_alloc->size = size;
   if (size == 0) {
     new_alloc->offset = 0;
-    new_alloc->size = 0;
     return kTfLiteOk;
   }
 
-  size_t current_top = 0;
-
-  if (!allocs_.empty()) {
-    auto last = allocs_.rbegin();
-    current_top = last->offset + last->size;
-  }
-
   // If we don't find a better gap just allocate at the end of the buffer.
-  size_t best_offset = AlignTo(alignment, current_top);
-  size_t best_offset_fit = std::numeric_limits<size_t>::max();
-  auto best_insertion_it = allocs_.end();
+  const size_t kOffsetNotAssigned = std::numeric_limits<size_t>::max();
+  size_t best_offset = kOffsetNotAssigned;
+  size_t best_offset_fit = kOffsetNotAssigned;
 
   // Go through the sorted allocs and look at the gaps between them.
   size_t current_offset = 0;
-  for (auto it = allocs_.begin(); it != allocs_.end(); ++it) {
+  for (const auto& alloc : ordered_allocs_) {
+    if (alloc.last_node < first_node || alloc.first_node > last_node) {
+      // Usage interval of alloc doesn't intersect with current tensor's usage
+      // interval, so we skip it.
+      continue;
+    }
     size_t aligned_current_offset = AlignTo(alignment, current_offset);
     // If we found a gap larger than required size, and smaller than previous
     // best fit, take it.
-    if (aligned_current_offset + size <= it->offset &&
-        it->offset - current_offset < best_offset_fit) {
+    if (aligned_current_offset + size <= alloc.offset &&
+        alloc.offset - aligned_current_offset < best_offset_fit) {
       best_offset = aligned_current_offset;
-      best_offset_fit = it->offset - current_offset;
-      best_insertion_it = it;
+      best_offset_fit = alloc.offset - current_offset;
     }
-    current_offset = it->offset + it->size;
+    current_offset = std::max(current_offset, alloc.offset + alloc.size);
+  }
+  if (best_offset == kOffsetNotAssigned) {
+    best_offset = AlignTo(alignment, current_offset);
   }
 
   // Update the required buffer size.
   high_water_mark_ = std::max(high_water_mark_, best_offset + size);
-
   new_alloc->offset = best_offset;
-  new_alloc->size = size;
-  allocs_.insert(best_insertion_it, *new_alloc);
 
+  auto insertion_it = ordered_allocs_.begin();
+  while (insertion_it != ordered_allocs_.end() && *insertion_it < *new_alloc) {
+    ++insertion_it;
+  }
+  ordered_allocs_.insert(insertion_it, *new_alloc);
   return kTfLiteOk;
 }
 
-TfLiteStatus SimpleMemoryArena::Deallocate(TfLiteContext* context,
-                                           const ArenaAlloc& alloc) {
+TfLiteStatus SimpleMemoryArena::Deallocate(
+    TfLiteContext* context, const ArenaAllocWithUsageInterval& alloc) {
   if (alloc.size == 0) {
     return kTfLiteOk;
   }
 
   int erased_allocs_count = 0;
-  auto it = allocs_.begin();
-  while (it != allocs_.end()) {
-    if (it->offset == alloc.offset) {
-      TF_LITE_ENSURE_EQ(context, it->size, alloc.size);
+  auto it = ordered_allocs_.begin();
+  while (it != ordered_allocs_.end()) {
+    if (it->tensor == alloc.tensor) {
       erased_allocs_count++;
-      it = allocs_.erase(it);
+      it = ordered_allocs_.erase(it);
     } else {
       ++it;
     }
   }
-  TF_LITE_ENSURE_EQ(context, erased_allocs_count, 1);
+  TF_LITE_ENSURE(context, erased_allocs_count <= 1);
   return kTfLiteOk;
 }
 
@@ -128,9 +131,9 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
   return underlying_buffer_ != nullptr ? kTfLiteOk : kTfLiteError;
 }
 
-TfLiteStatus SimpleMemoryArena::ResolveAlloc(TfLiteContext* context,
-                                             const ArenaAlloc& alloc,
-                                             char** output_ptr) {
+TfLiteStatus SimpleMemoryArena::ResolveAlloc(
+    TfLiteContext* context, const ArenaAllocWithUsageInterval& alloc,
+    char** output_ptr) {
   TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
   if (alloc.size == 0) {
@@ -141,10 +144,18 @@ TfLiteStatus SimpleMemoryArena::ResolveAlloc(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus SimpleMemoryArena::Clear() {
+TfLiteStatus SimpleMemoryArena::ClearPlan() {
   committed_ = false;
   high_water_mark_ = 0;
-  allocs_.clear();
+  ordered_allocs_.clear();
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
+  committed_ = false;
+  underlying_buffer_size_ = 0;
+  underlying_buffer_aligned_ptr_ = nullptr;
+  underlying_buffer_.reset();
   return kTfLiteOk;
 }
 

@@ -3,90 +3,33 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
-def _process_src_impl(ctx):
-    """Applies various patches to the NCCL source."""
-    substitutions = {
-        "\"collectives.h": "\"collectives/collectives.h",
-        "\"../collectives.h": "\"collectives/collectives.h",
-        # Clang does not define __CUDACC_VER_*__, use CUDA_VERSION instead.
-        # TODO(csigg): Apply substitutions upstream and remove here.
-        "#if __CUDACC_VER_MAJOR__ >= 10 || (__CUDACC_VER_MAJOR__ >= 9 && __CUDACC_VER_MINOR__ >= 2)": "#if CUDART_VERSION >= 9200",
-        "#if __CUDACC_VER_MAJOR__ >= 10": "#if CUDART_VERSION >= 10000",
-        "#if __CUDACC_VER_MAJOR__ >= 9": "#if CUDART_VERSION >= 9000",
-        "#if __CUDACC_VER_MAJOR__ < 9": "#if CUDART_VERSION < 9000",
-        "nullptr_t": "std::nullptr_t",
-    }
-    if ctx.file.src.basename == "nccl.h.in":
-        substitutions.update({
-          "${nccl:Major}": "2",
-          "${nccl:Minor}": "3",
-          "${nccl:Patch}": "5",
-          "${nccl:Suffix}": "",
-          "${nccl:Version}": "2305",
-        })
-    if ctx.file.src.basename == "function.cu":
-        substitutions.update({
-            # Don't try to initialize the host shadow copy of this device-side
-            # global variable. There is no host pointer to a device-side
-            # function, which confuses clang.
-            # TODO(csigg): remove when fixed in clang.
-            "NCCL_FUNCS2B(ncclBroadcast),": "#if __CUDA_ARCH__\nNCCL_FUNCS2B(ncclBroadcast),",
-            "NCCL_FUNCS2A(ncclAllReduce)": "NCCL_FUNCS2A(ncclAllReduce)\n#endif",
-        })
-    ctx.actions.expand_template(
-        output = ctx.outputs.out,
-        template = ctx.file.src,
-        substitutions = substitutions,
-    )
-
-_process_src = rule(
-    implementation = _process_src_impl,
-    attrs = {
-        "src": attr.label(allow_single_file = True),
-        "out": attr.output(),
-    },
-)
-"""Processes one NCCL source file so it can be compiled with bazel and clang."""
-
-def _out(src):
-    if not src.startswith("src/"):
-      fail("Source file not under src/...:", src)
-    src = src[4:]  # Strip 'src/'
-    if src == "nccl.h.in":
-      return "nccl.h"
-    if src.endswith(".cu"):
-      return src + ".cc"
-    return src
-
-def process_srcs(srcs):
-    """Processes files under src/ and copies them to the parent directory."""
-    [_process_src(
-      name = "_" + src,
-      src = src,
-      out = _out(src),
-    ) for src in srcs]
-    return ["_" + src for src in srcs]
-
 def _gen_device_srcs_impl(ctx):
+    ops = ["sum", "prod", "min", "max"]
+    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "f32", "f64"]
+    hdr_tail = "****************************************/"
+    defines = "\n\n#define NCCL_OP %d\n#define NCCL_TYPE %d"
+
     files = []
-    for src in ctx.files.srcs:
-        name = "%s_%s" % (ctx.attr.name, src.basename)
-        file = ctx.actions.declare_file(name, sibling = src)
-        ctx.actions.expand_template(
-            output = file,
-            template = src,
+    for NCCL_OP, op in enumerate(ops):
+        for NCCL_TYPE, dt in enumerate(types):
             substitutions = {
-                "#define UNROLL 4": "#define UNROLL 4\n#define NCCL_OP %d" % ctx.attr.NCCL_OP,
-            },
-        )
-        files.append(file)
+                hdr_tail: hdr_tail + defines % (NCCL_OP, NCCL_TYPE),
+            }
+            for src in ctx.files.srcs:
+                name = "%s_%s_%s" % (op, dt, src.basename)
+                file = ctx.actions.declare_file(name, sibling = src)
+                ctx.actions.expand_template(
+                    output = file,
+                    template = src,
+                    substitutions = substitutions,
+                )
+                files.append(file)
     return [DefaultInfo(files = depset(files))]
 
 gen_device_srcs = rule(
     implementation = _gen_device_srcs_impl,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
-        "NCCL_OP": attr.int(),
     },
 )
 """Adds prefix to each file name in srcs and adds #define NCCL_OP."""
@@ -110,10 +53,6 @@ def _rdc_copts():
             "-fcuda-rdc",
             "-Xcuda-ptxas",
             maxrregcount,
-            # Work around for clang bug (fixed in r348662), declaring
-            # '__device__ operator delete(void*, std::size_t)' non-inline.
-            # TODO(csigg): Only add this option for older clang versions.
-            "-std=gnu++11",
         ],
         "//conditions:default": [],
     })
@@ -165,19 +104,21 @@ def _device_link_impl(ctx):
     tmp_fatbin = ctx.actions.declare_file("%s.fatbin" % name)
     fatbin_h = ctx.actions.declare_file("%s_fatbin.h" % name)
     bin2c = ctx.file._bin2c
-    ctx.actions.run(
-        outputs = [tmp_fatbin, fatbin_h],
-        inputs = cubins,
-        executable = ctx.file._fatbinary,
-        arguments = [
+    arguments_list = [
             "-64",
             "--cmdline=--compile-only",
             "--link",
             "--compress-all",
-            "--bin2c-path=%s" % bin2c.dirname,
             "--create=%s" % tmp_fatbin.path,
             "--embedded-fatbin=%s" % fatbin_h.path,
-        ] + images,
+        ]
+    if %{use_bin2c_path}:
+           arguments_list.append("--bin2c-path=%s" % bin2c.dirname)
+    ctx.actions.run(
+        outputs = [tmp_fatbin, fatbin_h],
+        inputs = cubins,
+        executable = ctx.file._fatbinary,
+        arguments = arguments_list + images,
         tools = [bin2c],
         mnemonic = "fatbinary",
     )
@@ -240,8 +181,7 @@ def _merge_archive_impl(ctx):
     ctx.actions.run_shell(
         inputs = ctx.files.srcs,  # + ctx.files._crosstool,
         outputs = [ctx.outputs.out],
-        command = ("printf \"%s\" " % mri_script +
-                   "| %s -M" % cc_toolchain.ar_executable),
+        command = "printf \"%s\" | %s -M" % (mri_script, cc_toolchain.ar_executable),
     )
 
 _merge_archive = rule(

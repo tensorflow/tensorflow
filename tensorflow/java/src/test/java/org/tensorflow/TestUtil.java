@@ -44,9 +44,15 @@ public class TestUtil {
     }
   }
 
-  public static <T> Output<T> constant(Graph g, String name, Object value) {
+  public static GraphOperation constantOp(Graph g, String name, Object value) {
     try (Tensor<?> t = Tensor.create(value)) {
-      return g.opBuilder("Const", name)
+      return g.opBuilder("Const", name).setAttr("dtype", t.dataType()).setAttr("value", t).build();
+    }
+  }
+
+  public static <T> Output<T> constant(ExecutionEnvironment env, String name, Object value) {
+    try (Tensor<?> t = Tensor.create(value)) {
+      return env.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())
           .setAttr("value", t)
           .build()
@@ -61,8 +67,8 @@ public class TestUtil {
         .<T>output(0);
   }
 
-  public static <T> Output<T> addN(Graph g, Output<?>... inputs) {
-    return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
+  public static <T> Output<T> addN(ExecutionEnvironment env, Output<?>... inputs) {
+    return env.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }
 
   public static <T> Output<T> matmul(

@@ -1,10 +1,4 @@
 op {
   graph_op_name: "DecodeRaw"
-  endpoint {
-    name: "io.decode_raw"
-  }
-  endpoint {
-    name: "decode_raw"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

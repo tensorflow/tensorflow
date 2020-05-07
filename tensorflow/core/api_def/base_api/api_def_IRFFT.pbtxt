@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "input"
     description: <<END
-A complex64 tensor.
+A complex tensor.
 END
   }
   in_arg {

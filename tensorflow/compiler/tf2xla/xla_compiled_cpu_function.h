@@ -19,7 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <string>
 
-#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -66,7 +66,7 @@ class XlaCompiledCpuFunction {
     RawFunction raw_function_;
 
     // Contains information about the buffers used by the XLA computation.
-    const cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
     size_t num_buffers_ = 0;
 
     // Entry parameter i is described by
@@ -76,12 +76,16 @@ class XlaCompiledCpuFunction {
     // There are num_args entry parameters.
     int64 num_args_ = 0;
 
+    // There are num_variables variables.
+    int64 num_variables_ = 0;
+
     // The 0-based index of the result tuple, in the temp buffers.
     size_t result_index_ = 0;
 
     // [Optional] Arrays of arg and result names. These are arrays of C-style
     // strings, where the array is terminated by nullptr.
     const char** arg_names_ = nullptr;
+    const char** variable_names_ = nullptr;
     const char** result_names_ = nullptr;
 
     // [Optional] Arg and result shapes.
@@ -105,7 +109,7 @@ class XlaCompiledCpuFunction {
   // AllocMode controls the buffer allocation mode.
   enum class AllocMode {
     // Allocate all buffers - args, results, profile and temps.
-    ARGS_RESULTS_PROFILES_AND_TEMPS,
+    ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS,
 
     // Only allocate result, profile and temp buffers.
     // Use set_arg_data to set argument buffers before Run is called.
@@ -114,7 +118,8 @@ class XlaCompiledCpuFunction {
 
   explicit XlaCompiledCpuFunction(
       const StaticData& static_data,
-      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
+      AllocMode alloc_mode =
+          AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
@@ -149,6 +154,8 @@ class XlaCompiledCpuFunction {
 
   int num_args() const { return num_args_; }
 
+  int num_variables() const { return num_variables_; }
+
   // Returns the size of entry parameter `idx`.
   //
   // There is a static version of this method on tfcompile generated subclasses
@@ -165,12 +172,16 @@ class XlaCompiledCpuFunction {
   // called for each positional argument, in order to set the argument buffers.
   //
   // Allocated memory must be aligned to the size specified by
-  // tensorflow::tfcompile::runtime::kAlign. If possible, use the functions in
-  // tensorflow/compiler/aot/runtime.h to ensure correct alignment.
+  // xla::cpu_function_runtime::kMinAlign. If possible, use the functions in
+  // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
+  // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
   void set_arg_data(size_t index, const void* data) {
+    assert((arg_size(index) < xla::cpu_function_runtime::kMinAlign ||
+            (uintptr_t)data % xla::cpu_function_runtime::kMinAlign == 0) &&
+           "Underaligned pointer!");
     // The const_cast is safe because the generated code does not write to arg
     // buffers.
     //
@@ -210,10 +221,11 @@ class XlaCompiledCpuFunction {
   // ------------------------------
   // Methods for extracting optional metadata.
 
-  // Returns true iff data is available for the Lookup{Arg,Result}Index methods.
-  // E.g. the data might not be compiled into the binary for AOT.
+  // Returns true iff data is available for the Lookup{Arg,Variable,Result}Index
+  // methods. E.g. the data might not be compiled into the binary for AOT.
   bool HasNameIndices() const {
-    return arg_names_ != nullptr && result_names_ != nullptr;
+    return arg_names_ != nullptr && variable_names_ != nullptr &&
+           result_names_ != nullptr;
   }
 
   // Returns the 0-based index for the argument with the given `name`.
@@ -223,6 +235,14 @@ class XlaCompiledCpuFunction {
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
   int LookupArgIndex(const string& name) const;
+
+  // Returns the 0-based index for the variable with the given `name`.
+  // Returns -1 if the name wasn't found, or data isn't available.
+  //
+  // The index remains constant for every instance of XlaCompiledCpuFunction
+  // generated from the same static data, and might not be cheap to determine.
+  // Recommended usage is to capture this in a variable for re-use.
+  int LookupVariableIndex(const string& name) const;
 
   // Returns the 0-based index for the result with the given `name`.
   // Returns -1 if the name wasn't found, or data isn't available.
@@ -259,7 +279,7 @@ class XlaCompiledCpuFunction {
 
   static void set_static_data_buffer_infos(
       StaticData* static_data,
-      const cpu_function_runtime::BufferInfo* buffer_infos) {
+      const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
     static_data->buffer_infos_ = buffer_infos;
   }
 
@@ -278,6 +298,11 @@ class XlaCompiledCpuFunction {
     static_data->num_args_ = num_args;
   }
 
+  static void set_static_data_num_variables(StaticData* static_data,
+                                            int64 num_variables) {
+    static_data->num_variables_ = num_variables;
+  }
+
   static void set_static_data_result_index(StaticData* static_data,
                                            size_t result_index) {
     static_data->result_index_ = result_index;
@@ -286,6 +311,11 @@ class XlaCompiledCpuFunction {
   static void set_static_data_arg_names(StaticData* static_data,
                                         const char** arg_names) {
     static_data->arg_names_ = arg_names;
+  }
+
+  static void set_static_data_variable_names(StaticData* static_data,
+                                             const char** variable_names) {
+    static_data->variable_names_ = variable_names;
   }
 
   static void set_static_data_result_names(StaticData* static_data,
@@ -323,7 +353,7 @@ class XlaCompiledCpuFunction {
   void** const buffer_table_;
 
   // Describes the buffers used by the XLA computation.
-  const cpu_function_runtime::BufferInfo* const buffer_infos_;
+  const xla::cpu_function_runtime::BufferInfo* const buffer_infos_;
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.
@@ -331,6 +361,9 @@ class XlaCompiledCpuFunction {
 
   // The number of incoming arguments.
   const int32 num_args_;
+
+  // The number of incoming variables.
+  const int32 num_variables_;
 
   // Backing memory for buffer_table_ and args_, the latter depending on
   // AllocMode.
@@ -344,6 +377,7 @@ class XlaCompiledCpuFunction {
 
   // Optional metadata.
   const char** arg_names_ = nullptr;
+  const char** variable_names_ = nullptr;
   const char** result_names_ = nullptr;
   const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;

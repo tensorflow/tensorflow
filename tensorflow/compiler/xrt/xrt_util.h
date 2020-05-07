@@ -18,9 +18,44 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_UTIL_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_UTIL_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "tensorflow/compiler/xla/service/backend.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xrt/xrt.pb.h"
+#include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_refptr.h"
+#include "tensorflow/compiler/xrt/xrt_state.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Factory class which creates NCCL unique IDs based on the replicas
+// participating to a given communication. This is only used for GPU backends.
+struct NcclUniqueIdFactory {
+  virtual ~NcclUniqueIdFactory() {}
+
+  // Generates the NCCL unique ID for the given set of replica IDs.
+  virtual std::string GetUniqueId(absl::Span<const xla::int64> replicas) = 0;
+};
+
+void SetNcclUniqueIdFactory(std::shared_ptr<NcclUniqueIdFactory> factory);
+
+std::shared_ptr<NcclUniqueIdFactory> GetNcclUniqueIdFactory();
+
+struct InputCoords {
+  explicit InputCoords(int64 handle) : handle(handle) {}
+  InputCoords(int64 handle, xla::ShapeIndex index)
+      : handle(handle), index(std::move(index)) {}
+
+  int64 handle = 0;
+  xla::ShapeIndex index;
+};
 
 // Filters the debug options provided as argument according to the value of the
 // TF_XLA_DEBUG_OPTIONS_PASSTHROUGH environment variable. If such variable is
@@ -28,6 +63,32 @@ namespace tensorflow {
 // only a subset of them will be set in the returned ones, and all the paths
 // contained in it, will be limited to gs:// and bigstore:// ones.
 xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options);
+
+// Populates the input_coords with a list of input coordinates from a input_name
+// op argument.
+xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
+    OpKernelContext* context, const char* input_name);
+
+// Create the XRT execute output tensor given the computation result
+// (output_tuple). The return_exploded_tuple tells whether a tuple result should
+// be returned as vector of handles representing each tuple child.
+Status CreateExecuteOutput(OpKernelContext* context,
+                           XRTMemoryManager* memory_manager,
+                           RefPtr<XRTTupleAllocation> output_tuple,
+                           bool return_exploded_tuple);
+
+// Drives the XRT chained computation execution given the supplied core execute
+// function.
+using ChainedExecuteFn =
+    std::function<xla::StatusOr<RefPtr<XRTTupleAllocation>>(
+        const xrt::XRTChainedExecuteOp&,
+        absl::Span<const RefPtr<XRTTupleAllocation>>)>;
+Status ExecuteChained(OpKernelContext* context,
+                      const RefPtr<XRTMemoryManager>& memory_manager,
+                      xla::Backend* backend, int device_ordinal,
+                      const xrt::XRTChainedExecutePlan& plan,
+                      const xrt::XRTChainedExecuteConfig& config,
+                      const ChainedExecuteFn& execute_op);
 
 }  // namespace tensorflow
 

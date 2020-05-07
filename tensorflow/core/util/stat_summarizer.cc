@@ -132,7 +132,10 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
   int64 mem_total = 0;
 
   int64 first_node_start_us =
-      step_stats.dev_stats(0).node_stats(0).all_start_micros();
+      (step_stats.dev_stats_size() > 0 &&
+       step_stats.dev_stats(0).node_stats_size() > 0)
+          ? step_stats.dev_stats(0).node_stats(0).all_start_micros()
+          : 0;
 
   int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
@@ -144,6 +147,15 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // /stream:$index to only count GPU executions once.
       if (ds.device().find("/stream") != std::string::npos &&
           ds.device().find("/stream:all") == std::string::npos) {
+        continue;
+      }
+      // NOTE(fishx): We will record ops execution time twice: one as CPU
+      // activity with device name "/host:CPU" and the other as TF runtime
+      // activity with device name started with "/job:*". It is safe to ignore
+      // CPU activities here.
+      // TODO(b/138729463): Read ops execution time from CPU activities instead
+      // of runtime activities.
+      if (ds.device().find("/host:CPU") != std::string::npos) {
         continue;
       }
 

@@ -38,9 +38,10 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,  // =
-  kComma,  // ,
-  kColon,  // :
+  kEqual,     // =
+  kComma,     // ,
+  kColon,     // :
+  kAsterisk,  // *
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,
@@ -62,7 +63,6 @@ enum class TokKind {
   kw_replicated,
   kw_nan,
   kw_inf,
-  kw_sparse,
 
   kNegInf,  // -inf
 
@@ -108,7 +108,7 @@ class HloLexer {
         LOG(FATAL) << "This token does not have string value";
     }
   }
-  tensorflow::int64 GetInt64Val() const {
+  int64 GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt);
     return token_state_.int64_val;
   }
@@ -147,8 +147,6 @@ class HloLexer {
   // or it's out of the range of the current buffer.
   absl::string_view StringPieceFromPointers(const char* begin,
                                             const char* end) const;
-  tensorflow::RegexpStringPiece RegexpStringPieceFromPointers(
-      const char* begin, const char* end) const;
 
   // Returns true if the given ptr is dereferenceable within the range of the
   // current buffer.
@@ -171,7 +169,7 @@ class HloLexer {
     const char* token_start = nullptr;
     TokKind current_kind;
     string str_val;
-    tensorflow::int64 int64_val;
+    int64 int64_val;
     double decimal_val;
     PrimitiveType primitive_type_val;
   };

@@ -337,8 +337,16 @@ inline Status ReadPrimitive(CodedInputStream* input, int index, void* data) {
 // serialized proto.
 // May read all or part of a repeated field.
 inline Status ReadBytes(CodedInputStream* input, int index, void* datap) {
-  string* data = reinterpret_cast<string*>(datap) + index;
-  if (!WireFormatLite::ReadBytes(input, data)) {
+  tstring* data = reinterpret_cast<tstring*>(datap) + index;
+
+  uint32 length;
+  if (!input->ReadVarint32(&length)) {
+    return errors::DataLoss("Failed reading bytes");
+  }
+
+  data->resize_uninitialized(length);
+
+  if (!input->ReadRaw(data->data(), length)) {
     return errors::DataLoss("Failed reading bytes");
   }
   return Status::OK();
@@ -354,16 +362,26 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
   // TODO(nix): there is a faster way to grab TYPE_GROUP bytes by relying
   // on input->IsFlat() == true and using input->GetDirectBufferPointer()
   // with input->CurrentPosition().
-  string* data = reinterpret_cast<string*>(datap) + index;
-  StringOutputStream string_stream(data);
-  CodedOutputStream out(&string_stream);
-  if (!WireFormatLite::SkipField(
-          input,
-          WireFormatLite::MakeTag(field_number,
-                                  WireFormatLite::WIRETYPE_START_GROUP),
-          &out)) {
-    return errors::DataLoss("Failed reading group");
+  tstring* data = reinterpret_cast<tstring*>(datap) + index;
+  // TODO(dero): To mitigate the string to tstring copy, we can implement our
+  // own scanner as described above.  We would first need to obtain the length
+  // in an initial pass and resize/reserve the tstring. But, given that
+  // TYPE_GROUP is deprecated and currently no tests in
+  // tensorflow/python/kernel_tests/proto:decode_proto_op_test target a
+  // TYPE_GROUP tag, we use std::string as a read buffer.
+  string buf;
+  StringOutputStream string_stream(&buf);
+  {
+    CodedOutputStream out(&string_stream);
+    if (!WireFormatLite::SkipField(
+            input,
+            WireFormatLite::MakeTag(field_number,
+                                    WireFormatLite::WIRETYPE_START_GROUP),
+            &out)) {
+      return errors::DataLoss("Failed reading group");
+    }
   }
+  *data = buf;
   return Status::OK();
 }
 

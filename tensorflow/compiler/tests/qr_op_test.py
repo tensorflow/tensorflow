@@ -71,7 +71,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       x_tf = array_ops.placeholder(dtype)
       with self.test_scope():
         q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)

@@ -40,6 +40,14 @@ class Attrs {
     }
   }
 
+  Attrs(
+      const std::vector<std::pair<string, FunctionDefHelper::AttrValueWrapper>>&
+          attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
   operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
 
  private:
@@ -60,16 +68,16 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // For testing convenience, we provide a few simple functions that can
 // be easily executed and tested.
 
-// x:T -> x * 2.
+// x: T -> x * 2.
 FunctionDef XTimesTwo();
 
-// x:T -> cpu(x * 2) + cpu(x * 3).
+// x: T -> cpu(x * 2) + cpu(x * 3).
 FunctionDef TwoDeviceTimesFive();
 
-// x:T -> cpu(x * 2), gpu(x * 3).
+// x: T -> cpu(x * 2), gpu(x * 3).
 FunctionDef TwoDeviceMult();
 
-// cpu(x):T, gpu(y):T -> cpu(x * 2), gpu(y * 3).
+// cpu(x): T, gpu(y): T -> cpu(x * 2), gpu(y * 3).
 FunctionDef TwoDeviceInputOutput();
 
 // Function taking a list of Tensors as input.
@@ -78,22 +86,25 @@ FunctionDef FuncWithListInput();
 // Function returning a list of Tensors as output.
 FunctionDef FuncWithListOutput();
 
-// x:T -> x + x.
+// x: T -> x + x.
 FunctionDef XAddX();
 
-// x:T -> x * 2, where x is int32.
+// x: T, y: T -> x + y.
+FunctionDef XAddY();
+
+// x: T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
 
-// x:T -> (x * 2) * 2.
+// x: T -> (x * 2) * 2.
 FunctionDef XTimesFour();
 
-// x:T -> ((x * 2) * 2) * 2.
+// x: T -> ((x * 2) * 2) * 2.
 FunctionDef XTimes16();
 
-// w:T, x:T, b:T -> MatMul(w, x) + b
+// w: T, x: T, b: T -> MatMul(w, x) + b
 FunctionDef WXPlusB();
 
-// x:T -> x:T, T is a type which we automatically converts to a bool.
+// x: T -> x: T, T is a type which we automatically converts to a bool.
 FunctionDef NonZero();
 
 // x: T -> bool.
@@ -102,29 +113,57 @@ FunctionDef IsZero();
 // x: T -> int64
 FunctionDef RandomUniform();
 
-// x:T, y:T -> y:T, x:T
+// x: T, y:T  -> y: T, x: T
 FunctionDef Swap();
 
-// x:T, y:T -> y:T, x:T, the body has no nodes.
+// x: T, y: T -> y: T, x: T, the body has no nodes.
 FunctionDef EmptyBodySwap();
 
-// x:float, y:resource -> y:resource, 2*x:float.
+// x: float, y: resource -> y: resource, 2*x: float.
 FunctionDef ResourceOutput();
 
-// x:resource -> y:float.
+// x: resource -> x: resource
+FunctionDef ResourceIdentity();
+
+// x: resource -> y: float.
 FunctionDef ReadResourceVariable();
 
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
 
-// x:T -> x <= N.
+// x: T -> x <= N.
 FunctionDef LessThanOrEqualToN(int64 N);
 
-// x:T, y:T -> x+1, x*y
+// x: T, y: T -> x + 1, x * y
 FunctionDef XPlusOneXTimesY();
 
-// x:T, y:T -> x <= N
+// x: T, y: T -> x <= N
 FunctionDef XYXLessThanOrEqualToN(int64 N);
+
+// x: T -> bool
+FunctionDef RandomUniformLess();
+
+// start: int64, stop: int64, step: int64 -> y: RangeDatasetOp::Dataset
+FunctionDef MakeRangeDataset();
+
+// input_dataset: variant, batch_size: int64, drop_remainder: bool
+// -> y: BatchDatasetV2::Dataset
+FunctionDef MakeBatchDataset();
+
+// input_dataset: variant, other_arguments: Targuments, f: func,
+// Targuments: list(type), output_types: list(type), output_shapes: list(shape),
+// use_inter_op_parallelism: bool, preserve_cardinality: bool
+// -> y: MapDatasetOp::Dataset
+FunctionDef MakeMapDataset(bool has_other_args);
+
+// input_dataset: variant, count: int64 -> y: TakeDataset::Dataset
+FunctionDef MakeTakeDataset();
+
+// x: T -> y: TensorSliceDatasetOp::Dataset
+FunctionDef MakeTensorSliceDataset();
+
+// x: T -> y: T, idx: out_idx
+FunctionDef Unique();
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

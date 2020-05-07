@@ -17,15 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
 #include <string>
+
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/tstring.h"
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)
 #include "tensorflow/core/platform/google/integral_types.h"
-#elif defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/integral_types.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/integral_types.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
@@ -33,14 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Define tensorflow::string to refer to appropriate platform specific type.
-// TODO(josh11b): Move this into the platform/*/integral_types.h files
-// above, and rename them platform/*/types.h.
-#if defined(PLATFORM_GOOGLE)
-using ::string;
-#else
+// Alias tensorflow::string to std::string.
 using std::string;
-#endif
 
 static const uint8 kuint8max = ((uint8)0xFF);
 static const uint16 kuint16max = ((uint16)0xFFFF);
@@ -65,5 +60,10 @@ namespace stream_executor {}
 namespace tensorflow {
 namespace se = ::stream_executor;
 }  // namespace tensorflow
+
+#if defined(PLATFORM_WINDOWS)
+#include <cstddef>
+typedef std::ptrdiff_t ssize_t;
+#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TYPES_H_

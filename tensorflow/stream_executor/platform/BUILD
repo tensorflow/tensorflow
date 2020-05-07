@@ -1,32 +1,28 @@
-licenses(["notice"])  # Apache 2.0
-
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_deps")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_platform_hdrs")
+
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
 )
 
-package(
-    default_visibility = [":friends"],
-)
-
 cc_library(
     name = "platform",
     textual_hdrs = [
+        "initialize.h",
         "logging.h",
-        "mutex.h",
         "platform.h",
         "port.h",
-        "thread_annotations.h",
-        "initialize.h",
     ],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/platform/default:platform",
         "@com_google_absl//absl/strings",
-    ],
+        "//tensorflow/core:lib",
+    ] + tf_platform_deps("platform", "//tensorflow/stream_executor/platform/"),
 )
 
 cc_library(
@@ -34,14 +30,5 @@ cc_library(
     hdrs = ["dso_loader.h"],
     deps = [
         ":platform",
-        "//tensorflow/stream_executor/platform/default:dso_loader",
-    ],
-)
-
-filegroup(
-    name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
+    ] + tf_platform_deps("dso_loader", "//tensorflow/stream_executor/platform/"),
 )

@@ -186,7 +186,7 @@ void SvdfCluster::MaybeMergeConstNodes(
       allocated_tensor->mutable_tensor_shape();
   auto tensor_shape_dim0 = allocated_tensor_shape->add_dim();
   int allocated_content_flat_size = 0;
-  for (int i = 0; i < const_node_parts.size(); i++) {
+  for (size_t i = 0; i < const_node_parts.size(); i++) {
     const auto& value_attr = const_node_parts[i]->attr().at("value");
     const tensorflow::TensorProto& tensor = value_attr.tensor();
     if (i == 0) {
@@ -214,7 +214,7 @@ void SvdfCluster::MaybeMergeConstNodes(
   std::unique_ptr<char[]> allocated_content(
       new char[allocated_content_flat_size]);
   char* content_ptr = allocated_content.get();
-  for (int i = 0; i < const_node_parts.size(); i++) {
+  for (size_t i = 0; i < const_node_parts.size(); i++) {
     const auto& value_attr = const_node_parts[i]->attr().at("value");
     const tensorflow::TensorProto& tensor = value_attr.tensor();
     port::CopyToBuffer(tensor.tensor_content(), content_ptr);

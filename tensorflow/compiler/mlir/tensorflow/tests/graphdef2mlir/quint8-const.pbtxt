@@ -1,0 +1,32 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - -mlir-print-debuginfo | FileCheck %s
+
+node {
+  name: "Quantized_Constant"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_QUINT8
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_QUINT8
+        tensor_shape {
+        }
+        int_val: 7
+      }
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 70
+}
+
+# CHECK: tf.Const
+# CHECK-SAME: value = opaque<"tf", "{{0[xX][0-9a-fA-F]*}}"> : tensor<!tf.quint8>
+# CHECK-SAME: loc("Quantized_Constant")

@@ -1,12 +1,13 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/summary.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "EventProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
-
-import "tensorflow/core/framework/summary.proto";
 
 // Protocol buffer representing an event that happened during
 // the execution of a Brain model.
@@ -89,6 +90,7 @@ enum WorkerHealth {
   OK = 0;  // By default a worker is healthy.
   RECEIVED_SHUTDOWN_SIGNAL = 1;
   INTERNAL_ERROR = 2;
+  SHUTTING_DOWN = 3;  // Worker has been instructed to shutdown after a timeout.
 }
 
 // Indicates the behavior of the worker when an internal error or shutdown
@@ -97,15 +99,21 @@ enum WorkerShutdownMode {
   DEFAULT = 0;
   NOT_CONFIGURED = 1;
   WAIT_FOR_COORDINATOR = 2;
+  SHUTDOWN_AFTER_TIMEOUT = 3;
 }
 
 message WatchdogConfig {
   int64 timeout_ms = 1;
 }
 
+message RequestedExitCode {
+  int32 exit_code = 1;
+}
+
 message WorkerHeartbeatRequest {
   WorkerShutdownMode shutdown_mode = 1;
   WatchdogConfig watchdog_config = 2;
+  RequestedExitCode exit_code = 3;
 }
 
 message WorkerHeartbeatResponse {

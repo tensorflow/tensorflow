@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_GPU_IMPL_H_
 #define TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_GPU_IMPL_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -38,6 +38,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSlice<GPUDevice, T, 5>;       \
   template struct functor::StridedSlice<GPUDevice, T, 6>;       \
   template struct functor::StridedSlice<GPUDevice, T, 7>;       \
+  template struct functor::StridedSlice<GPUDevice, T, 8>;       \
   template struct functor::StridedSliceGrad<GPUDevice, T, 1>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 2>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 3>;   \
@@ -45,6 +46,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSliceGrad<GPUDevice, T, 5>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 6>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 7>;   \
+  template struct functor::StridedSliceGrad<GPUDevice, T, 8>;   \
   template struct functor::StridedSliceAssign<GPUDevice, T, 1>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 2>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 3>; \
@@ -52,9 +54,10 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSliceAssign<GPUDevice, T, 5>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 6>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 7>; \
+  template struct functor::StridedSliceAssign<GPUDevice, T, 8>; \
   template struct functor::StridedSliceAssignScalar<GPUDevice, T>;
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_GPU_IMPL_H_

@@ -20,6 +20,9 @@ namespace tensorflow {
 namespace testing {
 
 // Installs signal handlers to print out stack trace.
+// Although GoogleTest has support for generating stacktraces with abseil via
+// https://github.com/google/googletest/pull/1653, this doesn't cover our use
+// case of getting C++ stacktraces in our python tests.
 void InstallStacktraceHandler();
 
 }  // namespace testing

@@ -19,8 +19,12 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -32,7 +36,8 @@ from tensorflow.python.platform import test
 
 
 class RangeDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _iterator_checkpoint_prefix_local(self):
     return os.path.join(self.get_temp_dir(), "iterator")
@@ -53,6 +58,8 @@ class RangeDatasetSerializationTest(
                                                       iterator_state_variant)
     return restore_op
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=1, mode=["graph"]))
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
@@ -105,12 +112,12 @@ class RangeDatasetSerializationTest(
   def _build_range_dataset(self, start, stop):
     return dataset_ops.Dataset.range(start, stop)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRangeCore(self):
     start = 2
     stop = 10
     stop_1 = 8
     self.run_core_tests(lambda: self._build_range_dataset(start, stop),
-                        lambda: self._build_range_dataset(start, stop_1),
                         stop - start)
 
 

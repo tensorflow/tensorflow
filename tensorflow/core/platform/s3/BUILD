@@ -33,9 +33,11 @@ tf_cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
         "@aws",
+        "@com_google_protobuf//:protobuf_headers",
         "@curl",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -65,6 +67,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:stringprintf",
         "@aws",
     ],
     alwayslink = 1,
@@ -78,11 +81,18 @@ cc_library(
     hdrs = [
         "s3_file_system.h",
     ],
-    deps = [
+    deps = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "//tensorflow/core/platform:retrying_file_system",
+        ],
+        "//conditions:default": [],
+    }) + [
         ":aws_crypto",
         ":aws_logging",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:str_util",
         "@aws",
     ],
     alwayslink = 1,
@@ -103,6 +113,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
         "@aws",
     ],
 )

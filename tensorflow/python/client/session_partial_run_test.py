@@ -22,21 +22,14 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
-
-
-# NOTE(mrry): Dummy shape registration for ops used in the tests, since they
-# don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
 class PartialRunTest(test_util.TensorFlowTestCase):

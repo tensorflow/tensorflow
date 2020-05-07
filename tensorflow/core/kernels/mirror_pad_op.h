@@ -103,11 +103,16 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     IsAligned = false,
     PacketAccess = TensorEvaluator<ArgType, Device>::PacketAccess,
     BlockAccess = false,
+    BlockAccessV2 = false,
     PreferBlockAccess = false,
     Layout = TensorEvaluator<ArgType, Device>::Layout,
     CoordAccess = true,
     RawAccess = false
   };
+
+  //===- Tensor block evaluation strategy (see TensorBlock.h) -------------===//
+  typedef internal::TensorBlockNotImplemented TensorBlock;
+  //===--------------------------------------------------------------------===//
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op,
                                                         const Device& device)
@@ -218,7 +223,8 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     const Index right =
         (dimensions_[dim] - padding_[dim].second) * output_strides_[dim];
 
-    if (left <= index && (index + kPacketSize - 1) < right) {
+    const Index index_mod = index % (dimensions_[dim] * output_strides_[dim]);
+    if (left <= index_mod && (index_mod + kPacketSize - 1) < right) {
       return impl_.template packet<Unaligned>(input_index);
     }
 

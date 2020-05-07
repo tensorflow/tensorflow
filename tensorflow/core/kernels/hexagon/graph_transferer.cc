@@ -18,11 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cinttypes>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
@@ -338,7 +338,6 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
     shapes.emplace_back(input_node_info_list.at(i).second.shape());
   }
 
-  NodeDef input_node_def;
   auto builder =
       NodeBuilder(AGGREGATED_INPUT_NODE_NAME, "RemoteFusedGraphExecute")
           .Input(std::vector<NodeBuilder::NodeOut>{})

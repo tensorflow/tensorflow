@@ -23,12 +23,11 @@ from absl.testing import parameterized
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedExpandDimsOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedExpandDimsOpTest(test_util.TensorFlowTestCase,
                              parameterized.TestCase):
 
   # An example 4-d ragged tensor with shape [3, (D2), (D3), 2], and the
@@ -51,11 +50,11 @@ class RaggedExpandDimsOpTest(ragged_test_util.RaggedTensorTestCase,
       dict(rt_input=[[1, 2], [3]],
            axis=0,
            expected=[[[1, 2], [3]]],
-           expected_shape=[1, None, None]),
+           expected_shape=[1, 2, None]),
       dict(rt_input=[[1, 2], [3]],
            axis=1,
            expected=[[[1, 2]], [[3]]],
-           expected_shape=[2, None, None]),
+           expected_shape=[2, 1, None]),
       dict(rt_input=[[1, 2], [3]],
            axis=2,
            expected=[[[1], [2]], [[3]]],
@@ -86,17 +85,17 @@ class RaggedExpandDimsOpTest(ragged_test_util.RaggedTensorTestCase,
            ragged_rank=2,
            axis=0,
            expected=EXAMPLE4D_EXPAND_AXIS[0],
-           expected_shape=[1, None, None, None, 2]),
+           expected_shape=[1, 3, None, None, 2]),
       dict(rt_input=EXAMPLE4D,
            ragged_rank=2,
            axis=1,
            expected=EXAMPLE4D_EXPAND_AXIS[1],
-           expected_shape=[3, None, None, None, 2]),
+           expected_shape=[3, 1, None, None, 2]),
       dict(rt_input=EXAMPLE4D,
            ragged_rank=2,
            axis=2,
            expected=EXAMPLE4D_EXPAND_AXIS[2],
-           expected_shape=[3, None, None, None, 2]),
+           expected_shape=[3, None, 1, None, 2]),
       dict(rt_input=EXAMPLE4D,
            ragged_rank=2,
            axis=3,
@@ -120,7 +119,7 @@ class RaggedExpandDimsOpTest(ragged_test_util.RaggedTensorTestCase,
     if expected_shape is not None:
       self.assertEqual(expanded.shape.as_list(), expected_shape)
 
-    self.assertRaggedEqual(expanded, expected)
+    self.assertAllEqual(expanded, expected)
 
 
 if __name__ == '__main__':

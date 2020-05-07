@@ -30,8 +30,7 @@ TensorSliceSet::TensorSliceSet(const TensorShape& shape, DataType type)
 
 TensorSliceSet::~TensorSliceSet() {}
 
-Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
-                                const float* data) {
+Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag) {
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
   string str = slice.DebugString();
@@ -53,67 +52,9 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
     slices_hull_.UpdateToCover(slice);
   }
 
-  TensorSliceSet::SliceInfo info = {slice, tag, data,
-                                    result_shape.num_elements()};
+  TensorSliceSet::SliceInfo info = {slice, tag, result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));
   return Status::OK();
-}
-
-// TODO(yangke): merge Query() with QueryMeta()
-bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
-  Status s;
-  string str = slice.DebugString();
-  // First we check if there is an exactly match (this is the dominant case).
-  const TensorSliceSet::SliceInfo* info = gtl::FindOrNull(slices_, str);
-  if (info) {
-    if (data) {
-      std::copy_n(info->data, info->num_floats, data);
-    }
-    return true;
-  } else {
-    // We didn't find any exact match but there is still a possibility that
-    // multiple existing slices can be patched together to output the slice.
-    // We figure this out by computing the intersection of each of the existing
-    // slices with the query slice, and check if the union of all these
-    // intersections cover the entire slice. We rely on the fact that the
-    // existing slices don't have any intersection among themselves.
-    TensorShape target_shape;
-    Status s;
-    s = slice.SliceTensorShape(shape_, &target_shape);
-    if (!s.ok()) {
-      LOG(WARNING) << s;
-      return false;
-    }
-    int64 total_size = target_shape.num_elements();
-
-    int64 overlap_size = 0;
-    TensorSlice intersection;
-    TensorShape inter_shape;
-    for (const auto& x : slices_) {
-      if (slice.Intersect(x.second.slice, &intersection)) {
-        s = intersection.SliceTensorShape(shape_, &inter_shape);
-        if (!s.ok()) {
-          LOG(WARNING) << s;
-          return false;
-        }
-        overlap_size += inter_shape.num_elements();
-      }
-    }
-    if (total_size == overlap_size) {
-      // We have it!
-      // Now we need to copy the data to "data"
-      if (data) {
-        for (const auto& x : slices_) {
-          CopyDataFromTensorSliceToTensorSlice(shape_, x.second.slice, slice,
-                                               x.second.data, data);
-        }
-      }
-      return true;
-    } else {
-      // We don't have all the data for the asked tensor slice
-      return false;
-    }
-  }
 }
 
 bool TensorSliceSet::QueryMeta(
@@ -194,7 +135,7 @@ Status RegisterTensorSlice(
     }
   }
   // Register the tensor slices without the actual data.
-  return tss->Register(slice, tag, nullptr);
+  return tss->Register(slice, tag);
 }
 
 }  // namespace checkpoint

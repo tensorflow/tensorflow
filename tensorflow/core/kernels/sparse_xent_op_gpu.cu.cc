@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/sparse_xent_op.h"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/kernels/sparse_xent_op.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -48,8 +48,8 @@ struct RowMaxReduction<GPUDevice, T> {
 
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
     Constants<GPUDevice> constants;
-    cub::Max op;
-    functor::ReduceImpl<T, cub::Max, T*, const T*, ReductionAxes>(
+    gpuprim::Max op;
+    functor::ReduceImpl<T, gpuprim::Max, T*, const T*, ReductionAxes>(
         ctx, maximum.data(), logits.data(), 2, rows, cols, 1, 1, constants.kOne,
         op);
   }
@@ -81,4 +81,4 @@ REGISTER(int64)
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

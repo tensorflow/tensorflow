@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 // Class containing options for running a LocalExecutable and other auxiliary
-// data, now only a stream cache for GPU backend.
+// data.
 class ServiceExecutableRunOptions {
  public:
   using StreamBorrower = std::function<StatusOr<StreamPool::Ptr>(int)>;
@@ -43,7 +43,9 @@ class ServiceExecutableRunOptions {
 
   // Delegate to `ExecutableRunOptions` member.
   se::Stream* stream() const { return run_options_.stream(); }
-  DeviceMemoryAllocator* allocator() const { return run_options_.allocator(); }
+  se::DeviceMemoryAllocator* allocator() const {
+    return run_options_.allocator();
+  }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
   // Borrows a stream and returns a smart pointer which returns the stream on

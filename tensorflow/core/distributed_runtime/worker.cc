@@ -23,15 +23,21 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env) {}
+Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
+  // Enable log history collection in StatusGroup so that recent warning and
+  // error log messages will be attached to the root error status to be
+  // forwarded to the master.
+  StatusGroup::ConfigureLogHistory();
+}
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
-                            GetStatusResponse* response, StatusCallback done) {
+                            GetStatusResponse* response, bool fail_fast,
+                            StatusCallback done) {
   DeviceMgr* dm = env_->device_mgr;
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
@@ -45,9 +51,9 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def(),
-                                              request->isolate_session_state());
+  Status s = env_->session_mgr->CreateSession(
+      request->session_handle(), request->server_def(),
+      request->cluster_device_attributes(), request->isolate_session_state());
   done(s);
 }
 
@@ -71,11 +77,11 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
     session = env_->session_mgr->LegacySession();
   }
   if (s.ok()) {
-    s = session->graph_mgr->Register(
-        request->session_handle(), request->graph_def(),
+    s = session->graph_mgr()->Register(
+        request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
-        request->collective_graph_key(), session->cluster_flr.get(),
-        response->mutable_graph_handle());
+        request->config_proto(), request->collective_graph_key(),
+        session->cluster_flr(), response->mutable_graph_handle());
   }
   done(s);
 }
@@ -92,7 +98,7 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
     session = env_->session_mgr->LegacySession();
   }
   if (s.ok()) {
-    s = session->graph_mgr->Deregister(request->graph_handle());
+    s = session->graph_mgr()->Deregister(request->graph_handle());
   }
 
   done(s);
@@ -156,8 +162,14 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
+  Status s = recent_request_ids_.TrackUnique(request->request_id(),
+                                             "RunGraph (Worker)", request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
   std::shared_ptr<WorkerSession> session;
-  Status s;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);
@@ -182,30 +194,14 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
   }
-  DeviceTracer* tracer = nullptr;
+  ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
-    if (trptr) {
-      tracer = trptr.release();
-      Status s = tracer->Start();
-      if (!s.ok()) {
-        delete tracer;
-        if (errors::IsUnavailable(s)) {
-          LOG(WARNING)
-              << "Hardware tracing unavailable, continuing without it. " << s;
-          tracer = nullptr;
-        } else {
-          delete collector;
-          delete out;
-          done(s);
-          return;
-        }
-      }
-    }
+    profiler_session = ProfilerSession::Create().release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for RunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });
@@ -217,32 +213,31 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     opts->ClearCancelCallback();
     delete cm;
     delete collector;
-    delete tracer;
+    delete profiler_session;
     delete out;
     done(errors::Aborted("Call was aborted"));
     return;
   }
-  session->graph_mgr->ExecuteAsync(
+  session->graph_mgr()->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
-      [this, step_id, response, session, cm, out, token, collector, tracer,
-       opts, done](Status s) {
+      [this, step_id, response, session, cm, out, token, collector,
+       profiler_session, opts, done](const Status& status) {
+        Status s = status;
         if (s.ok()) {
-          s = session->graph_mgr->RecvOutputs(step_id, out);
+          s = session->graph_mgr()->RecvOutputs(step_id, out);
         }
+
         opts->ClearCancelCallback();
         cancellation_manager_.DeregisterCallback(token);
         delete cm;
 
-        if (tracer) {
-          Status tracer_status = tracer->Stop();
-          if (tracer_status.ok()) {
-            tracer_status = tracer->Collect(collector);
-          }
-          if (!tracer_status.ok()) {
-            LOG(ERROR) << "Bad status from tracer: " << tracer_status;
-          }
+        if (profiler_session) {
+          RunMetadata run_metadata;
+          profiler_session->CollectData(&run_metadata).IgnoreError();
+          response->mutable_step_stats()->MergeFrom(run_metadata.step_stats());
         }
+
         if (s.ok()) {
           for (const auto& p : *out) {
             const string& key = p.first;
@@ -250,9 +245,10 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+
         if (collector) collector->Finalize();
         delete collector;
-        delete tracer;
+        delete profiler_session;
         delete out;
         done(s);
       });
@@ -266,9 +262,14 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
-  std::shared_ptr<WorkerSession> session;
+  Status s = recent_request_ids_.TrackUnique(
+      request->request_id(), "PartialRunGraph (Worker)", request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
-  Status s;
+  std::shared_ptr<WorkerSession> session;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);
@@ -298,6 +299,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 
   // Before we start doing anything, we set the RPC cancellation.
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for PartialRunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });
@@ -309,7 +311,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     token = cancellation_manager_.get_cancellation_token();
     cancellation_manager_.RegisterCallback(token,
                                            [cm]() { cm->StartCancel(); });
-    session->graph_mgr->ExecuteAsync(
+    session->graph_mgr()->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
         [this, token, step_id, session](Status s) {
@@ -318,14 +320,14 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
         });
   } else {
     // Send the partial run's new inputs.
-    s = session->graph_mgr->SendInputs(step_id, in);
+    s = session->graph_mgr()->SendInputs(step_id, in);
     if (!s.ok()) {
       finish(s);
       return;
     }
   }
 
-  session->graph_mgr->RecvOutputsAsync(
+  session->graph_mgr()->RecvOutputsAsync(
       step_id, out, [this, out, request, response, step_id, finish](Status s) {
         if (s.ok()) {
           // Construct and return the resp.
@@ -440,7 +442,7 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
         "RecvTensor expects a different device incarnation: ",
         parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
         ". Your worker job (\"",
-        env_->session_mgr->LegacySession()->worker_name,
+        env_->session_mgr->LegacySession()->worker_name(),
         "\") was probably restarted. Check your "
         "worker job for the reason why it was restarted.");
   }

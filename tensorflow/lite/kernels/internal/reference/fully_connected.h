@@ -15,16 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 
-#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace reference_ops {
-
-const int kReverseShift = -1;
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
@@ -67,8 +64,7 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, void* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+    uint8* output_data) {
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -116,8 +112,7 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    int16* output_data, void* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+    int16* output_data) {
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -170,9 +165,7 @@ inline void ShuffledFullyConnected(
     const uint8* input_data, const RuntimeShape& weights_shape,
     const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    int16* output_data, uint8* shuffled_input_workspace_data,
-    void* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+    int16* output_data, uint8* shuffled_input_workspace_data) {
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;

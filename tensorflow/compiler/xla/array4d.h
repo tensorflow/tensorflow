@@ -54,6 +54,8 @@ namespace xla {
 template <typename T>
 class Array4D : public Array<T> {
  public:
+  Array4D() : Array<T>(std::vector<int64>{0, 0, 0, 0}) {}
+
   // Creates a 4D array, uninitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
       : Array<T>(std::vector<int64>{planes, depth, height, width}) {}
@@ -114,6 +116,21 @@ class Array4D : public Array<T> {
         for (int64 height = 0; height < this->height(); ++height) {
           for (int64 width = 0; width < this->width(); ++width) {
             (*this)(plane, depth, height, width) = value(height, width);
+          }
+        }
+      }
+    }
+  }
+
+  // Fills all of the {p,x} with the array provided, which specifies {z,y}.
+  void FillWithZY(const Array2D<T>& value) {
+    CHECK_EQ(value.height(), depth());
+    CHECK_EQ(value.width(), height());
+    for (int64 plane = 0; plane < planes(); ++plane) {
+      for (int64 depth = 0; depth < this->depth(); ++depth) {
+        for (int64 height = 0; height < this->height(); ++height) {
+          for (int64 width = 0; width < this->width(); ++width) {
+            (*this)(plane, depth, height, width) = value(depth, height);
           }
         }
       }

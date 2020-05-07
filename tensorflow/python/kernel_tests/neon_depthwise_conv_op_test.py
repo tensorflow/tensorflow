@@ -165,6 +165,7 @@ class DepthwiseConv2DTest(test.TestCase):
       self._VerifyValues(
           input_size, filter_size, stride, padding, use_gpu=False)
 
+  @test_util.run_deprecated_v1
   def testDepthwiseConv2DFormat(self):
     if not test.is_gpu_available():
       return

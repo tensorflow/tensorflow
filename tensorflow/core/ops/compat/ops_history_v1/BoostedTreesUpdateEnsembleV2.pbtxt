@@ -1,0 +1,216 @@
+op {
+  name: "BoostedTreesUpdateEnsembleV2"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "dimension_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "split_types"
+    type: DT_STRING
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "max_depth"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "pruning_mode"
+    type: DT_INT32
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesUpdateEnsembleV2"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "dimension_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "split_types"
+    type: DT_STRING
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "max_depth"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "pruning_mode"
+    type: DT_INT32
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesUpdateEnsembleV2"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+    number_attr: "num_groups"
+  }
+  input_arg {
+    name: "dimension_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "split_types"
+    type: DT_STRING
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "max_depth"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "pruning_mode"
+    type: DT_INT32
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

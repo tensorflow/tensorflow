@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace strings {
@@ -101,8 +102,8 @@ class ProtoTextOutput {
 
  private:
   void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
-    StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
-              field_name, kColonSeparator, value_text);
+    absl::StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
+                    field_name, kColonSeparator, value_text);
     level_empty_ = false;
   }
 

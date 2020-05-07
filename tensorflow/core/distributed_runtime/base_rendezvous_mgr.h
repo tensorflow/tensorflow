@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -88,22 +88,19 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   // periodically calls CleanupAll().
   void Cleanup(int64 step_id) override;
 
-  // Removed all rendezvous.
-  void CleanupAll() override;
-
  protected:
   virtual BaseRemoteRendezvous* Create(int64 step_id,
                                        const WorkerEnv* worker_env) = 0;
 
  private:
   // Maps step_id to rendezvous.
-  typedef gtl::FlatMap<int64, BaseRemoteRendezvous*> Table;
+  typedef absl::flat_hash_map<int64, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 
   BaseRemoteRendezvous* FindOrCreate(int64 step_id);
 
@@ -160,7 +157,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
                             DeviceNameUtils::ParsedName dst);
 
   // If aborted, aborts "call". Otherwise, adds "call" into active_.
-  void RegisterCall(BaseRecvTensorCall* call);
+  void RegisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
   // Removes "call" from active_ if "call" is in active_.
   void DeregisterCall(BaseRecvTensorCall* call);
@@ -177,11 +174,14 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
  private:
   Rendezvous* local_;  // Owns a Ref on this object.
 
-  mutable mutex mu_;
+  // Guards mutable state that is read-mostly after this rendezvous is
+  // initialized.
+  mutable mutex init_mu_;
 
   // Status given by StartAbort() if any.
-  Status status_ GUARDED_BY(mu_);
-  WorkerSession* session_ GUARDED_BY(mu_);  // Not owned.
+  Status status_ TF_GUARDED_BY(init_mu_);
+
+  WorkerSession* session_ TF_GUARDED_BY(init_mu_);  // Not owned.
 
   // Data structures to handle calls when partially initialized.
   struct DeferredCall {
@@ -190,12 +190,16 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
     DeferredCall(const ParsedKey& parsed, DoneCallback done);
   };
-  std::vector<DeferredCall> deferred_calls_ GUARDED_BY(mu_);
+  std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(init_mu_);
+
+  typedef std::function<void()> InactiveCallback;
 
   // Active outstanding RecvTensor calls.
-  gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
+  mutex active_mu_;
+  std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
+      TF_GUARDED_BY(active_mu_);
 
-  bool is_initialized_locked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(init_mu_) {
     return session_ != nullptr;
   }
 

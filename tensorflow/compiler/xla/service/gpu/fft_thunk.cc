@@ -29,31 +29,31 @@ namespace xla {
 namespace gpu {
 
 FftScratchAllocator::FftScratchAllocator(
-    int device_ordinal, DeviceMemoryAllocator* memory_allocator)
+    int device_ordinal, se::DeviceMemoryAllocator* memory_allocator)
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-int64 FftScratchAllocator::GetMemoryLimitInBytes(se::Stream* stream) {
+int64 FftScratchAllocator::GetMemoryLimitInBytes() {
   constexpr int64 kFftScratchSize = 1LL << 32;  // 4GB by default.
   return kFftScratchSize;
 }
 
 StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
-    se::Stream* stream, int64 byte_size) {
+    int64 byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
-  if (byte_size > GetMemoryLimitInBytes(stream)) {
+  if (byte_size > GetMemoryLimitInBytes()) {
     return se::port::Status(
         se::port::error::RESOURCE_EXHAUSTED,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes(stream)));
+            byte_size, GetMemoryLimitInBytes()));
   }
 
-  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
                       memory_allocator_->Allocate(device_ordinal_, byte_size,
                                                   /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
 
-  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
   allocated_buffers_.push_back(std::move(allocated_buffer));
   return se::DeviceMemory<uint8>(buffer_addr);
 }
@@ -106,9 +106,10 @@ FftThunk::FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
-Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream,
-                                 HloExecutionProfiler* profiler) {
+Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);
   VLOG(3) << "Output shape: "
@@ -117,7 +118,8 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
                                         buffer_allocations.memory_allocator());
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (fft_plan_ == nullptr) {
     const int64 fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);
@@ -143,15 +145,14 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     }
 
     constexpr bool kInPlaceFft = false;
-    fft_plan_ =
-        stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
-            stream, fft_rank, fft_length, input_embed, input_stride,
-            input_distance, output_embed, output_stride, output_distance,
-            fft_type_, kInPlaceFft, batch_size, &scratch_allocator);
+    fft_plan_ = stream.parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+        &stream, fft_rank, fft_length, input_embed, input_stride,
+        input_distance, output_embed, output_stride, output_distance, fft_type_,
+        kInPlaceFft, batch_size, &scratch_allocator);
     scale_factor_ = 1.0f / output_distance;
   } else {
-    stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-        stream, fft_plan_.get(), &scratch_allocator);
+    stream.parent()->AsFft()->UpdatePlanWithScratchAllocator(
+        &stream, fft_plan_.get(), &scratch_allocator);
   }
 
   bool launch_ok;
@@ -162,7 +163,7 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       se::DeviceMemory<complex64> output_data(
           buffer_allocations.GetDeviceAddress(output_buffer_));
       launch_ok =
-          stream->ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kC2CInverse: {
@@ -171,13 +172,12 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       se::DeviceMemory<complex64> output_data(
           buffer_allocations.GetDeviceAddress(output_buffer_));
       launch_ok =
-          stream->ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       if (launch_ok) {
-        launch_ok =
-            stream
-                ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                               complex64(scale_factor_), &output_data, 1)
-                .ok();
+        launch_ok = stream
+                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
+                                      complex64(scale_factor_), &output_data, 1)
+                        .ok();
       }
       break;
     }
@@ -187,7 +187,7 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       se::DeviceMemory<complex64> output_data(
           buffer_allocations.GetDeviceAddress(output_buffer_));
       launch_ok =
-          stream->ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kC2R: {
@@ -196,11 +196,11 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       se::DeviceMemory<float> output_data(
           buffer_allocations.GetDeviceAddress(output_buffer_));
       launch_ok =
-          stream->ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       if (launch_ok) {
         launch_ok = stream
-                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                                       scale_factor_, &output_data, 1)
+                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
+                                      scale_factor_, &output_data, 1)
                         .ok();
       }
       break;

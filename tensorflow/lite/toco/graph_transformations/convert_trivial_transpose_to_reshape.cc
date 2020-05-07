@@ -67,7 +67,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   }
   // Note: We can assume we have error checked inputs in PropagateFixedSizes.
 
-  // Check that the permutation has propogated.
+  // Check that the permutation has propagated.
   std::vector<int> const& perm = transpose_op->perm;
   if (perm.empty()) {
     return ::tensorflow::Status::OK();
@@ -107,10 +107,8 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   }
 
   // Replace the operator in the graph.
-  const auto reshape_it = model->operators.emplace(transpose_it, reshape_op);
-  transpose_it = reshape_it + 1;
-  CHECK_EQ(transpose_it->get(), transpose_op);
-  model->operators.erase(transpose_it);
+  model->operators.emplace(transpose_it, reshape_op);
+  DeleteOpAndArrays(model, transpose_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

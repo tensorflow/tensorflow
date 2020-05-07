@@ -47,7 +47,6 @@ class DeviceSimple : public DeviceBase {
 
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 

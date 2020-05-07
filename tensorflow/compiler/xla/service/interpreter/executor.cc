@@ -33,18 +33,20 @@ XlaInterpreterExecutor::XlaInterpreterExecutor(
 
 XlaInterpreterExecutor::~XlaInterpreterExecutor() {}
 
-void *XlaInterpreterExecutor::Allocate(uint64 size) { return new char[size]; }
+DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64 size,
+                                                  int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(new char[size], size);
+}
 
-void *XlaInterpreterExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                                uint64 offset_bytes,
-                                                uint64 /*size_bytes*/) {
+void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
+                                           uint64 offset_bytes,
+                                           uint64 /*size_bytes*/) {
   return parent + offset_bytes;
 }
 
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
-  if (!mem->is_sub_buffer()) {
-    delete[] static_cast<char *>(mem->opaque());
-  }
+  delete[] static_cast<char *>(mem->opaque());
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
@@ -112,7 +114,8 @@ port::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return port::Status::OK();
 }
 
-DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
@@ -121,7 +124,7 @@ DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
   builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
-  return builder.Build().release();
+  return builder.Build();
 }
 
 }  // namespace interpreter

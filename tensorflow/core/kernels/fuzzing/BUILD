@@ -1,7 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_corpus")
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_dict")
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -13,10 +16,6 @@ cc_library(
         "//tensorflow/core:tensorflow",
     ],
 )
-
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_corpus")
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_dict")
 
 tf_ops_fuzz_target_lib("identity")
 
@@ -73,3 +72,7 @@ tf_ops_fuzz_target_lib("one_hot")
 tf_ops_fuzz_target_lib("scatter_nd")
 
 tf_oss_fuzz_corpus("scatter_nd")
+
+tf_ops_fuzz_target_lib("decode_csv")
+
+tf_oss_fuzz_corpus("decode_csv")

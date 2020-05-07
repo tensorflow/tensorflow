@@ -183,7 +183,7 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
     int cluster_count = 0;
     for (const NodeDef& node_def : output_graph_def_.node()) {
       const string& name = node_def.name();
-      if (str_util::StartsWith(name, REMOTE_FUSED_GRAPH_NODE_NAME)) {
+      if (absl::StartsWith(name, REMOTE_FUSED_GRAPH_NODE_NAME)) {
         ++cluster_count;
         RemoteFusedGraphExecuteInfo info;
         string serialized_proto;

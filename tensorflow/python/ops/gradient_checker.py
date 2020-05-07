@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -259,6 +260,7 @@ def _compute_gradient_list(x,
       init.run()
   if x_init_value is None:
     x_init_value = [None] * len(x)
+  # pylint: disable=g-complex-comprehension
   ret = [_compute_gradient(xi, x_shapei, dxi, y, y_shape, dyi, x_init_valuei,
                            delta, extra_feed_dict=extra_feed_dict)
          for xi, x_shapei, dxi, dyi, x_init_valuei in zip(x, x_shape, dx, dy,
@@ -267,6 +269,11 @@ def _compute_gradient_list(x,
 
 
 @tf_export(v1=["test.compute_gradient"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.test.compute_gradient in 2.0, which has better "
+    "support for functions. Note that the two versions have different usage, "
+    "so code change is needed.")
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -284,10 +291,10 @@ def compute_gradient(x,
   numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
   with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
-      J[::2, ::2] = d(Re y)/d(Re x)
-      J[::2, 1::2] = d(Im y)/d(Re x)
-      J[1::2, ::2] = d(Re y)/d(Im x)
-      J[1::2, 1::2] = d(Im y)/d(Im x)
+      J[:m, :n] = d(Re y)/d(Re x)
+      J[:m, n:] = d(Im y)/d(Re x)
+      J[m:, :n] = d(Re y)/d(Im x)
+      J[m:, n:] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors
@@ -339,6 +346,11 @@ def _compute_error(grad):
 
 
 @tf_export(v1=["test.compute_gradient_error"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.test.compute_gradient in 2.0, which has better "
+    "support for functions. Note that the two versions have different usage, "
+    "so code change is needed.")
 def compute_gradient_error(x,
                            x_shape,
                            y,

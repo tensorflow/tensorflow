@@ -140,6 +140,10 @@ uint8* Decode(const void* srcdata, int datasize,
     ColorMapObject* color_map = this_image->ImageDesc.ColorMap
                                     ? this_image->ImageDesc.ColorMap
                                     : gif_file->SColorMap;
+    if (color_map == nullptr) {
+      *error_string = strings::StrCat("missing color map for frame ", k);
+      return nullptr;
+    }
 
     for (int i = imgTop; i < imgBottom; ++i) {
       uint8* p_dst = this_dst + i * width * channel;

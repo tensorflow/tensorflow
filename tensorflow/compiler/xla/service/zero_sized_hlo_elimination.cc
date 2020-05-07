@@ -35,7 +35,7 @@ StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
           instruction->opcode() == HloOpcode::kConstant) {
         continue;
       }
-      if (comp->IsRemovable(instruction) &&
+      if (comp->IsSafelyRemovable(instruction) &&
           ShapeUtil::IsZeroElementArray(instruction->shape())) {
         // If the instruction doesn't have a layout, use a default layout for
         // the literal.

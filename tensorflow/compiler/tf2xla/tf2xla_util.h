@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -196,6 +197,20 @@ xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
 Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld);
+
+// Prunes unreachable FunctionDefs from FunctionLibraryDefinition.
+Status PruneUnreachableFunctionsFromGraph(const Graph& g,
+                                          FunctionLibraryDefinition* fld);
+
+// Finds the following pattern in the graph:
+// 1) EmptyTensorList -> forward While op -> backward While op,
+// 2) in forward While op, a Const node is pushed,
+// 3) in backward While op, data is popped from the tensor list.
+// And rewrites backward While op to use Const node instead of TensorListPopBack
+// result.
+// TODO(b/128633174) remove the TensorList and related TensorList ops.
+Status RewriteTensorListWithConstElement(Graph* g,
+                                         FunctionLibraryDefinition* fld);
 
 }  // namespace tensorflow
 

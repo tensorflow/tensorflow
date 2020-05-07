@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -57,9 +58,24 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
-  // If we're not Volta or not fp16, the decision is easy: Use NCHW.
-  if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
-        IsVoltaOrLater(*stream_executor))) {
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(
+          instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
+  }
+
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
+  if (debug_options.xla_gpu_force_conv_nchw()) {
+    return kAllNCHW;
+  }
+
+  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
+  // NCHW.
+  if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||
+      !IsVoltaOrLater(*stream_executor) ||
+      instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
 
@@ -71,7 +87,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
   // which on paper gives good performance. However, there are two observations:
   // * a mixed layout combination is more cuDNN-bug prone, based on empirical
-  //   envidence.
+  //   evidence.
   // * we've also observed that for mixed layouts, cuDNN transposes data back
   //   and forth from a different layout combination. If we end up with
   //   transposes anyway, we prefer to have them in XLA, as they can be fused.
@@ -156,7 +172,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   // instr->operand(2), if exists, is the bias buffer. There is no need to
   // assign layout to it, as it has only one dimension.
 
-  // instr->opernad(3), if exists, is the side input buffer.
+  // instr->operand(3), if exists, is the side input buffer.
   if (instr->operand_count() == 4) {
     if (kind != CudnnConvKind::kForwardActivation) {
       return InternalError(
@@ -184,15 +200,16 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
+    CHECK(!IsCublasGemm(*instruction))
+        << "Gemm rewriting should run after layout assignment";
+
     // For batched dot we require the default layout.
     // TODO(b/112111608): This is overly conservative, the only real restriction
     // is that batch dimensions must be major.
-    if (instruction->opcode() == HloOpcode::kDot &&
-        ImplementedAsGemm(*instruction) &&
+    if (IsMatrixMultiplication(*instruction) &&
         instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
       // Verify that the batch dims come before the row and col dims.
-      const DotDimensionNumbers& dim_nums =
-          instruction->dot_dimension_numbers();
+      DotDimensionNumbers dim_nums = instruction->dot_dimension_numbers();
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
@@ -212,6 +229,16 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kFft) {
+      // cuFFT requires a dim0 major layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
@@ -240,6 +267,32 @@ Status GpuLayoutAssignment::AddBackendConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(keys_layout, *output_buffer));
       }
+    } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
+      // TODO(phawkins): Ideally we would relax this constraint. What we
+      // actually want is that:
+      // a) the batch dimensions are major, in no particular order.
+      // b) the two minor dimensions are in fortran (column-major) order,
+      // although for the 'a' argument we could potentially accept row-major
+      // order and fold the transpose into the operator.
+      auto set_fortran_layout = [](Shape* shape) {
+        LayoutUtil::SetToDefaultLayout(shape);
+        int n = shape->mutable_layout()->minor_to_major_size();
+        CHECK_GE(n, 2);
+        std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
+                  shape->mutable_layout()->mutable_minor_to_major()->at(1));
+      };
+      Shape op0_shape = instruction->operand(0)->shape();
+      Shape op1_shape = instruction->operand(1)->shape();
+      Shape output_shape = instruction->shape();
+      set_fortran_layout(&op0_shape);
+      set_fortran_layout(&op1_shape);
+      set_fortran_layout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     }
   }
   return Status::OK();

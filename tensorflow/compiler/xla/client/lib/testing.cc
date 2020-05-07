@@ -98,7 +98,7 @@ std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
     const XlaComputation& computation, Client* client,
     DebugOptions* debug_opts /*=nullptr*/) {
   CHECK(computation.proto().has_host_program_shape())
-      << "Computation should have progran shape.";
+      << "Computation should have program shape.";
   auto program_shape = computation.proto().host_program_shape();
 
   std::vector<std::unique_ptr<GlobalData>> results;

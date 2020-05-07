@@ -10,7 +10,7 @@ tf_module {
   }
   member_method {
     name: "clone_model"
-    argspec: "args=[\'model\', \'input_tensors\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'model\', \'input_tensors\', \'clone_function\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "load_model"
@@ -30,6 +30,6 @@ tf_module {
   }
   member_method {
     name: "save_model"
-    argspec: "args=[\'model\', \'filepath\', \'overwrite\', \'include_optimizer\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
+    argspec: "args=[\'model\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\'], "
   }
 }

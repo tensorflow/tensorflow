@@ -1,0 +1,31 @@
+path: "tensorflow.profiler.experimental"
+tf_module {
+  member {
+    name: "Profile"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ProfilerOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Trace"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "client"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "server"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "start"
+    argspec: "args=[\'logdir\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "stop"
+    argspec: "args=[\'save\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+}

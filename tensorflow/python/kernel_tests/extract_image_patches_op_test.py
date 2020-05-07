@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -44,15 +43,14 @@ class ExtractImagePatches(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with test_util.use_gpu():
-      out_tensor = array_ops.extract_image_patches(
-          constant_op.constant(image),
-          ksizes=ksizes,
-          strides=strides,
-          rates=rates,
-          padding=padding,
-          name="im2col")
-      self.assertAllClose(patches, self.evaluate(out_tensor))
+    out_tensor = array_ops.extract_image_patches(
+        constant_op.constant(image),
+        ksizes=ksizes,
+        strides=strides,
+        rates=rates,
+        padding=padding,
+        name="im2col")
+    self.assertAllClose(patches, self.evaluate(out_tensor))
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""
@@ -126,6 +124,25 @@ class ExtractImagePatches(test.TestCase):
         rates=[2, 2],
         padding="VALID",
         patches=patches)
+
+  def testComplexDataTypes(self):
+    """Test for complex data types"""
+    for dtype in [np.complex64, np.complex128]:
+      image = (
+          np.reshape(range(120), [2, 3, 4, 5]).astype(dtype) +
+          np.reshape(range(120, 240), [2, 3, 4, 5]).astype(dtype) * 1j)
+      patches = (
+          np.reshape(range(120), [2, 3, 4, 5]).astype(dtype) +
+          np.reshape(range(120, 240), [2, 3, 4, 5]).astype(dtype) * 1j)
+      for padding in ["VALID", "SAME"]:
+        self._VerifyValues(
+            image,
+            ksizes=[1, 1],
+            strides=[1, 1],
+            rates=[1, 1],
+            padding=padding,
+            patches=patches)
+
 
 if __name__ == "__main__":
   test.main()

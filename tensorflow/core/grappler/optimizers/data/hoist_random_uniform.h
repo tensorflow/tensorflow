@@ -37,6 +37,8 @@ class HoistRandomUniform : public TFDataOptimizerBase {
 
   string name() const override { return "hoist_random_uniform"; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

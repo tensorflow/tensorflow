@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -144,6 +145,17 @@ class NestTest(test.TestCase):
     self.assertEqual([st, st, st], nest.flatten(nest_of_values))
     self.assertEqual([st, st, st], nest.flatten(dict_of_values))
 
+  def testFlattenRaggedValue(self):
+    rt = ragged_factory_ops.constant_value([[[0]], [[1]]])
+    single_value = rt
+    list_of_values = [rt, rt, rt]
+    nest_of_values = ((rt), ((rt), (rt)))
+    dict_of_values = {"foo": rt, "bar": rt, "baz": rt}
+    self.assertEqual([rt], nest.flatten(single_value))
+    self.assertEqual([[rt, rt, rt]], nest.flatten(list_of_values))
+    self.assertEqual([rt, rt, rt], nest.flatten(nest_of_values))
+    self.assertEqual([rt, rt, rt], nest.flatten(dict_of_values))
+
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))
@@ -157,6 +169,8 @@ class NestTest(test.TestCase):
     self.assertTrue(nest.is_sequence({"foo": 1, "bar": 2}))
     self.assertFalse(
         nest.is_sequence(sparse_tensor.SparseTensorValue([[0]], [0], [1])))
+    self.assertFalse(
+        nest.is_sequence(ragged_factory_ops.constant_value([[[0]], [[1]]])))
 
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))

@@ -30,7 +30,7 @@ namespace toco {
 namespace {
 
 // Using the function reducer, reduce input along all axes in axes.
-// Put the reduced data in output, which should aleady be appropriately sized.
+// Put the reduced data in output, which should already be appropriately sized.
 // check_output_shape is set to what this code computes the final shape
 // to be, so it can be cross checked with the shape computation logic.
 void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
@@ -54,7 +54,7 @@ void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
   // Reduction mask will be elementwise multiplied against the input
   // indices to figure out the output index for the element.
   std::vector<int> reduction_mask(input_shape.dimensions_count(), 1);
-  for (int axis : axes) {
+  for (const auto& axis : axes) {
     CHECK_GE(axis, 0);
     CHECK_LT(axis, input_shape.dimensions_count());
     reduction_mask[axis] = 0;
@@ -182,7 +182,8 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   // We have already tested above for existence of buffers (synonymous to being
   // a constant param).
   CHECK(input_array.buffer);
-  std::vector<DataType<ArrayDataType::kFloat>> const* input_float_data;
+  std::vector<DataType<ArrayDataType::kFloat>> const* input_float_data =
+      nullptr;
   if (unary_op->type == OperatorType::kCast) {
     CastOperator const* cast_op = static_cast<CastOperator const*>(unary_op);
     if (cast_op->dst_data_type != ArrayDataType::kFloat) {
@@ -230,6 +231,9 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
       } else if (input_array.buffer->type == ArrayDataType::kInt64) {
         outval = static_cast<float>(
             input_array.GetBuffer<ArrayDataType::kInt64>().data[i]);
+      } else if (input_array.buffer->type == ArrayDataType::kBool) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kBool>().data[i]);
       } else {
         LOG(FATAL) << "Unsupported cast op input type";
       }
@@ -346,14 +350,8 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   } else {
     LOG(FATAL) << "should not get here.";
   }
-  for (const auto& input : unary_op->inputs) {
-    if (CountOpsWithInput(*model, input) == 1) {
-      model->EraseArray(input);
-    }
-  }
-  AddMessageF("Resolved constant %s to the equivalent constant array",
-              LogName(*unary_op));
-  model->operators.erase(unary_it);
+
+  DeleteOpAndArrays(model, unary_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

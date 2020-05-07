@@ -20,6 +20,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -40,10 +41,21 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 template <typename T>
-bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
+bool SafeSetDoubleScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
   if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
       value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+
+template <typename T>
+bool SafeSetIntScalarTensorValue(int value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > static_cast<int>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<int>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -63,92 +75,31 @@ bool IsShapeConsumer(const NodeDef& node) {
 
 NodeMap::NodeMap(GraphDef* graph) {
   CHECK(graph != nullptr);
+  nodes_.reserve(graph->node_size());
+  outputs_.reserve(graph->node_size());
   for (int i = 0; i < graph->node_size(); i++) {
     NodeDef* node = graph->mutable_node(i);
     const string& node_name = node->name();
     auto rslt = nodes_.emplace(node_name, node);
     // Check that the graph doesn't contain multiple nodes with the same name.
     if (!rslt.second) {
+      // The first node found with a given name becomes the canonical.
       LOG(WARNING) << "Duplicated node in the graph: " << node_name;
     }
+    NodeDef* canonical = rslt.second ? node : rslt.first->second;
     for (const auto& input : node->input()) {
-      outputs_[NodeName(input)].insert(nodes_[node_name]);
+      outputs_[NodeName(input)].insert(canonical);
     }
   }
-}
-
-void NodeMap::RemoveNode(const string& name) {
-  nodes_.erase(NodeName(name));
-  outputs_.erase(NodeName(name));
-}
-
-NodeDef* NodeMap::GetNode(const string& name) const {
-  const string node_name = NodeName(name);
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-bool NodeMap::NodeExists(const string& name) const {
-  const string node_name = NodeName(name);
-  return nodes_.find(node_name) != nodes_.end();
-}
-
-const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
-  auto it = outputs_.find(node_name);
-  if (it == outputs_.end()) {
-    return empty_set_;
-  }
-  return it->second;
-}
-
-void NodeMap::AddNode(const string& node_name, NodeDef* node) {
-  auto ret = nodes_.emplace(node_name, CHECK_NOTNULL(node));
-  CHECK(ret.second) << "Pair (" << node_name << "," << node
-                    << ") is not inserted because the same key already exists.";
-}
-
-void NodeMap::AddOutput(const string& node_name, const string& output_name) {
-  auto output_node = nodes_[NodeName(output_name)];
-  CHECK(output_node) << "Output node " << output_name
-                     << " is missing in NodeMap.";
-  outputs_[node_name].insert(output_node);
-}
-
-void NodeMap::RemoveOutput(const string& node_name, const string& output_name) {
-  outputs_[node_name].erase(nodes_[NodeName(output_name)]);
-}
-
-void NodeMap::UpdateInput(const string& node_name, const string& old_input_name,
-                          const string& new_input_name) {
-  RemoveOutput(NodeName(old_input_name), node_name);
-  AddOutput(NodeName(new_input_name), node_name);
-}
-
-void NodeMap::RemoveInputs(const string& node_name) {
-  auto node = nodes_[node_name];
-  for (const auto& input : node->input()) {
-    RemoveOutput(NodeName(input), node->name());
-  }
-}
-
-void NodeMap::RemoveOutputs(const string& node_name) {
-  outputs_.erase(node_name);
-}
-
-void NodeMap::UpdateOutput(const string& node_name,
-                           const string& old_output_name,
-                           const string& new_output_name) {
-  std::set<NodeDef*>& outputs = outputs_[node_name];
-  outputs.erase(nodes_[NodeName(old_output_name)]);
-  outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
 string TensorIdToString(const TensorId& tensor_id) {
   return tensor_id.index() == 0 ? string(tensor_id.node())
                                 : tensor_id.ToString();
+}
+
+string SafeTensorIdToString(const SafeTensorId& tensor_id) {
+  return tensor_id.index() == 0 ? tensor_id.node() : tensor_id.ToString();
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
@@ -243,21 +194,86 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
 }
 
 bool HasControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
+  const int num_inputs = node.input_size();
   if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
     return true;
   }
   return false;
 }
 
+bool HasRegularInputs(const NodeDef& node) {
+  const int num_inputs = node.input_size();
+  if (num_inputs > 0 && !IsControlInput(node.input(0))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
-  for (const string& input : node.input()) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(num_inputs);
     if (IsControlInput(input)) {
-      --num_inputs;
+      return num_inputs;
     }
   }
   return num_inputs;
+}
+
+int NumControlInputs(const NodeDef& node) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(node.input_size() - num_inputs - 1);
+    if (!IsControlInput(input)) {
+      return num_inputs;
+    }
+  }
+  return num_inputs;
+}
+
+bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& node_as_input : output->input()) {
+      if (IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+int NumControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        ++num_outputs;
+      }
+    }
+  }
+  return num_outputs;
 }
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
@@ -351,7 +367,7 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 }
 
 void DedupControlInputs(NodeDef* node) {
-  std::unordered_set<string> inputs;
+  absl::flat_hash_set<string> inputs;
   int pos = 0;
   while (pos < node->input_size()) {
     const string& input = node->input(pos);
@@ -410,35 +426,50 @@ void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
   EraseNodesFromGraphImpl(nodes_idx_to_delete, graph);
 }
 
-#define HANDLE_CASE(DTYPE)                                          \
-  case DTYPE:                                                       \
-    if (!SafeSetScalarTensorValue<EnumToDataType<DTYPE>::Type>(     \
-            static_cast<double>(value), tensor)) {                  \
-      return errors::InvalidArgument("Cannot store value ", value,  \
-                                     " in tensor of type " #DTYPE); \
-    }                                                               \
+#define HANDLE_DOUBLE_CASE(DTYPE)                                     \
+  case DTYPE:                                                         \
+    if (!SafeSetDoubleScalarTensorValue<EnumToDataType<DTYPE>::Type>( \
+            static_cast<double>(value), tensor)) {                    \
+      return errors::InvalidArgument("Cannot store value ", value,    \
+                                     " in tensor of type " #DTYPE);   \
+    }                                                                 \
+    break
+
+#define HANDLE_INT_CASE(DTYPE)                                               \
+  case DTYPE:                                                                \
+    if (!SafeSetIntScalarTensorValue<EnumToDataType<DTYPE>::Type>(value,     \
+                                                                  tensor)) { \
+      return errors::InvalidArgument("Cannot store value ", value,           \
+                                     " in tensor of type " #DTYPE);          \
+    }                                                                        \
     break
 
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   // TODO(rmlarsen): Support more general shapes.
+  // TODO(lyandy): Change `value` to be int64 once int64 -> qint32 is supported.
   if (tensor->NumElements() != 1) {
     return errors::InvalidArgument(
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    HANDLE_CASE(DT_HALF);
-    HANDLE_CASE(DT_BFLOAT16);
-    HANDLE_CASE(DT_BOOL);
-    HANDLE_CASE(DT_FLOAT);
-    HANDLE_CASE(DT_DOUBLE);
-    HANDLE_CASE(DT_UINT8);
-    HANDLE_CASE(DT_INT8);
-    HANDLE_CASE(DT_UINT16);
-    HANDLE_CASE(DT_INT16);
-    HANDLE_CASE(DT_INT32);
-    HANDLE_CASE(DT_INT64);
-    HANDLE_CASE(DT_COMPLEX64);
-    HANDLE_CASE(DT_COMPLEX128);
+    HANDLE_DOUBLE_CASE(DT_HALF);
+    HANDLE_DOUBLE_CASE(DT_BFLOAT16);
+    HANDLE_DOUBLE_CASE(DT_BOOL);
+    HANDLE_DOUBLE_CASE(DT_FLOAT);
+    HANDLE_DOUBLE_CASE(DT_DOUBLE);
+    HANDLE_DOUBLE_CASE(DT_UINT8);
+    HANDLE_DOUBLE_CASE(DT_INT8);
+    HANDLE_DOUBLE_CASE(DT_UINT16);
+    HANDLE_DOUBLE_CASE(DT_INT16);
+    HANDLE_DOUBLE_CASE(DT_INT32);
+    HANDLE_DOUBLE_CASE(DT_INT64);
+    HANDLE_DOUBLE_CASE(DT_COMPLEX64);
+    HANDLE_DOUBLE_CASE(DT_COMPLEX128);
+    HANDLE_INT_CASE(DT_QINT8);
+    HANDLE_INT_CASE(DT_QUINT8);
+    HANDLE_INT_CASE(DT_QINT16);
+    HANDLE_INT_CASE(DT_QUINT16);
+    HANDLE_INT_CASE(DT_QINT32);
     default:
       return errors::InvalidArgument("Unsupported type ",
                                      DataTypeString(dtype));
@@ -463,13 +494,26 @@ Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
   return Status::OK();
 }
 
-Status IsKernelRegisteredForNode(const NodeDef& node) {
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs) {
   DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+  if (!DeviceNameUtils::ParseFullName(node_device, &parsed_name)) {
     return errors::InvalidArgument("Could not parse device name: ",
-                                   node.device());
+                                   node_device);
   }
-  return FindKernelDef(DeviceType(parsed_name.type), node, nullptr, nullptr);
+  return FindKernelDef(DeviceType(parsed_name.type), node_name,
+                       has_experimental_debug_info, experimental_debug_info,
+                       node_op, node_device, node_attrs, nullptr, nullptr);
+}
+
+Status IsKernelRegisteredForNode(const NodeDef& node) {
+  return IsKernelRegisteredForNode(node.name(),
+                                   node.has_experimental_debug_info(),
+                                   node.experimental_debug_info(), node.op(),
+                                   node.device(), AttrSlice(&node.attr()));
 }
 
 }  // end namespace grappler

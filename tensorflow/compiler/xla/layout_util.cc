@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <random>
@@ -41,7 +42,8 @@ namespace {
 
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
-void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
+template <typename T>
+void SetDefaultLayoutToContainer(T* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
@@ -54,12 +56,25 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits, int64 memory_space) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
+  for (const Tile& tile : tiles) {
+    for (int64 dim : tile.dimensions()) {
+      if (dim < 0 && dim != Tile::kCombineDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
+                      "it's negative. Value is "
+                   << dim;
+      }
+    }
+    *layout.add_tiles() = tile;
+  }
+  layout.set_element_size_in_bits(element_size_in_bits);
+  layout.set_memory_space(memory_space);
   return layout;
 }
 
@@ -79,20 +94,13 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
   return layout;
 }
 
-/* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
-  Layout layout;
-  layout.set_format(SPARSE);
-  layout.set_max_sparse_elements(max_sparse_elements);
-  return layout;
-}
-
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
 Layout CreateDefaultLayoutForRank(int64 rank) {
   Layout layout;
   layout.set_format(DENSE);
-  std::vector<int64>* minor_to_major = layout.mutable_minor_to_major();
+  auto* minor_to_major = layout.mutable_minor_to_major();
   minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
   return layout;
@@ -235,6 +243,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       }
       dimensions_in_layout[dim] = true;
     }
+  } else {
+    if (layout.tiles_size() != 0) {
+      return InvalidArgument("Only dense layouts can be tiled.");
+    }
   }
 
   return Status::OK();
@@ -272,19 +284,6 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   CHECK(layout.format() == DENSE);
   return std::is_sorted(layout.minor_to_major().begin(),
                         layout.minor_to_major().end(), std::greater<int64>());
-}
-
-/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
-  return layout.format() == SPARSE;
-}
-
-/* static */ int64 LayoutUtil::MaxSparseElements(const Layout& layout) {
-  CHECK(IsSparse(layout));
-  return layout.max_sparse_elements();
 }
 
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
@@ -442,14 +441,13 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
-
-  for (Tile tile : layout.tiles()) {
+  for (const Tile& tile : layout.tiles()) {
     for (int64 tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
     }
   }
   hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
+  hash_value = Hash64Combine(hash_value, layout.memory_space());
 
   return hash_value;
 }

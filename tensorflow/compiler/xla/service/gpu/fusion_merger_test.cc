@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
+#include <vector>
+
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -40,7 +44,7 @@ class FusionMergerTest : public HloTestBase {};
 //                   Tuple
 //
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule MergeSharedFusionInstruction
 
 comp.3 {
@@ -99,71 +103,15 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
   EXPECT_EQ(7, operand2->fused_instruction_count());
 }
 
-// Tests that we do not merge a fusion instruction that above flops to bytes
-// threshold.
-//
-// Fusion2 is not merged because it exceeds the threshold flops-to-bytes ratio.
-TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
-  auto module = ParseHloString(R"(
-HloModule FlopsToBytesRatioThresholdExceeded
-
-comp.2 {
-  state.param_1.1 = (f32[4]{0}, f32[4]{0}) parameter(0)
-  get-tuple-element.3 = f32[4]{0} get-tuple-element(state.param_1.1), index=0
-  get-tuple-element.4 = f32[4]{0} get-tuple-element(state.param_1.1), index=2
-  multiply.29 = f32[4]{0} multiply(get-tuple-element.3, get-tuple-element.4)
-  multiply.30 = f32[4]{0} multiply(get-tuple-element.3, multiply.29)
-  multiply.31 = f32[4]{0} multiply(get-tuple-element.3, multiply.30)
-  multiply.32 = f32[4]{0} multiply(get-tuple-element.3, multiply.31)
-  multiply.33 = f32[4]{0} multiply(get-tuple-element.3, multiply.32)
-  multiply.34 = f32[4]{0} multiply(get-tuple-element.3, multiply.33)
-  multiply.35 = f32[4]{0} multiply(get-tuple-element.3, multiply.34)
-  multiply.36 = f32[4]{0} multiply(get-tuple-element.3, multiply.35)
-  multiply.37 = f32[4]{0} multiply(get-tuple-element.3, multiply.36)
-  multiply.38 = f32[4]{0} multiply(get-tuple-element.3, multiply.37)
-  multiply.39 = f32[4]{0} multiply(get-tuple-element.3, multiply.38)
-  multiply.40 = f32[4]{0} multiply(get-tuple-element.3, multiply.39)
-  ROOT multiply.41 = f32[4]{0} multiply(get-tuple-element.3, multiply.40)
-}
-
-comp.1 {
-  multiply.12.param_1.1 = f32[4]{0} parameter(1)
-  constant.param_1.3 = f32[4]{0} parameter(0)
-  add.3 = f32[4]{0} add(multiply.12.param_1.1, constant.param_1.3)
-  ROOT multiply.16 = f32[4]{0} multiply(add.3, constant.param_1.3)
-}
-
-comp {
-  multiply.12.param_1 = f32[4]{0} parameter(1)
-  constant.param_1.1 = f32[4]{0} parameter(0)
-  multiply.15 = f32[4]{0} multiply(multiply.12.param_1, constant.param_1.1)
-  ROOT add.2 = f32[4]{0} add(multiply.15, constant.param_1.1)
-}
-
-ENTRY FlopsToBytesRatioThresholdExceeded.Computation1 {
-  constant = f32[4]{0} constant({1, 1, 1, 1})
-  state = (f32[4]{0}, f32[4]{0}) parameter(0)
-  fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2
-  fusion.3 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp.1
-  fusion.4 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp
-  ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(fusion.3, fusion.4)
-})")
-                    .ValueOrDie();
-  // Run fusion merger pass, which should detect that the flops/bytes of the
-  // shared fusion instruction exceeds the threshold ratio, and therefore
-  // cannot be merged with other fusion instructions.
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
-}
-
 // Tests that threshold for bytes transferred if merged is exceeded.
 //
 // Fusion2 is not merged because it exceeds the threshold bytes transferred.
 // This is because the bytes read by Fusion2 (when replicated if the instruction
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
-TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
-  auto module = ParseHloString(R"(
-HloModule BytesTransferredThresholdExeceeded
+TEST_F(FusionMergerTest, BytesTransferredThresholdExceeded) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule BytesTransferredThresholdExceeded
 
 comp.2 {
   state.param_1.1 = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
@@ -190,7 +138,7 @@ comp {
   ROOT add.5 = f32[4]{0} add(multiply.2, constant.param_1.1)
 }
 
-ENTRY BytesTransferredThresholdExeceeded.Computation2 {
+ENTRY BytesTransferredThresholdExceeded.Computation2 {
   constant = f32[4]{0} constant({1, 1, 1, 1})
   state = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
   fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2
@@ -209,9 +157,9 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is merged into Fusion0 and Fusion1, because bytes read from Param by
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
-TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
-  auto module = ParseHloString(R"(
-HloModule BytesTransferredThresholdNotExeceeded
+TEST_F(FusionMergerTest, BytesTransferredThresholdNotExceeded) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule BytesTransferredThresholdNotExceeded
 
 comp.2 {
   state.param_1.1 = (f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
@@ -236,7 +184,7 @@ comp {
   ROOT add.4 = f32[4]{0} add(multiply.2, constant.param_1.1)
 }
 
-ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
+ENTRY BytesTransferredThresholdNotExceeded.Computation2 {
   constant = f32[4]{0} constant({1, 1, 1, 1})
   state = (f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
   fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2
@@ -253,12 +201,12 @@ ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
 // Check that we're willing to merge f1_computation into f2_computation, even
 // though f2 is an input fusion node.
 TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
-      f1_p0 = f32[10]{0} parameter(0)
-      ROOT f1_root = f32[10]{0} add(f1_p0, f1_p0)
+      f1_p0 = f32[32]{0} parameter(0)
+      ROOT f1_root = f32[32]{0} add(f1_p0, f1_p0)
     }
 
     add_computation {
@@ -268,16 +216,16 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
     }
 
     f2_computation {
-      f2_p0 = f32[10]{0} parameter(0)
-      f2_mul = f32[10]{0} multiply(f2_p0, f2_p0)
+      f2_p0 = f32[32]{0} parameter(0)
+      f2_mul = f32[32]{0} multiply(f2_p0, f2_p0)
       f2_zero = f32[] constant(0)
       ROOT f2_root = f32[] reduce(f2_mul, f2_zero), dimensions={0},
              to_apply=add_computation
     }
 
     ENTRY entry {
-      p0 = f32[10]{0} parameter(0)
-      f1 = f32[10]{0} fusion(p0), kind=kLoop, calls=f1_computation
+      p0 = f32[32]{0} parameter(0)
+      f1 = f32[32]{0} fusion(p0), kind=kLoop, calls=f1_computation
       ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
     })")
                     .ValueOrDie();
@@ -287,7 +235,7 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
 }
 
 TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
@@ -314,6 +262,106 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
       p0 = f32[16,16,256]{0,1,2} parameter(0)
       f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
       ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
+    })")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
+// Check that we limit the number of operands to fusions we create.
+TEST_F(FusionMergerTest, AvoidsLargeFusion) {
+  constexpr int64 kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+
+  // Compute
+  //   p0 + p1 + p2 + ... + pn,
+  // Use so many parameters that they do not fit into one fusion.
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+
+  std::vector<HloInstruction*> entry_params;
+
+  for (int64 i = 0; i < kNumParams; ++i) {
+    entry_params.push_back(
+        b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p")));
+  }
+  auto make_fusion = [&](absl::Span<HloInstruction* const> params) {
+    // Build a fusion computation for calculating the sum of all parameters.
+    HloComputation::Builder sub_builder("subcomp");
+    HloInstruction* sum = nullptr;
+    for (int64 i = 0; i < params.size(); ++i) {
+      auto p = sub_builder.AddInstruction(
+          HloInstruction::CreateParameter(i, shape, "p"));
+      if (sum == nullptr) {
+        sum = p;
+      } else {
+        sum = sub_builder.AddInstruction(
+            HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sum, p));
+      }
+    }
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(sub_builder.Build());
+    return HloInstruction::CreateFusion(
+        shape, HloInstruction::FusionKind::kLoop, params, subcomp);
+  };
+  auto fusion = b.AddInstruction(
+      make_fusion(absl::MakeSpan(entry_params)
+                      .subspan(0, kMaxOperandsAndOutputsPerFusion)));
+  b.AddInstruction(make_fusion({entry_params.back(), fusion}));
+  module->AddEntryComputation(b.Build());
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
+// TODO(b/119692968): Remove this test once fusion emitter is fixed.
+TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    %fused_computation (param_0.10: f32[6]) -> f32[1] {
+      %param_0.10 = f32[6]{0} parameter(0)
+      %add.7 = f32[6]{0} add(%param_0.10, %param_0.10)
+      %slice.21 = f32[5]{0} slice(%add.7), slice={[0:5]}
+      %slice.18 = f32[5]{0} slice(%add.7), slice={[1:6]}
+      %add.5 = f32[5]{0} add(%slice.21, %slice.18)
+      %slice.15 = f32[4]{0} slice(%add.5), slice={[0:4]}
+      %slice.12 = f32[4]{0} slice(%add.5), slice={[1:5]}
+      %add.4 = f32[4]{0} add(%slice.15, %slice.12)
+      %slice.9 = f32[3]{0} slice(%add.4), slice={[0:3]}
+      %slice.6 = f32[3]{0} slice(%add.4), slice={[1:4]}
+      %add.2 = f32[3]{0} add(%slice.9, %slice.6)
+      %slice.3 = f32[2]{0} slice(%add.2), slice={[0:2]}
+      %slice.2 = f32[2]{0} slice(%add.2), slice={[1:3]}
+      %add.1 = f32[2]{0} add(%slice.3, %slice.2)
+      %slice.1 = f32[1]{0} slice(%add.1), slice={[0:1]}
+      %slice.0 = f32[1]{0} slice(%add.1), slice={[1:2]}
+      ROOT %add.0 = f32[1]{0} add(%slice.1, %slice.0)
+    }
+
+    %fused_computation.1 (param_0.21: f32[11], param_1.21: f32[11]) -> f32[6] {
+      %param_0.21 = f32[11]{0} parameter(0)
+      %param_1.21 = f32[11]{0} parameter(1)
+      %add.16 = f32[11]{0} add(%param_0.21, %param_1.21)
+      %slice.51 = f32[10]{0} slice(%add.16), slice={[0:10]}
+      %slice.48 = f32[10]{0} slice(%add.16), slice={[1:11]}
+      %add.14 = f32[10]{0} add(%slice.51, %slice.48)
+      %slice.45 = f32[9]{0} slice(%add.14), slice={[0:9]}
+      %slice.42 = f32[9]{0} slice(%add.14), slice={[1:10]}
+      %add.13 = f32[9]{0} add(%slice.45, %slice.42)
+      %slice.39 = f32[8]{0} slice(%add.13), slice={[0:8]}
+      %slice.36 = f32[8]{0} slice(%add.13), slice={[1:9]}
+      %add.11 = f32[8]{0} add(%slice.39, %slice.36)
+      %slice.33 = f32[7]{0} slice(%add.11), slice={[0:7]}
+      %slice.30 = f32[7]{0} slice(%add.11), slice={[1:8]}
+      %add.10 = f32[7]{0} add(%slice.33, %slice.30)
+      %slice.27 = f32[6]{0} slice(%add.10), slice={[0:6]}
+      %slice.24 = f32[6]{0} slice(%add.10), slice={[1:7]}
+      ROOT %add.8 = f32[6]{0} add(%slice.27, %slice.24)
+    }
+
+    ENTRY entry {
+      p0 = f32[11]{0} parameter(0)
+      p1 = f32[11]{0} parameter(1)
+      f1 = f32[6]{0} fusion(p0, p1), kind=kLoop, calls=%fused_computation.1
+      ROOT f2 = f32[1] fusion(f1), kind=kLoop, calls=%fused_computation
     })")
                     .ValueOrDie();
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());

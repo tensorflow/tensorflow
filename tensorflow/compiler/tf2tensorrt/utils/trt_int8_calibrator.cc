@@ -22,7 +22,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -50,7 +50,7 @@ TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
 
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
-  tensorflow::mutex_lock lock(cond_mtx_);
+  mutex_lock lock(cond_mtx_);
 
   // Wait while the queue is full or calibration is running.
   while ((calib_running_ || batch_is_set_) && !done_) cond_.wait(lock);
@@ -59,7 +59,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
   VLOG(1) << "Set Batch Waiting finished";
 
   // Sets the batch.
-  for (const auto it : data) {
+  for (const auto& it : data) {
     auto devptr = dev_buffers_.find(it.first);
     if (devptr == dev_buffers_.end()) {
       LOG(FATAL) << "FATAL " << engine_name_ << " input name '" << it.first
@@ -87,7 +87,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
 
 bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
                                  int num_bindings) {
-  tensorflow::mutex_lock lock(cond_mtx_);
+  mutex_lock lock(cond_mtx_);
   // Notify finish of last round of calibration.
   calib_running_ = false;
   cond_.notify_all();
@@ -111,13 +111,14 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 }
 
 void TRTInt8Calibrator::waitAndSetDone() {
-  tensorflow::mutex_lock lock(cond_mtx_);
+  mutex_lock lock(cond_mtx_);
   // Wait while the queue is full or calibration is running, so we don't miss
   // the last batch.
   while ((calib_running_ || batch_is_set_) && !done_) cond_.wait(lock);
   if (!done_) {
     done_ = true;
     cond_.notify_all();
+    dev_buffers_.clear();
   }
 }
 
@@ -128,14 +129,14 @@ const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
 }
 
 void TRTInt8Calibrator::setDone() {
-  tensorflow::mutex_lock lock(cond_mtx_);
+  mutex_lock lock(cond_mtx_);
   done_ = true;
   cond_.notify_all();
 }
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {
-  calibration_table_ = string((const char*)ptr, length);
+  calibration_table_ = string(static_cast<const char*>(ptr), length);
   VLOG(1) << "Got calibration data for " << engine_name_ << " @" << ptr
           << " length=" << length;
 }

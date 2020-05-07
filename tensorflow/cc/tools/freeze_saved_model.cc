@@ -42,6 +42,10 @@ void GetTensorNamesFromTensorInfo(const TensorInfo& tensor_info,
     tensor_names->insert(coo_sparse.values_tensor_name());
     tensor_names->insert(coo_sparse.indices_tensor_name());
     tensor_names->insert(coo_sparse.dense_shape_tensor_name());
+  } else if (tensor_info.has_composite_tensor()) {
+    for (const auto& component : tensor_info.composite_tensor().components()) {
+      tensor_names->insert(component.name());
+    }
   } else {
     tensor_names->insert(tensor_info.name());
   }

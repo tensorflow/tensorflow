@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_INPUTSTREAM_INTERFACE_H_
 
 #include <string>
+
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -32,7 +35,17 @@ class InputStreamInterface {
   // Reads the next bytes_to_read from the file. Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
-  virtual Status ReadNBytes(int64 bytes_to_read, string* result) = 0;
+  virtual Status ReadNBytes(int64 bytes_to_read, tstring* result) = 0;
+
+#if defined(PLATFORM_GOOGLE)
+  // Reads the next bytes_to_read from the file. Typical return codes:
+  //  * OK - in case of success.
+  //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
+  virtual Status ReadNBytes(int64 bytes_to_read, absl::Cord* cord) {
+    return errors::Unimplemented(
+        "ReadNBytes(int64, absl::Cord*) is not implemented.");
+  }
+#endif
 
   // Skips bytes_to_skip before next ReadNBytes. bytes_to_skip should be >= 0.
   // Typical return codes:

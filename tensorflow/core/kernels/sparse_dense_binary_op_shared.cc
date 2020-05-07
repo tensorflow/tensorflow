@@ -78,9 +78,6 @@ class SparseDenseBinaryOpShared : public OpKernel {
                     "but received shapes: ",
                     values_t->shape().DebugString(), " and ",
                     shape_t->shape().DebugString()));
-    OP_REQUIRES(ctx, indices_t->dim_size(0) < std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    "Number of non-zero elements exceeds int32 range"));
 
     const auto indices_mat = indices_t->matrix<int64>();
     const auto shape_vec = shape_t->vec<int64>();
@@ -101,12 +98,12 @@ class SparseDenseBinaryOpShared : public OpKernel {
                 errors::InvalidArgument(
                     "SparseDenseBinaryOpShared broadcasts dense to sparse "
                     "only; got incompatible shapes: [",
-                    str_util::Join(lhs_dims, ","), "] vs. [",
-                    str_util::Join(rhs_dims, ","), "]"));
+                    absl::StrJoin(lhs_dims, ","), "] vs. [",
+                    absl::StrJoin(rhs_dims, ","), "]"));
 
     Tensor *output_values = nullptr;
     Tensor dense_gathered;
-    const int nnz = static_cast<int>(indices_t->dim_size(0));
+    const int64 nnz = indices_t->dim_size(0);
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({nnz}), &output_values));
     OP_REQUIRES_OK(

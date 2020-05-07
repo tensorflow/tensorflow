@@ -53,7 +53,7 @@ class RemoteDeviceTest : public ::testing::Test {
         NewGrpcChannelCache(spec, channel_func));
     worker_cache_.reset(NewGrpcWorkerCache(channel_cache));
     remote_name_ = "/job:localhost/replica:0/task:0";
-    wi_ = worker_cache_->CreateWorker(remote_name_);
+    wi_ = worker_cache_->GetOrCreateWorker(remote_name_);
   }
 
   ~RemoteDeviceTest() override {

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -33,6 +34,9 @@ class AssignOpTest(test.TestCase):
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
   def testParallelUpdateWithoutLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(array_ops.zeros([1024, 1024]))
@@ -60,6 +64,9 @@ class AssignOpTest(test.TestCase):
       self.assertTrue((vals <= ones * 20).all())
 
   def testParallelAssignWithoutLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], float(1))
       p = variables.Variable(array_ops.zeros([1024, 1024]))
@@ -92,6 +99,9 @@ class AssignOpTest(test.TestCase):
   # returning the output tensors. This issue will be resolved with the new
   # resource variables.
   def testParallelUpdateWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)
@@ -119,6 +129,9 @@ class AssignOpTest(test.TestCase):
       self.assertAllEqual(vals, ones * 20)
 
   def testParallelAssignWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)

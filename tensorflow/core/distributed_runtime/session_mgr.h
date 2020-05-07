@@ -48,6 +48,17 @@ class SessionMgr {
   // Allocates state for a new session.
   Status CreateSession(const string& session, const ServerDef& server_def,
                        bool isolate_session_state);
+  Status CreateSession(
+      const string& session, const ServerDef& server_def,
+      const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+      bool isolate_session_state);
+
+  // Updates state (worker cache, devices) of worker session identified by
+  // session name (`session`) based on a new server_def and set of devices.
+  Status UpdateSession(const string& session, const ServerDef& server_def,
+                       const protobuf::RepeatedPtrField<DeviceAttributes>&
+                           cluster_device_attributes,
+                       bool isolate_session_state);
 
   // Locates the worker session for a given session handle
   Status WorkerSessionForSession(const string& session_handle,
@@ -89,11 +100,11 @@ class SessionMgr {
 
   Status WorkerSessionForSessionLocked(
       const string& session_handle, std::shared_ptr<WorkerSession>* out_session)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   // A map from session identifier to internal session structure.
-  std::map<string, std::shared_ptr<WorkerSession>> sessions_ GUARDED_BY(mu_);
+  std::map<string, std::shared_ptr<WorkerSession>> sessions_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

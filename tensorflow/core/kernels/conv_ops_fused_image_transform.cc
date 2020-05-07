@@ -21,8 +21,9 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -102,7 +103,7 @@ void FusedConvParallelFor(
 // Holds the state needed for the resizing subtasks.
 template <class T1>
 struct ResizeTaskParameters {
-  ResizeTaskParameters() : st(false) {}
+  ResizeTaskParameters() : st(false, false) {}
 
   int cache_height;
   T1* resize_cache;
@@ -649,9 +650,9 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     OP_REQUIRES(context, (input.shape().num_elements() > 0),
                 errors::InvalidArgument("Input tensor can't be empty"));
 
-    ImageResizerState st(false);
+    ImageResizerState st(false, false);
     if (DoResize) {
-      st = ImageResizerState(align_corners_);
+      st = ImageResizerState(align_corners_, false);
       st.ValidateAndCalculateOutputSize(context, input);
       if (!context->status().ok()) return;
     } else {
@@ -685,15 +686,11 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
             paddings.dim_size(1) == 2,
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 paddings.shape().DebugString()));
-    const int fixed_dims =
-        (allow_legacy_scalars() && dims == 0 && paddings.dim_size(0) == 1)
-            ? 1
-            : dims;
     OP_REQUIRES(
-        context, fixed_dims == paddings.dim_size(0),
+        context, dims == paddings.dim_size(0),
         errors::InvalidArgument(
             "The first dimension of paddings must be the rank of inputs: ",
-            fixed_dims, " ", paddings.shape().DebugString(), " ",
+            dims, " ", paddings.shape().DebugString(), " ",
             resized_shape.DebugString()));
     OP_REQUIRES(
         context, dims == paddings.dim_size(0),

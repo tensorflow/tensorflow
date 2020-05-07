@@ -21,9 +21,24 @@ An 2-D (or 1-D if indices is 0-D) tensor where each row has the
 same shape as the indices array.
 END
   }
-  summary: "Converts a flat index or array of flat indices into a tuple of"
+  summary: "Converts an array of flat indices into a tuple of coordinate arrays."
   description: <<END
-coordinate arrays.
+
+Example:
+
+```
+y = tf.unravel_index(indices=[2, 5, 7], dims=[3, 3])
+# 'dims' represent a hypothetical (3, 3) tensor of indices:
+# [[0, 1, *2*],
+#  [3, 4, *5*],
+#  [6, *7*, 8]]
+# For each entry from 'indices', this operation returns
+# its coordinates (marked with '*'), such as
+# 2 ==> (0, 2)
+# 5 ==> (1, 2)
+# 7 ==> (2, 1)
+y ==> [[0, 1, 2], [2, 2, 1]]
+```
 
 @compatibility(numpy)
 Equivalent to np.unravel_index

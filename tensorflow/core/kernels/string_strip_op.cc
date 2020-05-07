@@ -37,8 +37,8 @@ class StringStripOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, input_tensor->shape(), &output_tensor));
 
-    const auto input = input_tensor->flat<string>();
-    auto output = output_tensor->flat<string>();
+    const auto input = input_tensor->flat<tstring>();
+    auto output = output_tensor->flat<tstring>();
 
     for (int64 i = 0; i < input.size(); ++i) {
       StringPiece entry(input(i));

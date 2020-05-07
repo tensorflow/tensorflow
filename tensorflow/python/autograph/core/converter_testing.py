@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import imp
+import inspect
 import sys
 
 import six
@@ -28,50 +29,51 @@ from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
-from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.lang import special_functions
-from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.autograph.pyct.static_analysis import activity
+from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.platform import test
 
-RESULT_OF_MOCK_CONVERTED_CALL = 7
+
+def whitelist(entity):
+  """Helper that marks a callable as whtelitisted."""
+  if 'whitelisted_module_for_testing' not in sys.modules:
+    whitelisted_mod = imp.new_module('whitelisted_module_for_testing')
+    sys.modules['whitelisted_module_for_testing'] = whitelisted_mod
+    config.CONVERSION_RULES = (
+        (config.DoNotConvert('whitelisted_module_for_testing'),) +
+        config.CONVERSION_RULES)
+
+  entity.__module__ = 'whitelisted_module_for_testing'
 
 
-# TODO(mdan): We should use the real namer here.
-class FakeNamer(object):
-  """A fake namer that uses a global counter to generate unique names."""
+def is_inside_generated_code():
+  """Tests whether the caller is generated code. Implementation-specific."""
+  frame = inspect.currentframe()
+  try:
+    frame = frame.f_back
 
-  def __init__(self):
-    self.i = 0
-    self.partial_types = ()
+    internal_stack_functions = ('converted_call', '_call_unconverted')
+    # Walk up the stack until we're out of the internal functions.
+    while (frame is not None and
+           frame.f_code.co_name in internal_stack_functions):
+      frame = frame.f_back
+    if frame is None:
+      return False
 
-  def new_symbol(self, name_root, used):
-    while True:
-      self.i += 1
-      name = '%s%d' % (name_root, self.i)
-      if name not in used:
-        return name
-
-  def compiled_function_name(self,
-                             original_fqn,
-                             live_entity=None,
-                             owner_type=None):
-    if inspect_utils.islambda(live_entity):
-      return None, False
-    if owner_type is not None:
-      return None, False
-    return ('renamed_%s' % '_'.join(original_fqn)), True
-
-
-class FakeNoRenameNamer(FakeNamer):
-
-  def compiled_function_name(self, original_fqn, **_):
-    return str(original_fqn), False
+    return 'ag__' in frame.f_locals
+  finally:
+    del frame
 
 
 class TestCase(test.TestCase):
@@ -88,17 +90,27 @@ class TestCase(test.TestCase):
       sys.stdout = sys.__stdout__
 
   @contextlib.contextmanager
-  def compiled(self, node, namespace, *symbols):
+  def compiled(self, node, namespace, symbols=()):
     source = None
 
     self.dynamic_calls = []
-    def converted_call(*args):
+    # See api.converted_call
+    def converted_call(
+        f, args, kwargs, unused_opts=None, unused_function_ctx=None):
       """Mock version of api.converted_call."""
-      self.dynamic_calls.append(args[3:])  # args only; see api.converted_call
-      return RESULT_OF_MOCK_CONVERTED_CALL
+      self.dynamic_calls.append((args, kwargs))
+      if kwargs is None:
+        kwargs = {}
+      return f(*args, **kwargs)
+
+    def fake_autograph_artifact(f):
+      setattr(f, 'fake_autograph_artifact', True)
+      return f
 
     try:
-      result, source = compiler.ast_to_object(node, include_source_map=True)
+      result, source, source_map = loader.load_ast(
+          node, include_source_map=True)
+      # TODO(mdan): Move the unparsing from converter into pyct and reuse here.
 
       # TODO(mdan): Move this into self.prepare()
       result.tf = self.make_fake_mod('fake_tf', *symbols)
@@ -109,10 +121,10 @@ class TestCase(test.TestCase):
       fake_ag.ConversionOptions = converter.ConversionOptions
       fake_ag.Feature = converter.Feature
       fake_ag.utils = utils
-      fake_ag.rewrite_graph_construction_error = (
-          errors.rewrite_graph_construction_error)
-      fake_ag.function_scope = function_wrapping.function_scope
+      fake_ag.FunctionScope = function_wrappers.FunctionScope
+      fake_ag.autograph_artifact = fake_autograph_artifact
       result.ag__ = fake_ag
+      result.ag_source_map__ = source_map
       for k, v in namespace.items():
         result.__dict__[k] = v
       yield result
@@ -120,20 +132,20 @@ class TestCase(test.TestCase):
       if source is None:
         print('Offending AST:\n%s' % pretty_printer.fmt(node, color=False))
       else:
-        print('Offending compiled code:\n%s' % source)
+        print('Offending source code:\n%s' % source)
       raise
 
   @contextlib.contextmanager
-  def converted(self, entity, converter_module, namespace, *tf_symbols):
+  def converted(self, entity, converter_module, namespace, tf_symbols=()):
+
     node, ctx = self.prepare(entity, namespace)
 
     if not isinstance(converter_module, (list, tuple)):
       converter_module = (converter_module,)
-    for i, m in enumerate(converter_module):
-      node = converter.standard_analysis(node, ctx, is_initial=not i)
+    for m in converter_module:
       node = m.transform(node, ctx)
 
-    with self.compiled(node, namespace, *tf_symbols) as result:
+    with self.compiled(node, namespace, tf_symbols) as result:
       yield result
 
   def make_fake_mod(self, name, *symbols):
@@ -152,36 +164,33 @@ class TestCase(test.TestCase):
     for k, v in ns.items():
       setattr(module, k, v)
 
-  def prepare(self,
-              test_fn,
-              namespace,
-              namer=None,
-              arg_types=None,
-              owner_type=None,
-              recursive=True,
-              strip_decorators=()):
+  def prepare(self, test_fn, namespace, recursive=True):
     namespace['ConversionOptions'] = converter.ConversionOptions
 
-    node, source = parser.parse_entity(test_fn)
-    node = node.body[0]
-    if namer is None:
-      namer = FakeNamer()
+    future_features = ('print_function', 'division')
+    node, source = parser.parse_entity(test_fn, future_features=future_features)
+    namer = naming.Namer(namespace)
     program_ctx = converter.ProgramContext(
-        options=converter.ConversionOptions(
-            recursive=recursive,
-            strip_decorators=strip_decorators,
-            verbose=True),
-        partial_types=None,
-        autograph_module=None,
-        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
+        options=converter.ConversionOptions(recursive=recursive),
+        autograph_module=None)
     entity_info = transformer.EntityInfo(
+        name=test_fn.__name__,
         source_code=source,
         source_file='<fragment>',
-        namespace=namespace,
-        arg_values=None,
-        arg_types=arg_types,
-        owner_type=owner_type)
-    ctx = converter.EntityContext(namer, entity_info, program_ctx)
-    origin_info.resolve(node, source, test_fn)
-    node = converter.standard_analysis(node, ctx, is_initial=True)
+        future_features=future_features,
+        namespace=namespace)
+    ctx = transformer.Context(entity_info, namer, program_ctx)
+    origin_info.resolve_entity(node, source, test_fn)
+
+    graphs = cfg.build(node)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx, None)
+    node = reaching_definitions.resolve(node, ctx, graphs)
+    anno.dup(
+        node,
+        {
+            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
+        },
+    )
+
     return node, ctx

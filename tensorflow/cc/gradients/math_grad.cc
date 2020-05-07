@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define _USE_MATH_DEFINES
 #include <cmath>
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -766,6 +765,40 @@ Status ErfGrad(const Scope& scope, const Operation& op,
   return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Erf", ErfGrad);
+
+Status ErfinvGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto root_pi_over_two =
+      Cast(scope, Const(scope, std::sqrt(M_PI) / 2), grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * sqrt(pi) / 2 * exp(erfinv(x) ** 2)
+  auto dx = Mul(grad_scope, Mul(grad_scope, grad, root_pi_over_two),
+                Exp(grad_scope, Square(grad_scope, op.output(0))));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Erfinv", ErfinvGrad);
+
+Status NdtriGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto root_two_pi =
+      Cast(scope, Const(scope, std::sqrt(2 * M_PI)), grad.type());
+  auto two = Cast(scope, Const(scope, 2), grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * sqrt(2 * pi) * exp(ndtri(x) ** 2 / 2)
+  auto dx = Mul(
+      grad_scope, Mul(grad_scope, grad, root_two_pi),
+      Exp(grad_scope, Div(grad_scope, Square(grad_scope, op.output(0)), two)));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Ndtri", NdtriGrad);
 
 Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,

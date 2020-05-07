@@ -1,14 +1,14 @@
 # Description:
 #   This directory contains common quantile utilities used in boosted_trees.
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 # Quantiles
 

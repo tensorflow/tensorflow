@@ -2,12 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
@@ -16,6 +10,45 @@ load(
     "tf_copts",
     "tf_gen_op_wrappers_cc",
     "transitive_hdrs",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "srcs_no_runtime",
+    srcs = [
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "//tensorflow/cc/saved_model:loader.h",
+    ],
+)
+
+filegroup(
+    name = "srcs",
+    srcs = [
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "ops/array_ops.h",
+        "ops/while_loop.h",
+        "//tensorflow/cc/saved_model:loader.h",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "training/coordinator.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(
@@ -123,6 +156,7 @@ cc_library(
         ":array_grad",
         ":data_flow_grad",
         ":image_grad",
+        ":manip_grad",
         ":math_grad",
         ":nn_grad",
     ],
@@ -148,8 +182,10 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -189,6 +225,7 @@ tf_cc_test(
     deps = [
         ":ops",
         ":scope",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -208,6 +245,7 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -222,10 +260,13 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -455,6 +496,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "manip_grad",
+    srcs = ["gradients/manip_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":gradients",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_manip_grad_test",
+    srcs = ["gradients/manip_grad_test.cc"],
+    deps = [
+        ":array_ops",
+        ":cc_ops",
+        ":gradient_checker",
+        ":manip_grad",
+        ":testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Generates separate libraries for array_ops and math_ops to reduce the dependency count of targets that depend on only these
 tf_gen_op_wrappers_cc(
     name = "math_ops",
@@ -468,6 +535,7 @@ tf_gen_op_wrappers_cc(
 tf_gen_op_wrappers_cc(
     name = "array_ops",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    extra_gen_deps = ["//tensorflow/c/kernels:bitcast_op_lib"],
     op_lib_names = [
         "array_ops",
     ],
@@ -575,7 +643,6 @@ tf_gen_op_wrappers_cc(
         "resource_variable_ops",
     ],
     pkg = "//tensorflow/core",
-    visibility = ["//tensorflow:internal"],
 )
 
 tf_gen_op_wrappers_cc(
@@ -586,15 +653,31 @@ tf_gen_op_wrappers_cc(
     pkg = "//tensorflow/core",
 )
 
-cc_library_with_android_deps(
+tf_gen_op_wrappers_cc(
+    name = "tpu_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "tpu_configuration_ops",
+        "tpu_cross_replica_ops",
+        "tpu_embedding_ops",
+        "tpu_embedding_load_retrieve_ops",
+        "tpu_functional_ops",
+        "tpu_heartbeat_ops",
+        "tpu_host_compute_ops",
+        "tpu_infeed_ops",
+        "tpu_outfeed_ops",
+        "tpu_ordinal_selector_ops",
+        "tpu_replication_ops",
+    ],
+    pkg = "//tensorflow/core",
+)
+
+cc_library(
     name = "cc_op_gen_main",
     srcs = [
         "framework/cc_op_gen.cc",
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_main.cc",
-    ],
-    android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
     data = [
@@ -605,8 +688,8 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -622,10 +705,10 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -666,7 +749,7 @@ tf_cc_binary(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-lm",
             "-lpthread",
         ],

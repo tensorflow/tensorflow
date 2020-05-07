@@ -40,7 +40,7 @@ _NUMPY_RANDOM_SEED = 42
 class MapAndBatchBenchmark(test.Benchmark):
   """Benchmarks for `tf.data.experimental.map_and_batch()`."""
 
-  def benchmarkMapAndBatch(self):
+  def benchmark_map_and_batch(self):
     """Measures the performance of parallelized batching."""
     shapes = [(), (10,), (10, 10), (10, 10, 10), (224, 224, 3)]
     batch_size_values = [1, 32, 64, 128, 1024]
@@ -94,7 +94,7 @@ class MapAndBatchBenchmark(test.Benchmark):
             iters=iters, wall_time=median_wall_time,
             name="num_elements_%d_batch_size_%d" % (np.prod(shape), batch_size))
 
-  def benchmarkMapAndBatchChainingVersusFusing(self):
+  def benchmark_map_and_batch_chaining_versus_fusing(self):
     """Compares the performance of chaining and fusing map and batch.
 
     NOTE: It is recommended to build the benchmark with
@@ -116,7 +116,7 @@ class MapAndBatchBenchmark(test.Benchmark):
     def name(method, label, num_calls, inter_op, element_size, batch_size):
       return ("%s_id_%s_num_calls_%d_inter_op_%d_elem_size_%d_batch_size_%d" % (
           method,
-          hashlib.sha1(label).hexdigest()[:8],
+          hashlib.sha1((label).encode("utf-8")).hexdigest()[:8],
           num_calls,
           inter_op,
           element_size,

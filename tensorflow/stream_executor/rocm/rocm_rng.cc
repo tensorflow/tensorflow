@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
@@ -60,7 +61,9 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kGpuRandPlugin);
 
 namespace wrap {
 
-#define PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(__name)                     \
+#ifdef PLATFORM_GOOGLE
+
+#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                        \
   struct WrapperShim__##__name {                                    \
     template <typename... Args>                                     \
     hiprandStatus_t operator()(GpuExecutor* parent, Args... args) { \
@@ -69,15 +72,47 @@ namespace wrap {
     }                                                               \
   } __name;
 
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandCreateGenerator);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandDestroyGenerator);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetStream);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateUniform);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateUniformDouble);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetPseudoRandomGeneratorSeed);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetGeneratorOffset);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateNormal);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateNormalDouble);
+#else
+
+#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();          \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in rocrand DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    hiprandStatus operator()(GpuExecutor* parent, Args... args) {         \
+      gpu::ScopedActivateExecutorContext sac{parent};                     \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandCreateGenerator);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandDestroyGenerator);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetStream);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateUniform);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateUniformDouble);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetPseudoRandomGeneratorSeed);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetGeneratorOffset);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateNormal);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateNormalDouble);
 
 }  // namespace wrap
 
@@ -90,7 +125,7 @@ GpuRng::~GpuRng() {
 }
 
 bool GpuRng::Init() {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
   CHECK(rng_ == nullptr);
 
   hiprandStatus_t ret =
@@ -125,7 +160,7 @@ constexpr bool ComplexIsConsecutiveFloats() {
 
 template <typename T>
 bool GpuRng::DoPopulateRandUniformInternal(Stream* stream, DeviceMemory<T>* v) {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
   static_assert(ComplexIsConsecutiveFloats(),
                 "std::complex values are not stored as consecutive values");
 
@@ -184,7 +219,7 @@ bool GpuRng::DoPopulateRandGaussianInternal(Stream* stream, ElemT mean,
                                             ElemT stddev,
                                             DeviceMemory<ElemT>* v,
                                             FuncT func) {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
 
   if (!SetStream(stream)) {
     return false;
@@ -216,7 +251,7 @@ bool GpuRng::DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
 }
 
 bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
   CHECK(rng_ != nullptr);
 
   if (!CheckSeed(seed, seed_bytes)) {
@@ -245,40 +280,45 @@ bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
 }
 
 }  // namespace gpu
+
+void initialize_rocrand() {
+  auto rocRandAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
+      rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+
+  if (!rocRandAlreadyRegistered) {
+    port::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
+            rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",
+            [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {
+              gpu::GpuExecutor* rocm_executor =
+                  dynamic_cast<gpu::GpuExecutor*>(parent);
+              if (rocm_executor == nullptr) {
+                LOG(ERROR)
+                    << "Attempting to initialize an instance of the hipRAND "
+                    << "support library with a non-ROCM StreamExecutor";
+                return nullptr;
+              }
+
+              gpu::GpuRng* rng = new gpu::GpuRng(rocm_executor);
+              if (!rng->Init()) {
+                // Note: Init() will log a more specific error.
+                delete rng;
+                return nullptr;
+              }
+              return rng;
+            });
+
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register rocRAND factory: "
+                 << status.error_message();
+    }
+
+    PluginRegistry::Instance()->SetDefaultFactory(
+        rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+  }
+}
+
 }  // namespace stream_executor
 
-namespace se = ::stream_executor;
-
-REGISTER_MODULE_INITIALIZER(register_hiprand, {
-  se::port::Status status =
-      se::PluginRegistry::Instance()
-          ->RegisterFactory<se::PluginRegistry::RngFactory>(
-              se::gpu::kROCmPlatformId, se::gpu::kGpuRandPlugin, "hipRAND",
-              [](se::internal::StreamExecutorInterface* parent)
-                  -> se::rng::RngSupport* {
-                se::gpu::GpuExecutor* rocm_executor =
-                    dynamic_cast<se::gpu::GpuExecutor*>(parent);
-                if (rocm_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the hipRAND "
-                      << "support library with a non-ROCM StreamExecutor";
-                  return nullptr;
-                }
-
-                se::gpu::GpuRng* rng = new se::gpu::GpuRng(rocm_executor);
-                if (!rng->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete rng;
-                  return nullptr;
-                }
-                return rng;
-              });
-
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register hipRAND factory: "
-               << status.error_message();
-  }
-
-  se::PluginRegistry::Instance()->SetDefaultFactory(
-      se::gpu::kROCmPlatformId, se::PluginKind::kRng, se::gpu::kGpuRandPlugin);
-});
+REGISTER_MODULE_INITIALIZER(register_rocrand,
+                            { stream_executor::initialize_rocrand(); });

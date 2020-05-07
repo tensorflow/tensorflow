@@ -27,15 +27,18 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
+class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected,
                                      equality_fn=None):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -48,6 +51,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testAdd(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -68,6 +72,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                 np.array([7, 11], dtype=dtype)),
           expected=np.array([[8, 13], [10, 15]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testBroadcast(self):
     for dtype in self.numeric_types:
       v = np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2])
@@ -76,6 +81,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
 
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -87,6 +93,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -103,6 +110,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                       xla_data_pb2.PrecisionConfig.HIGHEST)
 
   @parameterized.parameters(*PRECISION_VALUES)
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testConv(self, precision):
     for dtype in set(self.float_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -187,6 +195,8 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.array([1, 2, 3], dtype=dtype),),
           expected=np.array([-1, -2, -3], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      'Requires XlaPad op shape inference to have static result types')
   def testPad(self):
     for dtype in self.numeric_types:
 
@@ -206,6 +216,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -256,6 +267,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -297,6 +309,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(
           lambda x: xla.transpose(x, [1, 0]), args=(v,), expected=v.T)
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSlice(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -309,8 +322,9 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
@@ -322,8 +336,9 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
@@ -336,5 +351,80 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
            r'but input rank is 3 and size_indices has shape \[2\].*'))
 
 
+class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
+
+  def testDotDifferentNumberOfContractingDimensions(self):
+    a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Must specify the same number of contracting '
+                                'dimensions for lhs and rhs. Got: 1 and 2'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentContractingDimensionsSizes(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Contracting dimension sizes do not match. '
+                                'Got: 2 and 4'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentNumberOfBatchDimensions(self):
+    a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_batch_dimensions.append(2)
+    dim_nums.rhs_batch_dimensions.append(2)
+    dim_nums.rhs_batch_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Must specify the same number of batch '
+                                'dimensions for lhs and rhs. Got: 1 and 2'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentBatchDimensionsSizes(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 2))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+    dim_nums.lhs_batch_dimensions.append(0)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Batch dimension sizes do not match. '
+                                'Got: 2 and 4'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(1, 2, 3, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 3, 2, 1))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(1)
+    dim_nums.rhs_contracting_dimensions.append(2)
+    dim_nums.lhs_batch_dimensions.append(3)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 3, 1]))
+
+
 if __name__ == '__main__':
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   googletest.main()

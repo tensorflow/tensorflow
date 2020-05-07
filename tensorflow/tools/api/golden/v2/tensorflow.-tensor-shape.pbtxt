@@ -1,7 +1,6 @@
 path: "tensorflow.TensorShape"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShapeV2\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShapeV1\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dims"

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <dirent.h>
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
+#include <dirent.h>
 #include <limits.h>
 #include <link.h>
 #include <stddef.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <string.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
+
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -30,17 +32,16 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
 namespace stream_executor {
-namespace gpu {
+namespace rocm {
 
 string DriverVersionToString(DriverVersion version) {
   return absl::StrFormat("%d.%d.%d", std::get<0>(version), std::get<1>(version),
@@ -56,7 +57,7 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 }
 
 port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
-  std::vector<string> pieces = port::Split(value, '.');
+  std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
     return port::Status{port::error::INVALID_ARGUMENT,
                         absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
@@ -95,6 +96,12 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   return result;
 }
 
+}  // namespace rocm
+}  // namespace stream_executor
+
+namespace stream_executor {
+namespace gpu {
+
 // -- class Diagnostician
 
 string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
@@ -115,7 +122,7 @@ void Diagnostician::LogDiagnosticInformation() {
     string library_path = value == nullptr ? "" : value;
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
-    std::vector<string> pieces = port::Split(library_path, ':');
+    std::vector<string> pieces = absl::StrSplit(library_path, ':');
     for (const auto& piece : pieces) {
       if (piece.empty()) {
         continue;
@@ -133,11 +140,11 @@ void Diagnostician::LogDiagnosticInformation() {
   }
   port::StatusOr<DriverVersion> dso_version = FindDsoVersion();
   LOG(INFO) << "librocm reported version is: "
-            << DriverVersionStatusToString(dso_version);
+            << rocm::DriverVersionStatusToString(dso_version);
 
   port::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
-            << DriverVersionStatusToString(kernel_version);
+            << rocm::DriverVersionStatusToString(kernel_version);
 
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
@@ -173,9 +180,9 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       }
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
-      auto stripped_dso_version = port::StripSuffixString(dso_version, ".ld64");
+      auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion>*>(data);
-      *result = StringToDriverVersion(stripped_dso_version);
+      *result = rocm::StringToDriverVersion(string(stripped_dso_version));
       return 1;
     }
     return 0;
@@ -203,9 +210,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t space_index = version_and_rest.find(" ");
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
-  auto stripped_kernel_version =
-      port::StripSuffixString(kernel_version, ".ld64");
-  return StringToDriverVersion(stripped_kernel_version);
+  auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
+  return rocm::StringToDriverVersion(string(stripped_kernel_version));
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(
@@ -214,12 +220,12 @@ void Diagnostician::WarnOnDsoKernelMismatch(
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.ValueOrDie() == kernel_version.ValueOrDie()) {
     LOG(INFO) << "kernel version seems to match DSO: "
-              << DriverVersionToString(kernel_version.ValueOrDie());
+              << rocm::DriverVersionToString(kernel_version.ValueOrDie());
   } else {
     LOG(ERROR) << "kernel version "
-               << DriverVersionStatusToString(kernel_version)
+               << rocm::DriverVersionStatusToString(kernel_version)
                << " does not match DSO version "
-               << DriverVersionStatusToString(dso_version)
+               << rocm::DriverVersionStatusToString(dso_version)
                << " -- cannot find working devices in this configuration";
   }
 }

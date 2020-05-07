@@ -87,7 +87,7 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
     dilations = test_utils.PermuteDimsBetweenDataFormats(
         dilations, data_format_src, data_format_dst)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       with self.test_scope():
@@ -288,7 +288,7 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():
@@ -586,7 +586,7 @@ class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():

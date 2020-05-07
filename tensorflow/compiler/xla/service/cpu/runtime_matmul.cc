@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -69,6 +69,7 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
   // Matrix multiply is a special case of the "contract" operation where
   // the contraction is performed along dimension 1 of the lhs and dimension
   // 0 of the rhs.
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   C.device(*run_options->intra_op_thread_pool()) = A.contract(B, dims);
 }
 
@@ -85,13 +86,8 @@ void MatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
     return;
   }
 
-  if (m == 1 || n == 1) {
-    // Despite being single threaded, this version of matrix * vector is faster.
-    xla::EigenMatVec<T>(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
-  } else {
-    MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
-                                transpose_lhs, transpose_rhs);
-  }
+  MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
+                              transpose_lhs, transpose_rhs);
 }
 
 }  // namespace
@@ -116,4 +112,11 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF64(
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
   MatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
                          transpose_rhs);
+}
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulS32(
+    const void* run_options_ptr, int32* out, int32* lhs, int32* rhs, int64 m,
+    int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
+  MatMulDispatch<int32>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
+                        transpose_rhs);
 }

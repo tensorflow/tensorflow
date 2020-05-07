@@ -143,7 +143,7 @@ Status CreateControlDependencies(
 
 // Insert control dependencies defined by `dependency_edges` in `graph`.  If
 // `order_type` is `kEdges`, insert explicit control edges, else if `order_type`
-// is `kAttrs`, encode depdencies as an attribute on collective node.
+// is `kAttrs`, encode dependencies as an attribute on collective node.
 Status InsertControlDependencies(
     Graph* graph, GraphCollectiveOrder order_type,
     const absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>>&

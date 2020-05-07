@@ -14,7 +14,7 @@
 # ==============================================================================
 """`tf.data.Dataset` API for input pipelines.
 
-See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
+See [Importing Data](https://tensorflow.org/guide/data) for an overview.
 """
 
 from __future__ import absolute_import

@@ -34,31 +34,6 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("losses.Reduction", v1=[])
-class ReductionV2(object):
-  """Types of loss reduction.
-
-  Contains the following values:
-
-  * `NONE`: Un-reduced weighted losses with the same shape as input.
-  * `SUM`: Scalar sum of weighted losses.
-  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-  """
-
-  NONE = "none"
-  SUM = "sum"
-  SUM_OVER_BATCH_SIZE = "sum_over_batch_size"
-
-  @classmethod
-  def all(cls):
-    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
-
-  @classmethod
-  def validate(cls, key):
-    if key not in cls.all():
-      raise ValueError("Invalid Reduction Key %s." % key)
-
-
 @tf_export(v1=["losses.Reduction"])
 class Reduction(object):
   """Types of loss reduction.
@@ -71,7 +46,7 @@ class Reduction(object):
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
   * `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
      weights. DEPRECATED.
-  * `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  * `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`. DEPRECATED.
   """
 
   NONE = "none"
@@ -199,8 +174,7 @@ def compute_weighted_loss(
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
     # Save the `reduction` argument for loss normalization when distributing
-    # to multiple replicas.
-    # TODO(josh11b): Associate it with the returned op for more precision.
+    # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
     with ops.control_dependencies((
@@ -216,8 +190,7 @@ def compute_weighted_loss(
         loss = math_ops.reduce_sum(weighted_losses)
         if reduction == Reduction.MEAN:
           loss = _safe_mean(
-              loss,
-              math_ops.reduce_sum(array_ops.ones_like(losses) * weights))
+              loss, math_ops.reduce_sum(array_ops.ones_like(losses) * weights))
         elif (reduction == Reduction.SUM_BY_NONZERO_WEIGHTS or
               reduction == Reduction.SUM_OVER_NONZERO_WEIGHTS):
           loss = _safe_mean(loss, _num_present(losses, weights))
@@ -393,7 +366,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Adds a Huber Loss term to the training procedure.
+  """Adds a [Huber Loss](https://en.wikipedia.org/wiki/Huber_loss) term to the training procedure.
 
   For each value x in `error=labels-predictions`, the following is calculated:
 
@@ -403,8 +376,6 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
   ```
 
   where d is `delta`.
-
-  See: https://en.wikipedia.org/wiki/Huber_loss
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
@@ -420,8 +391,8 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
-    delta: `float`, the point where the huber loss function
-      changes from a quadratic to linear.
+    delta: `float`, the point where the huber loss function changes from a
+      quadratic to linear.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.

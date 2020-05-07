@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/graph_analyzer.h"
-#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -54,9 +54,9 @@ void MaybePruneGraph(const tensorflow::MetaGraphDef& metagraph,
   if (fetch_nodes.empty()) {
     *graph = metagraph.graph_def();
   } else {
-    std::vector<const tensorflow::NodeDef*> fanin_nodes =
-        tensorflow::grappler::ComputeTransitiveFanin(metagraph.graph_def(),
-                                                     fetch_nodes);
+    std::vector<const tensorflow::NodeDef*> fanin_nodes;
+    TF_CHECK_OK(tensorflow::grappler::ComputeTransitiveFanin(
+        metagraph.graph_def(), fetch_nodes, &fanin_nodes));
     for (const tensorflow::NodeDef* node : fanin_nodes) {
       *(graph->add_node()) = *node;
     }

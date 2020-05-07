@@ -109,19 +109,7 @@ bool ComputeFillArray(Model* model, FillOperator* op) {
       break;
   }
 
-  // Erase input arrays if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-  if (IsDiscardableArray(*model, op->inputs[1]) &&
-      CountOpsWithInput(*model, op->inputs[1]) == 1) {
-    model->EraseArray(op->inputs[1]);
-  }
-
-  // Erase the operator
-  model->operators.erase(fill_it);
-
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

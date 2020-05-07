@@ -42,60 +42,22 @@ def preload_check():
     # we load the Python extension, so that we can raise an actionable error
     # message if they are not found.
     import ctypes  # pylint: disable=g-import-not-at-top
-    if hasattr(build_info, "msvcp_dll_name"):
-      try:
-        ctypes.WinDLL(build_info.msvcp_dll_name)
-      except OSError:
+    if hasattr(build_info, "msvcp_dll_names"):
+      missing = []
+      for dll_name in build_info.msvcp_dll_names.split(","):
+        try:
+          ctypes.WinDLL(dll_name)
+        except OSError:
+          missing.append(dll_name)
+      if missing:
         raise ImportError(
-            "Could not find %r. TensorFlow requires that this DLL be "
-            "installed in a directory that is named in your %%PATH%% "
-            "environment variable. You may install this DLL by downloading "
-            "Visual C++ 2015 Redistributable Update 3 from this URL: "
-            "https://www.microsoft.com/en-us/download/details.aspx?id=53587"
-            % build_info.msvcp_dll_name)
-
-    if build_info.is_cuda_build:
-      # Attempt to check that the necessary CUDA DLLs are loadable.
-
-      if hasattr(build_info, "nvcuda_dll_name"):
-        try:
-          ctypes.WinDLL(build_info.nvcuda_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL "
-              "be installed in a directory that is named in your %%PATH%% "
-              "environment variable. Typically it is installed in "
-              "'C:\\Windows\\System32'. If it is not present, ensure that you "
-              "have a CUDA-capable GPU with the correct driver installed."
-              % build_info.nvcuda_dll_name)
-
-      if hasattr(build_info, "cudart_dll_name") and hasattr(
-          build_info, "cuda_version_number"):
-        try:
-          ctypes.WinDLL(build_info.cudart_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL be "
-              "installed in a directory that is named in your %%PATH%% "
-              "environment variable. Download and install CUDA %s from "
-              "this URL: https://developer.nvidia.com/cuda-90-download-archive"
-              % (build_info.cudart_dll_name, build_info.cuda_version_number))
-
-      if hasattr(build_info, "cudnn_dll_name") and hasattr(
-          build_info, "cudnn_version_number"):
-        try:
-          ctypes.WinDLL(build_info.cudnn_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL be "
-              "installed in a directory that is named in your %%PATH%% "
-              "environment variable. Note that installing cuDNN is a separate "
-              "step from installing CUDA, and this DLL is often found in a "
-              "different directory from the CUDA DLLs. You may install the "
-              "necessary DLL by downloading cuDNN %s from this URL: "
-              "https://developer.nvidia.com/cudnn"
-              % (build_info.cudnn_dll_name, build_info.cudnn_version_number))
-
+            "Could not find the DLL(s) %r. TensorFlow requires that these DLLs "
+            "be installed in a directory that is named in your %%PATH%% "
+            "environment variable. You may install these DLLs by downloading "
+            '"Microsoft C++ Redistributable for Visual Studio 2015, 2017 and '
+            '2019" for your platform from this URL: '
+            "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
+            % " or ".join(missing))
   else:
     # TODO(mrry): Consider adding checks for the Linux and Mac OS X builds.
     pass

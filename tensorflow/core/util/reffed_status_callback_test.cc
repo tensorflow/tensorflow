@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/util/reffed_status_callback.h"
 
+#include <atomic>
+
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -49,11 +51,15 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
   };
   auto* cb = new ReffedStatusCallback(std::move(done));
   cb->UpdateStatus(errors::Internal("1"));
-  cb->UpdateStatus(errors::Internal("2"));  // Will be ignored.
+  cb->UpdateStatus(errors::InvalidArgument("2"));
   EXPECT_FALSE(called);
   cb->Unref();
   EXPECT_TRUE(called);
-  EXPECT_EQ(status.error_message(), "1");
+  // Equal to the first error.
+  EXPECT_EQ(status.code(), error::INTERNAL);
+  // Both errors are reported.
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Invalid argument: 2"));
 }
 
 TEST(TestReffedStatusCallback, RefMulti) {
@@ -67,13 +73,15 @@ TEST(TestReffedStatusCallback, RefMulti) {
   cb->Ref();
   cb->UpdateStatus(errors::Internal("1"));
   cb->Ref();
-  cb->UpdateStatus(errors::Internal("2"));  // Will be ignored.
+  cb->UpdateStatus(errors::Internal("2"));
   cb->Unref();
   cb->Unref();
   EXPECT_FALSE(called);
   cb->Unref();  // Created by constructor.
   EXPECT_TRUE(called);
-  EXPECT_EQ(status.error_message(), "1");
+  // Both errors are reported.
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 2"));
 }
 
 TEST(TestReffedStatusCallback, MultiThreaded) {
@@ -104,7 +112,9 @@ TEST(TestReffedStatusCallback, MultiThreaded) {
   n.WaitForNotification();
 
   EXPECT_EQ(num_called.load(), 1);
-  EXPECT_EQ(status.error_message(), "err");
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "Invalid argument: err"));
 }
 
 }  // namespace

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/verifiers/structure_verifier.h"
+
 #include <memory>
 
 #include "absl/strings/match.h"
@@ -20,12 +22,11 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/grappler/verifiers/structure_verifier.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {

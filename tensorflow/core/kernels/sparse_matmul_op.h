@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
 #include "tensorflow/core/platform/windows/intrinsics_port.h"
 #endif
 

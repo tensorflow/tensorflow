@@ -16,20 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_H_
 
-#include "tensorflow/core/platform/types.h"
-
-namespace tensorflow {
-namespace random {
-
-// Return a 64-bit random value.  Different sequences are generated
-// in different processes.
-uint64 New64();
-
-// Return a 64-bit random value. Uses
-// std::mersenne_twister_engine::default_seed as seed value.
-uint64 New64DefaultSeed();
-
-}  // namespace random
-}  // namespace tensorflow
+#include "tensorflow/core/platform/random.h"
 
 #endif  // TENSORFLOW_LIB_RANDOM_RANDOM_H_

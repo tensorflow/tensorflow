@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/where_op.h"
 
@@ -37,13 +37,17 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/platform/cuda.h"
-
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
+#endif  // TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -71,7 +75,7 @@ template <typename T>
 struct NumTrue<CPUDevice, T, int64> {
   static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
                         typename TTypes<T>::ConstFlat input,
-                        TTypes<int64>::Scalar num_true) {
+                        TTypes<int64>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
     return Status::OK();
   }
@@ -136,18 +140,14 @@ class WhereCPUOp : public OpKernel {
 
     const int input_dims = input.dims();
 
-    Tensor num_true;
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    OP_REQUIRES_OK(context, context->allocate_temp(DT_INT64, TensorShape({}),
-                                                   &num_true, attr));
-    auto num_true_t = num_true.scalar<int64>();
+    int64 num_true;
+    TTypes<int64>::UnalignedScalar num_true_t(&num_true);
 
     Status s = functor::NumTrue<CPUDevice, T, int64>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
         num_true_t);
     OP_REQUIRES_OK(context, s);
-    TensorShape output_shape({num_true_t(), input_dims});
+    TensorShape output_shape({num_true, input_dims});
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
@@ -171,6 +171,9 @@ class WhereCPUOp : public OpKernel {
       HANDLE_DIM(3);
       HANDLE_DIM(4);
       HANDLE_DIM(5);
+      HANDLE_DIM(6);
+      HANDLE_DIM(7);
+      HANDLE_DIM(8);
 
       default:
         OP_REQUIRES(context, false,
@@ -201,7 +204,7 @@ TF_CALL_bool(REGISTER_WHERE_OP);
 
 #undef REGISTER_WHERE_OP
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 
@@ -209,7 +212,7 @@ namespace functor {
   template <>                                                               \
   Status NumTrue<GPUDevice, T, Tindex>::Compute(                            \
       OpKernelContext* ctx, const GPUDevice& d, TTypes<T>::ConstFlat input, \
-      TTypes<Tindex>::Scalar num_true);                                     \
+      TTypes<Tindex>::UnalignedScalar num_true);                            \
   extern template struct NumTrue<GPUDevice, T, Tindex>
 
 #define DECLARE_GPU_NUMTRUE_TYPE(T) \
@@ -238,7 +241,10 @@ TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
   DECLARE_GPU_WHERE(2, T);         \
   DECLARE_GPU_WHERE(3, T);         \
   DECLARE_GPU_WHERE(4, T);         \
-  DECLARE_GPU_WHERE(5, T);
+  DECLARE_GPU_WHERE(5, T);         \
+  DECLARE_GPU_WHERE(6, T);         \
+  DECLARE_GPU_WHERE(7, T);         \
+  DECLARE_GPU_WHERE(8, T);
 
 TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_WHERE_TYPES);
 
@@ -277,8 +283,8 @@ class WhereGPUOp : public AsyncOpKernel {
                          context->allocate_temp(DataTypeToEnum<Tindex>::v(),
                                                 TensorShape({}), &num_true),
                          done);
-
-    auto num_true_t = num_true.scalar<Tindex>();
+    typename TTypes<Tindex>::UnalignedScalar num_true_t(
+        num_true.scalar<Tindex>().data());
 
     se::DeviceMemoryBase num_true_ptr(static_cast<void*>(num_true_t.data()));
     // Push kernel to stream to get number of true elements.
@@ -334,6 +340,9 @@ class WhereGPUOp : public AsyncOpKernel {
         HANDLE_DIM(3);
         HANDLE_DIM(4);
         HANDLE_DIM(5);
+        HANDLE_DIM(6);
+        HANDLE_DIM(7);
+        HANDLE_DIM(8);
 
         default:
           OP_REQUIRES_ASYNC(
@@ -379,6 +388,6 @@ REGISTER_KERNEL_BUILDER(Name("Where")
 
 #undef REGISTER_GPU_WHERE_OP
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

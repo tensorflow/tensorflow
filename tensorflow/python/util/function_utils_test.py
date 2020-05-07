@@ -50,7 +50,7 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(('a', 'b'), function_utils.fn_args(Foo()))
 
-  def test_bounded_method(self):
+  def test_bound_method(self):
 
     class Foo(object):
 
@@ -58,6 +58,15 @@ class FnArgsTest(test.TestCase):
         return a + b
 
     self.assertEqual(('a', 'b'), function_utils.fn_args(Foo().bar))
+
+  def test_bound_method_no_self(self):
+
+    class Foo(object):
+
+      def bar(*args):  # pylint:disable=no-method-argument
+        return args[1] + args[2]
+
+    self.assertEqual((), function_utils.fn_args(Foo().bar))
 
   def test_partial_function(self):
     expected_test_arg = 123
@@ -159,7 +168,7 @@ class HasKwargsTest(test.TestCase):
         del x
     self.assertFalse(function_utils.has_kwargs(FooHasNoKwargs()))
 
-  def test_bounded_method(self):
+  def test_bound_method(self):
 
     class FooHasKwargs(object):
 

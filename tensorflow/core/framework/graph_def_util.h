@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -24,6 +25,7 @@ namespace tensorflow {
 
 // Forward declare proto so that it's symbols can be removed from .so exports
 class GraphDef;
+class NodeDef;
 
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.
@@ -96,6 +98,18 @@ Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed);
+
+// Goes over the `nodes` and removes attributes that are set to their
+// default values according to op_registry.
+// If some node's definition is not found in the `op_registry`, this node is
+// simply skipped. In most cases, these nodes would be function calls.
+// If a stricter behavior is desired, one can add FunctionLibraryDefinition
+// argument to check for functions and their attributes.
+// This is obvious from signature, but as a warning, if `nodes` contain
+// nodes calling functions, e.g. PartitionCallOp or FunctionalIf, this
+// function does not "recurse" into them.
+void StripDefaultAttributes(const OpRegistryInterface& op_registry,
+                            protobuf::RepeatedPtrField<NodeDef>* nodes);
 
 // Two functions that collect the ops used by a graph.
 //

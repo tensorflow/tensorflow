@@ -15,62 +15,25 @@ limitations under the License.
 
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 
+#include <memory>
+
 namespace tflite {
 namespace python_utils {
 
-int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
-  switch (tf_lite_type) {
-    case kTfLiteFloat32:
-      return NPY_FLOAT32;
-    case kTfLiteInt32:
-      return NPY_INT32;
-    case kTfLiteInt16:
-      return NPY_INT16;
-    case kTfLiteUInt8:
-      return NPY_UINT8;
-    case kTfLiteInt8:
-      return NPY_INT8;
-    case kTfLiteInt64:
-      return NPY_INT64;
-    case kTfLiteString:
-      return NPY_OBJECT;
-    case kTfLiteBool:
-      return NPY_BOOL;
-    case kTfLiteComplex64:
-      return NPY_COMPLEX64;
-    case kTfLiteNoType:
-      return NPY_NOTYPE;
-      // Avoid default so compiler errors created when new types are made.
-  }
-  return NPY_NOTYPE;
+int ConvertFromPyString(PyObject* obj, char** data, Py_ssize_t* length) {
+#if PY_MAJOR_VERSION >= 3
+  return PyBytes_AsStringAndSize(obj, data, length);
+#else
+  return PyString_AsStringAndSize(obj, data, length);
+#endif
 }
 
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
-  int pyarray_type = PyArray_TYPE(array);
-  switch (pyarray_type) {
-    case NPY_FLOAT32:
-      return kTfLiteFloat32;
-    case NPY_INT32:
-      return kTfLiteInt32;
-    case NPY_INT16:
-      return kTfLiteInt16;
-    case NPY_UINT8:
-      return kTfLiteUInt8;
-    case NPY_INT8:
-      return kTfLiteInt8;
-    case NPY_INT64:
-      return kTfLiteInt64;
-    case NPY_BOOL:
-      return kTfLiteBool;
-    case NPY_OBJECT:
-    case NPY_STRING:
-    case NPY_UNICODE:
-      return kTfLiteString;
-    case NPY_COMPLEX64:
-      return kTfLiteComplex64;
-      // Avoid default so compiler errors created when new types are made.
-  }
-  return kTfLiteNoType;
+PyObject* ConvertToPyString(const char* data, size_t length) {
+#if PY_MAJOR_VERSION >= 3
+  return PyBytes_FromStringAndSize(data, length);
+#else
+  return PyString_FromStringAndSize(data, length);
+#endif
 }
 
 }  // namespace python_utils

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cinttypes>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -30,9 +31,8 @@ bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                      const std::function<bool(string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     *value_parsing_ok = hook(string(arg));
     return true;
   }
@@ -44,9 +44,8 @@ bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int32)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     int32 parsed_int32;
     if (sscanf(arg.data(), "%d%c", &parsed_int32, &extra) != 1) {
@@ -66,9 +65,8 @@ bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int64)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     int64_t parsed_int64;
     if (sscanf(arg.data(), "%" SCNd64 "%c", &parsed_int64, &extra) != 1) {
@@ -88,8 +86,7 @@ bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                    const std::function<bool(bool)>& hook,
                    bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag)) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag)) {
     if (arg.empty()) {
       *value_parsing_ok = hook(true);
       return true;
@@ -116,9 +113,8 @@ bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(float)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     float parsed_float;
     if (sscanf(arg.data(), "%f%c", &parsed_float, &extra) != 1) {

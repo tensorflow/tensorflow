@@ -53,8 +53,7 @@ namespace data {
 // The single-threaded executor is primarily suitable for executing simple
 // TensorFlow functions, such as one might find in a `tf.data` pipeline.
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
-                                 std::unique_ptr<const Graph> graph,
-                                 Executor** executor);
+                                 const Graph& graph, Executor** executor);
 
 }  // namespace data
 }  // namespace tensorflow

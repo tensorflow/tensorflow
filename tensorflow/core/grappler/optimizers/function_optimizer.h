@@ -26,11 +26,14 @@ namespace grappler {
 // operations to make the overall graph more efficient.
 class FunctionOptimizer : public GraphOptimizer {
  public:
-  explicit FunctionOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  explicit FunctionOptimizer(RewriterConfig::Toggle opt_level,
+                             bool lower_control_flow)
+      : opt_level_(opt_level), lower_control_flow_(lower_control_flow) {}
   ~FunctionOptimizer() override = default;
 
   string name() const override { return "function_optimizer"; };
+
+  bool UsesFunctionLibrary() const override { return true; }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
@@ -41,25 +44,16 @@ class FunctionOptimizer : public GraphOptimizer {
  private:
   friend class FunctionOptimizerTest;
 
-  struct FunctionOptimizerOptions {
-    bool enable_function_inlining = true;
-    bool enable_function_specialization = true;
-    bool enable_symbolic_gradient_inlining = true;
-    bool enable_trim_function_library = true;
-  };
-
   // Runs a single function optimizer pass over the `graph`. All nodes that are
   // not function calls will be copied from the `graph` to the
   // `optimized_graph`. Function call nodes inlined or specialized, and
   // instantiated function body or specialized function call nodes will be added
   // to the `optimized_graph`.
-  Status RunFunctionOptimizerPass(
-      const GrapplerItem& item, const GraphDef& graph, const int iteration,
-      std::unordered_set<string>* skip_nodes, GraphDef* optimized_graph,
-      bool* graph_has_unoptimized_function_calls) const;
+  Status RunFunctionOptimizerPass(const GrapplerItem& item,
+                                  GraphDef* optimized_graph) const;
 
   RewriterConfig::Toggle opt_level_;
-  FunctionOptimizerOptions options_;
+  bool lower_control_flow_;
 };
 
 }  // end namespace grappler

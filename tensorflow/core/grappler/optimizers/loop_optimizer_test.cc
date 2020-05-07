@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
+
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -58,13 +60,6 @@ class LoopOptimizerTest : public GrapplerTest {
     AddNode(name, op, inputs, attributes, graph);
   }
 
-  void DisableAllStages(LoopOptimizer* optimizer) {
-    LoopOptimizer::LoopOptimizerOptions options;
-    options.enable_loop_invariant_node_motion = false;
-    options.enable_stack_push_removal = false;
-    optimizer->options_ = options;
-  }
-
   void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_loop_invariant_node_motion = true;
@@ -73,6 +68,14 @@ class LoopOptimizerTest : public GrapplerTest {
   void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_stack_push_removal = true;
+  }
+
+ private:
+  void DisableAllStages(LoopOptimizer* optimizer) {
+    LoopOptimizer::LoopOptimizerOptions options;
+    options.enable_loop_invariant_node_motion = false;
+    options.enable_stack_push_removal = false;
+    optimizer->options_ = options;
   }
 };
 
@@ -104,26 +107,42 @@ TEST_F(LoopOptimizerTest, Basic) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd")).back(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_node_def).back(), 0);
+    const auto* variant_add_node = view.GetNode("VariantAdd");
+    ASSERT_NE(variant_add_node, nullptr);
+    const auto* variant_add_node_def = variant_add_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*variant_add_node_def).back(), 0);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd")).back(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 0);
+    const auto* variant_add_node = view.GetNode("VariantAdd");
+    ASSERT_NE(variant_add_node, nullptr);
+    const auto* variant_add_node_def = variant_add_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*variant_add_node_def).back(), 0);
   }
 }
 
@@ -155,25 +174,41 @@ TEST_F(LoopOptimizerTest, Const) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("Const")).back(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_node_def).back(), 0);
+    const auto* const_node = view.GetNode("Const");
+    ASSERT_NE(const_node, nullptr);
+    const auto* const_node_node_def = const_node->node();
+    ASSERT_EQ(frames.Frames(*const_node_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*const_node_node_def).back(), 0);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const")).size(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 0);
+    const auto* const_node = view.GetNode("Const");
+    ASSERT_NE(const_node, nullptr);
+    const auto* const_node_node_def = const_node->node();
+    ASSERT_EQ(frames.Frames(*const_node_node_def).size(), 0);
   }
 }
 
@@ -206,23 +241,33 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_node_def).back(), 0);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_node_def).back(), 0);
   }
 }
 
@@ -270,30 +315,52 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 1);
+    const auto* variant_add_2_node = view.GetNode("VariantAdd2");
+    ASSERT_NE(variant_add_2_node, nullptr);
+    const auto* variant_add_2_node_def = variant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*variant_add_2_node_def).back(), 1);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_node_def).back(), 0);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 0);
+    const auto* variant_add_2_node = view.GetNode("VariantAdd2");
+    ASSERT_NE(variant_add_2_node, nullptr);
+    const auto* variant_add_2_node_def = variant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*variant_add_2_node_def).back(), 1);
+    const auto* invariant_add_node = view.GetNode("InvariantAdd");
+    ASSERT_NE(invariant_add_node, nullptr);
+    const auto* invariant_add_node_def = invariant_add_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_node_def).size(), 0);
   }
 }
 
@@ -341,26 +408,42 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 1);
+    const auto* variant_add_2_node = view.GetNode("VariantAdd2");
+    ASSERT_NE(variant_add_2_node, nullptr);
+    const auto* variant_add_2_node_def = variant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*variant_add_2_node_def).back(), 1);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 0);
+    const auto* variant_add_2_node = view.GetNode("VariantAdd2");
+    ASSERT_NE(variant_add_2_node, nullptr);
+    const auto* variant_add_2_node_def = variant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*variant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*variant_add_2_node_def).back(), 1);
   }
 }
 
@@ -408,27 +491,43 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 1);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 1);
+    const auto* const_2_node = view.GetNode("Const2");
+    ASSERT_NE(const_2_node, nullptr);
+    const auto* const_2_node_def = const_2_node->node();
+    ASSERT_EQ(frames.Frames(*const_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*const_2_node_def).back(), 1);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 1);
-    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 0);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 0);
+    const auto* const_2_node = view.GetNode("Const2");
+    ASSERT_NE(const_2_node, nullptr);
+    const auto* const_2_node_def = const_2_node->node();
+    ASSERT_EQ(frames.Frames(*const_2_node_def).size(), 1);
+    EXPECT_EQ(frames.Frames(*const_2_node_def).back(), 0);
   }
 }
 
@@ -476,25 +575,41 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    GraphView view(&graph);
+    Status status;
+    utils::GraphView view(&graph, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 2);
-    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 1);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*invariant_add_2_node_def).back(), 1);
+    const auto* const_2_node = view.GetNode("Const2");
+    ASSERT_NE(const_2_node, nullptr);
+    const auto* const_2_node_def = const_2_node->node();
+    ASSERT_EQ(frames.Frames(*const_2_node_def).size(), 2);
+    EXPECT_EQ(frames.Frames(*const_2_node_def).back(), 1);
   }
 
   {  // Optimized graph.
-    GraphView view(&output);
+    Status status;
+    utils::GraphView view(&output, &status);
+    TF_ASSERT_OK(status);
     FrameView frames;
     TF_EXPECT_OK(frames.InferFromGraphView(view));
 
     EXPECT_EQ(frames.num_frames(), 2);
-    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 0);
-    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 0);
+    const auto* invariant_add_2_node = view.GetNode("InvariantAdd2");
+    ASSERT_NE(invariant_add_2_node, nullptr);
+    const auto* invariant_add_2_node_def = invariant_add_2_node->node();
+    ASSERT_EQ(frames.Frames(*invariant_add_2_node_def).size(), 0);
+    const auto* const_2_node = view.GetNode("Const2");
+    ASSERT_NE(const_2_node, nullptr);
+    const auto* const_2_node_def = const_2_node->node();
+    ASSERT_EQ(frames.Frames(*const_2_node_def).size(), 0);
   }
 }
 
@@ -504,11 +619,11 @@ void VerifyGraphsEqual(const GraphDef& original_graph,
   for (int i = 0; i < original_graph.node_size(); ++i) {
     const NodeDef& original = original_graph.node(i);
     const NodeDef& optimized = optimized_graph.node(i);
-    EXPECT_EQ(original.name(), optimized.name()) << func;
-    EXPECT_EQ(original.op(), optimized.op()) << func;
-    EXPECT_EQ(original.input_size(), optimized.input_size()) << func;
+    EXPECT_EQ(optimized.name(), original.name()) << func;
+    EXPECT_EQ(optimized.op(), original.op()) << func;
+    ASSERT_EQ(optimized.input_size(), original.input_size()) << func;
     for (int j = 0; j < original.input_size(); ++j) {
-      EXPECT_EQ(original.input(j), optimized.input(j)) << func;
+      EXPECT_EQ(optimized.input(j), original.input(j)) << func;
     }
   }
 }
@@ -528,7 +643,7 @@ TEST_F(LoopOptimizerTest, NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
+TEST_F(LoopOptimizerTest, RemovePushNoOp) {
   GrapplerItem item;
   GraphDef& graph = item.graph;
   AddSimpleNode("c", "Const", {}, &graph);
@@ -557,7 +672,7 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(LoopOptimizerTest, RemovePush_NoPopButStackLives) {
+TEST_F(LoopOptimizerTest, RemovePushNoPopButStackLives) {
   GrapplerItem item;
   GraphDef& graph = item.graph;
   AddSimpleNode("c", "Const", {}, &graph);
@@ -609,34 +724,34 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(13, output.node_size());
+  EXPECT_EQ(output.node_size(), 13);
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     if (node.name() == "push1") {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("c", node.input(0));
-      EXPECT_EQ("^stack1", node.input(1));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "c");
+      EXPECT_EQ(node.input(1), "^stack1");
     } else if (node.name() == "push2") {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("enter_c", node.input(0));
-      EXPECT_EQ("^enter_stack2", node.input(1));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "enter_c");
+      EXPECT_EQ(node.input(1), "^enter_stack2");
     } else if (node.name() == "push3") {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("c", node.input(0));
-      EXPECT_EQ("^stack3", node.input(1));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "c");
+      EXPECT_EQ(node.input(1), "^stack3");
     } else {
       const NodeDef& orig_node = item.graph.node(i);
-      EXPECT_EQ(orig_node.ShortDebugString(), node.ShortDebugString());
+      EXPECT_EQ(node.ShortDebugString(), orig_node.ShortDebugString());
     }
   }
 }
 
-TEST_F(LoopOptimizerTest, RemoveDeadBranches_ConstantCondition) {
+TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
   Scope scope = Scope::NewRootScope();
-  Output v_in = ops::Variable(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  Output v_in = ops::Const<float>(scope.WithOpName("v_in"), {123.0}, {});
 
   Output ctrl1 = ops::Const(scope.WithOpName("ctrl1"), false, TensorShape({}));
   ops::Switch s1(scope.WithOpName("switch1"), v_in, ctrl1);
@@ -663,10 +778,6 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranches_ConstantCondition) {
   ops::Merge m3(scope.WithOpName("m3"), {v_in, sqrt1});
   ops::Merge m4(scope.WithOpName("m4"), {square1, sqrt2});
   ops::Merge m5(scope.WithOpName("m5"), {square2, sqrt1});
-  ops::Merge m6(scope.WithOpName("m6").WithControlDependencies(sqrt2),
-                {v_in, square1});
-  ops::Merge m7(scope.WithOpName("m7").WithControlDependencies(sqrt1),
-                {v_in, square1});
 
   ops::Switch s5(scope.WithOpName("switch5"), v_in, ctrl1);
   Output id1 = ops::Identity(scope.WithOpName("id1"), s5.output_false);
@@ -691,57 +802,58 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranches_ConstantCondition) {
 
   for (const NodeDef& node : output.node()) {
     // These nodes should have been pruned
-    EXPECT_NE("Square1", node.name());
-    EXPECT_NE("Sqrt2", node.name());
-    EXPECT_NE("m5", node.name());
-    EXPECT_NE("m7", node.name());
+    EXPECT_NE(node.name(), "Square1");
+    EXPECT_NE(node.name(), "Sqrt2");
+    EXPECT_NE(node.name(), "m5");
 
     if (node.name() == "m1") {
       // sqrt1 is dead
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square1", node.input(0));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "square1");
     } else if (node.name() == "m2") {
       // both inputs are alive
-      EXPECT_EQ("Merge", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("v_in", node.input(0));
-      EXPECT_EQ("square1", node.input(1));
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "square1");
     } else if (node.name() == "m3") {
       // sqrt1 is dead
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("v_in", node.input(0));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
     } else if (node.name() == "m4") {
       // both inputs are alive
-      EXPECT_EQ("Merge", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("square1", node.input(0));
-      EXPECT_EQ("sqrt2", node.input(1));
-    } else if (node.name() == "m6") {
-      // both inputs are alive and the control dependency can get triggered
-      EXPECT_EQ("Merge", node.op());
-      EXPECT_EQ(3, node.input_size());
-      EXPECT_EQ("v_in", node.input(0));
-      EXPECT_EQ("square1", node.input(1));
-      EXPECT_EQ("^sqrt2", node.input(2));
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "square1");
+      EXPECT_EQ(node.input(1), "sqrt2");
     } else if (node.name() == "m8") {
       // The node is to be preserved because of a fetch
-      EXPECT_EQ("Merge", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("id1", node.input(0));
-      EXPECT_EQ("id2", node.input(1));
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "id1");
+      EXPECT_EQ(node.input(1), "id2");
     } else if (node.name() == "m9") {
       // The node is to be preserved because of a fetch
-      EXPECT_EQ("Merge", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("id3", node.input(0));
-      EXPECT_EQ("id4", node.input(1));
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ(node.input(0), "id3");
+      EXPECT_EQ(node.input(1), "id4");
     }
   }
+
+  auto tensors_expected = EvaluateNodes(item.graph, {"m8", "m9"});
+  ASSERT_EQ(tensors_expected.size(), 2);
+
+  auto tensors = EvaluateNodes(output, {"m8", "m9"});
+  ASSERT_EQ(tensors.size(), 2);
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-6);
 }
 
-TEST_F(LoopOptimizerTest, RemoveDeadBranches_FullyRemoveDeadBranches) {
+TEST_F(LoopOptimizerTest, RemoveDeadBranchesFullyRemoveDeadBranches) {
   const string gdef_ascii = R"EOF(
 node {
   name: "episodicreplaybuffer_add_readvariableop_resource"
@@ -970,7 +1082,6 @@ node {
   op: "Merge"
   input: "EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/control_dependency_1"
   input: "EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/control_dependency"
-  input: "^EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/Assert"
   device: "/job:localhost/replica:0/task:0/device:CPU:0"
   attr {
     key: "N"
@@ -1153,7 +1264,7 @@ versions {
       << "Merge node was deleted, but it shouldn't have been.";
 }
 
-TEST_F(LoopOptimizerTest, RemoveDeadBranches_ZeroIterWhile) {
+TEST_F(LoopOptimizerTest, RemoveDeadBranchesZeroIterWhile) {
   const string gdef_ascii = R"EOF(
 node {
   name: "Const"
@@ -1358,15 +1469,15 @@ versions {
   CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
   item.fetch = {"while/Exit"};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  EXPECT_EQ(1, tensors_expected.size());
+  ASSERT_EQ(tensors_expected.size(), 1);
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
-  EXPECT_EQ(1, tensors_got.size());
-  test::ExpectTensorEqual<int32>(tensors_expected[0], tensors_got[0]);
+  ASSERT_EQ(tensors_got.size(), 1);
+  test::ExpectTensorEqual<int32>(tensors_got[0], tensors_expected[0]);
 
   int nodes_present = 0;
   for (const NodeDef& node : output.node()) {
@@ -1382,7 +1493,200 @@ versions {
     }
     ++nodes_present;
   }
-  EXPECT_EQ(8, nodes_present);
+  EXPECT_EQ(nodes_present, 8);
+}
+
+TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantFeed) {
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "I\'m a value!"
+      }
+    }
+  }
+}
+node {
+  name: "cond/Switch_1"
+  op: "Switch"
+  input: "Const"
+  input: "Const_1"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@Const"
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BOOL
+        tensor_shape {
+        }
+        bool_val: true
+      }
+    }
+  }
+}
+node {
+  name: "cond/Switch"
+  op: "Switch"
+  input: "Const_1"
+  input: "Const_1"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_t"
+  op: "Identity"
+  input: "cond/Switch:1"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/Const"
+  op: "Const"
+  input: "^cond/switch_t"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "cond/Merge"
+  op: "Merge"
+  input: "cond/Switch_1"
+  input: "cond/Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+}
+node {
+  name: "Identity"
+  op: "Identity"
+  input: "cond/Merge"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 27
+}
+  )EOF";
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  item.fetch = {"Identity"};
+  Tensor feed_tensor(DT_BOOL, {});
+  feed_tensor.flat<bool>()(0) = false;
+  item.feed.push_back({"Const_1", feed_tensor});
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_CHECK_OK(status);
+  auto tensors_got = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors_got.size(), 1);
+  test::ExpectTensorEqual<tstring>(tensors_got[0], tensors_expected[0]);
+
+  EXPECT_EQ(output.node_size(), 8);
+
+  // No rewrite because branch has a constant feed node.
+  bool found = false;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "cond/Merge") {
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "cond/Switch_1");
+      EXPECT_EQ(node.input(1), "cond/Const");
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
 }
 
 }  // namespace grappler

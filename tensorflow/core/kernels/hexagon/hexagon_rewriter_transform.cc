@@ -54,8 +54,13 @@ Status RewriteQuantizedStrippedModelForHexagon(
     string shape_string;
     TF_RETURN_IF_ERROR(context.GetOneStringParameter(
         INPUT_SHAPE_PREFIX + std::to_string(i), "", &shape_string));
+    std::vector<string> split_shape = str_util::Split(shape_string, ',');
     std::vector<int64> dims;
-    CHECK(str_util::SplitAndParseAsInts(shape_string, ',', &dims));
+    for (const string& dim : split_shape) {
+      int64 tmp;
+      CHECK(strings::safe_strto64(dim, &tmp));
+      dims.push_back(tmp);
+    }
 
     // Get input data type
     string data_type_string;

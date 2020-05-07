@@ -26,15 +26,15 @@ namespace gpu {
 bool GpuTimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
   GpuContext* context = parent_->gpu_context();
-  port::Status status = GpuDriver::CreateEvent(context, &start_event_,
-                                               GpuDriver::EventFlags::kDefault);
+  port::Status status = GpuDriver::InitEvent(context, &start_event_,
+                                             GpuDriver::EventFlags::kDefault);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return false;
   }
 
-  status = GpuDriver::CreateEvent(context, &stop_event_,
-                                  GpuDriver::EventFlags::kDefault);
+  status = GpuDriver::InitEvent(context, &stop_event_,
+                                GpuDriver::EventFlags::kDefault);
   if (!status.ok()) {
     LOG(ERROR) << status;
     status = GpuDriver::DestroyEvent(context, &start_event_);

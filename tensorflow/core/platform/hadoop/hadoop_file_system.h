@@ -68,8 +68,9 @@ class HadoopFileSystem : public FileSystem {
 
  private:
   Status Connect(StringPiece fname, hdfsFS* fs);
-  LibHDFS* hdfs_;
 };
+
+Status SplitArchiveNameAndPath(StringPiece& path, string& nn);
 
 }  // namespace tensorflow
 

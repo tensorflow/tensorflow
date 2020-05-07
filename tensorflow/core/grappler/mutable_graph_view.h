@@ -76,6 +76,48 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // underlying graph, which leaves subgraph in valid but undefined state.
   Status AddSubgraph(GraphDef&& subgraph);
 
+  // Updates node `node_name` op, device, and attributes. This will clear any
+  // existing attributes. If it is not possible to update the node or if the
+  // node does not exist, an error will be returned and nothing will be modified
+  // in the graph.
+  Status UpdateNode(absl::string_view node_name, absl::string_view op,
+                    absl::string_view device,
+                    absl::Span<const std::pair<string, AttrValue>> attrs);
+
+  // Updates node `from_node_name` name to `to_node_name`. If `to_node_name` is
+  // in use, node `from_node_name` does not exist, or node `from_node_name` has
+  // fanouts and `update_fanouts` is set to false, an error will be returned and
+  // nothing will be modified in the graph.
+  Status UpdateNodeName(absl::string_view from_node_name,
+                        absl::string_view to_node_name, bool update_fanouts);
+
+  // Swap node names `from_node_name` and `to_node_name`. Self loops of one node
+  // are removed by updating the inputs introducing self loops to use the other
+  // node's name. Setting `update_fanouts` to false will exclude other fanouts
+  // from having their inputs updated, but inputs introducing self loops will
+  // always be updated regardless of `update_fanouts.
+  //
+  // Example:
+  //   1. foo(other:3, bar:2, ^bar)
+  //   2. bar(foo:3, other:1, foo:1, ^foo)
+  //   3. other(foo:5, bar:6)
+  //
+  // After calling SwapNodeNames("foo", "bar", false):
+  //   1. bar(other:3, foo:2, ^foo)
+  //   2. foo(bar:3, other:1, bar:1, ^bar)
+  //   3. other(foo:5, bar:6)
+  //
+  // After calling SwapNodeNames("foo", "bar", true):
+  //   1. bar(other:3, foo:2, ^foo)
+  //   2. foo(bar:3, other:1, bar:1, ^bar)
+  //   3. other(bar:5, foo:6)
+  //
+  // If it is not possible to swap node names (i.e. nodes do not exist or Switch
+  // control dependency may be introduced), an error will be returned and
+  // nothing will be modified in the graph.
+  Status SwapNodeNames(absl::string_view from_node_name,
+                       absl::string_view to_node_name, bool update_fanouts);
+
   // Updates all fanouts (input ports fetching output tensors) from
   // `from_node_name` to the `to_node_name`, including control dependencies.
   //
@@ -84,7 +126,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   //   2. foo2(bar:1, other:1)
   //   3. foo3(other:2, ^bar)
   //
-  // After calling ForwardOutputs(bar, new_bar):
+  // After calling UpdateFanouts(bar, new_bar):
   //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
   //   3. foo3(other:2, ^new_bar)
@@ -153,7 +195,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
 
   // Removes control dependency `fanin_node_name` from the target node named
   // `node_name`. If the node or fanin do not exist in the graph, nothing will
-  // be modified in the graph. To remove regular fanins, use RemoveRegualrFanin.
+  // be modified in the graph. To remove regular fanins, use RemoveRegularFanin.
   //
   // If the fanin being removed doesn't exist in the node's inputs, this will
   // not result in an error and the node will not be modified.
@@ -196,6 +238,11 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   Status SwapRegularFaninsByPorts(absl::string_view node_name, int from_port,
                                   int to_port);
 
+  // Updates all regular fanins to equivalent controlling fanins. If it is not
+  // possible, an error will be returned and nothing will be modified in the
+  // graph.
+  Status UpdateAllRegularFaninsToControlling(absl::string_view node_name);
+
   // Deletes nodes from the graph. If a node can't be safely removed,
   // specifically if a node still has fanouts, an error will be returned. Nodes
   // that can't be found are ignored.
@@ -227,7 +274,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   //   2. foo2(bar:1, other:1)
   //   3. foo3(other:2, ^bar)
   //
-  // After calling ForwardOutputs(bar, new_bar):
+  // After calling UpdateFanouts(bar, new_bar):
   //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
   //   3. foo3(other:2, ^new_bar)
@@ -240,6 +287,21 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // dependencies will be checked first before adding. Otherwise fanin will be
   // added after existing non control dependency inputs.
   bool AddFaninInternal(NodeDef* node, const OutputPort& fanin);
+
+  // Finds control dependency node to be used based on fanin. If fanin is not a
+  // Switch node, fanin.node is simply returned. Otherwise this will try to find
+  // a candidate Identity node consuming fanin, as the control dependency. If it
+  // is not possible or will introduce a self loop, an error message will be
+  // set. If nullptr is returned with no error
+  // GetOrCreateIdentityConsumingSwitch should be called to generate the new
+  // Identity node.
+  NodeDef* GetControllingFaninToAdd(absl::string_view node_name,
+                                    const OutputPort& fanin, string* error_msg);
+
+  // Finds a generated Identity node consuming Switch node `fanin.node` at port
+  // `fanin.port_id`. If such a node does not exist, a new Identity node will be
+  // created.
+  NodeDef* GetOrCreateIdentityConsumingSwitch(const OutputPort& fanin);
 
   // Removes all instances of regular fanin `fanin` from node `node`.
   bool RemoveRegularFaninInternal(NodeDef* node, const OutputPort& fanin);

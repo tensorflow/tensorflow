@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilites for reduce operations."""
+"""Utilities for reduce operations."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,12 +30,10 @@ class ReduceOp(enum.Enum):
 
   * `SUM`: Add all the values.
   * `MEAN`: Take the arithmetic mean ("average") of the values.
-
-  TODO(priyag): Add the following types:
-  * `MIN`: Return the minimum of all values.
-  * `MAX`: Return the maximum of all values.
   """
-
+  # TODO(priyag): Add the following types:
+  # `MIN`: Return the minimum of all values.
+  # `MAX`: Return the maximum of all values.
   SUM = "SUM"
   MEAN = "MEAN"
 

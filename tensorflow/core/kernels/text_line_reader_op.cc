@@ -56,7 +56,7 @@ class TextLineReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     Status status = input_buffer_->ReadLine(value);
     ++line_number_;

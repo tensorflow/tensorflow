@@ -18,23 +18,33 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <functional>
 #include <limits>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-class Variant;
+class TensorShape;
 
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
+  AllocationAttributes() = default;
+
+  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+                       std::function<uint64()>* freed_by_func)
+      : no_retry_on_failure(no_retry_on_failure),
+        allocation_will_be_logged(allocation_will_be_logged),
+        freed_by_func(freed_by_func) {}
+
   // If the first attempt to allocate the memory fails, the allocation
   // should return immediately without retrying.
   // An example use case is optional scratch spaces where a failure
@@ -46,24 +56,122 @@ struct AllocationAttributes {
   // which Op is performing the allocation, and sets this flag to
   // true.
   bool allocation_will_be_logged = false;
+  // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
+  // a memory chunk whose freed_at_count is at this value or earlier may be
+  // returned.
+  std::function<uint64()>* freed_by_func = nullptr;  // Not owned.
+
+  TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
-// Runtime statistics collected by an allocator.
+// Annotations for memory profiling and debugging purpose. The runtime will
+// cache the annotations in thread-local memory, and some allocators will try to
+// tag allocations with the annotations.
+struct MemoryDebugAnnotation {
+  const char* pending_op_name = nullptr;
+  int64 pending_step_id = 0;
+  const char* pending_region_type = nullptr;
+  int32 pending_data_type = 0;
+  const TensorShape* pending_shape = nullptr;
+};
+
+// Wrapper class of MemoryDebugAnnotation for RAII.
+class ScopedMemoryDebugAnnotation {
+ public:
+  static const MemoryDebugAnnotation& CurrentAnnotation() {
+    return annotation_;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name) {
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
+  }
+
+  // This constructor keeps the pending_op_name and pending_step_id from parent
+  // (if any).  Otherwise it overwrites with op_name.
+  explicit ScopedMemoryDebugAnnotation(const char* op_name,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    if (!annotation_.pending_op_name) {
+      annotation_.pending_op_name = op_name;
+    }
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
+
+ private:
+  void CleanupAnnotation() {
+    annotation_.pending_op_name = nullptr;
+    annotation_.pending_step_id = 0;
+    annotation_.pending_region_type = nullptr;
+    annotation_.pending_data_type = 0;
+    annotation_.pending_shape = nullptr;
+  }
+
+  // Stores the current annotations.
+  static thread_local MemoryDebugAnnotation annotation_;
+
+  // Stores the previous values in case the annotations are nested.
+  MemoryDebugAnnotation last_annotation_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedMemoryDebugAnnotation);
+};
+
+// Runtime statistics collected by an allocator. Exactly the same as
+// stream_executor::AllocatorStats, but independently defined to preserve the
+// mutual independence of StreamExecutor and TensorFlow.
 struct AllocatorStats {
-  int64 num_allocs;        // Number of allocations.
-  int64 bytes_in_use;      // Number of bytes in use.
-  int64 max_bytes_in_use;  // The maximum bytes in use.
-  int64 max_alloc_size;    // The max single allocation seen.
+  int64 num_allocs;          // Number of allocations.
+  int64 bytes_in_use;        // Number of bytes in use.
+  int64 peak_bytes_in_use;   // The peak bytes in use.
+  int64 largest_alloc_size;  // The largest single allocation seen.
 
-  // The upper limit what the allocator can allocate, if such a limit
-  // is known. Certain allocator may return 0 to indicate the limit is
-  // unknown.
-  int64 bytes_limit;
+  // The upper limit of bytes of user allocatable device memory, if such a limit
+  // is known.
+  absl::optional<int64> bytes_limit;
 
-  AllocatorStats() { Clear(); }
+  // Stats for reserved memory usage.
+  int64 bytes_reserved;       // Number of bytes reserved.
+  int64 peak_bytes_reserved;  // The peak number of bytes reserved.
+  // The upper limit on the number bytes of reservable memory,
+  // if such a limit is known.
+  absl::optional<int64> bytes_reservable_limit;
 
-  void Clear();
-  string DebugString() const;
+  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+
+  AllocatorStats()
+      : num_allocs(0),
+        bytes_in_use(0),
+        peak_bytes_in_use(0),
+        largest_alloc_size(0),
+        bytes_reserved(0),
+        peak_bytes_reserved(0),
+        largest_free_block_bytes(0) {}
+
+  std::string DebugString() const;
 };
 
 // Allocator is an abstract interface for allocating and deallocating
@@ -76,7 +184,7 @@ class Allocator {
   virtual ~Allocator();
 
   // Return a string identifying this allocator
-  virtual string Name() = 0;
+  virtual std::string Name() = 0;
 
   // Return an uninitialized block of memory that is "num_bytes" bytes
   // in size.  The returned pointer is guaranteed to be aligned to a
@@ -99,51 +207,25 @@ class Allocator {
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
 
-  // Convenience functions to do typed allocation.  C++ constructors
-  // and destructors are invoked for complex types if necessary,
-  // depending on the concrete Allocator implementation. May return
-  // NULL if the tensor has too many elements to represent in a single
-  // allocation.
-  template <typename T>
-  T* Allocate(size_t num_elements) {
-    return Allocate<T>(num_elements, AllocationAttributes());
-  }
-
-  template <typename T>
-  T* Allocate(size_t num_elements,
-              const AllocationAttributes& allocation_attr) {
-    // TODO(jeff): Do we need to allow clients to pass in alignment
-    // requirements?
-
-    if (num_elements > (std::numeric_limits<size_t>::max() / sizeof(T))) {
-      return NULL;
-    }
-
-    void* p = AllocateRaw(kAllocatorAlignment, sizeof(T) * num_elements,
-                          allocation_attr);
-    T* typed_p = reinterpret_cast<T*>(p);
-    if (typed_p) RunCtor<T>(typed_p, num_elements);
-    return typed_p;
-  }
-
-  template <typename T>
-  void Deallocate(T* ptr, size_t num_elements) {
-    if (ptr) {
-      RunDtor<T>(ptr, num_elements);
-      DeallocateRaw(ptr);
-    }
-  }
-
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if
   // TracksAllocationSizes is overridden to return true.
-  virtual bool TracksAllocationSizes() { return false; }
+  virtual bool TracksAllocationSizes() const { return false; }
 
-  // Returns true if this allocator requires tensors with 0 elements
-  // to allocate buffers. This is false for most allocators, but may
-  // be used by special-case allocators that want to track tensor
-  // usage.
-  virtual bool ShouldAllocateEmptyTensors() { return false; }
+  // Returns true if this allocator allocates an opaque handle rather than the
+  // requested number of bytes.
+  //
+  // This method returns false for most allocators, but may be used by
+  // special-case allocators that track tensor usage. If this method returns
+  // true, AllocateRaw() should be invoked for all values of `num_bytes`,
+  // including 0.
+  //
+  // NOTE: It is the caller's responsibility to track whether an allocated
+  // object is a buffer or an opaque handle. In particular, when this method
+  // returns `true`, users of this allocator must not run any constructors or
+  // destructors for complex objects, since there is no backing store for the
+  // tensor in which to place their outputs.
+  virtual bool AllocatesOpaqueHandle() const { return false; }
 
   // Returns the user-requested size of the data allocated at
   // 'ptr'.  Note that the actual buffer allocated might be larger
@@ -154,7 +236,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(const void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) const {
     CHECK(false) << "allocator doesn't track sizes";
     return size_t(0);
   }
@@ -167,7 +249,9 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) const {
+    return RequestedSize(ptr);
+  }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -178,7 +262,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(const void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) const { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -186,7 +270,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(const void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) const {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
@@ -194,83 +278,13 @@ class Allocator {
   }
 
   // Fills in 'stats' with statistics collected by this allocator.
-  virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
+  virtual absl::optional<AllocatorStats> GetStats() { return absl::nullopt; }
 
   // Clears the internal stats except for the `in_use` field.
   virtual void ClearStats() {}
 
- private:
-  // No constructors or destructors are run for simple types
-  template <typename T>
-  void RunCtor(T* p, size_t n) {
-    static_assert(is_simple_type<T>::value, "T is not a simple type.");
-  }
-
-  template <typename T>
-  void RunDtor(T* p, size_t n) {}
-
-  // custom constructors and destructors that can be overridden for
-  // non-standard allocators
-
-  // Runs string's default constructor for  p[0], p[1], ..., p[n-1].
-  virtual void RunStringCtor(string* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) new (p) string();
-  }
-
-  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
-  virtual void RunStringDtor(string* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) p->~string();
-  }
-
-  virtual void RunResourceCtor(ResourceHandle* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
-  }
-
-  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
-  virtual void RunResourceDtor(ResourceHandle* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
-  }
-
-  virtual void RunVariantCtor(Variant* p, size_t n);
-
-  virtual void RunVariantDtor(Variant* p, size_t n);
-
-  // TODO(jeff): Maybe provide some interface to give info about
-  // current allocation state (total number of bytes available for
-  // allocation, number of bytes free on device, etc.)
+  virtual void SetSafeFrontier(uint64 count) {}
 };
-
-// Allocator-specific constructors and destructors are used for
-// strings
-template <>
-inline void Allocator::RunCtor(string* p, size_t n) {
-  RunStringCtor(p, n);
-}
-
-template <>
-inline void Allocator::RunDtor(string* p, size_t n) {
-  RunStringDtor(p, n);
-}
-
-template <>
-inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
-  RunResourceCtor(p, n);
-}
-
-template <>
-inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
-  RunResourceDtor(p, n);
-}
-
-template <>
-inline void Allocator::RunCtor(Variant* p, size_t n) {
-  RunVariantCtor(p, n);
-}
-
-template <>
-inline void Allocator::RunDtor(Variant* p, size_t n) {
-  RunVariantDtor(p, n);
-}
 
 // An implementation of Allocator that delegates all calls to another Allocator.
 //
@@ -285,7 +299,7 @@ class AllocatorWrapper : public Allocator {
   // Returns the wrapped allocator to which all calls are delegated.
   Allocator* wrapped() const { return wrapped_; }
 
-  string Name() override { return wrapped_->Name(); }
+  std::string Name() override { return wrapped_->Name(); }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return wrapped_->AllocateRaw(alignment, num_bytes);
@@ -298,27 +312,27 @@ class AllocatorWrapper : public Allocator {
 
   void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
 
-  bool TracksAllocationSizes() override {
+  bool TracksAllocationSizes() const override {
     return wrapped_->TracksAllocationSizes();
   }
 
-  bool ShouldAllocateEmptyTensors() override {
-    return wrapped_->TracksAllocationSizes();
+  bool AllocatesOpaqueHandle() const override {
+    return wrapped_->AllocatesOpaqueHandle();
   }
 
-  size_t RequestedSize(const void* ptr) override {
+  size_t RequestedSize(const void* ptr) const override {
     return wrapped_->RequestedSize(ptr);
   }
 
-  size_t AllocatedSize(const void* ptr) override {
+  size_t AllocatedSize(const void* ptr) const override {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(const void* ptr) override {
+  int64 AllocationId(const void* ptr) const override {
     return wrapped_->AllocationId(ptr);
   }
 
-  size_t AllocatedSizeSlow(const void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) const override {
     return wrapped_->AllocatedSizeSlow(ptr);
   }
 
@@ -355,9 +369,13 @@ struct AllocatorAttributes {
   bool gpu_compatible() const { return value & (0x1 << 2); }
   void Merge(AllocatorAttributes other) {
     value |= other.value;
-    scope_id = (scope_id > 0 && other.scope_id == 0)
-                   ? scope_id
-                   : ((scope_id == 0) ? other.scope_id : 0);
+    if (scope_id != other.scope_id) {
+      CHECK(scope_id == 0 || other.scope_id == 0)
+          << "At least one scope_id should be zero to merge "
+             "AllocatorAttributes but found this.scope_id="
+          << scope_id << " and other.scope_id=" << other.scope_id;
+      scope_id = scope_id == 0 ? other.scope_id : scope_id;
+    }
   }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.
@@ -373,6 +391,9 @@ struct AllocatorAttributes {
   // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
   // a named special-purpose allocator on the same device.
   int32 scope_id = 0;
+
+  // Returns a human readable representation of this.
+  std::string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.

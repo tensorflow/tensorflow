@@ -35,7 +35,12 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():
-      for padding in ["SAME", "VALID"]:
+      for padding in [
+          "SAME",
+          "VALID",
+          [(0, 0), (1, 2), (3, 4), (0, 0)],
+          [(0, 0), (0, 3), (4, 2), (0, 0)]
+      ]:
         for stride in [1, 2]:
           np.random.seed(1)
           in_shape = [5, 8, 6, 4]
@@ -66,10 +71,16 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
           err_tolerance = 2e-3
           self.assertLess(err, err_tolerance)
 
+  @test_util.run_deprecated_v1
   def testGradientDilatedConv(self):
     if test.is_gpu_available(cuda_only=True):
       with self.session(use_gpu=True):
-        for padding in ["SAME", "VALID"]:
+        for padding in [
+            "SAME",
+            "VALID",
+            [(0, 0), (3, 5), (2, 1), (0, 0)],
+            [(0, 0), (5, 2), (5, 1), (0, 0)]
+        ]:
           for stride in [1, 2]:
             np.random.seed(1)
             in_shape = [5, 8, 6, 4]
@@ -99,7 +110,7 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
                 [in_val, out_backprop_val], [in_shape, out_backprop_shape],
                 output, filter_shape)
             print("conv2d_backprop_filter gradient err = %g " % err)
-            err_tolerance = 2e-3
+            err_tolerance = 1e-2
             self.assertLess(err, err_tolerance)
 
 

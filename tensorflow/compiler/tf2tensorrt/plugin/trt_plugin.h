@@ -16,54 +16,76 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_PLUGIN_TRT_PLUGIN_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_PLUGIN_TRT_PLUGIN_H_
 
-#include <iostream>
-#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-// A wrapper class for TensorRT plugin
-// User application should inherit from this class to write custom kernels.
-// Allows user to insert custom op in TensorRT engine
-// To register plugin in converter, user should also register custom
-// PluginDeserializeFunc & PluginConstructFunc through PluginFactoryTensorRT
-class PluginTensorRT : public nvinfer1::IPlugin {
+extern const char* kTfTrtPluginVersion;
+extern const char* kTfTrtPluginNamespace;
+
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+// A wrapper class for TensorRT plugin. User application should inherit from
+// this class to write custom kernels.
+class TrtPlugin : public nvinfer1::IPluginV2Ext {
  public:
-  PluginTensorRT() {}
-  PluginTensorRT(const void* serialized_data, size_t length);
+  TrtPlugin() { setPluginNamespace(kTfTrtPluginNamespace); }
 
-  virtual const string& GetPluginName() const = 0;
+  TrtPlugin(const void* serialized_data, size_t length) {}
 
-  virtual bool Finalize() = 0;
+  TrtPlugin(const TrtPlugin& rhs) : namespace_(rhs.namespace_) {}
 
-  virtual bool SetAttribute(const string& key, const void* ptr,
-                            const size_t size) = 0;
-  virtual bool GetAttribute(const string& key, const void** ptr,
-                            size_t* size) const = 0;
+  int initialize() override { return 0; }
 
-  void configure(const nvinfer1::Dims* inputs, int num_inputs,
-                 const nvinfer1::Dims* outputs, int num_outputs,
-                 int max_batch_size) override;
+  void terminate() override {}
 
-  virtual bool StoreAttribute(const string& key, const void* ptr,
-                              const size_t size);
+  void destroy() override { delete this; }
 
-  size_t getSerializationSize() override;
+  void setPluginNamespace(const char* plugin_namespace) override {
+    namespace_ = plugin_namespace;
+  }
 
-  void serialize(void* buffer) override;
+  const char* getPluginNamespace() const override { return namespace_.c_str(); }
 
  protected:
-  std::unordered_map<string, std::vector<char> > attr_map_;
+  template <typename T>
+  void WriteToBuffer(const T& val, char** buffer) const {
+    *reinterpret_cast<T*>(*buffer) = val;
+    *buffer += sizeof(T);
+  }
 
-  std::vector<nvinfer1::Dims> input_dim_list_;
+  template <typename T>
+  T ReadFromBuffer(const char** buffer) {
+    T val = *reinterpret_cast<const T*>(*buffer);
+    *buffer += sizeof(T);
+    return val;
+  }
+
+ private:
+  std::string namespace_;
 };
+#endif
+
+template <typename T>
+class TrtPluginRegistrar {
+ public:
+  TrtPluginRegistrar() {
+    getPluginRegistry()->registerCreator(creator, kTfTrtPluginNamespace);
+  }
+
+ private:
+  T creator;
+};
+
+#define REGISTER_TFTRT_PLUGIN(name)                       \
+  static ::tensorflow::tensorrt::TrtPluginRegistrar<name> \
+      plugin_registrar_##name {}
 
 }  // namespace tensorrt
 }  // namespace tensorflow

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import sys
+import traceback
 
 # TODO(mdan): Use a custom logger class.
 from tensorflow.python.platform import tf_logging as logging
@@ -45,9 +46,12 @@ def set_verbosity(level, alsologtostdout=False):
   More verbose logging is useful to enable when filing bug reports or doing
   more in-depth debugging.
 
-  There are two controls that control the logging verbosity:
+  There are two means to control the logging verbosity:
+
    * The `set_verbosity` function
+
    * The `AUTOGRAPH_VERBOSITY` environment variable
+
   `set_verbosity` takes precedence over the environment variable.
 
   For example:
@@ -66,7 +70,8 @@ def set_verbosity(level, alsologtostdout=False):
   # No effect, because set_verbosity was already called.
   ```
 
-  Logs entries are output to [absl](https://abseil.io)'s default output,
+  Logs entries are output to [absl](https://abseil.io)'s 
+  [default output](https://abseil.io/docs/python/guides/logging),
   with `INFO` level.
   Logs can be mirrored to stdout by using the `alsologtostdout` argument.
   Mirroring is enabled by default when Python runs in interactive mode.
@@ -74,7 +79,7 @@ def set_verbosity(level, alsologtostdout=False):
   Args:
     level: int, the verbosity level; larger values specify increased verbosity;
       0 means no logging. When reporting bugs, it is recommended to set this
-      value to a larges number, like 10.
+      value to a larger number, like 10.
     alsologtostdout: bool, whether to also output log messages to `sys.stdout`.
   """
   global verbosity_level
@@ -110,26 +115,35 @@ def get_verbosity():
   global verbosity_level
   if verbosity_level is not None:
     return verbosity_level
-  return os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY)
+  return int(os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY))
 
 
 def has_verbosity(level):
   return get_verbosity() >= level
 
 
+def _output_to_stdout(msg, *args, **kwargs):
+  print(msg % args)
+  if kwargs.get('exc_info', False):
+    traceback.print_exc()
+
+
 def error(level, msg, *args, **kwargs):
   if has_verbosity(level):
     logging.error(msg, *args, **kwargs)
     if echo_log_to_stdout:
-      print(msg % args)
+      _output_to_stdout('ERROR: ' + msg, *args, **kwargs)
 
 
 def log(level, msg, *args, **kwargs):
   if has_verbosity(level):
     logging.info(msg, *args, **kwargs)
     if echo_log_to_stdout:
-      print(msg % args)
+      _output_to_stdout(msg, *args, **kwargs)
 
 
-def warn_first_n(msg, *args, **kwargs):
-  logging.log_first_n(logging.WARN, msg, *args, **kwargs)
+def warn(msg, *args, **kwargs):
+  logging.warn(msg, *args, **kwargs)
+  if echo_log_to_stdout:
+    _output_to_stdout('WARNING: ' + msg, *args, **kwargs)
+  sys.stdout.flush()

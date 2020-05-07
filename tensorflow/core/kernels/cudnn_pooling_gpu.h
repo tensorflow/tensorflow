@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #endif
 
@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Runs (avg/max)pooling on GPU.
 // Dimension order for all array arguments is: x, y, z.

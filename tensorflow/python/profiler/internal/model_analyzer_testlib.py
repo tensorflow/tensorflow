@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import contextlib
 
-from tensorflow.python import pywrap_tensorflow as print_mdl
+from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -72,7 +72,7 @@ def BuildFullModel():
   return sgd_op.minimize(loss)
 
 
-def BuildSplitableModel():
+def BuildSplittableModel():
   """Build a small model that can be run partially in each step."""
   image = array_ops.zeros([2, 6, 6, 3])
 

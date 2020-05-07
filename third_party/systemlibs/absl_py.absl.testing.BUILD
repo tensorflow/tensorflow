@@ -7,5 +7,5 @@ py_library(
 
 py_library(
     name = "absltest",
-    visibility = ["//visiblity:public"],
+    visibility = ["//visibility:public"],
 )

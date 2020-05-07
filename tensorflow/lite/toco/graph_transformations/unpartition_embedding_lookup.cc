@@ -227,18 +227,18 @@ namespace toco {
 
   // Ensure the stitch output array is dead, as we don't want whatever was in it
   // previously now that we've redefined it. It'll be recreated when needed.
-  model->EraseArray(stitch_op->outputs[0]);
+  model->EraseArray(merged_gather_op->outputs[0]);
   model->GetOrCreateArray(merged_gather_op->outputs[0]);
 
   // Erase all the original ops.
-  DeleteOpAndArraysIfUnused(model, div_op);
-  DeleteOpAndArraysIfUnused(model, mod_op);
+  DeleteOpAndArrays(model, div_op);
+  DeleteOpAndArrays(model, mod_op);
   for (auto* gather_op : gather_ops) {
-    DeleteOpAndArraysIfUnused(model, gather_op);
+    DeleteOpAndArrays(model, gather_op);
   }
-  DeleteOpAndArraysIfUnused(model, indices_partition_op);
-  DeleteOpAndArraysIfUnused(model, data_partition_op);
-  DeleteOpAndArraysIfUnused(model, stitch_op);
+  DeleteOpAndArrays(model, indices_partition_op);
+  DeleteOpAndArrays(model, data_partition_op);
+  DeleteOpAndArrays(model, stitch_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

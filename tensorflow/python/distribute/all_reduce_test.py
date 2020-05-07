@@ -123,12 +123,12 @@ class AllReduceTest(test_util.TensorFlowTestCase):
     for otl in output_tensors:
       self.assertEqual(len(otl), num_chunks)
       for ot in otl:
-        self.assertEqual(ot.shape, [tlen/num_chunks])
+        self.assertEqual(ot.shape, [tlen//num_chunks])
 
   def _buildInitialVars(self, shape, dev_list):
     values = []
     num_devices = len(dev_list)
-    dim = np.prod(shape) if shape else 1
+    dim = np.prod(shape, dtype=int) if shape else 1
     for d in range(0, num_devices):
       with ops.device(dev_list[d]):
         npt = np.zeros(shape).astype(np.float32)

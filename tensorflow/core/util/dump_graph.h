@@ -28,6 +28,9 @@ namespace tensorflow {
 // Dumps 'graph_def' to a file, as a GraphDef text proto. Returns the file name
 // chosen.
 //
+// If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then instead the
+// GraphDef will be logged (using the LOG() macro).
+//
 // Automatically picks a file name. Prefixes 'name' with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if 'dirname' is empty, and suffixes
 // 'name' with ".pbtxt" to form a name. If a graph has already been dumped by
@@ -46,6 +49,16 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 // proto. Returns the file name chosen.
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname = "");
+
+// Sets a custom Graph dumper. If set, this dumper will be used to dump graphs
+// instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
+// allow specifying a file suffix/extension too.
+void SetGraphDumper(
+    std::function<Status(const Graph& graph,
+                         const FunctionLibraryDefinition* flib_def,
+                         WritableFile*)>
+        dumper,
+    string suffix = ".pbtxt");
 
 }  // namespace tensorflow
 

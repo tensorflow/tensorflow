@@ -52,11 +52,11 @@ def adam_update_numpy(param,
 class AdamOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types | self.complex_types:
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.
@@ -95,11 +95,11 @@ class AdamOptimizerTest(xla_test.XLATestCase):
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testTensorLearningRate(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types | self.complex_types:
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.
@@ -138,11 +138,11 @@ class AdamOptimizerTest(xla_test.XLATestCase):
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testSharing(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types | self.complex_types:
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.

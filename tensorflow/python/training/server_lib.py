@@ -19,8 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
+from tensorflow.core.protobuf import device_filters_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -32,21 +33,19 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
   """Creates a `tf.train.ServerDef` protocol buffer.
 
   Args:
-    server_or_cluster_def: A `tf.train.ServerDef` or
-      `tf.train.ClusterDef` protocol buffer, or a
-      `tf.train.ClusterSpec` object, describing the server to be
-      defined and/or the cluster of which it is a member.
-    job_name: (Optional.) Specifies the name of the job of which the server
-      is a member. Defaults to the value in `server_or_cluster_def`, if
-      specified.
+    server_or_cluster_def: A `tf.train.ServerDef` or `tf.train.ClusterDef`
+      protocol buffer, or a `tf.train.ClusterSpec` object, describing the server
+      to be defined and/or the cluster of which it is a member.
+    job_name: (Optional.) Specifies the name of the job of which the server is a
+      member. Defaults to the value in `server_or_cluster_def`, if specified.
     task_index: (Optional.) Specifies the task index of the server in its job.
       Defaults to the value in `server_or_cluster_def`, if specified. Otherwise
       defaults to 0 if the server's job has only one task.
     protocol: (Optional.) Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value
-      in `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
-    config: (Options.) A `tf.ConfigProto` that specifies default configuration
-      options for all sessions that run on this server.
+      Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value in
+      `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+    config: (Options.) A `tf.compat.v1.ConfigProto` that specifies default
+      configuration options for all sessions that run on this server.
 
   Returns:
     A `tf.train.ServerDef`.
@@ -88,7 +87,9 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
 
     server_def = tensorflow_server_pb2.ServerDef(
         cluster=cluster_spec.as_cluster_def(),
-        job_name=job_name, task_index=task_index, protocol=protocol)
+        job_name=job_name,
+        task_index=task_index,
+        protocol=protocol)
     if config is not None:
       server_def.default_session_config.MergeFrom(config)
   return server_def
@@ -99,8 +100,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
 class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
-  A `tf.train.Server` instance encapsulates a set of devices and a
-  `tf.Session` target that
+  A `tf.distribute.Server` instance encapsulates a set of devices and a
+  `tf.compat.v1.Session` target that
   can participate in distributed training. A server belongs to a
   cluster (specified by a `tf.train.ClusterSpec`), and
   corresponds to a particular task in a named job. The server can
@@ -120,46 +121,50 @@ class Server(object):
     override any information provided in `server_or_cluster_def`.
 
     Args:
-      server_or_cluster_def: A `tf.train.ServerDef` or
-        `tf.train.ClusterDef` protocol buffer, or a
-        `tf.train.ClusterSpec` object, describing the server to be
-        created and/or the cluster of which it is a member.
-      job_name: (Optional.) Specifies the name of the job of which the server
-        is a member. Defaults to the value in `server_or_cluster_def`, if
+      server_or_cluster_def: A `tf.train.ServerDef` or `tf.train.ClusterDef`
+        protocol buffer, or a `tf.train.ClusterSpec` object, describing the
+        server to be created and/or the cluster of which it is a member.
+      job_name: (Optional.) Specifies the name of the job of which the server is
+        a member. Defaults to the value in `server_or_cluster_def`, if
         specified.
-      task_index: (Optional.) Specifies the task index of the server in its
-        job. Defaults to the value in `server_or_cluster_def`, if specified.
+      task_index: (Optional.) Specifies the task index of the server in its job.
+        Defaults to the value in `server_or_cluster_def`, if specified.
         Otherwise defaults to 0 if the server's job has only one task.
       protocol: (Optional.) Specifies the protocol to be used by the server.
-        Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the
-        value in `server_or_cluster_def`, if specified. Otherwise defaults to
+        Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value
+        in `server_or_cluster_def`, if specified. Otherwise defaults to
         `"grpc"`.
-      config: (Options.) A `tf.ConfigProto` that specifies default
+      config: (Options.) A `tf.compat.v1.ConfigProto` that specifies default
         configuration options for all sessions that run on this server.
-      start: (Optional.) Boolean, indicating whether to start the server
-        after creating it. Defaults to `True`.
+      start: (Optional.) Boolean, indicating whether to start the server after
+        creating it. Defaults to `True`.
 
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow server.
     """
-    self._server_def = _make_server_def(server_or_cluster_def,
-                                        job_name, task_index, protocol, config)
+    self._server_def = _make_server_def(server_or_cluster_def, job_name,
+                                        task_index, protocol, config)
     self._server = c_api.TF_NewServer(self._server_def.SerializeToString())
     if start:
       self.start()
 
   def __del__(self):
+    # At shutdown, `errors` may have been garbage collected.
+    if errors is not None:
+      exception = errors.UnimplementedError
+    else:
+      exception = Exception
     try:
       c_api.TF_ServerStop(self._server)
       # Clean shutdown of servers is not yet implemented, so
       # we leak instead of calling c_api.TF_DeleteServer here.
       # See:
       # https://github.com/tensorflow/tensorflow/blob/0495317a6e9dd4cac577b9d5cf9525e62b571018/tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h#L73
-    except errors.UnimplementedError:
-      pass
     except AttributeError:
       # At shutdown, `c_api` may have been garbage collected.
+      pass
+    except exception:
       pass
     self._server = None
 
@@ -195,15 +200,15 @@ class Server(object):
 
   @property
   def target(self):
-    """Returns the target for a `tf.Session` to connect to this server.
+    """Returns the target for a `tf.compat.v1.Session` to connect to this server.
 
     To create a
-    `tf.Session` that
+    `tf.compat.v1.Session` that
     connects to this server, use the following snippet:
 
     ```python
-    server = tf.train.Server(...)
-    with tf.Session(server.target):
+    server = tf.distribute.Server(...)
+    with tf.compat.v1.Session(server.target):
       # ...
     ```
 
@@ -217,22 +222,24 @@ class Server(object):
     """Creates a new single-process cluster running on the local host.
 
     This method is a convenience wrapper for creating a
-    `tf.train.Server` with a `tf.train.ServerDef` that specifies a
+    `tf.distribute.Server` with a `tf.train.ServerDef` that specifies a
     single-process cluster containing a single task in a job called
     `"local"`.
 
     Args:
-      config: (Options.) A `tf.ConfigProto` that specifies default
+      config: (Options.) A `tf.compat.v1.ConfigProto` that specifies default
         configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to `True`.
 
     Returns:
-      A local `tf.train.Server`.
+      A local `tf.distribute.Server`.
     """
     # Specifying port 0 means that the OS will choose a free port for the
     # server.
-    return Server({"local": ["localhost:0"]}, protocol="grpc", config=config,
+    return Server({"localhost": ["localhost:0"]},
+                  protocol="grpc",
+                  config=config,
                   start=start)
 
 
@@ -242,7 +249,7 @@ class ClusterSpec(object):
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  `tf.train.Server` is constructed in a particular cluster.
+  `tf.distribute.Server` is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
@@ -272,10 +279,9 @@ class ClusterSpec(object):
     """Creates a `ClusterSpec`.
 
     Args:
-      cluster: A dictionary mapping one or more job names to (i) a
-        list of network addresses, or (ii) a dictionary mapping integer
-        task indices to network addresses; or a `tf.train.ClusterDef`
-        protocol buffer.
+      cluster: A dictionary mapping one or more job names to (i) a list of
+        network addresses, or (ii) a dictionary mapping integer task indices to
+        network addresses; or a `tf.train.ClusterDef` protocol buffer.
 
     Raises:
       TypeError: If `cluster` is not a dictionary mapping strings to lists
@@ -298,14 +304,16 @@ class ClusterSpec(object):
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = {
-            i: t for i, t in job_def.tasks.items()}
+            i: t for i, t in job_def.tasks.items()
+        }
     elif isinstance(cluster, ClusterSpec):
       self._cluster_def = cluster_pb2.ClusterDef()
       self._cluster_def.MergeFrom(cluster.as_cluster_def())
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = {
-            i: t for i, t in job_def.tasks.items()}
+            i: t for i, t in job_def.tasks.items()
+        }
     else:
       raise TypeError("`cluster` must be a dictionary mapping one or more "
                       "job names to lists of network addresses, or a "
@@ -323,10 +331,11 @@ class ClusterSpec(object):
   def __ne__(self, other):
     return self._cluster_spec != other
 
-  def __str__(self):
+  def __repr__(self):
     key_values = self.as_dict()
     string_items = [
-        repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)]
+        repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)
+    ]
     return "ClusterSpec({" + ", ".join(string_items) + "})"
 
   def as_dict(self):
@@ -427,8 +436,8 @@ class ClusterSpec(object):
     try:
       return job[task_index]
     except KeyError:
-      raise ValueError("No task with index %r in job %r"
-                       % (task_index, job_name))
+      raise ValueError("No task with index %r in job %r" %
+                       (task_index, job_name))
 
   def job_tasks(self, job_name):
     """Returns a mapping from task ID to address in the given job.
@@ -482,6 +491,88 @@ class ClusterSpec(object):
         try:
           task_address = compat.as_bytes(task_address)
         except TypeError:
-          raise TypeError(
-              "Task address %r must be bytes or unicode" % task_address)
+          raise TypeError("Task address %r must be bytes or unicode" %
+                          task_address)
         job_def.tasks[i] = task_address
+
+
+@tf_export("config.experimental.ClusterDeviceFilters")
+class ClusterDeviceFilters(object):
+  """Represent a collection of device filters for the remote workers in cluster.
+
+  NOTE: this is an experimental API and subject to changes.
+
+  Set device filters for selective jobs and tasks. For each remote worker, the
+  device filters are a list of strings. When any filters are present, the remote
+  worker will ignore all devices which do not match any of its filters. Each
+  filter can be partially specified, e.g. "/job:ps", "/job:worker/replica:3",
+  etc. Note that a device is always visible to the worker it is located on.
+
+  For example, to set the device filters for a parameter server cluster:
+
+  ```python
+  cdf = tf.config.experimental.ClusterDeviceFilters()
+  for i in range(num_workers):
+    cdf.set_device_filters('worker', i, ['/job:ps'])
+  for i in range(num_ps):
+    cdf.set_device_filters('ps', i, ['/job:worker'])
+
+  tf.config.experimental_connect_to_cluster(cluster_def,
+                                            cluster_device_filters=cdf)
+  ```
+
+  The device filters can be partically specified. For remote tasks that do not
+  have device filters specified, all devices will be visible to them.
+  """
+
+  def __init__(self):
+    # `_device_filters` is a dict mapping job names to job device filters.
+    # Job device filters further maps task IDs to task device filters.
+    # Task device filters are a list of strings, each one is a device filter.
+    self._device_filters = {}
+
+    # Serialized protobuf for cluster device filters.
+    self._cluster_device_filters = None
+
+  def set_device_filters(self, job_name, task_index, device_filters):
+    """Set the device filters for given job name and task id."""
+    assert all(isinstance(df, str) for df in device_filters)
+    self._device_filters.setdefault(job_name, {})
+    self._device_filters[job_name][task_index] = [df for df in device_filters]
+    # Due to updates in data, invalidate the serialized proto cache.
+    self._cluster_device_filters = None
+
+  def _as_cluster_device_filters(self):
+    """Returns a serialized protobuf of cluster device filters."""
+    if self._cluster_device_filters:
+      return self._cluster_device_filters
+
+    self._make_cluster_device_filters()
+    return self._cluster_device_filters
+
+  def _make_cluster_device_filters(self):
+    """Creates `ClusterDeviceFilters` proto based on the `_device_filters`.
+
+    Raises:
+      TypeError: If `_device_filters` is not a dictionary mapping strings to
+      a map of task indices and device filters.
+    """
+    self._cluster_device_filters = device_filters_pb2.ClusterDeviceFilters()
+
+    # Sort by job_name to produce deterministic protobufs.
+    for job_name, tasks in sorted(self._device_filters.items()):
+      try:
+        job_name = compat.as_bytes(job_name)
+      except TypeError:
+        raise TypeError("Job name %r must be bytes or unicode" % job_name)
+
+      jdf = self._cluster_device_filters.jobs.add()
+      jdf.name = job_name
+
+      for i, task_device_filters in sorted(tasks.items()):
+        for tdf in task_device_filters:
+          try:
+            tdf = compat.as_bytes(tdf)
+          except TypeError:
+            raise TypeError("Device filter %r must be bytes or unicode" % tdf)
+          jdf.tasks[i].device_filters.append(tdf)

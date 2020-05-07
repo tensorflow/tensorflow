@@ -18,6 +18,7 @@ limitations under the License.
 #include <mutex>
 #include <string>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -91,12 +92,12 @@ class CPUFeatureGuard {
 
 CPUFeatureGuard g_cpu_feature_guard_singleton;
 
-std::once_flag g_cpu_feature_guard_warn_once_flag;
+absl::once_flag g_cpu_feature_guard_warn_once_flag;
 
 }  // namespace
 
 void InfoAboutUnusedCPUFeatures() {
-  std::call_once(g_cpu_feature_guard_warn_once_flag, [] {
+  absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
     string missing_instructions;
 #if defined(_MSC_VER) && !defined(__clang__)
 
@@ -138,16 +139,11 @@ void InfoAboutUnusedCPUFeatures() {
 #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
-#ifndef INTEL_MKL
-      LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
-                << "binary was not compiled to use:" << missing_instructions;
-#else
       LOG(INFO) << "This TensorFlow binary is optimized with Intel(R) MKL-DNN "
-                << "to use the following CPU instructions in performance "
+                << "to use the following CPU instructions in performance-"
                 << "critical operations: " << missing_instructions << std::endl
-                << "To enable them in non-MKL-DNN operations, rebuild "
-                << "TensorFlow with the appropriate compiler flags.";
-#endif
+                << "To enable them in other operations, rebuild TensorFlow "
+                << "with the appropriate compiler flags.";
     }
   });
 }

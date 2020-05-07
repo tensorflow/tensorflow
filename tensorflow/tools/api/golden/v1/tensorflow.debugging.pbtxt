@@ -1,5 +1,9 @@
 path: "tensorflow.debugging"
 tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Assert"
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -81,12 +85,28 @@ tf_module {
     argspec: "args=[\'tensor\', \'name\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "assert_shapes"
+    argspec: "args=[\'shapes\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "assert_type"
     argspec: "args=[\'tensor\', \'tf_type\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "check_numerics"
     argspec: "args=[\'tensor\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "disable_check_numerics"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_check_numerics"
+    argspec: "args=[\'stack_height_limit\', \'path_length_limit\'], varargs=None, keywords=None, defaults=[\'30\', \'50\'], "
+  }
+  member_method {
+    name: "get_log_device_placement"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_finite"
@@ -111,5 +131,9 @@ tf_module {
   member_method {
     name: "is_strictly_increasing"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_log_device_placement"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
   }
 }

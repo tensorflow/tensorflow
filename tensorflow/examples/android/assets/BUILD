@@ -1,6 +1,7 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # It is necessary to use this filegroup rather than globbing the files in this
 # folder directly the examples/android:tensorflow_demo target due to the fact

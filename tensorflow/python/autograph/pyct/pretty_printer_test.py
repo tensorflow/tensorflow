@@ -19,12 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
+import textwrap
 
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.platform import test
 
 
 class PrettyPrinterTest(test.TestCase):
+
+  def test_unicode_bytes(self):
+    source = textwrap.dedent('''
+    def f():
+      return b'b', u'u', 'depends_py2_py3'
+    ''')
+    node = ast.parse(source)
+    self.assertIsNotNone(pretty_printer.fmt(node))
 
   def test_format(self):
     node = ast.FunctionDef(

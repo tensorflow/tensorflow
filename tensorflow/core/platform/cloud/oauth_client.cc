@@ -22,14 +22,15 @@ limitations under the License.
 #include <sys/types.h>
 #endif
 #include <fstream>
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -284,7 +285,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
     return errors::FailedPrecondition("Unexpected Oauth token type: " +
                                       token_type);
   }
-  int64 expires_in;
+  int64 expires_in = 0;
   TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));

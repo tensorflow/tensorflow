@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 namespace tensorflow {
@@ -41,7 +42,7 @@ namespace tensor_array {
 TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
 #undef TENSOR_ARRAY_WRITE_OR_ADD_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
@@ -49,7 +50,7 @@ TF_CALL_complex64(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 TF_CALL_complex128(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 #undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef TENSOR_ARRAY_WRITE_OR_ADD
 
@@ -66,7 +67,7 @@ TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU);
 TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
@@ -74,7 +75,7 @@ TF_CALL_complex64(TENSOR_ARRAY_SET_ZERO_GPU);
 TF_CALL_complex128(TENSOR_ARRAY_SET_ZERO_GPU);
 #undef TENSOR_ARRAY_SET_ZERO_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef TENSOR_ARRAY_SET_ZERO
 
@@ -91,8 +92,8 @@ Status TensorArray::CopyShapesFrom(TensorArray* rhs,
   if (tensors_.size() != rhs->tensors_.size()) {
     return errors::InvalidArgument(
         "TensorArray sizes do not match during CopyShapesFrom: ",
-        handle_.vec<string>()(1), " has size ", tensors_.size(), " but rhs ",
-        rhs->handle_.vec<string>()(1), " has size ", rhs->tensors_.size());
+        handle_.vec<tstring>()(1), " has size ", tensors_.size(), " but rhs ",
+        rhs->handle_.vec<tstring>()(1), " has size ", rhs->tensors_.size());
   }
   for (std::size_t i = 0; i < tensors_.size(); ++i) {
     // Skip "soft copy" of indices which have not been written.

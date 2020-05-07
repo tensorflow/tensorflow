@@ -57,7 +57,7 @@ class SingleExampleProtoToTensorsTest : public ::testing::Test {
     string_dense_config.dtype = DT_STRING;
     string_dense_config.shape = TensorShape({1});
     string_dense_config.default_value = Tensor(DT_STRING, TensorShape({1}));
-    string_dense_config.default_value.scalar<string>()() = "default";
+    string_dense_config.default_value.scalar<tstring>()() = "default";
     dense_vec_.push_back(string_dense_config);
 
     // Setup sparse feature configuration.
@@ -115,7 +115,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
 
   const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
-  EXPECT_EQ("forty-two", string_tensor_vec[0].vec<string>()(0));
+  EXPECT_EQ("forty-two", string_tensor_vec[0].vec<tstring>()(0));
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
@@ -143,7 +143,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
 
   const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
-  EXPECT_EQ(0, string_tensor_vec[0].vec<string>().size());
+  EXPECT_EQ(0, string_tensor_vec[0].vec<tstring>().size());
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
@@ -182,8 +182,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(4.2, float_dense_output.matrix<float>()(0, 0), 0.001);
 
-  EXPECT_EQ(1, str_dense_output.matrix<string>().size());
-  EXPECT_EQ("forty-two", str_dense_output.matrix<string>()(0, 0));
+  EXPECT_EQ(1, str_dense_output.matrix<tstring>().size());
+  EXPECT_EQ("forty-two", str_dense_output.matrix<tstring>()(0, 0));
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
@@ -211,8 +211,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(0.0, float_dense_output.matrix<float>()(0, 0), 0.001);
 
-  EXPECT_EQ(1, str_dense_output.matrix<string>().size());
-  EXPECT_EQ("default", str_dense_output.matrix<string>()(0, 0));
+  EXPECT_EQ(1, str_dense_output.matrix<tstring>().size());
+  EXPECT_EQ("default", str_dense_output.matrix<tstring>()(0, 0));
 }
 
 }  // namespace

@@ -125,6 +125,7 @@ class RecordInputOpTest(test.TestCase):
             self.assertTrue(r[0] not in epoch_set)
             epoch_set.add(r[0])
 
+  @test_util.run_deprecated_v1
   def testDoesNotDeadlock(self):
     # Iterate multiple times to cause deadlock if there is a chance it can occur
     for _ in range(30):

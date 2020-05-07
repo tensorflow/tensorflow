@@ -29,6 +29,7 @@ class ConstantOp : public OpKernel {
   explicit ConstantOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
   bool IsExpensive() override { return false; }
+  const Tensor* const_tensor() const override { return &tensor_; };
   ~ConstantOp() override;
 
  private:

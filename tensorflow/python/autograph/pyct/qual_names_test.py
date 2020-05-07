@@ -150,7 +150,7 @@ class QNTest(test.TestCase):
     d = {QN('a'): 'a', QN('b'): 'b'}
     self.assertEqual(d[QN('a')], 'a')
     self.assertEqual(d[QN('b')], 'b')
-    self.assertTrue(QN('c') not in d)
+    self.assertNotIn(QN('c'), d)
 
   def test_literals(self):
     a = QN('a')
@@ -161,7 +161,7 @@ class QNTest(test.TestCase):
     self.assertNotEqual(hash(a_sub_str_b), hash(a_sub_b))
 
     a_sub_three = QN(a, subscript=QN(qual_names.NumberLiteral(3)))
-    self.assertEqual(a_sub_three.ast().slice.value.n, 3)
+    self.assertEqual(a_sub_three.ast().slice.value.value, 3)
 
   def test_support_set(self):
     a = QN('a')
@@ -192,8 +192,8 @@ class QNResolverTest(test.TestCase):
       [f, (g.h.i)]
       j(k, l)
     """
-    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
-    nodes = tuple(n.value for n in nodes.body)
+    nodes = parser.parse(textwrap.dedent(samples), single_node=False)
+    nodes = tuple(resolve(node).value for node in nodes)
 
     self.assertQNStringIs(nodes[0], 'a')
     self.assertQNStringIs(nodes[1], 'a.b')
@@ -218,8 +218,8 @@ class QNResolverTest(test.TestCase):
       a.b[c[d]].e.f
       a.b[c[d.e.f].g].h
     """
-    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
-    nodes = tuple(n.value for n in nodes.body)
+    nodes = parser.parse(textwrap.dedent(samples), single_node=False)
+    nodes = tuple(resolve(node).value for node in nodes)
 
     self.assertQNStringIs(nodes[0], 'x[i]')
     self.assertQNStringIs(nodes[1], 'x[i.b]')
@@ -241,8 +241,8 @@ class QNResolverTest(test.TestCase):
       z[i]()
       z()[i]
     """
-    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
-    nodes = tuple(n.value for n in nodes.body)
+    nodes = parser.parse(textwrap.dedent(samples), single_node=False)
+    nodes = tuple(resolve(node).value for node in nodes)
     self.assertQNStringIs(nodes[0], 'a.b')
     self.assertQNStringIs(nodes[1].func, 'a.b')
     self.assertQNStringIs(nodes[2].value.func, 'a')

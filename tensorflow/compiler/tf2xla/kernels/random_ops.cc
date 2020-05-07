@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(misard,phawkins): add tests.
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -47,6 +50,10 @@ class RandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
     xla::XlaBuilder* b = ctx->builder();
+    LOG_FIRST_N(WARNING, 1)
+        << "Warning: Using tf.random.uniform with XLA compilation will ignore "
+           "seeds; consider using tf.random.stateless_uniform instead if "
+           "reproducible behavior is desired.";
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
 
@@ -134,7 +141,9 @@ class RandomShuffleOp : public XlaOpKernel {
       xla::XlaOp curr = input;
       for (int i = 0; i < rounds; ++i) {
         xla::XlaOp keys = xla::RngUniform(zero, max_value, key_shape);
-        xla::XlaOp sorted = xla::Sort(keys, {curr});
+        xla::XlaOp sorted = xla::Sort(
+            {keys, curr}, xla::CreateScalarLtComputation(
+                              {xla::U32, ctx->input_xla_type(0)}, builder));
         curr = xla::GetTupleElement(sorted, 1);
       }
 
@@ -146,6 +155,9 @@ class RandomShuffleOp : public XlaOpKernel {
 
     // Generate the random swaps for the indices.
     auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
+    LOG_FIRST_N(WARNING, 1)
+        << "Warning: Using tf.random.shuffle with XLA compilation "
+           "will ignore seeds.";
     auto swaps =
         xla::RngUniform(xla::ConstantR0<int32>(builder, 0),
                         xla::ConstantR0<int32>(builder, n), swaps_shape);
@@ -226,6 +238,10 @@ class RandomUniformIntOp : public XlaOpKernel {
 
     auto minval = ctx->Input(1);
     auto maxval = ctx->Input(2);
+    LOG_FIRST_N(WARNING, 1)
+        << "Warning: Using tf.random.uniform with XLA compilation will ignore "
+           "seeds; consider using tf.random.stateless_uniform instead if "
+           "reproducible behavior is desired.";
     ctx->SetOutput(0, xla::RngUniform(minval, maxval, xla_shape));
   }
 
@@ -279,9 +295,14 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
+    xla::XlaOp one = xla::One(b, xla_shape.element_type());
     xla::XlaOp min_positive =
-        XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
+        xla::MinPositiveNormalValue(b, xla_shape.element_type());
+    LOG_FIRST_N(WARNING, 1)
+        << "Warning: Using tf.random.truncated_normal with XLA "
+           "compilation will ignore seeds; consider using "
+           "tf.random.stateless_truncated_normal instead if "
+           "reproducible behavior is desired.";
     auto uniform = xla::RngUniform(min_positive, one, xla_shape);
     ctx->SetOutput(0, TruncatedNormal(uniform));
   }
@@ -289,8 +310,55 @@ class TruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("TruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", DT_FLOAT),
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
                 TruncatedNormalOp);
+
+class ParameterizedTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const DataType dtype = output_type(0);
+
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    xla::Shape xla_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
+
+    xla::XlaBuilder* b = ctx->builder();
+
+    xla::XlaOp one = xla::One(b, xla_shape.element_type());
+    xla::XlaOp min_positive =
+        xla::MinPositiveNormalValue(b, xla_shape.element_type());
+    LOG_FIRST_N(WARNING, 1)
+        << "Warning: Using tf.random.truncated_normal with XLA "
+           "compilation will ignore seeds; consider using "
+           "tf.random.stateless_truncated_normal instead if "
+           "reproducible behavior is desired.";
+    xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
+
+    auto result = b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+      TF_ASSIGN_OR_RETURN(xla::XlaOp means,
+                          BroadcastTo(ctx->Input(1), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,
+                          BroadcastTo(ctx->Input(2), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp minvals,
+                          BroadcastTo(ctx->Input(3), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp maxvals,
+                          BroadcastTo(ctx->Input(4), shape.dim_sizes()));
+      return ParameterizedTruncatedNormal(uniform, means, stddevs, minvals,
+                                          maxvals);
+    });
+
+    ctx->SetOutput(0, result);
+  }
+};
+
+REGISTER_XLA_OP(Name("ParameterizedTruncatedNormal")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
+                ParameterizedTruncatedNormalOp);
 
 }  // namespace
 }  // namespace tensorflow

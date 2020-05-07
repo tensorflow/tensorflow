@@ -21,7 +21,7 @@ code to merge.
       - You'll need at least SDK version 23.
       - Make sure to install the latest version of Bazel. Some distributions
         ship with Bazel 0.5.4, which is too old.
-      - Bazel requires Android Build Tools `26.0.1` or higher.
+      - Bazel requires Android Build Tools `28.0.0` or higher.
       - You also need to install the Android Support Repository, available
         through Android Studio under `Android SDK Manager -> SDK Tools ->
         Android Support Repository`.
@@ -41,8 +41,7 @@ code to merge.
 2. Build the app with Bazel. The demo needs C++11:
 
   ```shell
-  bazel build -c opt --cxxopt='--std=c++11' \
-    //tensorflow/lite/java/demo/app/src/main:TfLiteCameraDemo
+  bazel build -c opt //tensorflow/lite/java/demo/app/src/main:TfLiteCameraDemo
   ```
 
 3. Install the demo on a

@@ -24,6 +24,7 @@ using shape_inference::ShapeHandle;
 
 // --------------------------------------------------------------------------
 namespace {
+
 Status SwitchShape(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -39,6 +40,27 @@ Status SwitchShape(InferenceContext* c) {
   }
   return Status::OK();
 }
+
+Status SwitchNShape(InferenceContext* c) {
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+  ShapeHandle out = c->input(0);
+  int num_outs;
+  TF_RETURN_IF_ERROR(c->GetAttr("num_outs", &num_outs));
+  for (int i = 0; i < num_outs; i++) {
+    c->set_output(i, out);
+  }
+
+  // Handle resource shape / dtype.
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    for (int i = 0; i < num_outs; i++) {
+      c->set_output_handle_shapes_and_types(i, *handle_data);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("Switch")
@@ -57,6 +79,14 @@ REGISTER_OP("RefSwitch")
     .Attr("T: type")
     .SetAllowsUninitializedInput()
     .SetShapeFn(SwitchShape);
+
+REGISTER_OP("_SwitchN")
+    .Input("data: T")
+    .Input("output_index: int32")
+    .Output("outputs: num_outs * T")
+    .Attr("num_outs: int >= 1")
+    .Attr("T: type")
+    .SetShapeFn(SwitchNShape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RefSelect")

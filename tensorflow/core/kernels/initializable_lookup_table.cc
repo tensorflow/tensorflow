@@ -47,9 +47,18 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
 
   mutex_lock l(mu_);
   if (is_initialized()) {
-    return errors::FailedPrecondition("Table already initialized.");
+    bool result;
+    TF_RETURN_IF_ERROR(AreEntriesSame(iter, &result));
+    // If the table is already initialized, we make sure that the entries in the
+    // table are the same that we want to initialize the table with.
+    if (!result) {
+      return errors::FailedPrecondition(
+          "Table was already initialized with "
+          "different data.");
+    } else {
+      return Status::OK();
+    }
   }
-
   TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
   while (iter.Valid()) {
     TF_RETURN_IF_ERROR(DoInsert(iter.keys(), iter.values()));
@@ -59,10 +68,13 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return iter.status();
   }
 
-  // Prevent compiler/memory reordering of is_initialized and
-  // the initialization itself.
-  std::atomic_thread_fence(std::memory_order_release);
-  is_initialized_ = true;
+  is_initialized_.store(true, std::memory_order_release);
+  return Status::OK();
+}
+
+Status InitializableLookupTable::AreEntriesSame(const InitTableIterator& iter,
+                                                bool* result) {
+  *result = iter.total_size() == size();
   return Status::OK();
 }
 

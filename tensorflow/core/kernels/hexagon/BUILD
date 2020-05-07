@@ -1,16 +1,15 @@
 # Description:
 #   quantization-specific OpKernels for hexagon
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_cc_test(
@@ -20,7 +19,7 @@ tf_cc_test(
         "graph_transferer_test.cc",
         "hexagon_graph_execution_test.cc",
     ],
-    data = ["//tensorflow/core:example_parser_configuration_testdata"],
+    data = ["//tensorflow/core/example:example_parser_configuration_testdata"],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",

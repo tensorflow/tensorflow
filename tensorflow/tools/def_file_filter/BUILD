@@ -7,3 +7,8 @@
 # so we have to filter some useless symbols through this python script.
 
 package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "symbols_pybind",
+    srcs = ["symbols_pybind.txt"],
+)

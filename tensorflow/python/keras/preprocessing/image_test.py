@@ -24,7 +24,8 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python import keras
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
 
 try:
@@ -41,17 +42,37 @@ def _generate_test_images():
     bias = np.random.rand(img_w, img_h, 1) * 64
     variance = np.random.rand(img_w, img_h, 1) * (255 - 64)
     imarray = np.random.rand(img_w, img_h, 3) * variance + bias
-    im = keras.preprocessing.image.array_to_img(imarray, scale=False)
+    im = preprocessing_image.array_to_img(imarray, scale=False)
     rgb_images.append(im)
 
     imarray = np.random.rand(img_w, img_h, 1) * variance + bias
-    im = keras.preprocessing.image.array_to_img(imarray, scale=False)
+    im = preprocessing_image.array_to_img(imarray, scale=False)
     gray_images.append(im)
 
   return [rgb_images, gray_images]
 
 
 class TestImage(test.TestCase):
+
+  @test_util.run_v2_only
+  def test_smart_resize(self):
+    test_input = np.random.random((20, 40, 3))
+    output = preprocessing_image.smart_resize(test_input, size=(50, 50))
+    self.assertIsInstance(output, np.ndarray)
+    self.assertListEqual(list(output.shape), [50, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(10, 10))
+    self.assertListEqual(list(output.shape), [10, 10, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(100, 50))
+    self.assertListEqual(list(output.shape), [100, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(5, 15))
+    self.assertListEqual(list(output.shape), [5, 15, 3])
+
+  def test_smart_resize_errors(self):
+    with self.assertRaisesRegex(ValueError, 'a tuple of 2 integers'):
+      preprocessing_image.smart_resize(
+          np.random.random((20, 20, 2)), size=(10, 5, 3))
+    with self.assertRaisesRegex(ValueError, 'incorrect rank'):
+      preprocessing_image.smart_resize(np.random.random((20, 40)), size=(10, 5))
 
   def test_image_data_generator(self):
     if PIL is None:
@@ -60,10 +81,10 @@ class TestImage(test.TestCase):
     for test_images in _generate_test_images():
       img_list = []
       for im in test_images:
-        img_list.append(keras.preprocessing.image.img_to_array(im)[None, ...])
+        img_list.append(preprocessing_image.img_to_array(im)[None, ...])
 
       images = np.vstack(img_list)
-      generator = keras.preprocessing.image.ImageDataGenerator(
+      generator = preprocessing_image.ImageDataGenerator(
           featurewise_center=True,
           samplewise_center=True,
           featurewise_std_normalization=True,
@@ -96,10 +117,10 @@ class TestImage(test.TestCase):
 
   def test_image_data_generator_with_split_value_error(self):
     with self.assertRaises(ValueError):
-      keras.preprocessing.image.ImageDataGenerator(validation_split=5)
+      preprocessing_image.ImageDataGenerator(validation_split=5)
 
   def test_image_data_generator_invalid_data(self):
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         featurewise_center=True,
         samplewise_center=True,
         featurewise_std_normalization=True,
@@ -119,14 +140,14 @@ class TestImage(test.TestCase):
     generator.flow(x)
 
     with self.assertRaises(ValueError):
-      generator = keras.preprocessing.image.ImageDataGenerator(
+      generator = preprocessing_image.ImageDataGenerator(
           data_format='unknown')
 
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         zoom_range=(2, 2))
 
   def test_image_data_generator_fit(self):
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         featurewise_center=True,
         samplewise_center=True,
         featurewise_std_normalization=True,
@@ -139,7 +160,7 @@ class TestImage(test.TestCase):
     # Test RBG
     x = np.random.random((32, 10, 10, 3))
     generator.fit(x)
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         featurewise_center=True,
         samplewise_center=True,
         featurewise_std_normalization=True,
@@ -192,14 +213,14 @@ class TestImage(test.TestCase):
 
     # Test image loading util
     fname = os.path.join(temp_dir, filenames[0])
-    _ = keras.preprocessing.image.load_img(fname)
-    _ = keras.preprocessing.image.load_img(fname, grayscale=True)
-    _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10))
-    _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10),
-                                           interpolation='bilinear')
+    _ = preprocessing_image.load_img(fname)
+    _ = preprocessing_image.load_img(fname, grayscale=True)
+    _ = preprocessing_image.load_img(fname, target_size=(10, 10))
+    _ = preprocessing_image.load_img(fname, target_size=(10, 10),
+                                     interpolation='bilinear')
 
     # create iterator
-    generator = keras.preprocessing.image.ImageDataGenerator()
+    generator = preprocessing_image.ImageDataGenerator()
     dir_iterator = generator.flow_from_directory(temp_dir)
 
     # check number of classes and images
@@ -223,7 +244,7 @@ class TestImage(test.TestCase):
       return np.zeros_like(x)
 
     # Test usage as Sequence
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         preprocessing_function=preprocessing_function)
     dir_seq = generator.flow_from_directory(
         str(temp_dir),
@@ -276,7 +297,7 @@ class TestImage(test.TestCase):
         count += 1
 
     # create iterator
-    generator = keras.preprocessing.image.ImageDataGenerator(
+    generator = preprocessing_image.ImageDataGenerator(
         validation_split=validation_split)
 
     with self.assertRaises(ValueError):
@@ -317,32 +338,32 @@ class TestImage(test.TestCase):
 
     # Test channels_first data format
     x = np.random.random((3, height, width))
-    img = keras.preprocessing.image.array_to_img(
+    img = preprocessing_image.array_to_img(
         x, data_format='channels_first')
     self.assertEqual(img.size, (width, height))
-    x = keras.preprocessing.image.img_to_array(
+    x = preprocessing_image.img_to_array(
         img, data_format='channels_first')
     self.assertEqual(x.shape, (3, height, width))
     # Test 2D
     x = np.random.random((1, height, width))
-    img = keras.preprocessing.image.array_to_img(
+    img = preprocessing_image.array_to_img(
         x, data_format='channels_first')
     self.assertEqual(img.size, (width, height))
-    x = keras.preprocessing.image.img_to_array(
+    x = preprocessing_image.img_to_array(
         img, data_format='channels_first')
     self.assertEqual(x.shape, (1, height, width))
 
     # Test channels_last data format
     x = np.random.random((height, width, 3))
-    img = keras.preprocessing.image.array_to_img(x, data_format='channels_last')
+    img = preprocessing_image.array_to_img(x, data_format='channels_last')
     self.assertEqual(img.size, (width, height))
-    x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
+    x = preprocessing_image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 3))
     # Test 2D
     x = np.random.random((height, width, 1))
-    img = keras.preprocessing.image.array_to_img(x, data_format='channels_last')
+    img = preprocessing_image.array_to_img(x, data_format='channels_last')
     self.assertEqual(img.size, (width, height))
-    x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
+    x = preprocessing_image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 1))
 
   def test_batch_standardize(self):
@@ -353,10 +374,10 @@ class TestImage(test.TestCase):
     for test_images in _generate_test_images():
       img_list = []
       for im in test_images:
-        img_list.append(keras.preprocessing.image.img_to_array(im)[None, ...])
+        img_list.append(preprocessing_image.img_to_array(im)[None, ...])
 
       images = np.vstack(img_list)
-      generator = keras.preprocessing.image.ImageDataGenerator(
+      generator = preprocessing_image.ImageDataGenerator(
           featurewise_center=True,
           samplewise_center=True,
           featurewise_std_normalization=True,
@@ -382,13 +403,15 @@ class TestImage(test.TestCase):
 
   def test_img_transforms(self):
     x = np.random.random((3, 200, 200))
-    _ = keras.preprocessing.image.random_rotation(x, 20)
-    _ = keras.preprocessing.image.random_shift(x, 0.2, 0.2)
-    _ = keras.preprocessing.image.random_shear(x, 2.)
-    _ = keras.preprocessing.image.random_zoom(x, (0.5, 0.5))
+    _ = preprocessing_image.random_rotation(x, 20)
+    _ = preprocessing_image.random_shift(x, 0.2, 0.2)
+    _ = preprocessing_image.random_shear(x, 2.)
+    _ = preprocessing_image.random_zoom(x, (0.5, 0.5))
+    _ = preprocessing_image.apply_channel_shift(x, 2, 2)
+    _ = preprocessing_image.apply_affine_transform(x, 2)
     with self.assertRaises(ValueError):
-      keras.preprocessing.image.random_zoom(x, (0, 0, 0))
-    _ = keras.preprocessing.image.random_channel_shift(x, 2.)
+      preprocessing_image.random_zoom(x, (0, 0, 0))
+    _ = preprocessing_image.random_channel_shift(x, 2.)
 
 
 if __name__ == '__main__':

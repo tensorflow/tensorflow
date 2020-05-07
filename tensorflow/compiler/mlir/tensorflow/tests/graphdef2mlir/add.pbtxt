@@ -1,0 +1,63 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck --check-prefix=NONE %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-input-data-types=',DT_INT32' -tf-output-arrays=Add -o - | FileCheck --check-prefix=SOME %s
+
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input0,input1"
+# CHECK-SAME:  outputs = "Add"
+# CHECK:           %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
+# CHECK:           fetch %[[add]]
+
+# SOME-LABEL: func @main
+# SOME-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
+# SOME-SAME:  control_outputs = ""
+# SOME-SAME:  inputs = "input0,input1"
+# SOME-SAME:  outputs = "Add"
+# SOME:           %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
+# SOME:           fetch %[[add]]
+
+# NONE-LABEL: func @main
+# NONE-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
+# NONE-SAME:  control_outputs = ""
+# NONE-SAME:  inputs = "input0,input1"
+# NONE-SAME:  outputs = "Add"
+# NONE:           %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
+# NONE:           fetch %[[add]]

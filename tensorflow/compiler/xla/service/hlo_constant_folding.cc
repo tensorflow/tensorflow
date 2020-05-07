@@ -130,7 +130,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         int64 elements_in_constant =
             ShapeUtil::ElementsIn(instruction->shape());
 
-        static const int64 kMaximumConstantSizeElements = 2 * 1000 * 1000;
+        static const int64 kMaximumConstantSizeElements = 45 * 1000 * 1000;
         if (elements_in_constant > elements_in_removed_operands &&
             elements_in_constant > kMaximumConstantSizeElements) {
           continue;

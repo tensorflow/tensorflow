@@ -63,9 +63,9 @@ class AdagradDAOptimizerTest(test.TestCase):
         update.run()
 
         v0_val, v1_val = self.evaluate([var0, var1])
-        # Let g to be gradient accumulator, gg to be gradient squared
-        # accumulator, T be the global step, lr is the learning rate, and k the
-        # initial gradient squared accumulator value.
+        # Let g be the gradient accumulator, gg be the gradient squared
+        # accumulator, T be the global step, lr be the learning rate,
+        # and k the initial gradient squared accumulator value.
         # w = \dfrac{sign(-g)*lr*|g - l1*T|_{+}}{l2*T*lr + \sqrt{k+gg})}
         # For -0.1*3.0*(0.1 - 0)/(0 + sqrt(0.1 + 0.1*0.1)) = -0.904534
         # similarly for others.

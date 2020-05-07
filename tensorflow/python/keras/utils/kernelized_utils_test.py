@@ -47,7 +47,7 @@ class KernelizedUtilsTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant([0.5, -0.5, -0.5, 0.5])
     y = constant_op.constant([0.5, -0.5, -0.5, 0.5])
     exact_kernel = exact_kernel_fn(x, y)
-    shape = exact_kernel.get_shape().as_list()
+    shape = exact_kernel.shape.as_list()
     self.assertLen(shape, 2)
     # x and y are identical and therefore K(x, y) will be precisely equal to
     # the identity value of the kernel.
@@ -61,7 +61,7 @@ class KernelizedUtilsTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant([1.0, 0.4, -2.1, -1.1])
     y = constant_op.constant([1.01, 0.39, -2.099, -1.101])
     exact_kernel = exact_kernel_fn(x, y)
-    shape = exact_kernel.get_shape().as_list()
+    shape = exact_kernel.shape.as_list()
     self.assertLen(shape, 2)
     # x and y are almost identical and therefore K(x, y) will be almost equal to
     # the identity value of the kernel.
@@ -75,7 +75,7 @@ class KernelizedUtilsTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant([1.0, 3.4, -2.1, 0.9, 3.3, -2.0], shape=[2, 3])
     y = constant_op.constant([1.1, 3.35, -2.05])
     exact_kernel = exact_kernel_fn(x, y)
-    shape = exact_kernel.get_shape().as_list()
+    shape = exact_kernel.shape.as_list()
     self.assertLen(shape, 2)
     # The 2 rows of x are close to y. The pairwise kernel values (similarity
     # scores) are somewhat close to the identity value of the kernel.
@@ -92,7 +92,7 @@ class KernelizedUtilsTest(test.TestCase, parameterized.TestCase):
     y = constant_op.constant([1.1, 2.1, -2., 0.9], shape=[2, 2])
     exact_kernel = exact_kernel_fn(x, y)
 
-    shape = exact_kernel.get_shape().as_list()
+    shape = exact_kernel.shape.as_list()
     self.assertLen(shape, 2)
     self.assertAllClose(expected_values, exact_kernel, atol=1e-2)
 
@@ -105,7 +105,7 @@ class KernelizedUtilsTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant([1.0, 3.4, -2.1, -5.1])
     y = constant_op.constant([0.5, 2.1, 1.0, 3.0])
     exact_kernel = exact_kernel_fn(x, y)
-    shape = exact_kernel.get_shape().as_list()
+    shape = exact_kernel.shape.as_list()
     self.assertLen(shape, 2)
     # x and y are very "far" from each other and so the corresponding kernel
     # value will be very low.

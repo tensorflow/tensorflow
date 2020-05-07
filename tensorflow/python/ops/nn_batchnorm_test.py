@@ -206,7 +206,6 @@ class BatchNormalizationTest(test.TestCase):
                                   2)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testBatchNormGradImpl(self):
     x_shape = [7, 5, 4, 6]
     param_shape = [6]
@@ -365,7 +364,7 @@ class SufficientStatisticsTest(test.TestCase):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:
-      shift = np.squeeze(shift, axis=axis)
+      shift = np.asarray(shift)
     return count, m_ss, v_ss, shift
 
   def _opSuffStats(self, x, axes, shift, keep_dims):

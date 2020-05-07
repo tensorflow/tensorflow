@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
 #define TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
 
+#include <atomic>
+
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -71,7 +73,9 @@ class InitializableLookupTable : public LookupInterface {
   TensorShape value_shape() const final { return TensorShape(); }
 
   // Returns whether the table was initialized and is ready to serve lookups.
-  bool is_initialized() const { return is_initialized_; }
+  bool is_initialized() const {
+    return is_initialized_.load(std::memory_order_acquire);
+  }
 
   // Initializes the table from the given init table iterator.
   //
@@ -153,8 +157,12 @@ class InitializableLookupTable : public LookupInterface {
   virtual Status DoFind(const Tensor& keys, Tensor* values,
                         const Tensor& default_value) = 0;
 
+  virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
+
   mutex mu_;
-  bool is_initialized_ = false;
+
+ private:
+  std::atomic<bool> is_initialized_{false};
 };
 
 // Iterator to initialize tables given 'keys' and 'values' tensors.

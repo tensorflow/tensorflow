@@ -1,7 +1,7 @@
 path: "tensorflow.VarLenFeature"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.parsing_ops.VarLenFeature\'>"
-  is_instance: "<class \'tensorflow.python.ops.parsing_ops.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
   is_instance: "<type \'tuple\'>"
   member {
     name: "dtype"

@@ -29,7 +29,7 @@ REGISTER_KERNEL_BUILDER(Name("Neg")
                         UnaryOp<CPUDevice, functor::neg<int32>>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER6(UnaryOp, GPU, "Neg", functor::neg, float, Eigen::half, double, int64,
           complex64, complex128);
 

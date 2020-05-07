@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_ACCURACY_CSV_WRITER_H_
 
 #include <fstream>
+#include <memory>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -28,24 +29,28 @@ namespace metrics {
 // columns. This supports a very limited set of CSV spec and doesn't do any
 // escaping.
 // Usage:
-// std::ofstream * output_stream = ...
-// CSVWriter writer({"column1", "column2"}, output_stream);
+// std::unqiue_str<std::ofstream> output_stream = ...
+// CSVWriter writer({"column1", "column2"}, std::move(output_stream));
 // writer.WriteRow({4, 5});
 // writer.Flush(); // flush results immediately.
 class CSVWriter {
  public:
-  CSVWriter(const std::vector<string>& columns, std::ofstream* output_stream)
-      : num_columns_(columns.size()), output_stream_(output_stream) {
-    TF_CHECK_OK(WriteRow(columns, output_stream_));
+  CSVWriter(const std::vector<string>& columns,
+            std::unique_ptr<std::ofstream> output_stream)
+      : num_columns_(columns.size()), output_stream_(std::move(output_stream)) {
+    if (WriteRow(columns, output_stream_.get()) != kTfLiteOk) {
+      LOG(ERROR) << "Could not write column names to file";
+    }
   }
 
   template <typename T>
-  Status WriteRow(const std::vector<T>& values) {
+  TfLiteStatus WriteRow(const std::vector<T>& values) {
     if (values.size() != num_columns_) {
-      return errors::InvalidArgument("Invalid size for row:", values.size(),
-                                     " expected: ", num_columns_);
+      LOG(ERROR) << "Invalid size for row:" << values.size()
+                 << " expected: " << num_columns_;
+      return kTfLiteError;
     }
-    return WriteRow(values, output_stream_);
+    return WriteRow(values, output_stream_.get());
   }
 
   void Flush() { output_stream_->flush(); }
@@ -54,8 +59,8 @@ class CSVWriter {
 
  private:
   template <typename T>
-  static Status WriteRow(const std::vector<T>& values,
-                         std::ofstream* output_stream) {
+  static TfLiteStatus WriteRow(const std::vector<T>& values,
+                               std::ofstream* output_stream) {
     bool first = true;
     for (const auto& v : values) {
       if (!first) {
@@ -67,12 +72,13 @@ class CSVWriter {
     }
     (*output_stream) << "\n";
     if (!output_stream->good()) {
-      return errors::Internal("Writing to stream failed.");
+      LOG(ERROR) << "Writing to stream failed.";
+      return kTfLiteError;
     }
-    return Status::OK();
+    return kTfLiteOk;
   }
   const size_t num_columns_;
-  std::ofstream* output_stream_;
+  std::unique_ptr<std::ofstream> output_stream_;
 };
 }  // namespace metrics
 }  // namespace tensorflow

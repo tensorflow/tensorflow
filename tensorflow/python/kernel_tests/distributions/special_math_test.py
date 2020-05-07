@@ -132,7 +132,7 @@ class NdtriTest(test.TestCase):
             1. - np.exp(-32.),
             1.,
         ]).astype(dtype))
-    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # Not having the lambda sanitizer means we'd get an `IndexError` whenever
     # the user supplied function has default args.
     _, grads = _value_and_gradient(
         lambda x: special_math.ndtri(x), p)  # pylint: disable=unnecessary-lambda
@@ -276,7 +276,7 @@ class NdtrGradientTest(test.TestCase):
     x = constant_op.constant([-100., 0., 100.], dtype=dtype)
     output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
     fn = sm.log_ndtr if self._use_log else sm.ndtr
-    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # Not having the lambda sanitizer means we'd get an `IndexError` whenever
     # the user supplied function has default args.
     output, grad_output = _value_and_gradient(
         lambda x_: fn(x_), x)  # pylint: disable=unnecessary-lambda
@@ -295,8 +295,9 @@ class NdtrGradientTest(test.TestCase):
       # grad_eval.shape = (N, N), with grad_eval[i, j] the partial derivative of
       # the ith output point w.r.t. the jth grid point.  We only expect the
       # diagonal to be nonzero.
-      # TODO(b/31131137): Replace tf.test.compute_gradient with our own custom
-      # gradient evaluation to ensure we correctly handle small function delta.
+      # TODO(b/31131137): Replace tf.compat.v1.test.compute_gradient with our
+      # own custom gradient evaluation to ensure we correctly handle small
+      # function delta.
       grad_eval, _ = gradient_checker.compute_gradient(grid, grid_spec.shape,
                                                        fn(grid),
                                                        grid_spec.shape)

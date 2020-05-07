@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -114,9 +114,3 @@ TEST(SpectrogramOpTest, StrideTest) {
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

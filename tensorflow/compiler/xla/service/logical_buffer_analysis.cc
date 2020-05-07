@@ -159,6 +159,21 @@ Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleCopyStart(HloInstruction* copy_start) {
+  // CopyStart defines the tuple, target buffer at index {0}, and context at
+  // index {2}.
+  NewLogicalBuffer(copy_start, /*index=*/{});
+  NewLogicalBuffer(copy_start, /*index=*/{0});
+  NewLogicalBuffer(copy_start, /*index=*/{2});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // The output of CopyDone aliases with operand {0}. CopyDone doesn't create
+  // any buffers.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});

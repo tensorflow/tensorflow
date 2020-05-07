@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 
@@ -72,6 +73,20 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
     ++*shift;
   }
   TFLITE_CHECK_LE(q_fixed, std::numeric_limits<int32_t>::max());
+  // A shift amount smaller than -31 would cause all bits to be shifted out
+  // and thus all results would be zero. We implement that instead with
+  // q_fixed==0, so as to avoid hitting issues with right-shift
+  // operations with shift amounts greater than 31. Note that this happens
+  // roughly when abs(double_multiplier) < 2^-31 and the present handling means
+  // that we're effectively flushing tiny double_multiplier's to zero.
+  // We could conceivably handle values in the range (roughly) [32, 63]
+  // as 'denormals' i.e. (shift==0, q_fixed < 2^30). In that point of view
+  // the present handling is just doing 'flush denormals to zero'. We could
+  // reconsider and actually generate nonzero denormals if a need arises.
+  if (*shift < -31) {
+    *shift = 0;
+    q_fixed = 0;
+  }
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 
@@ -169,11 +184,11 @@ double DoubleFromFractionAndShift(int64_t fraction, int shift) {
   // Detect NaNs and infinities.
   if (shift == std::numeric_limits<int>::max()) {
     if (fraction == 0) {
-      return NAN;
+      return std::numeric_limits<double>::quiet_NaN();
     } else if (fraction > 0) {
-      return INFINITY;
+      return std::numeric_limits<double>::infinity();
     } else {
-      return -INFINITY;
+      return -std::numeric_limits<double>::infinity();
     }
   }
 
@@ -215,7 +230,7 @@ double IntegerDoubleMultiply(double a, double b) {
   // Detect NaNs and infinities.
   if (a_shift == std::numeric_limits<int>::max() ||
       (b_shift == std::numeric_limits<int>::max())) {
-    return NAN;
+    return std::numeric_limits<double>::quiet_NaN();
   }
   const int result_shift = a_shift + b_shift + 1;
   const int64_t result_fraction = (a_fraction * b_fraction) >> 32;
@@ -299,16 +314,18 @@ void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
                                               reverse_scaling_left_shift);
 }
 
-int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
+int CalculateInputRadius(int input_integer_bits, int input_left_shift,
+                         int total_signed_bits) {
 #ifdef TFLITE_EMULATE_FLOAT
   int64_t result = (1 << input_integer_bits) - 1;
-  result <<= (31 - input_integer_bits);
+  result <<= (total_signed_bits - input_integer_bits);
   result >>= input_left_shift;
   return result;
 #else   // TFLITE_EMULATE_FLOAT
-  const double max_input_rescaled = 1.0 * ((1 << input_integer_bits) - 1) *
-                                    (1ll << (31 - input_integer_bits)) /
-                                    (1ll << input_left_shift);
+  const double max_input_rescaled =
+      1.0 * ((1 << input_integer_bits) - 1) *
+      (1ll << (total_signed_bits - input_integer_bits)) /
+      (1ll << input_left_shift);
   // Tighten bound using floor.  Suppose that we could use the exact value.
   // After scaling the difference, the result would be at the maximum.  Thus we
   // must ensure that our value has lower magnitude.
@@ -356,14 +373,14 @@ void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
 
 bool CheckedLog2(const float x, int* log2_result) {
   // Using TfLiteRound instead of std::round and std::log instead of
-  // std::log2 to work around these fuctions being missing in a toolchain
+  // std::log2 to work around these functions being missing in a toolchain
   // used in some TensorFlow tests as of May 2018.
   const float x_log2 = std::log(x) * (1.0f / std::log(2.0f));
   const float x_log2_rounded = TfLiteRound(x_log2);
   const float x_log2_fracpart = x_log2 - x_log2_rounded;
 
   *log2_result = static_cast<int>(x_log2_rounded);
-  return std::abs(x_log2_fracpart) < 1e-3;
+  return std::abs(x_log2_fracpart) < 1e-3f;
 }
 
 void QuantizeMultiplierArray(const double* effective_scales, size_t size,

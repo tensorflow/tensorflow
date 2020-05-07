@@ -16,8 +16,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -218,8 +218,8 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
     // duplicates and can be removed, unless they're stateful.
     std::map<string, string> inputs_to_rename;
     GraphDef merged_graph_def;
-    for (const std::pair<uint64, std::vector<const NodeDef*>> hashed_node_info :
-         hashed_nodes) {
+    for (const std::pair<const uint64, std::vector<const NodeDef*>>&
+             hashed_node_info : hashed_nodes) {
       const std::vector<const NodeDef*>& hash_node_list =
           hashed_node_info.second;
       for (int i = 0; i < hash_node_list.size(); ++i) {
@@ -709,7 +709,12 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           if (op_info.unquantized_inputs.count(i)) {
             continue;
           }
-          if (input_types[i] != DT_FLOAT) {
+          if (i >= input_types.size()) {
+            LOG(ERROR) << "input_types has incorrect size "
+                       << input_types.size() << " <= " << i
+                       << ". Assuming everything else is floats.";
+          }
+          if (i < input_types.size() && input_types[i] != DT_FLOAT) {
             are_all_float = false;
           }
         }

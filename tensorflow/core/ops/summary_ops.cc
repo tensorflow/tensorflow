@@ -57,6 +57,12 @@ REGISTER_OP("WriteSummary")
     .Attr("T: type")
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("WriteRawProtoSummary")
+    .Input("writer: resource")
+    .Input("step: int64")
+    .Input("tensor: string")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("ImportEvent")
     .Input("writer: resource")
     .Input("event: string")

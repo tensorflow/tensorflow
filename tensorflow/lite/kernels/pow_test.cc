@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -107,11 +108,68 @@ TEST(PowOpModel, BroadcastTest) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
 
+TEST(PowOpModel, BroadcastFloatTest) {
+  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                          {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
+  model.PopulateTensor<float>(model.input1(), {12, 2, 7, 8});
+  model.PopulateTensor<float>(model.input2(), {4});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
+}
+
+template <typename T>
+void CalculateTrueResults(const std::vector<T>& input_data, T exponent,
+                          int flat_size, std::vector<T>* output_data) {
+  for (int i = 0; i < flat_size; ++i) {
+    output_data->at(i) = std::pow(input_data[i], exponent);
+  }
+}
+
+TEST(PowOpModel, FloatSingleIntegerExponentTest) {
+  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                          {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
+  const int input_size = 1 * 2 * 2 * 1;
+  for (int i = 1; i < 20; ++i) {
+    std::vector<float> input_data(input_size);
+    for (int index = 0; index < input_size; ++index) {
+      // For exponent is float case, if base < 0, we will result in nan, so
+      // we only populate positive base.
+      input_data[index] = UniformRandomFloat(0, 1.5);
+    }
+    model.PopulateTensor<float>(model.input1(), input_data);
+    float exponent = static_cast<float>(i);
+    // Random deviate exponent, e.g., 1.99999 or 2.00001.
+    exponent += UniformRandomInt(-1, 1) * 1e-5;
+    model.PopulateTensor<float>(model.input2(), {exponent});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+    std::vector<float> output_data(input_size);
+    CalculateTrueResults(input_data, exponent, input_size, &output_data);
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(output_data, 1e-2)));
+  }
+}
+
+TEST(PowOpModel, IntSingleIntegerExponentTest) {
+  PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {1}}, {TensorType_INT32, {}});
+  const int input_size = 1 * 2 * 2 * 1;
+  for (int i = 1; i < 20; ++i) {
+    std::vector<int32_t> input_data(input_size);
+    for (int index = 0; index < input_size; ++index) {
+      input_data[index] = UniformRandomInt(-2, -2);
+    }
+    model.PopulateTensor<int32_t>(model.input1(), input_data);
+    int exponent = i;
+    model.PopulateTensor<int32_t>(model.input2(), {exponent});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+    std::vector<int32_t> output_data(input_size);
+    CalculateTrueResults(input_data, exponent, input_size, &output_data);
+    EXPECT_THAT(model.GetOutput(), ElementsAreArray(output_data));
+  }
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -765,5 +765,40 @@ TEST(ArrayGradTest, StridedSliceGrad) {
   }
 }
 
+std::vector<Tensor> BroadcastToGrad(const Tensor& x, const Tensor& shape,
+                                    const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto Tidx = DT_INT32;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("shape", "Placeholder", {}, {{"dtype", Tidx}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef(
+           "dx", "SymbolicGradient", {"x", "shape", "dy"},
+           {{"f", FDH::FunctionRef("BroadcastTo", {{"T", T}, {"Tidx", Tidx}})},
+            {"Tin", DataTypeSlice{T, Tidx, T}},
+            {"Tout", DataTypeSlice{T, Tidx}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"shape:0", shape}, {"dy:0", dy}},
+                        {"dx:0", "dx:1"}, {}, &out));
+  CHECK_EQ(out.size(), 2);
+  TF_CHECK_OK(sess->Close());
+  return out;
+}
+
+TEST(ArrayGradTest, BroadcastToGrad) {
+  Tensor x(DT_FLOAT, {2, 2});
+  x.flat<float>().setZero();
+  Tensor shape(DT_INT32, {3});
+  test::FillValues<int32>(&shape, {2, 2, 2});
+  Tensor dy(DT_FLOAT, {2, 2, 2});
+  test::FillIota<float>(&dy, 0);
+  auto dx = BroadcastToGrad(x, shape, dy);
+  test::ExpectClose(dx[0], test::AsTensor<float>({4., 6., 8., 10.}, {2, 2}));
+  test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0}, {3}));
+}
 }  // namespace
 }  // namespace tensorflow

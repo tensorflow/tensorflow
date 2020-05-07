@@ -24,7 +24,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import tempfile
 import threading
 import time
@@ -40,6 +39,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import grpc_debug_server
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.util import compat
 
@@ -249,7 +249,7 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
 
   def _initialize_toggle_watch_state(self, toggle_watches):
     self._toggle_watches = toggle_watches
-    self._toggle_watch_state = dict()
+    self._toggle_watch_state = {}
     if self._toggle_watches:
       for watch_key in self._toggle_watches:
         self._toggle_watch_state[watch_key] = False
@@ -471,7 +471,7 @@ def _poll_server_till_success(max_attempts,
       if dump_dir:
         if os.path.isdir(
             dump_dir) and debug_data.DebugDumpDir(dump_dir).size > 0:
-          shutil.rmtree(dump_dir)
+          file_io.delete_recursively(dump_dir)
           print("Poll succeeded.")
           return True
         else:

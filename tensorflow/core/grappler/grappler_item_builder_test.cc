@@ -336,6 +336,149 @@ TEST_F(GrapplerItemBuilderTest, ExplicitFeedAndFetch) {
   EXPECT_EQ(item->fetch[0], "z");
 }
 
+TEST_F(GrapplerItemBuilderTest, UnknownRankPlaceholderTest) {
+  MetaGraphDef meta_graph;
+  const char* text_proto = R"EOF(
+graph_def {
+  node {
+    name: "x"
+    op: "Placeholder"
+    attr { key: "dtype" value { type: DT_FLOAT } }
+    attr { key: "shape" value { shape { unknown_rank: true } } }
+  }
+  versions {
+    producer: 51
+  }
+}
+collection_def {
+  key: "train_op"
+  value {
+    node_list {
+      value: "x:0"
+    }
+  }
+}
+  )EOF";
+
+  CHECK(protobuf::TextFormat::ParseFromString(text_proto, &meta_graph));
+  ItemConfig cfg;
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+
+  ASSERT_TRUE(item != nullptr);
+  const NodeDef& node = item->graph.node(0);
+  const auto iter = node.attr().find("shape");
+  ASSERT_TRUE(iter != node.attr().end());
+  ASSERT_TRUE(iter->second.has_shape());
+  const auto& shape = iter->second.shape();
+  // Do not update unknown shape.
+  EXPECT_TRUE(shape.unknown_rank());
+}
+
+TEST_F(GrapplerItemBuilderTest, ConfigPlaceholderTest) {
+  MetaGraphDef meta_graph;
+  const char* text_proto = R"EOF(
+graph_def {
+  node {
+    name: "x"
+    op: "Placeholder"
+    attr { key: "dtype" value { type: DT_FLOAT } }
+    attr { key: "shape" value {
+      shape {
+        dim {
+          size: -1
+        }
+        dim {
+          size: -1
+        }
+      }
+    } }
+  }
+  versions {
+    producer: 51
+  }
+}
+collection_def {
+  key: "train_op"
+  value {
+    node_list {
+      value: "x:0"
+    }
+  }
+}
+  )EOF";
+
+  CHECK(protobuf::TextFormat::ParseFromString(text_proto, &meta_graph));
+  ItemConfig cfg;
+  cfg.placeholder_unknown_output_shape_dim = 64;
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+
+  ASSERT_TRUE(item != nullptr);
+  const NodeDef& node = item->graph.node(0);
+  const auto iter = node.attr().find("shape");
+  ASSERT_TRUE(iter != node.attr().end());
+  ASSERT_TRUE(iter->second.has_shape());
+  const auto& shape = iter->second.shape();
+  EXPECT_EQ(shape.dim_size(), 2);
+  // Shape updated with placeholder_unknown_output_shape_dim.
+  EXPECT_EQ(shape.dim(0).size(), 64);
+  EXPECT_EQ(shape.dim(1).size(), 64);
+}
+
+TEST_F(GrapplerItemBuilderTest, OutputShapePlaceholderTest) {
+  MetaGraphDef meta_graph;
+  const char* text_proto = R"EOF(
+graph_def {
+  node {
+    name: "x"
+    op: "Placeholder"
+    attr { key: "dtype" value { type: DT_FLOAT } }
+    attr { key: "shape" value { shape { unknown_rank: true } } }
+    attr { key: "_output_shapes" value { list {
+      shape {
+        dim {
+          size: -1
+        }
+        dim {
+          size: 32
+        }
+      }
+    } } }
+  }
+  versions {
+    producer: 51
+  }
+}
+collection_def {
+  key: "train_op"
+  value {
+    node_list {
+      value: "x:0"
+    }
+  }
+}
+  )EOF";
+
+  CHECK(protobuf::TextFormat::ParseFromString(text_proto, &meta_graph));
+  ItemConfig cfg;
+  cfg.placeholder_unknown_output_shape_dim = 64;
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+
+  ASSERT_TRUE(item != nullptr);
+  const NodeDef& node = item->graph.node(0);
+  const auto iter = node.attr().find("shape");
+  ASSERT_TRUE(iter != node.attr().end());
+  ASSERT_TRUE(iter->second.has_shape());
+  const auto& shape = iter->second.shape();
+  EXPECT_EQ(shape.dim_size(), 2);
+  // Shape updated with placeholder_unknown_output_shape_dim
+  // and _output_shapes attr.
+  EXPECT_EQ(shape.dim(0).size(), 64);
+  EXPECT_EQ(shape.dim(1).size(), 32);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

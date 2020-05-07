@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -37,8 +36,9 @@ from tensorflow.python.training import gradient_descent
 class FtrlOptimizerTest(test.TestCase):
 
   def doTestFtrlwithoutRegularization(self, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    for dtype in [dtypes.float32]:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
           var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -69,18 +69,16 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]), v1_val)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithoutRegularization(self):
     self.doTestFtrlwithoutRegularization(use_resource=False)
 
-  @test_util.run_deprecated_v1
   def testResourceFtrlWithoutRegularization(self):
     self.doTestFtrlwithoutRegularization(use_resource=True)
 
-  @test_util.run_deprecated_v1
   def testFtrlwithoutRegularization2(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -107,10 +105,10 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.28232238, -0.56096673]), v1_val)
 
-  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
@@ -129,10 +127,10 @@ class FtrlOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithL1(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -159,10 +157,10 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.93460727, -1.86147261]), v1_val)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -190,7 +188,6 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.02406147, -0.04830509]), v1_val)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2_L2Shrinkage(self):
     """Test the new FTRL op with support for l2 shrinkage.
 
@@ -198,8 +195,9 @@ class FtrlOptimizerTest(test.TestCase):
     towards the origin causes the gradient descent trajectory to differ. The
     weights will tend to have smaller magnitudes with this parameter set.
     """
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -228,11 +226,11 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.14378493, -0.13229476]), v1_val)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2_L2ShrinkageSparse(self):
     """Tests the new FTRL op with support for l2 shrinkage on sparse grads."""
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[4.0], [3.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -263,11 +261,11 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([[-0.22578995], [2.]], v0_val)
         self.assertAllCloseAccordingToType([[4.], [-0.13229476]], v1_val)
 
-  @test_util.run_deprecated_v1
   def testFtrlWithL2ShrinkageDoesNotChangeLrSchedule(self):
     """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True) as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([1.0, 2.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -325,7 +323,6 @@ class FtrlOptimizerTest(test.TestCase):
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
 
-    sess = ops.get_default_session()
     v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:
       self.assertAllCloseAccordingToType([[0.0], [0.0]], v0_val)
@@ -348,10 +345,10 @@ class FtrlOptimizerTest(test.TestCase):
   # with Adagrad.
   # So, basing on these two properties, we test if our implementation of
   # FTRL-Proximal performs same updates as Adagrad or GradientDescent.
-  @test_util.run_deprecated_v1
   def testEquivAdagradwithoutRegularization(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -362,17 +359,17 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  @test_util.run_deprecated_v1
   def testEquivSparseAdagradwithoutRegularization(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -384,7 +381,7 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session():
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1),
             dtype,
@@ -393,10 +390,10 @@ class FtrlOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  @test_util.run_deprecated_v1
   def testEquivSparseGradientDescentwithoutRegularization(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -408,7 +405,7 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0),
             dtype,
@@ -417,10 +414,10 @@ class FtrlOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  @test_util.run_deprecated_v1
   def testEquivGradientDescentwithoutRegularization(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -431,7 +428,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0), dtype)
 

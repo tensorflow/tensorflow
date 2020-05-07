@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #endif  // IS_SLIM_BUILD
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -54,8 +55,8 @@ class RecordWriter {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static constexpr size_t kFooterSize = sizeof(uint32);
 
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.
@@ -70,6 +71,10 @@ class RecordWriter {
   ~RecordWriter();
 
   Status WriteRecord(StringPiece slice);
+
+#if defined(PLATFORM_GOOGLE)
+  Status WriteRecord(const absl::Cord& data);
+#endif
 
   // Flushes any buffered data held by underlying containers of the
   // RecordWriter to the WritableFile. Does *not* flush the
@@ -90,6 +95,11 @@ class RecordWriter {
   // "footer[0,kFooterSize-1]".  The record-footer is based on data[0, n-1].
   inline static void PopulateFooter(char* footer, const char* data, size_t n);
 
+#if defined(PLATFORM_GOOGLE)
+  inline static void PopulateHeader(char* header, const absl::Cord& data);
+  inline static void PopulateFooter(char* footer, const absl::Cord& data);
+#endif
+
  private:
   WritableFile* dest_;
   RecordWriterOptions options_;
@@ -97,6 +107,12 @@ class RecordWriter {
   inline static uint32 MaskedCrc(const char* data, size_t n) {
     return crc32c::Mask(crc32c::Value(data, n));
   }
+
+#if defined(PLATFORM_GOOGLE)
+  inline static uint32 MaskedCrc(const absl::Cord& data) {
+    return crc32c::Mask(crc32c::Value(data));
+  }
+#endif
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordWriter);
 };
@@ -110,6 +126,18 @@ void RecordWriter::PopulateHeader(char* header, const char* data, size_t n) {
 void RecordWriter::PopulateFooter(char* footer, const char* data, size_t n) {
   core::EncodeFixed32(footer, MaskedCrc(data, n));
 }
+
+#if defined(PLATFORM_GOOGLE)
+void RecordWriter::PopulateHeader(char* header, const absl::Cord& data) {
+  core::EncodeFixed64(header + 0, data.size());
+  core::EncodeFixed32(header + sizeof(uint64),
+                      MaskedCrc(header, sizeof(uint64)));
+}
+
+void RecordWriter::PopulateFooter(char* footer, const absl::Cord& data) {
+  core::EncodeFixed32(footer, MaskedCrc(data));
+}
+#endif
 
 }  // namespace io
 }  // namespace tensorflow

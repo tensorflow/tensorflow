@@ -31,7 +31,13 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kFusedOpName[] = "ExperimentalMapAndBatchDataset";
+constexpr char kFusedOpName[] = "MapAndBatchDataset";
+constexpr char kParallelMap[] = "ParallelMapDataset";
+constexpr char kParallelMapV2[] = "ParallelMapDatasetV2";
+
+bool IsParallelMap(const NodeDef& node) {
+  return node.op() == kParallelMap || node.op() == kParallelMapV2;
+}
 
 NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
                             MutableGraphView* graph) {
@@ -44,7 +50,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
 
   // Set the `other_arguments` input arguments.
   int num_other_args;
-  if (map_node.op() == "ParallelMapDataset") {
+  if (IsParallelMap(map_node)) {
     num_other_args = map_node.input_size() - 2;
   } else {
     num_other_args = map_node.input_size() - 1;
@@ -57,7 +63,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
   new_node.add_input(batch_node.input(1));
 
   // Set the `num_parallel_calls` input argument.
-  if (map_node.op() == "ParallelMapDataset") {
+  if (map_node.op() == kParallelMap) {
     // The type of the `num_parallel_calls` argument in ParallelMapDataset
     // and MapAndBatchDataset is different (int32 and int64 respectively)
     // so we cannot reuse the same Const node and thus create a new one.
@@ -65,6 +71,8 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
     NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(
         v->attr().at("value").tensor().int_val(0), graph);
     new_node.add_input(tmp->name());
+  } else if (map_node.op() == kParallelMapV2) {
+    new_node.add_input(map_node.input(map_node.input_size() - 1));
   } else {
     NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(1, graph);
     new_node.add_input(tmp->name());
@@ -115,7 +123,7 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
     const NodeDef& batch_node = node;
     NodeDef* node2 = graph_utils::GetInputNode(batch_node, graph);
 
-    if (node2->op() != "MapDataset" && node2->op() != "ParallelMapDataset") {
+    if (node2->op() != "MapDataset" && !IsParallelMap(*node2)) {
       continue;
     }
     // Use a more descriptive variable name now that we know the node type.

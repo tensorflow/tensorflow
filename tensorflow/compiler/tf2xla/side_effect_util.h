@@ -38,6 +38,15 @@ extern const char kXlaTokenArgNodeName[];
 // This node have XlaRecvAtHost/XlaSendFromHost in its associated functions.
 extern const char kXlaHasHostTransferAttrName[];
 
+// This attribute is the replica id for an outside compilation node node.
+extern const char kXlaReplicaIdAttrName[];
+
+// This node is a Placeholder node added for tail outside compilation.
+extern const char kXlaIsPlaceholderForTailOcAttrName[];
+
+// This attribute is the original node name for this node.
+extern const char kXlaOriginalOutsideCompilationNodeName[];
+
 // Sets device ordinal attribute for nodes with attribute
 // `kXlaHasHostTransferAttrName`.
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal);
@@ -54,6 +63,18 @@ bool HasSideEffectingNodes(const Graph& g);
 // <subgraph_name>:<core_index>.
 Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
                                 std::map<string, int>* host_compute_core);
+
+// XLA frontend attribute name which specifies TensorFlow rendezvous name.
+extern const char kXlaHostTransferRendezvousNameAttr[];
+
+// XLA frontend attribute name which specifies original host transfer type.
+// Value is XLA primitive type in lower case.
+extern const char kXlaHostTransferOriginalTypeAttr[];
+
+// XLA frontend attribute name which specifies whether a host transfer
+// instruction is lower bits for a splitted X64 host transfer. Value is "true"
+// or "false".
+extern const char kXlaHostTransferIsLowerBitsAttr[];
 
 }  // namespace tensorflow
 

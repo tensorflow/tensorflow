@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -61,7 +62,7 @@ class HashtableLookupOpModel : public SingleOpModel {
     TfLiteTensor* tensor = interpreter_->tensor(value_);
     int rows = tensor->dims->data[0];
     for (int i = 0; i < rows; i++) {
-      tensor->data.f[i] = function(i);
+      GetTensorData<float>(tensor)[i] = function(i);
     }
   }
 
@@ -71,7 +72,7 @@ class HashtableLookupOpModel : public SingleOpModel {
     int features = tensor->dims->data[1];
     for (int i = 0; i < rows; i++) {
       for (int j = 0; j < features; j++) {
-        tensor->data.f[i * features + j] = function(i, j);
+        GetTensorData<float>(tensor)[i * features + j] = function(i, j);
       }
     }
   }
@@ -171,9 +172,3 @@ TEST(HashtableLookupOpTest, TestString) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

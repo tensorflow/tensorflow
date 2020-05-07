@@ -35,14 +35,16 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
   return os;
 }
 
+const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
 const char* const DEVICE_SYCL = "SYCL";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
 #endif  // TENSORFLOW_USE_SYCL
@@ -246,5 +248,34 @@ int DataTypeSize(DataType dt) {
   }
 #undef CASE
 }
+
+// Define DataTypeToEnum<T>::value.
+#define DEFINE_DATATYPETOENUM_VALUE(TYPE) \
+  constexpr DataType DataTypeToEnum<TYPE>::value;
+
+DEFINE_DATATYPETOENUM_VALUE(float);
+DEFINE_DATATYPETOENUM_VALUE(double);
+DEFINE_DATATYPETOENUM_VALUE(int32);
+DEFINE_DATATYPETOENUM_VALUE(uint32);
+DEFINE_DATATYPETOENUM_VALUE(uint16);
+DEFINE_DATATYPETOENUM_VALUE(uint8);
+DEFINE_DATATYPETOENUM_VALUE(int16);
+DEFINE_DATATYPETOENUM_VALUE(int8);
+DEFINE_DATATYPETOENUM_VALUE(tstring);
+DEFINE_DATATYPETOENUM_VALUE(complex64);
+DEFINE_DATATYPETOENUM_VALUE(complex128);
+DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(uint64);
+DEFINE_DATATYPETOENUM_VALUE(bool);
+DEFINE_DATATYPETOENUM_VALUE(qint8);
+DEFINE_DATATYPETOENUM_VALUE(quint8);
+DEFINE_DATATYPETOENUM_VALUE(qint16);
+DEFINE_DATATYPETOENUM_VALUE(quint16);
+DEFINE_DATATYPETOENUM_VALUE(qint32);
+DEFINE_DATATYPETOENUM_VALUE(bfloat16);
+DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
+DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
+DEFINE_DATATYPETOENUM_VALUE(Variant);
+#undef DEFINE_DATATYPETOENUM_VALUE
 
 }  // namespace tensorflow

@@ -257,7 +257,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
           if len(results) != 1:
             break
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/126596827 needs graph mode in multiple threads')
   def testConcurrentSessions(self):
     n_threads = 4
     threads = []
@@ -273,7 +273,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     for thread in threads:
       thread.join()
 
-    flat_results = set([x for x in itertools.chain(*results)])
+    flat_results = set(itertools.chain(*results))
     self.assertEqual(1,
                      len(flat_results),
                      'Expected single value, got %r' % flat_results)

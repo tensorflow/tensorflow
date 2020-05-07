@@ -17,7 +17,7 @@ END
   out_arg {
     name: "backprops"
     description: <<END
-`gradients * (features > 0) + alpha * gradients * (featurs <= 0)`.
+`gradients * (features > 0) + alpha * gradients * (features <= 0)`.
 END
   }
   summary: "Computes rectified linear gradients for a LeakyRelu operation."

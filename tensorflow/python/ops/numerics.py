@@ -71,10 +71,10 @@ def verify_tensor_all_finite_v2(x, message, name=None):
 
 @tf_export(v1=["add_check_numerics_ops"])
 def add_check_numerics_ops():
-  """Connect a `check_numerics` to every floating point tensor.
+  """Connect a `tf.debugging.check_numerics` to every floating point tensor.
 
   `check_numerics` operations themselves are added for each `half`, `float`,
-  or `double` tensor in the graph. For all ops in the graph, the
+  or `double` tensor in the current default graph. For all ops in the graph, the
   `check_numerics` op for all of its (`half`, `float`, or `double`) inputs
   is guaranteed to run before the `check_numerics` op on any of its outputs.
 
@@ -92,15 +92,15 @@ def add_check_numerics_ops():
 
   @compatibility(eager)
   Not compatible with eager execution. To check for `Inf`s and `NaN`s under
-  eager execution, call tfe.seterr(inf_or_nan='raise') once before executing
-  the checked operations.
-  @enc_compatibility
+  eager execution, call `tf.debugging.enable_check_numerics()` once before
+  executing the checked operations.
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError(
         "add_check_numerics_ops() is not compatible with eager execution. "
         "To check for Inf's and NaN's under eager execution, call "
-        "tfe.seterr(inf_or_nan='raise') once before executing the "
+        "tf.debugging.enable_check_numerics() once before executing the "
         "checked operations.")
 
   check_op = []

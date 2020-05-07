@@ -1,16 +1,16 @@
 path: "tensorflow.sparse"
 tf_module {
   member {
-    name: "SparseConditionalAccumulator"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
   }
   member_method {
     name: "add"
     argspec: "args=[\'a\', \'b\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "bincount"
+    argspec: "args=[\'values\', \'weights\', \'axis\', \'minlength\', \'maxlength\', \'binary_count\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "concat"
@@ -35,6 +35,10 @@ tf_module {
   member_method {
     name: "fill_empty_rows"
     argspec: "args=[\'sp_input\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_dense"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "mask"
@@ -102,7 +106,7 @@ tf_module {
   }
   member_method {
     name: "to_dense"
-    argspec: "args=[\'sp_input\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
+    argspec: "args=[\'sp_input\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "to_indicator"

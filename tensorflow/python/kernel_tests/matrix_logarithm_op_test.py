@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import numpy as np
 
 from tensorflow.python.client import session
@@ -58,6 +57,7 @@ class LogarithmOpTest(test.TestCase):
     matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
     return matrix_batch
 
+  @test_util.run_v1_only("b/120545219")
   def testNonsymmetric(self):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
@@ -71,6 +71,7 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_v1_only("b/120545219")
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
@@ -99,10 +100,12 @@ class LogarithmOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       gen_linalg_ops.matrix_logarithm(tensor3)
 
+  @test_util.run_v1_only("b/120545219")
   def testEmpty(self):
     self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
     self._verifyLogarithmComplex(np.empty([2, 0, 0], dtype=np.complex64))
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex64(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
@@ -113,6 +116,7 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex64)
         self._verifyLogarithmComplex(matrix)
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex128(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
@@ -157,8 +161,8 @@ class MatrixLogarithmBenchmark(test.Benchmark):
     shape = shape[-2:]
     assert shape[0] == shape[1]
     n = shape[0]
-    matrix = np.ones(shape).astype(np.complex64) / (
-        2.0 * n) + np.diag(np.ones(n).astype(np.complex64))
+    matrix = np.ones(shape).astype(np.complex64) / (2.0 * n) + np.diag(
+        np.ones(n).astype(np.complex64))
     return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
 
   def benchmarkMatrixLogarithmOp(self):
@@ -173,8 +177,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
             sess,
             control_flow_ops.group(logm),
             min_iters=25,
-            name="matrix_logarithm_cpu_{shape}".format(
-                shape=shape))
+            name="matrix_logarithm_cpu_{shape}".format(shape=shape))
 
 
 if __name__ == "__main__":
