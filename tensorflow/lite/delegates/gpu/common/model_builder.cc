@@ -2421,6 +2421,40 @@ class TransformLandmarksOperationParser : public TFLiteOperationParser {
  private:
 };
 
+class TransformLandmarksV2OperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/2, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // data
+    RETURN_IF_ERROR(reader->AddInput(node, 1));  // bbox
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    std::string op_name = "transform_landmarks_v2";
+    node->operation.type = op_name;
+    BHWC output_shape;
+    RETURN_IF_ERROR(
+        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
+                              tflite_node->custom_initial_data_size,
+                              &(node->operation.attributes), &output_shape));
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+
+    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    return absl::OkStatus();
+  }
+
+ private:
+};
+
 class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2671,6 +2705,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "TransformLandmarks") {
         return std::make_unique<TransformLandmarksOperationParser>();
+      }
+      if (custom_name == "TransformLandmarksV2") {
+        return std::make_unique<TransformLandmarksV2OperationParser>();
       }
       if (custom_name == "Landmarks2TransformMatrix") {
         return std::make_unique<Landmarks2TransformMatrixOperationParser>();
