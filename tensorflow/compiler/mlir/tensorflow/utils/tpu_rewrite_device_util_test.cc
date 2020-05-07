@@ -552,5 +552,44 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   EXPECT_EQ(computation_device_2.replica_device_ids(1), 3);
 }
 
+struct ParameterizedCPUHostForTPUDeviceTest
+    : ::testing::TestWithParam<std::tuple<std::string, std::string>> {};
+
+TEST_P(ParameterizedCPUHostForTPUDeviceTest, CPUHostForTPUDevice) {
+  auto status_or_device = GetCPUHostForTPUDevice(std::get<0>(GetParam()));
+  TF_ASSERT_OK(status_or_device.status());
+  EXPECT_EQ(status_or_device.ValueOrDie(), std::get<1>(GetParam()));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CPUHostForTPUDevice, ParameterizedCPUHostForTPUDeviceTest,
+    ::testing::Values(
+        std::make_tuple("/job:worker/replica:0/task:0/device:TPU:0",
+                        "/job:worker/replica:0/task:0/device:CPU:0"),
+        std::make_tuple("/job:worker/replica:0/task:1/device:TPU:1",
+                        "/job:worker/replica:0/task:1/device:CPU:0")));
+
+TEST(TPURewriteDeviceUtilTest, CPUHostForTPUDeviceInvalidDevice) {
+  auto status_or_device = GetCPUHostForTPUDevice("bad_device");
+  ASSERT_FALSE(status_or_device.ok());
+}
+
+TEST(TPURewriteDeviceUtilTest, CPUHostsForTPUDevices) {
+  auto status_or_devices =
+      GetCPUHostsForTPUDevices({"/job:worker/replica:0/task:0/device:TPU:0",
+                                "/job:worker/replica:0/task:1/device:TPU:1"});
+  TF_ASSERT_OK(status_or_devices.status());
+  const auto& devices = status_or_devices.ValueOrDie();
+  ASSERT_EQ(devices.size(), 2);
+  EXPECT_EQ(devices[0], "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(devices[1], "/job:worker/replica:0/task:1/device:CPU:0");
+}
+
+TEST(TPURewriteDeviceUtilTest, CPUHostsForTPUDevicesInvalidDevice) {
+  auto status_or_devices = GetCPUHostsForTPUDevices(
+      {"/job:worker/replica:0/task:0/device:TPU:0", "bad_device"});
+  ASSERT_FALSE(status_or_devices.ok());
+}
+
 }  // anonymous namespace
 }  // namespace tensorflow

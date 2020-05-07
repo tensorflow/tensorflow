@@ -216,6 +216,17 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 // logical core.
 std::string GetDeviceAliasForLogicalCore(int core_index);
 
+// Finds associated CPU host device for given TPU device. This assumes a
+// matching CPU host device exists based on TPU device name. An error will be
+// returned if the TPU device name is invalid.
+StatusOr<std::string> GetCPUHostForTPUDevice(llvm::StringRef tpu_device);
+
+// Finds associated CPU host devices for given TPU devices. This assumes a
+// matching CPU host device exist based on each TPU device name. An error will
+// be returned if a TPU device name is invalid.
+StatusOr<llvm::SmallVector<std::string, 8>> GetCPUHostsForTPUDevices(
+    llvm::ArrayRef<std::string> tpu_devices);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

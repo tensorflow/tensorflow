@@ -447,4 +447,27 @@ std::string GetDeviceAliasForLogicalCore(int core_index) {
   return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index).str();
 }
 
+StatusOr<std::string> GetCPUHostForTPUDevice(llvm::StringRef tpu_device) {
+  Device device;
+  if (!DeviceNameUtils::ParseFullName(tpu_device.str(), &device))
+    return errors::InvalidArgument("'", tpu_device.str(),
+                                   "' is not a valid device");
+
+  device.type = DEVICE_CPU;
+  device.id = 0;
+  return DeviceNameUtils::ParsedNameToString(device);
+}
+
+StatusOr<llvm::SmallVector<std::string, 8>> GetCPUHostsForTPUDevices(
+    llvm::ArrayRef<std::string> tpu_devices) {
+  llvm::SmallVector<std::string, 8> cpu_devices;
+  cpu_devices.reserve(tpu_devices.size());
+  for (const auto& tpu_device : tpu_devices) {
+    TF_ASSIGN_OR_RETURN(cpu_devices.emplace_back(),
+                        GetCPUHostForTPUDevice(tpu_device));
+  }
+
+  return cpu_devices;
+}
+
 }  // namespace tensorflow
