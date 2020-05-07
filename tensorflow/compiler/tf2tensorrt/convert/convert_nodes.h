@@ -192,6 +192,8 @@ class TRT_ShapedWeights {
   template <typename T>
   Status SetValues(T value);
 
+  Status SetShape(nvinfer1::Dims dims);
+
   int64_t count() const;
 
   size_t size_bytes() const;
@@ -558,10 +560,12 @@ class Converter {
   // This can be achieved by calling DynamicReshape(input, {{2,4},{0,2}},
   // params).
   //
-  // Before each slice we can insert a new dim if the corresponding
+  // Before each slice we can insert new dims if the corresponding
   // size_for_added_dims element is not negative. The size_for_added_dims array
   // can have more than slices.size() elements, in order to insert a dimension
-  // ater the last slice.
+  // after the last slice. For example, to add two leading 1 dimensions, and
+  // three trailing 1 dimensions, call DynamicReshape(input, {{0,nbDims}},
+  // {2, 3}).
   //
   // Parameters:
   // input - input tensor
