@@ -1102,11 +1102,22 @@ Status RocmTracer::DisableActivityTracing() {
   }
 
 #if ROCTRACER_FLUSH_BUG_WORKAROUND
+
   // FWIW, having this workaround BEFORE the call to flush (instead of
   // immediately after it) seems to workout better. In this case, we
   // rarely see any events getting dropped (as result of HCC activiy
   // records not showing up), where as if this workaround is done after
   // the flush call, a few (10s out of 1000s) do get dropped
+
+  // Further fine-tuning of the workaround....
+  // If the pending count is less than 64, it makes more sense to call
+  // flush first. For small testscase, the last few activity records
+  // do not seem to get flushed out until the call to flush. So for them
+  // make the call to flush before the wait
+  if (GetPendingActivityRecordsCount() < 64) {
+    VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
+    RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
+  }
 
   // The choice of all of the following is based what seemed to work
   // best when enabling tracing on a large testcase (BERT)
@@ -1116,14 +1127,14 @@ Status RocmTracer::DisableActivityTracing() {
   int duration_ms = 100;
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
+    if (GetPendingActivityRecordsCount() < threshold) break;
     VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
                           << " Pending count = "
                           << GetPendingActivityRecordsCount()
                           << ", Threshold = " << threshold;
-    if (GetPendingActivityRecordsCount() < threshold) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
-    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
+    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND : sleep for "
                           << duration_ms << " ms";
+    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
   }
   ClearPendingActivityRecordsCount();
 #endif
