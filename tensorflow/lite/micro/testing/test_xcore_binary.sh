@@ -31,17 +31,6 @@ mkdir -p ${MICRO_LOG_PATH}
 # Get the location of this script file as an absolute path
 SCRIPT_PATH="`dirname \"$BASH_SOURCE\"`"
 SCRIPT_PATH="`( cd \"$SCRIPT_PATH\" && pwd )`"
-# Set up the build tools:
-if mkdir tensorflow/lite/micro/tools/make/downloads/xtimecomposer/xTIMEcomposer/15.0.0/
-then
-    echo "Tools not found. Refreshing downloads..." 
-    make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads && \
-    make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test_greedy_memory_planner_test || true && \
-    pushd tensorflow/lite/micro/tools/make/downloads/xtimecomposer/xTIMEcomposer/15.0.0/ && source SetEnv && popd
-
-fi
-
-pushd tensorflow/lite/micro/tools/make/downloads/xtimecomposer/xTIMEcomposer/15.0.0/ && source ./SetEnv && popd
 XSIM_FLAGS=""
 
 
