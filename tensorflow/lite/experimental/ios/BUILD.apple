@@ -66,6 +66,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu:metal_delegate.h",
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
     ],
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
     tags = [
         "nobuilder",
         "swift_module=TensorFlowLiteC",
