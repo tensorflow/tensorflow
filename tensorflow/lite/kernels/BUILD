@@ -357,9 +357,9 @@ cc_test(
         ":cpu_backend_context",
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest",
-        # ruy's reference path provides the reference implementation
+        # ruy:reference_mul provides the reference implementation
         # that this test compares against.
-        "@ruy//ruy",
+        "@ruy//ruy:reference_mul",
     ],
 )
 
