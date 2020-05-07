@@ -42,8 +42,8 @@ Use the GPU package for CUDA-enabled GPU cards:
 ```
 pip install tensorflow-gpu
 ```
-Note : You might face Issues regarding the Correct version of Cuda and Cudnn
-To avoid these issue you can use [Anaconda] 
+Note : You might face Issues regarding the Correct version of Cuda and Cudnn<br>
+[Anaconda] is a best way to prevent this issue<br> 
 Step 1: Install Anaconda from (https://www.anaconda.com/) .<br>
 Step 2: Open the Conda Prompt and type the following : <br>
 ```
