@@ -16,22 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
 // Fetch the exception message as a string. An exception must be set
 // (PyErr_Occurred() must be true).
 string PyExceptionFetch();
-
-// Assert that Python GIL is held.
-inline void DCheckPyGilState() {
-#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
-  DCHECK(PyGILState_Check());
-#endif
-}
-
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_

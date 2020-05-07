@@ -38,7 +38,6 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python import _stack_trace_binding_for_test
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import benchmarks_test_base
@@ -1301,10 +1300,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   @test_util.disable_tfrt("funtion not supported")
   def benchmarkTenResourceReadsInCondInInnerFunc(self):
     self._benchmarkResourceReadsInCondInInnerFunc(10)
-
-  def benchmarkPythonStackTrace_1000_times(self):
-    self._run(lambda: _stack_trace_binding_for_test.stack_trace_n_times(1000),
-              1)
 
 
 if __name__ == "__main__":

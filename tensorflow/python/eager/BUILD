@@ -637,7 +637,6 @@ cuda_py_test(
         ":function",
         ":remote",
         ":test",
-        "//tensorflow/python:_stack_trace_binding_for_test",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
