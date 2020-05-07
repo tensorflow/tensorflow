@@ -121,7 +121,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                         GetTensorData<float>(input1), GetTensorShape(input2), \
                         GetTensorData<float>(input2), GetTensorShape(output), \
                         GetTensorData<float>(output));
-
+  need_broadcast = true;
   if (need_broadcast) {
     TF_LITE_MUL(BroadcastMul4DSlow);
   } else {
