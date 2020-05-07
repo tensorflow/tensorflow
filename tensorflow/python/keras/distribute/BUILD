@@ -362,30 +362,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "multi_worker_callback_tf1_test",
-    srcs = ["multi_worker_callback_tf1_test.py"],
-    # TODO(b/132384649): Enable for guitar and oss tests.
-    shard_count = 24,
-    tags = [
-        "manual",
-        "no_oss",
-        "noguitar",
-        "notap",
-    ],
-    deps = [
-        ":distribute",
-        ":multi_worker_testing_utils",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/keras",
-    ],
-)
-
 py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
