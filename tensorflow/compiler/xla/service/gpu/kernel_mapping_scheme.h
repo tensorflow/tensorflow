@@ -90,13 +90,14 @@ class KernelMappingScheme {
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
                       int64 num_threads_x, IndexingOrder indexing_order,
-                      int vector_size)
+                      int vector_size, bool row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
         indexing_order_(indexing_order),
-        vector_size_(vector_size) {
+        vector_size_(vector_size),
+	row_contiguous_(row_contiguous) {
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
@@ -134,6 +135,7 @@ class KernelMappingScheme {
 
   IndexingOrder GetIndexingOrder() const { return indexing_order_; }
   int GetVectorSize() const { return vector_size_; }
+  bool GetRowContiguous() const {return row_contiguous_; }
 
  private:
   // The number of elements in each dimension.
@@ -159,6 +161,7 @@ class KernelMappingScheme {
   // to trigger vectorized loads on GPUs while keeping memory
   // coalescing.
   const int vector_size_;
+  const bool row_contiguous_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
