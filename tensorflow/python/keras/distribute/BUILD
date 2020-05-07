@@ -439,6 +439,7 @@ py_library(
 py_library(
     name = "tpu_strategy_test_utils",
     srcs = ["tpu_strategy_test_utils.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute:tpu_strategy",
