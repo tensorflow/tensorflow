@@ -267,7 +267,7 @@ def map_fn(fn,
     elems: A tensor or (possibly nested) sequence of tensors, each of which will
       be unstacked along their first dimension.  `fn` will be applied to the
       nested sequence of the resulting slices.  `elems` may include ragged and
-      sparse tensors.
+      sparse tensors. `elems` must consist of at least one tensor.
     dtype: Deprecated: Equivalent to `fn_output_signature`.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel. When graph building, the default value is 10. While executing
@@ -296,7 +296,7 @@ def map_fn(fn,
     TypeError: if `fn` is not callable or the structure of the output of
       `fn` and `fn_output_signature` do not match.
     ValueError: if the lengths of the output of `fn` and `fn_output_signature`
-      do not match.
+      do not match, or if the `elems` does not contain any tensor.
 
   Examples:
 
