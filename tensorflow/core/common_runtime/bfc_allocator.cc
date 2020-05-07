@@ -465,12 +465,6 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               const void* chunk_ptr, int64 req_bytes,
                               int64 alloc_bytes) {
-  // Internal users will see the memory profile with default trace level.
-  auto traceme_level = profiler::TraceMeLevel::kVerbose;
-#ifdef PLATFORM_GOOGLE
-  traceme_level = profiler::TraceMeLevel::kInfo;
-#endif
-
   tensorflow::profiler::TraceMe trace_me(
       [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
@@ -496,7 +490,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                             ",data_type=", annotation.pending_data_type,
                             ",shape=", tensor_shape, "#");
       },
-      traceme_level);
+      /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,

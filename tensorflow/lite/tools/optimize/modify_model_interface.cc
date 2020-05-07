@@ -383,9 +383,9 @@ void AddUint8Dequant(
         const std::pair<float, int32_t>& provided_quant_params =
             quant_params.at(string(tensor->name));
         utils::MakeTensorWithQuantParam(
-            added_tensor_name, tensor->shape, TensorType_UINT8,
-            provided_quant_params.first, provided_quant_params.second,
-            &leading_op_input);
+            added_tensor_name, tensor->shape, tensor->shape_signature,
+            TensorType_UINT8, provided_quant_params.first,
+            provided_quant_params.second, &leading_op_input);
         const int32_t leading_op_input_idx = subgraph->tensors.size();
         subgraph->tensors.push_back(std::move(leading_op_input));
 
@@ -423,9 +423,9 @@ void AddUint8Quant(
         const std::pair<float, int32_t>& provided_quant_params =
             quant_params.at(string(tensor->name));
         utils::MakeTensorWithQuantParam(
-            added_tensor_name, tensor->shape, TensorType_UINT8,
-            provided_quant_params.first, provided_quant_params.second,
-            &tailing_op_output);
+            added_tensor_name, tensor->shape, tensor->shape_signature,
+            TensorType_UINT8, provided_quant_params.first,
+            provided_quant_params.second, &tailing_op_output);
         const int32_t tailing_op_output_idx = subgraph->tensors.size();
         subgraph->tensors.push_back(std::move(tailing_op_output));
 

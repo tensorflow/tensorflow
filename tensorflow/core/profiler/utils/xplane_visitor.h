@@ -53,10 +53,6 @@ class XStatVisitor {
 
   double DoubleValue() const { return stat_->double_value(); }
 
-  absl::string_view StrValue() const { return stat_->str_value(); }
-
-  absl::string_view RefValue() const;
-
   // Returns a string view.
   // REQUIRED: the value type should be string type or reference type.
   absl::string_view StrOrRefValue() const;

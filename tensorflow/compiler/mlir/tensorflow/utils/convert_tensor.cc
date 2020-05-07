@@ -85,7 +85,8 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
       type, llvm::makeArrayRef(arr.data(), arr.size()));
 }
 
-ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor, ShapedType type) {
+ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
+                               RankedTensorType type) {
   auto flat = input_tensor.flat<bfloat16>();
   llvm::SmallVector<llvm::APFloat, 4> floats;
   floats.reserve(flat.size());
@@ -94,11 +95,12 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor, ShapedType type) {
   return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(floats));
 }
 
-ElementsAttr ConvertHalfTensor(const Tensor& tensor, ShapedType type) {
+ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer,
-                                                   /*isSplatBuffer=*/false);
+  return mlir::DenseElementsAttr::getFromRawBuffer(
+      type, buffer,
+      /*isSplatBuffer=*/type.getNumElements() == 1);
 }
 
 StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,

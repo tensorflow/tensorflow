@@ -1425,11 +1425,23 @@ class AggregatingVariable(variables_lib.Variable):
               _aggregation_error_msg.format(
                   variable_type="AggregatingVariable"))
 
-        def merge_fn(strategy, value, *other_args, **other_kwargs):
+        def merge_fn(strategy,
+                     value,
+                     use_locking=False,
+                     name=None,
+                     read_value=True):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
+          if name and isinstance(name, PerReplica):
+            name = name.values[0]
           return strategy.extended.update(
-              self, f, args=(v,) + other_args, kwargs=other_kwargs)
-
+              self,
+              f,
+              args=(v,),
+              kwargs={
+                  "use_locking": use_locking,
+                  "name": name,
+                  "read_value": read_value
+              })
         return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):

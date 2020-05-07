@@ -25,11 +25,6 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
       plane_(plane),
       type_(plane->GetStatType(stat->metadata_id())) {}
 
-absl::string_view XStatVisitor::RefValue() const {
-  const XStatMetadata* metadata = plane_->GetStatMetadata(stat_->ref_value());
-  return metadata ? absl::string_view(metadata->name()) : absl::string_view();
-}
-
 std::string XStatVisitor::ToString() const {
   switch (stat_->value_case()) {
     case XStat::kInt64Value:

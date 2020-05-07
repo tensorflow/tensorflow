@@ -32,19 +32,20 @@ namespace tensorflow {
 extern const char* const kInputShardingAttr;
 extern const char* const kOutputShardingAttr;
 
-// Parses "input_sharding_configuration" attribute and returns a list where
-// i-th element is a list of mlir::Value's which represent inputs for the
-// TPU computation correponding to i-th logical device. If the attribute
-// does not exist, the all inputs are placed on logical core 0.
+// Parses "input_sharding_configuration" attribute and returns a list where i-th
+// element is a list of mlir::Value's which represent inputs for the TPU
+// computation correponding to i-th logical device. If the attribute does not
+// exist, the all inputs are placed on logical core 0.
 mlir::LogicalResult ExtractInputsForLogicalDevices(
-    const int num_cores_per_replica, mlir::tf_device::LaunchFuncOp launch_func,
-    mlir::OpBuilder* builder,
+    const int num_cores_per_replica,
+    mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
 
-// Extracts a list of OpSharding that represent output sharding configuration
-// of `tf_device.launch`.
+// Extracts a list of OpSharding that represent output sharding configuration of
+// `tf_device.cluster`.
 mlir::LogicalResult ParseAndValidateOutputSharding(
-    const int num_cores_per_replica, mlir::tf_device::LaunchFuncOp launch_func,
+    const int num_cores_per_replica,
+    mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::SmallVector<xla::OpSharding, 4>* output_sharding_list);
 
 // Retrieves output types for TPUExecute op representing execution for provided
@@ -52,15 +53,15 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
 // different outputs depending on the output sharding configuration.
 mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::LaunchFuncOp launch_func,
+    mlir::tf_device::ClusterFuncOp cluster_func,
     llvm::SmallVectorImpl<mlir::Type>* output_types);
 
 // Remaps outputs of `tf_device.parallel_execute` op that represent concurrent
-// execution of the `tf_device.launch_func` with its users.
+// execution of the `tf_device.cluster_func` with its users.
 void RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::LaunchFuncOp launch_func,
+    mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::tf_device::ParallelExecuteOp parallel_execute,
     mlir::OpBuilder* builder);
 

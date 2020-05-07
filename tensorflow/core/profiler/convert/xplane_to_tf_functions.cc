@@ -145,7 +145,7 @@ class TfFunctionExecutions {
       int64 tracing_count = 0;
       event.ForEachStat([&mode, &tracing_count](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kTfFunctionCall)
-          mode = std::string(stat.StrValue());
+          mode = std::string(stat.StrOrRefValue());
         if (stat.Type() == StatType::kTfFunctionTracingCount)
           tracing_count = stat.IntValue();
       });

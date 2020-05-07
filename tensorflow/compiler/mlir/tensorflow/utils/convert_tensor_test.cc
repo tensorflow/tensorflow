@@ -106,9 +106,9 @@ TEST(ConvertTypeToTensorTypeTest, Convert16BitFloats) {
 
   {
     // Create the sample tensor to convert.
-    Tensor tensor(DT_HALF, TensorShape({2}));
+    Tensor tensor(DT_HALF, TensorShape({1}));
     auto Tt = tensor.flat<Eigen::half>();
-    Tt.setValues({Eigen::half(1.0), Eigen::half(-1.0)});
+    Tt.setValues({Eigen::half(1.0)});
 
     auto value_or = ConvertTensor(tensor, &b);
     TF_EXPECT_OK(value_or.status());
