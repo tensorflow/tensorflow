@@ -296,11 +296,9 @@ cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
-        "transforms/extract_ophint.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
-        "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
@@ -419,12 +417,14 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -523,7 +523,6 @@ cc_library(
         "@flatbuffers",
         "@llvm-project//llvm:analysis",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -710,6 +709,8 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_registeration",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -758,6 +759,13 @@ tf_cc_binary(
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
@@ -765,11 +773,6 @@ tf_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -781,17 +784,19 @@ tf_cc_binary(
     deps = [
         ":flatbuffer_translate_lib",
         ":flatbuffer_translate_registeration",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Support",
     ],
 )
 

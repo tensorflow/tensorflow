@@ -275,6 +275,14 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::CosOp>(
       loc, result_types, args, b);
 }
 
+template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::SinOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SinOp>{}(
+      loc, result_types, args, b);
+}
+
 /// Implements the conversion of XLA op to scalar op (to use within region of a
 /// linalg.generic op) for compare-select style operations like min/max.
 template <typename... Args>

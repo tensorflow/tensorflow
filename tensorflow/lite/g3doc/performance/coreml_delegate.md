@@ -34,8 +34,9 @@ target 'YourProjectName'
   pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
 ```
 
-Note: After updating `Podfile`, you should run `pod cache clean` and `pod
-update` to reflect changes.
+Note: After updating `Podfile`, you should run `pod update` to reflect changes.
+If you can't see the latest `CoreMLDelegate.swift` file, try running `pod cache
+clean TensorFlowLiteSwift`.
 
 ### Swift
 
@@ -97,16 +98,15 @@ TfLiteCoreMlDelegateDelete(delegate);
 
 By default, Core ML delegate will only be created if the device has Neural
 Engine, and will return `null` if the delegate is not created. If you want to
-run Core ML delegate on other environments (for example, simulator), pass
-`.allDevices` as an option while creating delegate in Swift. On C++ (and
-Objective-C), you can pass `TfLiteCoreMlDelegateAllDevices`. Following example
-shows how to do this:
+run Core ML delegate on other environments (for example, simulator), pass `.all`
+as an option while creating delegate in Swift. On C++ (and Objective-C), you can
+pass `TfLiteCoreMlDelegateAllDevices`. Following example shows how to do this:
 
 #### Swift
 
 ```swift
 var options = CoreMLDelegate.Options()
-options.enabledDevices = .allDevices
+options.enabledDevices = .all
 let coreMLDelegate = CoreMLDelegate(options: options)!
 let interpreter: try Interpreter(modelPath: modelPath,
                                 delegates: [coreMLDelegate])

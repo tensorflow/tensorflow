@@ -338,6 +338,7 @@ cc_library(
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
+        "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
@@ -525,6 +526,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_gemm",
         ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",
@@ -600,7 +602,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",

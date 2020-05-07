@@ -303,7 +303,11 @@ absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
 absl::Status ConvBuffer1x1::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
+  if (definition_.src_tensors.size() == 1) {
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
+  } else {
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
+  }
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
@@ -345,6 +349,18 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
   auto src_storage_type = definition.src_tensors[0].storage_type;
   return src_storage_type == TensorStorageType::BUFFER &&
          attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
+         attr.dilations.w == 1 && attr.dilations.h == 1 &&
+         attr.strides.w == 1 && attr.strides.h == 1 &&
+         attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
+         attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
+}
+
+bool IsConvBuffer1x1Supported(const OperationDef& definition,
+                              const BHWC& weights_shape,
+                              const Convolution2DAttributes& attr) {
+  auto src_storage_type = definition.src_tensors[0].storage_type;
+  return src_storage_type == TensorStorageType::BUFFER &&
+         weights_shape.w == 1 && weights_shape.h == 1 &&
          attr.dilations.w == 1 && attr.dilations.h == 1 &&
          attr.strides.w == 1 && attr.strides.h == 1 &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
@@ -412,6 +428,29 @@ absl::Status CreateConvBuffer1x1Wino4x4To6x6(
   *result = ConvBuffer1x1(definition, conv_params);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
+}
+
+absl::Status CreateConvBuffer1x1DynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvBuffer1x1* result, const BHWC* dst_shape) {
+  const int dst_depth = DivideRoundUp(weights_shape.b, 4);
+  const int src_depth = DivideRoundUp(weights_shape.c, 4);
+  ConvBuffer1x1::ConvParams conv_params;
+  if (dst_shape) {
+    conv_params = GetBestParams(*creation_context.device, definition,
+                                *dst_shape, src_depth, dst_depth);
+  } else {
+    conv_params = GetBestParams(*creation_context.device, definition, src_depth,
+                                dst_depth);
+  }
+  *result = ConvBuffer1x1(definition, conv_params);
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = result->definition_.GetDataType();
+  create_info.aligned_size = weights_shape.b;
+  return CreateLinearStorage(create_info, attr.bias, creation_context.context,
+                             &result->biases_);
 }
 
 }  // namespace cl

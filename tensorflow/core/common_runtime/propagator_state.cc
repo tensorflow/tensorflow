@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -36,7 +37,7 @@ PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
 
   // Initialize iteration 0.
   root_frame_->SetIteration(
-      0, new PropagatorState::IterationState(root_frame_->pending_counts,
+      0, new PropagatorState::IterationState(0, root_frame_->pending_counts,
                                              root_frame_->total_input_tensors));
 
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
@@ -50,12 +51,13 @@ PropagatorState::~PropagatorState() {
 
 void PropagatorState::ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,
                                     TaggedNodeSeq* ready) {
+  mutex_lock l(root_frame_->mu);
+  IterationState* root_iter = root_frame_->GetIteration(0);
   for (const NodeItem* item : roots) {
     DCHECK_EQ(item->num_inputs, 0);
-    ready->emplace_back(item, root_frame_, 0, false);
+    ready->emplace_back(item, root_frame_, root_iter, false);
   }
-  mutex_lock l(root_frame_->mu);
-  root_frame_->GetIteration(0)->outstanding_ops = ready->size();
+  root_iter->outstanding_ops = ready->size();
 }
 
 void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
@@ -74,7 +76,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
 
   const NodeItem* const item = tagged_node.node_item;
   FrameState* const input_frame = tagged_node.input_frame;
-  const int64 input_iter = tagged_node.input_iter;
+  IterationState* const input_iter = tagged_node.input_iter;
   const bool is_dead = tagged_node.is_dead;
 
   // Propagates outputs along out edges, and puts newly ready nodes
@@ -82,7 +84,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   DCHECK(ready->empty());
   bool is_frame_done = false;
   FrameState* output_frame = input_frame;
-  int64 output_iter = input_iter;
+  IterationState* output_iter = input_iter;
 
   if (!item->is_enter_exit_or_next_iter) {
     // Fast path for nodes types that don't need special handling
@@ -94,9 +96,9 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
         input_frame->DecrementOutstandingOpsLocked(input_iter, ready);
   } else if (item->is_enter) {
     FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
-    output_iter = 0;
     {
       mutex_lock l(output_frame->mu);
+      output_iter = output_frame->GetIteration(0);
       if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
         output_frame->AddLoopInv(item, (*outputs)[0], ready);
@@ -110,7 +112,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     if (is_dead) {
       mutex_lock l(input_frame->mu);
       // Stop and remember this node if it is a dead exit.
-      if (input_iter == input_frame->iteration_count) {
+      if (input_iter->iter_num == input_frame->iteration_count) {
         input_frame->dead_exits.push_back(item);
       }
       is_frame_done =
@@ -131,7 +133,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
       // Stop the deadness propagation.
       output_frame = nullptr;
     } else {
-      if (input_iter == input_frame->iteration_count &&
+      if (input_iter->iter_num == input_frame->iteration_count &&
           input_frame->num_outstanding_iterations ==
               input_frame->max_parallel_iterations) {
         // Reached the maximum for parallel iterations.
@@ -139,10 +141,11 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
         output_frame = nullptr;
       } else {
         // If this is a new iteration, start it.
-        if (input_iter == input_frame->iteration_count) {
-          input_frame->IncrementIteration(ready);
+        if (input_iter->iter_num == input_frame->iteration_count) {
+          output_iter = input_frame->IncrementIteration(ready);
+        } else {
+          output_iter = input_frame->GetIteration(input_iter->iter_num + 1);
         }
-        output_iter = input_iter + 1;
       }
     }
     if (output_frame != nullptr) {
@@ -158,7 +161,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   // completion of this node makes its frame completed.
   if (is_frame_done) {
     FrameState* parent_frame = input_frame->parent_frame;
-    const int64 parent_iter = input_frame->parent_iter;
+    IterationState* parent_iter = input_frame->parent_iter;
     DeleteFrame(input_frame, ready);
     if (parent_frame != nullptr) {
       // The completion of frame may cause completions in its parent frame.
@@ -177,8 +180,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
-      DumpPendingNodeState(immutable_state_, node->node_id,
-                           iteration->input_tensors, false);
+      DumpPendingNodeState(*node, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
@@ -186,8 +188,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
     PendingCounts::Handle pending_id =
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
-      DumpActiveNodeState(immutable_state_, node->node_id,
-                          iteration->input_tensors);
+      DumpActiveNodeState(*node, iteration->input_tensors);
     }
   }
   // Show all input tensors in use.
@@ -218,7 +219,8 @@ void PropagatorState::DumpState() {
   }
 }
 
-void PropagatorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
+void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
+                                             IterationState* iter_state,
                                              const NodeItem& node_item,
                                              FrameState** child) {
   // Get the child frame name.
@@ -226,8 +228,8 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   const string& enter_name = GetNodeAttrString(attrs, "frame_name");
   DCHECK(!enter_name.empty()) << "Could not find \"frame_name\" attr in node "
                               << node_item.kernel->name();
-  const string child_name =
-      strings::StrCat(frame->frame_name, ";", iter, ";", enter_name);
+  const string child_name = strings::StrCat(
+      frame->frame_name, ";", iter_state->iter_num, ";", enter_name);
 
   {
     mutex_lock executor_lock(mu_);
@@ -252,14 +254,14 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   temp->frame_name = child_name;
   temp->frame_id = Hash64(child_name);
   temp->parent_frame = frame;
-  temp->parent_iter = iter;
+  temp->parent_iter = iter_state;
   temp->InitializeFrameInfo(enter_name);
 
   // Initialize iteration 0.
   {
     mutex_lock l(temp->mu);
-    temp->SetIteration(
-        0, new IterationState(temp->pending_counts, temp->total_input_tensors));
+    temp->SetIteration(0, new IterationState(0, temp->pending_counts,
+                                             temp->total_input_tensors));
   }
 
   {
@@ -269,7 +271,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
       *child = it->second;
     } else {
       mutex_lock frame_lock(frame->mu);
-      frame->GetIteration(iter)->outstanding_frame_count++;
+      iter_state->outstanding_frame_count++;
       outstanding_frames_[child_name] = temp;
       *child = temp;
       temp = nullptr;
@@ -281,20 +283,19 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
 void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   // First, propagate dead_exits (if any) to the parent frame.
   FrameState* parent_frame = frame->parent_frame;
-  const int64 parent_iter = frame->parent_iter;
+  IterationState* parent_iter_state = frame->parent_iter;
   if (parent_frame != nullptr) {
     mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
     mutex_lock this_frame_lock(frame->mu);
 
     for (const NodeItem* item : frame->dead_exits) {
-      auto parent_iter_state = parent_frame->GetIteration(parent_iter);
-
       auto maybe_add_to_ready = [&](const NodeItem& dst_item, bool dst_ready,
                                     bool dst_dead) {
         if (dst_ready) {
           if (dst_item.is_control_trigger) dst_dead = false;
-          ready->emplace_back(&dst_item, parent_frame, parent_iter, dst_dead);
+          ready->emplace_back(&dst_item, parent_frame, parent_iter_state,
+                              dst_dead);
           parent_iter_state->outstanding_ops++;
         }
       };
@@ -357,17 +358,18 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   delete frame;
 }
 
-void PropagatorState::CleanupFramesIterations(FrameState* frame, int64 iter,
+void PropagatorState::CleanupFramesIterations(FrameState* frame,
+                                              IterationState* iter_state,
                                               TaggedNodeSeq* ready) {
   bool is_frame_done = false;
   {
     mutex_lock frame_lock(frame->mu);
-    frame->GetIteration(iter)->outstanding_frame_count--;
-    is_frame_done = frame->CleanupIterations(iter, ready);
+    iter_state->outstanding_frame_count--;
+    is_frame_done = frame->CleanupIterations(iter_state, ready);
   }
   if (is_frame_done) {
     FrameState* parent_frame = frame->parent_frame;
-    const int64 parent_iter = frame->parent_iter;
+    IterationState* parent_iter = frame->parent_iter;
     DeleteFrame(frame, ready);
     if (parent_frame != nullptr) {
       // The completion of frame may cause completions in its parent frame.
@@ -377,16 +379,13 @@ void PropagatorState::CleanupFramesIterations(FrameState* frame, int64 iter,
   }
 }
 
-void PropagatorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
-                                                        const bool is_dead,
-                                                        int64 iter,
-                                                        EntryVector* outputs,
-                                                        TaggedNodeSeq* ready) {
+void PropagatorState::FrameState::ActivateNodesFastPath(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
   // If we know that none of the item's edge destinations require special
   // handling (i.e. none of the nodes is a merge or control trigger node), we
   // can take a fast path that avoids accessing the destination NodeItem.
   const GraphView& gview = immutable_state.graph_view();
-  IterationState* iter_state = GetIteration(iter);
 
 // Add dst to the ready queue if it's ready
 //
@@ -399,7 +398,7 @@ void PropagatorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
       TaggedNode& t = ready->emplace_back();              \
       t.node_item = dst_item;                             \
       t.input_frame = this;                               \
-      t.input_iter = iter;                                \
+      t.input_iter = iter_state;                          \
       t.is_dead = adjust_result.any_dead;                 \
       iter_state->outstanding_ops++;                      \
     }                                                     \
@@ -437,23 +436,20 @@ void PropagatorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
 #undef MAYBE_ADD_TO_READY
 }
 
-void PropagatorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
-                                                        const bool is_dead,
-                                                        int64 iter,
-                                                        EntryVector* outputs,
-                                                        TaggedNodeSeq* ready) {
+void PropagatorState::FrameState::ActivateNodesSlowPath(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
   // If any of the edge destinations is a merge or a control trigger node,
   // we need to read each destination NodeItem to determine what action
   // to take.
   const GraphView& gview = immutable_state.graph_view();
-  IterationState* iter_state = GetIteration(iter);
 
   auto maybe_add_to_ready = [&](int dst_id, const NodeItem* dst_item,
                                 bool dst_ready, bool dst_dead) {
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
       if (dst_item->is_control_trigger) dst_dead = false;
-      ready->emplace_back(dst_item, this, iter, dst_dead);
+      ready->emplace_back(dst_item, this, iter_state, dst_dead);
       iter_state->outstanding_ops++;
     }
   };
@@ -552,17 +548,18 @@ void PropagatorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
 }
 
 void PropagatorState::FrameState::ActivateNodes(const NodeItem* item,
-                                                const bool is_dead, int64 iter,
+                                                const bool is_dead,
+                                                IterationState* iter_state,
                                                 EntryVector* outputs,
                                                 TaggedNodeSeq* ready) {
   if (TF_PREDICT_FALSE(item->is_any_consumer_merge_or_control_trigger)) {
-    ActivateNodesSlowPath(item, is_dead, iter, outputs, ready);
+    ActivateNodesSlowPath(item, is_dead, iter_state, outputs, ready);
   } else {
-    ActivateNodesFastPath(item, is_dead, iter, outputs, ready);
+    ActivateNodesFastPath(item, is_dead, iter_state, outputs, ready);
   }
 }
 
-void PropagatorState::FrameState::ActivateNexts(int64 iter,
+void PropagatorState::FrameState::ActivateNexts(IterationState* iter_state,
                                                 TaggedNodeSeq* ready) {
   // Propagate the deferred NextIteration nodes to the new iteration.
   for (auto& node_entry : next_iter_roots) {
@@ -570,12 +567,12 @@ void PropagatorState::FrameState::ActivateNexts(int64 iter,
     const Entry& entry = node_entry.second;
     const bool is_dead = entry.state == Entry::State::NO_VALUE;
     EntryVector outputs{entry};
-    ActivateNodes(item, is_dead, iter, &outputs, ready);
+    ActivateNodes(item, is_dead, iter_state, &outputs, ready);
   }
   next_iter_roots.clear();
 }
 
-void PropagatorState::FrameState::ActivateLoopInvs(int64 iter,
+void PropagatorState::FrameState::ActivateLoopInvs(IterationState* iter_state,
                                                    TaggedNodeSeq* ready) {
   // Propagate loop invariants to the new iteration.
   for (auto& node_entry : inv_values) {
@@ -583,7 +580,7 @@ void PropagatorState::FrameState::ActivateLoopInvs(int64 iter,
     const Entry& entry = node_entry.second;
     const bool is_dead = entry.state == Entry::State::NO_VALUE;
     EntryVector outputs{entry};
-    ActivateNodes(item, is_dead, iter, &outputs, ready);
+    ActivateNodes(item, is_dead, iter_state, &outputs, ready);
   }
 }
 
@@ -597,33 +594,32 @@ void PropagatorState::FrameState::AddLoopInv(const NodeItem* item,
   const bool is_dead = entry.state == Entry::State::NO_VALUE;
   for (int i = 0; i <= iteration_count; ++i) {
     EntryVector outputs{entry};
-    ActivateNodes(item, is_dead, i, &outputs, ready);
+    ActivateNodes(item, is_dead, GetIteration(i), &outputs, ready);
   }
 }
 
-bool PropagatorState::FrameState::IsIterationDone(int64 iter) {
-  IterationState* iter_state = GetIteration(iter);
+bool PropagatorState::FrameState::IsIterationDone(IterationState* iter_state) {
   if (iter_state->outstanding_ops == 0 &&
       iter_state->outstanding_frame_count == 0) {
-    if (iter == 0) {
+    if (iter_state->iter_num == 0) {
       // The enclosing frame has no pending input.
       return num_pending_inputs == 0;
     } else {
       // The preceding iteration is deleted (and therefore done).
-      return (GetIteration(iter - 1) == nullptr);
+      return (GetIteration(iter_state->iter_num - 1) == nullptr);
     }
   }
   return false;
 }
 
-void PropagatorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
+PropagatorState::IterationState*
+PropagatorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
   iteration_count++;
-  const int64 next_iter = iteration_count;
 
   // Initialize the next iteration.
-  IterationState* iter_state =
-      new IterationState(pending_counts, total_input_tensors);
-  SetIteration(next_iter, iter_state);
+  IterationState* next_iter =
+      new IterationState(iteration_count, pending_counts, total_input_tensors);
+  SetIteration(iteration_count, next_iter);
   num_outstanding_iterations++;
   dead_exits.clear();
 
@@ -632,14 +628,15 @@ void PropagatorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
 
   // Activate the loop invariants in the new iteration.
   ActivateLoopInvs(next_iter, ready);
+
+  return next_iter;
 }
 
-bool PropagatorState::FrameState::CleanupIterations(int64 iter,
+bool PropagatorState::FrameState::CleanupIterations(IterationState* iter_state,
                                                     TaggedNodeSeq* ready) {
-  int64 curr_iter = iter;
-  while (curr_iter <= iteration_count && IsIterationDone(curr_iter)) {
-    // Delete the iteration curr_iter.
-    delete GetIteration(curr_iter);
+  int64 curr_iter = iter_state->iter_num;
+  while (curr_iter <= iteration_count && IsIterationDone(iter_state)) {
+    delete iter_state;
     SetIteration(curr_iter, nullptr);
     --num_outstanding_iterations;
     ++curr_iter;
@@ -648,6 +645,10 @@ bool PropagatorState::FrameState::CleanupIterations(int64 iter,
     // and start it if there is one.
     if (!next_iter_roots.empty()) {
       IncrementIteration(ready);
+    }
+
+    if (curr_iter <= iteration_count) {
+      iter_state = GetIteration(curr_iter);
     }
   }
   return IsFrameDone();
@@ -678,21 +679,21 @@ void PropagatorState::FrameState::SetIteration(int64 iter,
 // Decrement the outstanding op count and clean up the iterations in the
 // frame. Return true iff the execution of the frame is done.
 bool PropagatorState::FrameState::DecrementOutstandingOps(
-    int64 iter, TaggedNodeSeq* ready) {
+    IterationState* iter_state, TaggedNodeSeq* ready) {
   mutex_lock l(mu);
-  return DecrementOutstandingOpsLocked(iter, ready);
+  return DecrementOutstandingOpsLocked(iter_state, ready);
 }
 
 // Decrement the outstanding op count and clean up the iterations in the
 // frame. Return true iff the execution of the frame is done.
 bool PropagatorState::FrameState::DecrementOutstandingOpsLocked(
-    int64 iter, TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-  IterationState* istate = GetIteration(iter);
-  istate->outstanding_ops--;
-  if (istate->outstanding_ops != 0) {
+    IterationState* iter_state, TaggedNodeSeq* ready)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+  iter_state->outstanding_ops--;
+  if (iter_state->outstanding_ops != 0) {
     return false;
   } else {
-    return CleanupIterations(iter, ready);
+    return CleanupIterations(iter_state, ready);
   }
 }
 

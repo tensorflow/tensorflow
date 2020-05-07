@@ -175,8 +175,9 @@ Status XlaOpKernelContext::ConstantInputReshaped(
     int index, absl::Span<const int64> new_dims,
     xla::Literal* constant_literal) {
   XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(compiler()->client(), dynamic_dimension_is_minus_one_);
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
     errors::AppendToMessage(&status, "while evaluating input ", index, " of ",

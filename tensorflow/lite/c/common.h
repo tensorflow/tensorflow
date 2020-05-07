@@ -155,8 +155,16 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
   do {                                              \
     (context)->ReportError((context), __VA_ARGS__); \
   } while (false)
+
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)        \
+  do {                                                \
+    if ((context) != nullptr) {                       \
+      (context)->ReportError((context), __VA_ARGS__); \
+    }                                                 \
+  } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define TF_LITE_KERNEL_LOG(context, ...)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from

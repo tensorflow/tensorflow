@@ -120,6 +120,9 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/155406705): flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -477,6 +480,7 @@ tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1505,7 +1509,7 @@ cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
-    shard_count = 2,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",

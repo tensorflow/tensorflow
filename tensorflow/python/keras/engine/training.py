@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import itertools
 
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -198,6 +199,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     # override compile with custom logic.
     self.compiled_loss = None
     self.compiled_metrics = None
+
+    self._steps_per_execution = None
 
     self._init_batch_counters()
 
@@ -506,30 +509,19 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     Returns:
       Boolean, whether the model should run eagerly.
     """
-    if self._run_eagerly is True and not context.executing_eagerly():
-      raise ValueError('You can only set `run_eagerly=True` if eager execution '
-                       'is enabled.')
-    if not self.dynamic:
-      if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
-        # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
-      else:
-        return self._run_eagerly
-    else:
-      if not context.executing_eagerly():
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You must enable eager execution with '
-                         '`tf.enable_eager_execution()`.')
-      if self._run_eagerly is False:
-        # TODO(fchollet): consider using py_func to enable this.
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You cannot set `run_eagerly=False`.')
-      return context.executing_eagerly()
+    if self.dynamic and self._run_eagerly is False:  # pylint:disable=g-bool-id-comparison
+      # TODO(fchollet): consider using py_func to enable this.
+      raise ValueError('Your model contains layers that can only be '
+                       'successfully run in eager execution (layers '
+                       'constructed with `dynamic=True`). '
+                       'You cannot set `run_eagerly=False`.')
+
+    # Run eagerly logic, by priority:
+    # (1) Dynamic models must be run eagerly.
+    # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
+    # (3) Not explicitly setting run_eagerly defaults to TF's global setting.
+    return (self.dynamic or self._run_eagerly or
+            (def_function.RUN_FUNCTIONS_EAGERLY and self._run_eagerly is None))
 
   @run_eagerly.setter
   def run_eagerly(self, value):
@@ -663,8 +655,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           validation_freq=1,
           max_queue_size=10,
           workers=1,
-          use_multiprocessing=False,
-          **kwargs):
+          use_multiprocessing=False):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
@@ -731,7 +722,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
-
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
             Note that `validation_data` does not support all the data types that
@@ -811,7 +801,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             `False`. Note that because this implementation relies on
             multiprocessing, you should not pass non-picklable arguments to
             the generator as they can't be passed easily to children processes.
-        **kwargs: Used for backwards compatibility.
 
     Unpacking behavior for iterator-like inputs:
         A common pattern is to pass a tf.data.Dataset, generator, or
@@ -853,6 +842,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     version_utils.disallow_legacy_graph('Model', 'fit')
     self._assert_compile_was_called()
     self._check_call_args('fit')
+    _disallow_inside_tf_function('fit')
 
     if validation_split:
       # Create the validation data using the training data. Only supported for
@@ -1130,6 +1120,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
+    _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
@@ -1158,6 +1149,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             epochs=1,
             steps=data_handler.inferred_steps)
 
+      logs = {}
       test_function = self.make_test_function()
       self._test_counter.assign(0)
       callbacks.on_test_begin()
@@ -1229,21 +1221,43 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     if self.predict_function is not None:
       return self.predict_function
 
-    def predict_function(iterator):
-      """Runs one call to `self.predict_function`."""
+    def step_function(model, iterator):
+      """Runs a single evaluation step."""
 
       def run_step(data):
-        outputs = self.predict_step(data)
-        # Ensure counter is updated only if `predict_step` succeeds.
+        outputs = model.predict_step(data)
+        # Ensure counter is updated only if `test_step` succeeds.
         with ops.control_dependencies(_minimum_control_deps(outputs)):
-          self._predict_counter.assign_add(1)
+          model._predict_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
       data = next(iterator)
-      outputs = self.distribute_strategy.run(run_step, args=(data,))
+      outputs = model.distribute_strategy.run(run_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
       return outputs
+
+    if (self._steps_per_execution is None or
+        self._steps_per_execution.numpy().item() == 1):
+
+      def predict_function(iterator):
+        """Runs an evaluation execution with one step."""
+        return step_function(self, iterator)
+
+    else:
+
+      def predict_function(iterator):
+        """Runs an evaluation execution with multiple steps."""
+        outputs = step_function(self, iterator)
+        for _ in math_ops.range(self._steps_per_execution - 1):
+          directives.set_loop_options(
+              shape_invariants=[(
+                  t, tf_utils.get_tensor_spec(t, dynamic_batch=True).shape)
+                                for t in nest.flatten(outputs)])
+          step_outputs = step_function(self, iterator)
+          outputs = nest.map_structure(lambda t1, t2: concat([t1, t2]), outputs,
+                                       step_outputs)
+        return outputs
 
     if not self.run_eagerly:
       predict_function = def_function.function(
@@ -1329,6 +1343,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     _keras_api_gauge.get_cell('predict').set(True)
     version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
+    _disallow_inside_tf_function('predict')
 
     outputs = None
     with self.distribute_strategy.scope():
@@ -1342,7 +1357,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
-          model=self)
+          model=self,
+          steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -1374,7 +1390,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                   batch_outputs,
                   lambda output, batch_output: output.append(batch_output),
                   outputs, batch_outputs)
-            callbacks.on_predict_batch_end(step, {'outputs': batch_outputs})
+            end_step = step + data_handler.step_increment
+            callbacks.on_predict_batch_end(end_step, {'outputs': batch_outputs})
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
     return tf_utils.to_numpy_or_python_type(all_outputs)
@@ -1449,6 +1466,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
+    _disallow_inside_tf_function('train_on_batch')
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
@@ -1508,6 +1526,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
+    _disallow_inside_tf_function('test_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
@@ -1541,6 +1560,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
+    _disallow_inside_tf_function('predict_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
       predict_function = self.make_predict_function()
@@ -1717,6 +1737,20 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               'automatically be created in the correct distribution '
               'strategy scope.' % (metric, strategy)
           )
+
+    # Model metrics must be created in the same distribution strategy scope
+    # as the model.
+    for opt in nest.flatten(optimizer):
+      for v in getattr(opt, '_weights', []):
+        if not strategy.extended.variable_created_in_scope(v):
+          raise ValueError(
+              'Optimizer (%s) passed to model.compile was created inside of a '
+              'different distribution strategy scope than the model. All '
+              'optimizers must be created in the same distribution strategy '
+              'scope as the model (in this case %s). If you pass in a string '
+              'identifier for an optimizer to compile the optimizer will '
+              'automatically be created in the correct distribution '
+              'strategy scope.' % (opt, strategy))
 
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
@@ -1944,3 +1978,15 @@ def _minimum_control_deps(outputs):
     if not isinstance(out, variables.Variable):
       return [out]  # Return first Tensor or Op from outputs.
   return []  # No viable Tensor or Op to use for control deps.
+
+
+def _disallow_inside_tf_function(method_name):
+  if ops.inside_function():
+    error_msg = (
+        'Detected a call to `Model.{method_name}` inside a `tf.function`. '
+        '`Model.{method_name} is a high-level endpoint that manages its own '
+        '`tf.function`. Please move the call to `Model.{method_name}` outside '
+        'of all enclosing `tf.function`s. Note that you can call a `Model` '
+        'directly on `Tensor`s inside a `tf.function` like: `model(x)`.'
+    ).format(method_name=method_name)
+    raise RuntimeError(error_msg)

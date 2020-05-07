@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:file_system_helper.h",
+        "//tensorflow/core/platform:ram_file_system.h",
         "//tensorflow/core/platform:threadpool.h",
     ],
     tags = [

@@ -1668,9 +1668,14 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
+      // TODO(b/149823713): Update when NNAPI delegate can support align_corners
+      // & half_pixel_centers.
       Expect(!builtin->align_corners,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
+      Expect(!builtin->half_pixel_centers,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
     } break;
     case kTfLiteBuiltinSqueeze: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -1799,7 +1804,7 @@ bool NNAPIDelegateKernel::Validate(
              " NNAPI only support float tanh.", &val_ctx);
     } break;
     case kTfLiteBuiltinSub: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
       Expect((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
@@ -1808,6 +1813,13 @@ bool NNAPIDelegateKernel::Validate(
                   IsQuantized(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinDiv: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -2327,7 +2339,7 @@ bool NNAPIDelegateKernel::Validate(
                            "Unsupported operation type.", &val_ctx);
   }
   return val_ctx.is_valid;
-}
+}  // NOLINT(readability/fn_size)
 
 TfLiteStatus NNAPIDelegateKernel::Map(
     TfLiteContext* context, int builtin_code, int version,

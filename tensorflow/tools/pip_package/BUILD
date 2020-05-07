@@ -95,6 +95,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
+    "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",

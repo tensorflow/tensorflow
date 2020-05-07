@@ -9,17 +9,17 @@ func @only_resource_load() -> tensor<*xi32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = i32}
-  // CHECK: "tf_device.launch"
+  // CHECK: "tf_device.cluster"
   // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"(%[[RES_READ_VAL]])
   // CHECK: tf_device.return %[[COMPUTE_RES]]
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"}
+  // CHECK: {cluster_attr = "cluster_attr"}
   // CHECK-SAME: () -> tensor<*xi32>
 
-  %1 = "tf_device.launch"() ( {
+  %1 = "tf_device.cluster"() ( {
     %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
     %3 = "tf.SomeComputation"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
     tf_device.return %3 : tensor<*xi32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
   return %1 : tensor<*xi32>
 }
@@ -34,20 +34,20 @@ func @only_resource_store() -> tensor<*xi32> {
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
-  // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
+  // CHECK: %[[CLUSTER_RES:[0-9]*]]:2 = "tf_device.cluster"
   // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"()
   // CHECK: tf_device.return %[[COMPUTE_RES]], %[[COMPUTE_RES]]
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"}
+  // CHECK: {cluster_attr = "cluster_attr"}
   // CHECK-SAME: () -> (tensor<*xi32>, tensor<*xi32>)
-  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[LAUNCH_RES]]#1) {dtype = i32}
+  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[CLUSTER_RES]]#1) {dtype = i32}
 
-  %1 = "tf_device.launch"() ( {
+  %1 = "tf_device.cluster"() ( {
     %2 = "tf.SomeComputation"() : () -> (tensor<*xi32>)
     "tf.AssignVariableOp"(%0, %2) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
     tf_device.return %2 : tensor<*xi32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
-  // CHECK: return %[[LAUNCH_RES]]#0
+  // CHECK: return %[[CLUSTER_RES]]#0
   return %1 : tensor<*xi32>
 }
 
@@ -62,21 +62,21 @@ func @same_resource_load_and_store() -> tensor<*xi32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = i32}
-  // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
+  // CHECK: %[[CLUSTER_RES:[0-9]*]]:2 = "tf_device.cluster"
   // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"(%[[RES_READ_VAL]])
   // CHECK: tf_device.return %[[COMPUTE_RES]], %[[COMPUTE_RES]]
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"}
+  // CHECK: {cluster_attr = "cluster_attr"}
   // CHECK-SAME: () -> (tensor<*xi32>, tensor<*xi32>)
-  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[LAUNCH_RES]]#1) {dtype = i32}
+  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[CLUSTER_RES]]#1) {dtype = i32}
 
-  %1 = "tf_device.launch"() ( {
+  %1 = "tf_device.cluster"() ( {
     %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
     %3 = "tf.SomeComputation"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
     "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
     tf_device.return %3 : tensor<*xi32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
-  // CHECK: return %[[LAUNCH_RES]]#0
+  // CHECK: return %[[CLUSTER_RES]]#0
   return %1 : tensor<*xi32>
 }
 
@@ -87,8 +87,8 @@ func @same_resource_load_and_store() -> tensor<*xi32> {
 // CHECK-LABEL: func @internal_resource
 func @internal_resource() -> tensor<*xi32> {
 
-  // CHECK: %[[LAUNCH_RES:[0-9]*]] = "tf_device.launch"
-  %0 = "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER_RES:[0-9]*]] = "tf_device.cluster"
+  %0 = "tf_device.cluster"() ( {
 
     // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
@@ -104,9 +104,9 @@ func @internal_resource() -> tensor<*xi32> {
 
     // CHECK: tf_device.return %[[COMPUTE_RES]]
     tf_device.return %3 : tensor<*xi32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
-  // CHECK: return %[[LAUNCH_RES]]
+  // CHECK: return %[[CLUSTER_RES]]
   return %0 : tensor<*xi32>
 }
 
@@ -120,12 +120,12 @@ func @lifting_failure() -> tensor<*xi32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // expected-error @+1 {{has remaining resource inputs that can not be lifted}}
-  %1 = "tf_device.launch"() ( {
+  %1 = "tf_device.cluster"() ( {
     %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
 		%3 = "tf.SomeResourceOp"(%0, %2) : (tensor<*x!tf.resource>, tensor<*xi32>) -> tensor<*xi32>
     "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
     tf_device.return %3 : tensor<*xi32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
   return %1 : tensor<*xi32>
 }
@@ -135,27 +135,27 @@ func @lifting_failure() -> tensor<*xi32> {
 // Tests that pass lifts resource reads/writes from a loop, and removed unused
 // resources.
 
-// CHECK-LABEL: func @launch_with_loop
-func @launch_with_loop() -> () {
+// CHECK-LABEL: func @cluster_with_loop
+func @cluster_with_loop() -> () {
   // CHECK: %[[COUNT:.*]] = "tf.Const"() {value = dense<10> : tensor<i32>}
   %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VH:.*]] = "tf.VarHandleOp"()
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   %unused = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VH]])
-  // CHECK: %[[LAUNCH:.*]] = "tf_device.launch"()
-  "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]]:2 = "tf.While"(%[[COUNT]], %[[READ]])
     %2:3 = "tf.While"(%0, %1, %unused)
                {body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-                output_shapes = ["tfshape$", "tfshape$"]}
+                output_shapes = [#tf.shape<>, #tf.shape<>]}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]]#1 : tensor<f32>
     tf_device.return
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
-  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[LAUNCH]])
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[CLUSTER]])
   // CHECK: return
   return
 }
@@ -188,24 +188,24 @@ func @while_cond(%arg0: tensor<i32>, %arg1: tensor<*x!tf.resource<tensor<f32>>>,
 
 // Tests that pass lifts resource reads from loop condition.
 
-// CHECK-LABEL: func @launch_with_loop
-func @launch_with_loop() -> () {
+// CHECK-LABEL: func @cluster_with_loop
+func @cluster_with_loop() -> () {
   // CHECK: %[[VH:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VH]])
-  // CHECK: %[[LAUNCH:.*]] = "tf_device.launch"()
-  "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %1 = "tf.While"(%0) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$"]}
+      output_shapes = [#tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]] : tensor<f32>
     tf_device.return
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
-  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[LAUNCH]])
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[CLUSTER]])
   // CHECK: return
   return
 }
@@ -230,23 +230,23 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 // Tests that pass lifts read-only resource reads from loop, but does not add
 // assign after the loop.
 
-// CHECK-LABEL: func @launch_with_loop
-func @launch_with_loop() -> () {
+// CHECK-LABEL: func @cluster_with_loop
+func @cluster_with_loop() -> () {
   // CHECK: %[[VH:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VH]])
-  // CHECK: "tf_device.launch"()
-  "tf_device.launch"() ( {
+  // CHECK: "tf_device.cluster"()
+  "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %1 = "tf.While"(%0) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$"]}
+      output_shapes = [#tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return
     tf_device.return
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> ()
+  }) {cluster_attr = "cluster_attr"} : () -> ()
   // CHECK-NOT: "tf.AssignVariableOp"
   // CHECK: return
   return
@@ -267,26 +267,26 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // Tests that pass lifts resource reads from nested loops.
 
-// CHECK-LABEL: func @launch_with_nested_loop
-func @launch_with_nested_loop() -> () {
+// CHECK-LABEL: func @cluster_with_nested_loop
+func @cluster_with_nested_loop() -> () {
   // CHECK: %[[VH:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[VH_UNUSED:.*]] = "tf.VarHandleOp"()
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VH]])
-  // CHECK: %[[LAUNCH:.*]] = "tf_device.launch"()
-  "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %2:2 = "tf.While"(%0, %1) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$", "tfshape$"]}
+      output_shapes = [#tf.shape<>, #tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]] : tensor<f32>
     tf_device.return
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
-  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[LAUNCH]])
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  // CHECK: "tf.AssignVariableOp"(%[[VH]], %[[CLUSTER]])
   // CHECK: return
   return
 }
@@ -296,7 +296,7 @@ func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf
   // CHECK: %[[WHILE:.*]] = "tf.While"(%[[BARG0]])
   %0:2 = "tf.While"(%arg0, %arg1) {
     body = @while_body1, cond = @while_cond1, device = "", is_stateless = false,
-    output_shapes = ["tfshape$", "tfshape$"]}
+    output_shapes = [#tf.shape<>, #tf.shape<>]}
        : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
        -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
   // CHECK-NEXT: return %[[WHILE]]
@@ -330,15 +330,15 @@ func @while_cond1(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!t
 
 // Tests that pass reports error on non-aliasing while input/output resources.
 
-func @launch_with_loop() -> () {
+func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  "tf_device.launch"() ( {
+  "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$"]}
+      output_shapes = [#tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
+  }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
 func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
@@ -355,15 +355,15 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // Tests that pass reports error on unsupported ops in loop body.
 
-func @launch_with_loop() -> () {
+func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  "tf_device.launch"() ( {
+  "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$"]}
+      output_shapes = [#tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
+  }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
 func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
@@ -380,15 +380,15 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // Tests that pass reports error on unsupported ops in loop cond.
 
-func @launch_with_loop() -> () {
+func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  "tf_device.launch"() ( {
+  "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
       body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = ["tfshape$"]}
+      output_shapes = [#tf.shape<>]}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
+  }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
 func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
@@ -408,19 +408,19 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // Tests that pass lifts resource reads from if branches.
 
-// CHECK: func @launch_with_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<4xf32>
-func @launch_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
+// CHECK: func @cluster_with_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<4xf32>
+func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   // CHECK: %[[VH0:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   // CHECK: %[[VH1:.*]] = "tf.VarHandleOp"()
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   // CHECK-DAG: %[[READ0:.*]] = "tf.ReadVariableOp"(%[[VH0]])
   // CHECK-DAG: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[VH1]])
-  // CHECK: %[[LAUNCH:.*]]:2 = "tf_device.launch"()
-  %2 = "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
+  %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]]:2 = "tf.If"(%[[ARG0]], %[[READ0]], %[[READ1]])
     %3:2 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = ["tfshape$","tfshape$dim { size: 4 }"], is_stateless = false}
+        output_shapes = [#tf.shape<>, #tf.shape<4>], is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[IF]]#1, %[[IF]]#0)
@@ -428,10 +428,10 @@ func @launch_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
     %5 = "tf.AddV2"(%4, %3#1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
     // CHECK-NEXT: tf_device.return %[[ADD]], %[[IF]]#1
     tf_device.return %5 : tensor<4xf32>
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> (tensor<4xf32>, tensor<4xf32>)
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<4xf32>
-  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[LAUNCH]]#1)
-  // CHECK: return %[[LAUNCH]]#0
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> (tensor<4xf32>, tensor<4xf32>)
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
+  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[CLUSTER]]#1)
+  // CHECK: return %[[CLUSTER]]#0
   return %2 : tensor<4xf32>
 }
 // CHECK: func @if_then(%[[TARG0:.*]]: tensor<4xf32>, %[[TARG1:.*]]: tensor<4xf32>)
@@ -457,15 +457,15 @@ func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.
 
 // Tests that pass lifts resource reads from nested if ops.
 
-// CHECK: func @launch_with_nested_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<f32>
-func @launch_with_nested_if(%arg0: tensor<i1>) -> tensor<f32> {
+// CHECK: func @cluster_with_nested_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<f32>
+func @cluster_with_nested_if(%arg0: tensor<i1>) -> tensor<f32> {
   // CHECK: %[[VH0:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[VH1:.*]] = "tf.VarHandleOp"()
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK-DAG: %[[READ0:.*]] = "tf.ReadVariableOp"(%[[VH0]])
-  // CHECK: %[[LAUNCH:.*]]:2 = "tf_device.launch"()
-  %2 = "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
+  %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]] = "tf.If"(%[[ARG0]], %[[READ0]])
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
         output_shapes = [], is_stateless = false}
@@ -476,10 +476,10 @@ func @launch_with_nested_if(%arg0: tensor<i1>) -> tensor<f32> {
     %5 = "tf.AddV2"(%4, %4) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK-NEXT: tf_device.return %[[ADD]], %[[IF]]
     tf_device.return %5 : tensor<f32>
-  // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> (tensor<f32>, tensor<f32>)
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
-  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[LAUNCH]]#1)
-  // CHECK: return %[[LAUNCH]]#0
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> (tensor<f32>, tensor<f32>)
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<f32>
+  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[CLUSTER]]#1)
+  // CHECK: return %[[CLUSTER]]#0
   return %2 : tensor<f32>
 }
 // CHECK: func @if_then(%[[TARG0:.*]]: tensor<f32>)
@@ -520,18 +520,18 @@ func @inner_if_else(%arg0: tensor<*x!tf.resource<tensor<f32>>>)
 
 // Tests that the pass reports error for ambiguous resource aliasing.
 
-func @launch_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
+func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
-  %2 = "tf_device.launch"() ( {
+  %2 = "tf_device.cluster"() ( {
     // expected-error @+1 {{unsupported tf.IfOp output: resource does not alias a single input.}}
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = ["tfshape$"], is_stateless = false}
+        output_shapes = [#tf.shape<>], is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>)
     %4 = "tf.ReadVariableOp"(%3) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
     tf_device.return %4 : tensor<4xf32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<4xf32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
   return %2 : tensor<4xf32>
 }
 func @if_then(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
@@ -548,15 +548,15 @@ func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.
 // Tests that the pass lifts resources on two partitioned call ops sharing the
 // same callee. The lifting should clone the callee then modify the clone.
 
-// CHECK-LABEL: @launch_with_partitioned_call
-func @launch_with_partitioned_call() -> tensor<f32> {
+// CHECK-LABEL: @cluster_with_partitioned_call
+func @cluster_with_partitioned_call() -> tensor<f32> {
   // CHECK: %[[VH:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[CONST:.*]] = "tf.Const"()
   %1 = "tf.Const"() {value = dense<10.0> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VH]])
-  // CHECK: %[[LAUNCH:.*]] = "tf_device.launch"()
-  %2 = "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  %2 = "tf_device.cluster"() ( {
     // CHECK: %[[PC0:.*]] = "tf.PartitionedCall"(%[[CONST]], %[[READ]], %[[CONST]])
     // CHECK-SAME: f = @callee_resource_lifted
     %3 = "tf.PartitionedCall"(%1, %0, %1) {f = @callee, config = "", config_proto = "", executor_type = ""}
@@ -569,7 +569,7 @@ func @launch_with_partitioned_call() -> tensor<f32> {
     %5 = "tf.AddV2"(%3, %4) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: tf_device.return %[[ADD]] : tensor<f32>
     tf_device.return %5 : tensor<f32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<f32>
   return %2 : tensor<f32>
 }
 // CHECK: @callee(%[[OA0:.*]]: tensor<f32>, %[[OA1:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[OA2:.*]]: tensor<f32>) -> tensor<f32>
@@ -592,8 +592,8 @@ func @callee(%arg0: tensor<f32>, %arg1: tensor<*x!tf.resource<tensor<f32>>>, %ar
 // sharing the same callee. The lifting should clone the callee then modify the
 // clone.
 
-// CHECK-LABEL: @launch_with_stateful_partitioned_call
-func @launch_with_stateful_partitioned_call() -> () {
+// CHECK-LABEL: @cluster_with_stateful_partitioned_call
+func @cluster_with_stateful_partitioned_call() -> () {
   // CHECK: %[[VH0:.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // CHECK: %[[VH1:.*]] = "tf.VarHandleOp"()
@@ -602,8 +602,8 @@ func @launch_with_stateful_partitioned_call() -> () {
   %2 = "tf.Const"() {value = dense<10.0> : tensor<f32>} : () -> tensor<f32>
   // CHECK-DAG: %[[READ0:.*]] = "tf.ReadVariableOp"(%[[VH0]])
   // CHECK-DAG: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[VH1]])
-  // CHECK: %[[LAUNCH:.*]] = "tf_device.launch"()
-  "tf_device.launch"() ( {
+  // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
+  "tf_device.cluster"() ( {
     // CHECK: %[[PC0:.*]] = "tf.StatefulPartitionedCall"(%[[READ0]], %[[READ1]], %[[CONST]])
     // CHECK-SAME: f = @callee_resource_lifted
     %3 = "tf.StatefulPartitionedCall"(%0, %1, %2) {f = @callee, config = "", config_proto = "", executor_type = ""}
@@ -614,9 +614,9 @@ func @launch_with_stateful_partitioned_call() -> () {
       : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<*x!tf.resource<tensor<f32>>>
     // CHECK: tf_device.return %[[PC1]] : tensor<f32>
     tf_device.return
-    // CHECK: {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<f32>
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
-  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[LAUNCH]])
+    // CHECK: {cluster_attr = "cluster_attr"} : () -> tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[CLUSTER]])
   return
 }
 // CHECK: @callee(%[[OA0:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[OA1:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[OA2:.*]]: tensor<f32>) -> tensor<*x!tf.resource<tensor<f32>>>
@@ -637,17 +637,17 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
 // Tests that the pass reports error on called function that has resource output
 // which doesn't alias an input.
 
-func @launch_with_stateful_partitioned_call() -> () {
+func @cluster_with_stateful_partitioned_call() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   %2 = "tf.Const"() {value = dense<10.0> : tensor<f32>} : () -> tensor<f32>
-  "tf_device.launch"() ( {
+  "tf_device.cluster"() ( {
     %3 = "tf.StatefulPartitionedCall"(%0, %1, %2) {f = @callee, config = "", config_proto = "", executor_type = ""}
       : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<*x!tf.resource<tensor<f32>>>
     %4 = "tf.StatefulPartitionedCall"(%3, %1, %2) {f = @callee, config = "", config_proto = "", executor_type = ""}
       : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<*x!tf.resource<tensor<f32>>>
     tf_device.return
-  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
+  }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
 // expected-error @+1 {{unsupported function call: resource return value does not alias an input.}}

@@ -1934,6 +1934,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":debug_info_msf",
@@ -2004,6 +2005,23 @@ cc_library(
         ":support",
         ":target",
     ],
+)
+
+cc_library(
+    name = "extensions",
+    srcs = glob([
+        "lib/Extensions/*.c",
+        "lib/Extensions/*.cpp",
+        "lib/Extensions/*.inc",
+        "lib/Extensions/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Extensions/*.h",
+        "include/llvm/Extensions/*.def",
+        "include/llvm/Extensions/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [":config"],
 )
 
 cc_library(
@@ -2386,6 +2404,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":extensions",
         ":inst_combine",
         ":ipo",
         ":linker",

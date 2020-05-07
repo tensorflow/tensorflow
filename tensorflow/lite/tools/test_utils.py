@@ -24,6 +24,8 @@ from __future__ import print_function
 from flatbuffers.python import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
+TFLITE_SCHEMA_VERSION = 3
+
 
 def build_mock_flatbuffer_model():
   """Creates a flatbuffer containing an example model."""
@@ -194,6 +196,7 @@ def build_mock_flatbuffer_model():
 
   string4_offset = builder.CreateString('model_description')
   schema_fb.ModelStart(builder)
+  schema_fb.ModelAddVersion(builder, TFLITE_SCHEMA_VERSION)
   schema_fb.ModelAddOperatorCodes(builder, codes_offset)
   schema_fb.ModelAddSubgraphs(builder, subgraphs_offset)
   schema_fb.ModelAddDescription(builder, string4_offset)

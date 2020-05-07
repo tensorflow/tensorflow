@@ -16,6 +16,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -50,7 +51,6 @@ tf_cuda_library(
             ":tfe_tensor_debug_info_internal",
             ":tfe_tensorhandle_internal",
             "@com_google_absl//absl/algorithm:container",
-            "@com_google_absl//absl/container:fixed_array",
             "@com_google_absl//absl/types:span",
             "@com_google_absl//absl/types:variant",
             "//tensorflow/c:c_api",
@@ -110,13 +110,10 @@ filegroup(
         "operation_interface.h",
         "tensor_handle_interface.h",
         "tfe_cancellation_manager_internal.h",
-        "tfe_context_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",
-        "tfe_op_internal.h",
         "tfe_tensor_debug_info_internal.h",
-        "tfe_tensorhandle_internal.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -188,9 +185,11 @@ cc_library(
         ":operation_interface",
         ":tensor_handle_interface",
         "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -203,6 +202,7 @@ cc_library(
     ],
     deps = [
         ":context_interface",
+        "//tensorflow/c:conversion_macros",
     ],
 )
 
@@ -247,8 +247,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":tfe_context_internal",
-        ":tfe_op_internal",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
@@ -263,6 +262,7 @@ cc_library(
     ],
     deps = [
         ":operation_interface",
+        "//tensorflow/c:conversion_macros",
     ],
 )
 
@@ -285,6 +285,7 @@ cc_library(
     ],
     deps = [
         ":tensor_handle_interface",
+        "//tensorflow/c:conversion_macros",
     ],
 )
 
@@ -317,7 +318,8 @@ tf_cuda_cc_test(
     ],
     extra_copts = tfe_xla_copts(),
     tags = [
-        "guitar",
+        "noguitar",  # TODO(b/155445984): flaky
+        #"guitar",
         "multi_gpu",
     ],
     deps = [
@@ -325,6 +327,8 @@ tf_cuda_cc_test(
         ":c_api_experimental",
         ":c_api_internal",
         ":c_api_test_util",
+        ":tfe_op_internal",
+        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -343,12 +347,16 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_remote_test.cc",
     ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
+    tags = ["noasan"],  # leaks gRPC server instances
     deps = [
         ":c_api",
         ":c_api_experimental",
         ":c_api_internal",
         ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -360,11 +368,42 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "c_api_cluster_test",
+    size = "small",
+    srcs = [
+        "c_api_cluster_test.cc",
+    ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    tags = ["noasan"],  # leaks gRPC server instances
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
         "c_api_unified_experimental.cc",
+        "c_api_unified_experimental_eager.cc",
+        "c_api_unified_experimental_graph.cc",
+        "c_api_unified_experimental_internal.h",
     ],
     hdrs = [
         "c_api_experimental.h",
@@ -379,6 +418,9 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api",
             ":c_api_internal",
+            ":tfe_context_internal",
+            ":tfe_op_internal",
+            ":tfe_tensorhandle_internal",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -461,6 +503,7 @@ tf_cuda_cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
+        "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:lib",
@@ -542,8 +585,9 @@ cc_library(
     deps = [
         ":c_api",
         ":c_api_experimental",
-        ":c_api_internal",
+        ":tfe_tensorhandle_internal",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

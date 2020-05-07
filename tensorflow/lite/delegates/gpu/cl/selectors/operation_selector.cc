@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -196,14 +197,52 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
           absl::any_cast<Convolution2DAttributes>(node.operation.attributes);
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
-      if (WinogradFromNode(creation_context, op_def, hints, input_shape,
-                           output_shape, attr, gpu_subgraph)
-              .ok()) {
-        return absl::OkStatus();
+      if (inputs.size() == 1) {
+        if (WinogradFromNode(creation_context, op_def, hints, input_shape,
+                             output_shape, attr, gpu_subgraph)
+                .ok()) {
+          return absl::OkStatus();
+        } else {
+          gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
+          return SelectConvolution(attr, output_shape, creation_context, op_def,
+                                   hints, gpu_op);
+        }
       } else {
-        gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-        return SelectConvolution(attr, output_shape, creation_context, op_def,
-                                 hints, gpu_op);
+        auto weights_shape = inputs[1]->tensor.shape;
+        TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
+                                         TensorStorageType::BUFFER,
+                                         Layout::UNKNOWN};
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(2);
+        auto& converter_op = gpu_subgraph->operations[0];
+        auto& conv_op = gpu_subgraph->operations[1];
+        conv_op.input_ids = {0, -1};
+        conv_op.output_ids = {0};
+        OperationDef conv_def = op_def;
+        conv_def.src_tensors[1] = weights_desc;
+        ConvWeightsDescription conv_weights_desc;
+        RETURN_IF_ERROR(SelectConvolutionWithDynamicWeights(
+            attr, weights_shape, output_shape, creation_context, conv_def,
+            hints, &conv_op.operation, &conv_weights_desc));
+
+        int aligned_output =
+            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        int aligned_input = AlignByN(weights_shape.c, 4);
+        gpu_subgraph->new_tensors = {
+            {BHWC(1, 1, 1,
+                  aligned_output * aligned_input * weights_shape.h *
+                      weights_shape.w),
+             weights_desc}};
+        OperationDef converter_def;
+        converter_def.precision = op_def.precision;
+        converter_def.src_tensors.push_back(op_def.src_tensors[1]);
+        converter_def.dst_tensors.push_back(weights_desc);
+
+        converter_op.input_ids = {1};
+        converter_op.output_ids = {-1};
+        return SelectConverterToConvWeights(conv_weights_desc, creation_context,
+                                            converter_def, hints,
+                                            &converter_op.operation);
       }
     }
     case OperationType::CONVOLUTION_TRANSPOSED: {

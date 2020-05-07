@@ -25,7 +25,10 @@ namespace tensorflow {
 // the shape is known.
 class RemoteTensorHandleData {
  public:
-  // Constructor for lazy remote handles
+  // Constructor for lazy remote handles. A lazy remote handle is created on
+  // a remote worker with an op_id and an output_num sent by a client. The
+  // client won't serialize them until the corresponding remote tensor is ready.
+  // So the remote tensor should be ready when we create a lazy remote handle.
   RemoteTensorHandleData(int64 op_id, int output_num, uint64 context_view_id);
   // Constructor for unshaped remote handles
   RemoteTensorHandleData(int64 op_id, int output_num, const string& remote_task,
@@ -38,6 +41,7 @@ class RemoteTensorHandleData {
   Status NumDims(int* num_dims) const;
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
+  Status Unprotect() { return Status::OK(); }
 
   bool IsReady() const;
   Status SetShape(const TensorShape& shape);
@@ -46,8 +50,10 @@ class RemoteTensorHandleData {
 
   string DebugString() const;
 
-  int64 op_id() const { return op_id_; }
-  int32 output_num() const { return output_num_; }
+  // Block until the remote tensor is ready on a remote worker and return the op
+  // id and output num.
+  Status OpIdAndOutputNumUntilReady(int64* op_id, int32* output_num) const;
+
   uint64 context_view_id() const { return context_view_id_; }
 
  private:

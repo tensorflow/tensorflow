@@ -146,6 +146,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "xplane_builder_test",
+    size = "small",
+    srcs = ["xplane_builder_test.cc"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_visitor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "xplane_schema",
     srcs = ["xplane_schema.cc"],
@@ -323,5 +336,21 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tfstreamz_utils",
+    srcs = ["tfstreamz_utils.cc"],
+    hdrs = ["tfstreamz_utils.h"],
+    deps = [
+        ":xplane_builder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

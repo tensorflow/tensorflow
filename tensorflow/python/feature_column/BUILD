@@ -13,6 +13,7 @@ py_library(
         ":feature_column",
         ":feature_column_v2",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/feature_column",
     ],
 )
 

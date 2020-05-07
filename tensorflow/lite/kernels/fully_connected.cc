@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -49,6 +50,10 @@ bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
 
   return false;
 }
+
+static const int kDimMetadataSizeRandomSparse = 2;
+static const int kDimMetadataSizeBlockSparse = 3;
+
 }  // namespace
 
 // This file has four implementations of FullyConnected
@@ -651,15 +656,33 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
 
     const auto& sparsity = *filter->sparsity;
     if (!SupportedSparsityFormat(sparsity)) {
-      context->ReportError(context,
-                           "Unsupported sparse fully-connected weight format.");
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported sparse fully-connected weight format.");
       return kTfLiteError;
     }
-    optimized_ops::FullyConnectedSparseWeight(
-        sparsity, op_params, GetTensorShape(input), GetTensorData<float>(input),
-        GetTensorShape(filter), GetTensorData<float>(filter),
-        GetTensorShape(bias), GetTensorData<float>(bias),
-        GetTensorShape(output), GetTensorData<float>(output));
+
+    if (sparsity.dim_metadata_size == kDimMetadataSizeRandomSparse) {
+      // Random sparse.
+      optimized_ops::FullyConnectedSparseWeight(
+          sparsity, op_params, GetTensorShape(input),
+          GetTensorData<float>(input), GetTensorShape(filter),
+          GetTensorData<float>(filter), GetTensorShape(bias),
+          GetTensorData<float>(bias), GetTensorShape(output),
+          GetTensorData<float>(output));
+    } else if (sparsity.dim_metadata_size == kDimMetadataSizeBlockSparse &&
+               sparsity.dim_metadata[2].dense_size == 4) {
+      // Block sparse with block size of 1x4.
+      optimized_ops::FullyConnectedSparseWeight1x4(
+          sparsity, op_params, GetTensorShape(input),
+          GetTensorData<float>(input), GetTensorShape(filter),
+          GetTensorData<float>(filter), GetTensorShape(bias),
+          GetTensorData<float>(bias), GetTensorShape(output),
+          GetTensorData<float>(output));
+    } else {
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported sparse fully-connected weight format.");
+      return kTfLiteError;
+    }
   } else if (kernel_type == kLegacyPie) {
     return EvalPie(context, node, params, data, input, filter, bias, output);
   } else {

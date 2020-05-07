@@ -51,6 +51,8 @@ OpBuilder* CreateBatchSeqBuilder(GraphBuilder* graph_builder, int op_type,
                                  TfLiteIntArray* input_batch_dimensions,
                                  TfLiteIntArray* output_batch_dimensions);
 OpBuilder* CreateQuantizeBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateHardSwishBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateCastBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

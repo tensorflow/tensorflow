@@ -198,9 +198,8 @@ LogicalResult HandleWhileOp(
     new_while_operands.push_back(it->getSecond().size);
     if (!new_output_shapes.empty()) {
       // Size is a scalar shape.
-      tensorflow::TensorShapeProto shape_proto;
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
     }
   }
   auto new_while =

@@ -378,7 +378,7 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
       constant_dims = input0->dims;
     }
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    if (constant_dims->size <= 0) {
+    if (constant_dims->size <= 0 || NumElements(constant_dims) == 1) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
       *tensor_or_scalar = tensor.data[0];
@@ -555,9 +555,23 @@ class Conv2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/1, /*outputs=*/1));
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    const int runtime_inputs =
+        GetNumberOfRuntimeInputsForNode(context, tflite_node);
+    if (runtime_inputs > 2) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 or 2 input tensor(s), but node has ",
+                       runtime_inputs, " runtime inputs."));
+    }
+    const int runtime_outputs =
+        GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+    if (runtime_outputs != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 output tensor(s), but node has ",
+                       runtime_outputs, " runtime outputs."));
+    }
+    if (runtime_inputs == 1) {
+      RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    }
     TfLiteConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
@@ -575,7 +589,12 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     Convolution2DAttributes attr;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 2) {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+    } else {  // runtime_inputs == 1;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    }
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
 
     const auto* tf_options =
@@ -1683,22 +1702,37 @@ class SliceOperationParser : public TFLiteOperationParser {
     if (starts.data.size() != sizes.data.size()) {
       return absl::InvalidArgumentError("Starts amount != sizes amount.");
     }
+    const auto& in_shape = input->tensor.shape;
     if (starts.data.size() == 4) {
+      sizes.data[0] =
+          sizes.data[0] != -1 ? sizes.data[0] : in_shape.b - starts.data[0];
+      sizes.data[1] =
+          sizes.data[1] != -1 ? sizes.data[1] : in_shape.h - starts.data[1];
+      sizes.data[2] =
+          sizes.data[2] != -1 ? sizes.data[2] : in_shape.w - starts.data[2];
+      sizes.data[3] =
+          sizes.data[3] != -1 ? sizes.data[3] : in_shape.c - starts.data[3];
       attr.starts =
           BHWC(starts.data[0], starts.data[1], starts.data[2], starts.data[3]);
       attr.ends =
           BHWC(starts.data[0] + sizes.data[0], starts.data[1] + sizes.data[1],
                starts.data[2] + sizes.data[2], starts.data[3] + sizes.data[3]);
     } else if (starts.data.size() == 3) {
+      sizes.data[0] =
+          sizes.data[0] != -1 ? sizes.data[0] : in_shape.h - starts.data[0];
+      sizes.data[1] =
+          sizes.data[1] != -1 ? sizes.data[1] : in_shape.w - starts.data[1];
+      sizes.data[2] =
+          sizes.data[2] != -1 ? sizes.data[2] : in_shape.c - starts.data[2];
       attr.starts = BHWC(0, starts.data[0], starts.data[1], starts.data[2]);
       attr.ends =
-          BHWC(input->tensor.shape.b, starts.data[0] + sizes.data[0],
+          BHWC(in_shape.b, starts.data[0] + sizes.data[0],
                starts.data[1] + sizes.data[1], starts.data[2] + sizes.data[2]);
     } else {
       return absl::UnimplementedError(
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
-    RETURN_IF_ERROR(UpdateIfNegative(input->tensor.shape, &attr));
+    RETURN_IF_ERROR(UpdateIfNegative(in_shape, &attr));
 
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
     if ((attr.ends.b - attr.starts.b) != out_shape.b) {
@@ -2246,6 +2280,39 @@ class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
  private:
 };
 
+class RoIToTransformMatrixV2OperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // bbox
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    std::string op_name = "roi_to_transform_matrix_v2";
+    node->operation.type = op_name;
+    BHWC output_shape;
+    RETURN_IF_ERROR(
+        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
+                              tflite_node->custom_initial_data_size,
+                              &(node->operation.attributes), &output_shape));
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape = output_shape;
+    return absl::OkStatus();
+  }
+
+ private:
+};
+
 class TransformTensorOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2265,6 +2332,43 @@ class TransformTensorOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     std::string op_name = "transform_tensor";
+    node->operation.type = op_name;
+    BHWC output_shape;
+    RETURN_IF_ERROR(
+        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
+                              tflite_node->custom_initial_data_size,
+                              &(node->operation.attributes), &output_shape));
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+
+    output_value->tensor.shape =
+        BHWC(1, output_shape.h, output_shape.w,
+             graph->FindInputs(node->id)[0]->tensor.shape.c);
+    return absl::OkStatus();
+  }
+
+ private:
+};
+
+class TransformTensorV2OperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/2, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // data
+    RETURN_IF_ERROR(reader->AddInput(node, 1));  // bbox
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    std::string op_name = "transform_tensor_v2";
     node->operation.type = op_name;
     BHWC output_shape;
     RETURN_IF_ERROR(
@@ -2556,8 +2660,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       if (custom_name == "RoIToTransformMatrix") {
         return std::make_unique<RoIToTransformMatrixOperationParser>();
       }
+      if (custom_name == "RoIToTransformMatrixV2") {
+        return std::make_unique<RoIToTransformMatrixV2OperationParser>();
+      }
       if (custom_name == "TransformTensor") {
         return std::make_unique<TransformTensorOperationParser>();
+      }
+      if (custom_name == "TransformTensorV2") {
+        return std::make_unique<TransformTensorV2OperationParser>();
       }
       if (custom_name == "TransformLandmarks") {
         return std::make_unique<TransformLandmarksOperationParser>();

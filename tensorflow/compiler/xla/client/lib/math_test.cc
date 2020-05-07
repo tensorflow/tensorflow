@@ -298,6 +298,15 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, CbrtSixValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
+  Cbrt(x);
+
+  std::vector<float> expected = {2, 1, 16, -4, 1.2, 11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.001));
+}
+
 XLA_TEST_F(MathTest, SinhSmallValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -43,7 +42,7 @@ void AffineQuantize(int scale_multiplier,
 
   const ae_p16x2s* input_data_ptr = (const ae_p16x2s*)(input_data - 2);
 
-  ae_p24x2s scale_multiplier_24x2 = AE_CONVERT_INT32_24x2(scale_multiplier);
+  ae_p24x2s scale_multiplier_24x2 = AE_MOVPA24(scale_multiplier);
 
   int iters = flat_size / 2;
   for (int i = 0; i < iters; i++) {

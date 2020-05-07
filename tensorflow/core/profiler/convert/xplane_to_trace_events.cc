@@ -72,6 +72,12 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
     xplane.ForEachLine([&](const XLineVisitor& xline) {
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
+        int64 event_type =
+            xevent.Type().value_or(HostEventType::kUnknownHostEventType);
+        if (event_type == HostEventType::kMemoryAllocation ||
+            event_type == HostEventType::kMemoryDeallocation) {
+          return;
+        }
         auto* event = trace->add_trace_events();
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);

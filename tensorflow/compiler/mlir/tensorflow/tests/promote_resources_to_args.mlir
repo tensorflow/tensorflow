@@ -145,7 +145,7 @@ func @main() -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outp
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.Less"(%2, %0) : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %4 = "tf.If"(%3, %1, %2) {Tcond = i1, Tin = ["tfdtype$DT_RESOURCE", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"],
-       else_branch = @cond_false, is_stateless = false, output_shapes = ["tfshape$"],
+       else_branch = @cond_false, is_stateless = false, output_shapes = [#tf.shape<>],
        then_branch = @cond_true} : (tensor<i1>, tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
   %5 = "tf.Identity"(%4) : (tensor<f32>) -> tensor<f32>
   %6 = "tf.Pack"(%2, %5) {N = 2 : i64, T = f32, axis = 0 : i64, device = ""} : (tensor<f32>, tensor<f32>) -> tensor<2xf32>

@@ -30,12 +30,16 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                TfLiteContext* context) {
   static int quant_bound_shape[] = {1, 1, 1, 1};
 
-  // Only axis 3 is supported.
   const TfLiteConcatenationParams* concat_params =
       reinterpret_cast<const TfLiteConcatenationParams*>(builtin_data_);
+  int concat_axis = concat_params->axis;
+  const int output_dim_size = context->tensors[outputs->data[0]].dims->size;
+  // Axis value is incremented if tensor dims are < 4 and/or axis < 0.
+  concat_axis =
+      concat_axis < 0 ? concat_axis + 4 : concat_axis + 4 - output_dim_size;
   auto* axis_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, (char*)&concat_params->axis,
-      sizeof(concat_params->axis));
+      quant_bound_shape, reinterpret_cast<char*>(&concat_axis),
+      sizeof(concat_axis));
   AddInput(TensorID(axis_const->GetID(), 0));
 
   int tensor_id;

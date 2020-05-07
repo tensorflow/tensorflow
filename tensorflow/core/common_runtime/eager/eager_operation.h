@@ -74,6 +74,8 @@ class EagerOperation : public AbstractOperationInterface {
     last_set_device_name_ = "\177";  // DEL (an invalid value)
   }
 
+  Status SetAttrValue(const char* attr_name, const AttrValue& value);
+
   Status AddInput(AbstractTensorHandleInterface* input) override;
   Status AddInputList(
       absl::Span<AbstractTensorHandleInterface*> inputs) override;
