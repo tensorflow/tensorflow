@@ -70,3 +70,13 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
     ],
 )
+
+tf_py_test(
+    name = "gradient_checkpoint_test",
+    srcs = ["gradient_checkpoint_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
