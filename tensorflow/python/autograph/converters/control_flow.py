@@ -32,6 +32,7 @@ from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.autograph.utils import compat_util
 
 
@@ -554,7 +555,8 @@ def transform(node, ctx):
   graphs = cfg.build(node)
   node = qual_names.resolve(node)
   node = activity.resolve(node, ctx, None)
-  node = reaching_definitions.resolve(node, ctx, graphs, AnnotatedDef)
+  node = reaching_definitions.resolve(node, ctx, graphs)
+  node = reaching_fndefs.resolve(node, ctx, graphs)
   node = liveness.resolve(node, ctx, graphs)
 
   node = ControlFlowTransformer(ctx).visit(node)
