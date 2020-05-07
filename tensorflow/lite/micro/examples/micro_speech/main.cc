@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if 1
 #include "tensorflow/lite/micro/examples/micro_speech/main_functions.h"
 
 // This is the default main used on systems that have the standard C entry
@@ -26,4 +25,3 @@ int main(int argc, char* argv[]) {
     loop();
   }
 }
-#endif

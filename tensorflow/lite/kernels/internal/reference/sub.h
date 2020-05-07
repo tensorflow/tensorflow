@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SUB_H_
 
 #include "fixedpoint/fixedpoint.h"
-//#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
@@ -71,7 +71,7 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const float* input2_data,
                              const RuntimeShape& output_shape,
                              float* output_data) {
-  //ruy::profiler::ScopeLabel label("BroadcastSubSlow/float");
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/float");
   TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
@@ -111,7 +111,7 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const uint8* input2_data,
                              const RuntimeShape& output_shape,
                              uint8* output_data) {
-  //ruy::profiler::ScopeLabel label("BroadcastSubSlow/uint8");
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/uint8");
   TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
@@ -168,7 +168,7 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const int32* input2_data,
                              const RuntimeShape& output_shape,
                              int32* output_data) {
-  //ruy::profiler::ScopeLabel label("BroadcastSubSlow/int32");
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/int32");
   TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
@@ -208,7 +208,7 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const int8_t* input2_data,
                              const RuntimeShape& output_shape,
                              int8_t* output_data) {
-  //ruy::profiler::ScopeLabel label("BroadcastSubSlow/int8");
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/int8");
   NdArrayDesc<N> desc1;
   NdArrayDesc<N> desc2;
   NdArrayDesc<N> output_desc;
@@ -259,7 +259,7 @@ void BroadcastSubSlow(const ArithmeticParams& params,
                       const RuntimeShape& input1_shape, const T* input1_data,
                       const RuntimeShape& input2_shape, const T* input2_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  //ruy::profiler::ScopeLabel label("BroadcastSubSlow/templated");
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/templated");
   TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
@@ -435,7 +435,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
-  //ruy::profiler::ScopeLabel label("SubWithActivation");
+  ruy::profiler::ScopeLabel label("SubWithActivation");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {

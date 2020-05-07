@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 
-#if 0
+
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/debug_log.h"
@@ -270,4 +270,3 @@ TF_LITE_MICRO_TESTS_END
 
 
 
-#endif
