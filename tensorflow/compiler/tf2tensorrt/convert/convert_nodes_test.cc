@@ -3129,11 +3129,13 @@ TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
       TestParamBase{
           {1, 2, 1, 3},  // input dims
           {},            // input partial dims
-          {2, 1, 3},     // expected output dims
+          {2, 3},        // expected output dims
           {},            // axis
-          Status{
-              error::UNIMPLEMENTED,
-              "Squeeze is only implemented for explicit dims, at my_squeeze"}},
+          trt_mode == TrtTestMode::kExplicitBatch
+              ? Status::OK()
+              : Status{error::UNIMPLEMENTED,
+                       "Squeeze is not implemented for empty squeeze_dims, at "
+                       "my_squeeze"}},
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},

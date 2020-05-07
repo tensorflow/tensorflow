@@ -149,13 +149,17 @@ xla::StatusOr<InputBuffers> GetChainedOpInputs(
 xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     OpKernelContext* context, XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed, int replica_id) {
+    se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(device_ref->backend()->memory_allocator());
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
+  if (config.run_id() != 0) {
+    run_options.set_run_id(xla::RunId(config.run_id()));
+  }
   if (executable->executable()
           ->module_config()
           .has_static_device_assignment()) {
@@ -164,8 +168,11 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   }
   xla::GpuExecutableRunOptions gpu_options;
   std::vector<xla::GlobalDeviceId> gpu_global_ids;
-  if (replica_id >= 0) {
-    gpu_global_ids.emplace_back(replica_id);
+  if (config.local_replica_mapping_size() > 0) {
+    gpu_global_ids.reserve(config.local_replica_mapping_size());
+    for (auto& gid : config.local_replica_mapping()) {
+      gpu_global_ids.emplace_back(xla::GlobalDeviceId(gid));
+    }
     gpu_options.set_gpu_global_device_ids(gpu_global_ids);
   }
   std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
@@ -222,10 +229,11 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     OpKernelContext* context, XRTMemoryManager* memory_manager,
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
-    se::Stream* stream, int rng_seed, int replica_id) {
+    se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   auto runfn = [&]() {
     return RunExecutable(context, device_ref, executable, input_buffers, stream,
-                         rng_seed, replica_id);
+                         rng_seed, config);
   };
 
   // We pass zero as requested_free_size as there is no simple way to get the
@@ -241,14 +249,15 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
-    se::Stream* stream, int rng_seed, int replica_id) {
+    se::Stream* stream, int rng_seed,
+    const xrt::CommonExecutionConfig& config) {
   XRTMemoryManager::WorkingSet working_set(memory_manager);
   TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
                       GetInputBuffers(&working_set, device_ref->backend(),
                                       input_coords, release_inputs));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
                             executable, input_buffers, stream, rng_seed,
-                            replica_id);
+                            config);
 }
 
 // XRTExecuteOp
@@ -297,8 +306,9 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   bool release_inputs = config_proto.release_input_handles();
   bool release_compilation = config_proto.release_compilation_handle();
 
-  TF_ASSIGN_OR_RETURN(
-      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
+  TF_ASSIGN_OR_RETURN(auto cache,
+                      XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+                          context, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
@@ -330,7 +340,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       RefPtr<XRTTupleAllocation> output_tuple,
       ExecuteComputation(context, memory_manager, &device_ref, executable,
                          input_coords, release_inputs, stream, rng_seed,
-                         config_proto.replica_id()));
+                         config_proto.common_config()));
 
   return CreateExecuteOutput(context, memory_manager.get(),
                              std::move(output_tuple),
@@ -379,8 +389,9 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   xrt::XRTChainedExecuteConfig config;
   TF_RET_CHECK(ParseFromTString(execution_config.scalar<tstring>()(), &config));
 
-  TF_ASSIGN_OR_RETURN(
-      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
+  TF_ASSIGN_OR_RETURN(auto cache,
+                      XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+                          context, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
@@ -408,7 +419,7 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
 
     return ExecuteComputation(context, memory_manager.get(), &device_ref,
                               executable, input_buffers, stream, rng_seed,
-                              config.replica_id());
+                              config.common_config());
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),

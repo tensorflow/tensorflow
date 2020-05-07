@@ -2413,26 +2413,19 @@ Status ConvertExpandDims(OpConverterParams* params) {
 }
 
 Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
-                                const std::vector<int>& trt_axes,
+                                std::vector<int>* input_dims,
                                 nvinfer1::ITensor** output) {
-  const nvinfer1::Dims dims = input->getDimensions();
-  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Mark axes to remove by setting them to 0.
-  for (int axis : trt_axes) {
-    input_dims[axis] = 0;
-  }
-
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
   // value.
-  if (absl::c_any_of(input_dims, [](int i) { return i == -1; })) {
+  if (absl::c_any_of(*input_dims, [](int i) { return i == -1; })) {
     nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
     std::vector<nvinfer1::ITensor const*> concat_inputs;
-    for (int i = 0; i < input_dims.size(); i++) {
+    for (int i = 0; i < input_dims->size(); i++) {
       // If input dim wasn't set to 0 earlier, we include it in new shape.
-      if (input_dims[i] != 0) {
+      if (input_dims->at(i) != 0) {
         concat_inputs.push_back(
             network()
                 ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
@@ -2452,11 +2445,12 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   }
 #endif
   // Remove all dims which are equal to 0.
-  input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
-                   input_dims.end());
+  input_dims->erase(std::remove(input_dims->begin(), input_dims->end(), 0),
+                    input_dims->end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
+  VLOG(2) << "input_dims" << input_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(*input_dims, &new_dims));
   TF_RETURN_IF_ERROR(PrepareTensorForShape(TRT_TensorOrWeights(input), new_dims,
                                            /*validation_only=*/false, output));
   return Status::OK();
@@ -2475,31 +2469,48 @@ Status ConvertSqueeze(OpConverterParams* params) {
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
   if (squeeze_dims.empty()) {
-    return errors::Unimplemented(
-        "Squeeze is only implemented for explicit dims, at ", node_def.name());
-  }
-  std::vector<int> trt_axes;
-  trt_axes.reserve(squeeze_dims.size());
-  for (int tf_axis : squeeze_dims) {
-    // If the axis is valid, then convert it to TRT axis, otherwise abort
-    // conversion.
-    int trt_axis;
-    TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                   params->use_implicit_batch, &trt_axis));
-    // Make sure target dimension is size 1 or unknown size (-1)
-    if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
-      return errors::InvalidArgument(
-          "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
-          " cannot be squeezed because it must be size 1, at ",
+    if (params->use_implicit_batch || !HasStaticShape(dims)) {
+      return errors::Unimplemented(
+          "Squeeze is not implemented for empty squeeze_dims, at ",
           node_def.name());
+    } else {
+      // explicit batch mode with static input shape we squeeze all singleton
+      // dimensions
+      for (int& dim : input_dims) {
+        if (dim == 1) {
+          // Mark it for removal by setting it to 0
+          dim = 0;
+        }
+      }
     }
-    trt_axes.push_back(trt_axis);
+  } else {
+    std::vector<int> trt_axes;
+    trt_axes.reserve(squeeze_dims.size());
+    for (int tf_axis : squeeze_dims) {
+      // If the axis is valid, then convert it to TRT axis, otherwise abort
+      // conversion.
+      int trt_axis;
+      TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
+                                     params->use_implicit_batch, &trt_axis));
+      // Make sure target dimension is size 1 or unknown size (-1)
+      if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
+        return errors::InvalidArgument(
+            "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
+            " cannot be squeezed because it must be size 1, at ",
+            node_def.name());
+      }
+      trt_axes.push_back(trt_axis);
+    }
+    // Mark axes to remove by setting them to 0.
+    for (int axis : trt_axes) {
+      input_dims[axis] = 0;
+    }
   }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      input_tensor.tensor(), trt_axes, &output_tensor));
+      input_tensor.tensor(), &input_dims, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }

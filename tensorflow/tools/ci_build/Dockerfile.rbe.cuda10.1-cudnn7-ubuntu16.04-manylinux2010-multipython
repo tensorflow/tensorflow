@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
       flex \
       g++ \
       make \
-      patchelf \
       rpm2cpio \
       unar \
       wget \

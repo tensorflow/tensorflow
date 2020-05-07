@@ -3235,6 +3235,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "memory_space_propagation",
+    srcs = ["memory_space_propagation.cc"],
+    hdrs = ["memory_space_propagation.h"],
+    deps = [
+        ":hlo",
+        ":hlo_dataflow_analysis",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "memory_space_propagation_test",
+    srcs = ["memory_space_propagation_test.cc"],
+    deps = [
+        ":hlo_parser",
+        ":memory_space_propagation",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_dce",
     srcs = ["hlo_dce.cc"],
     hdrs = ["hlo_dce.h"],

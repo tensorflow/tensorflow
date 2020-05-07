@@ -401,7 +401,8 @@ class TFLiteConverterBase(object):
       if not self._contains_function_with_implements_attr(saved_model_proto):
         self.saved_model_dir = None
       else:
-        self._saved_model_exported_names = []
+        if not self._saved_model_exported_names:
+          self._saved_model_exported_names = []
         self._saved_model_version = saved_model_proto.saved_model_schema_version
         if self._saved_model_version not in [1, 2]:
           raise ValueError(
@@ -760,6 +761,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
       signature_keys = saved_model.signatures
+
+    if len(signature_keys) != 1:
+      raise ValueError("Only support a single signature key.")
 
     funcs = []
     for key in signature_keys:
