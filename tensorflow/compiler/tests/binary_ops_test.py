@@ -73,8 +73,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self.assertAllCloseAccordingToType(
           result[i], expected[i], rtol=rtol, atol=atol)
 
-  @test_util.disable_mlir_bridge(
-      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatOps(self):
     for dtype in self.float_types:
       if dtype == dtypes.bfloat16.as_numpy_dtype:

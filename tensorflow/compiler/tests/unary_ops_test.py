@@ -186,8 +186,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._assertOpOutputMatchesExpected(
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Softmax compilation")
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)
@@ -513,6 +511,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   ],
               ],
               dtype=dtype))
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
+  def testQuantizeAndDequantize(self):
+    for dtype in self.float_types:
 
       def quantize_and_dequantize_v2(x):
         return array_ops.quantize_and_dequantize_v2(
