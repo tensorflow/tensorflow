@@ -469,15 +469,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     save(root, save_dir, {'add': add_func, 'sub': sub_func})
 
-    # Ensure the converter generates.
-    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
-    self.assertLen(converter._funcs, 2)
-
     # Try converting multiple functions.
     with self.assertRaises(ValueError) as error:
-      _ = converter.convert()
-    self.assertIn('This converter can only convert a single ConcreteFunction',
-                  str(error.exception))
+      _ = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    self.assertIn('Only support a single signature key.', str(error.exception))
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):
@@ -487,12 +482,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     save(root, save_dir)
 
-    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
-    self.assertLen(converter._funcs, 0)
-
     with self.assertRaises(ValueError) as error:
-      _ = converter.convert()
-    self.assertIn('No ConcreteFunction is specified.', str(error.exception))
+      _ = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    self.assertIn('Only support a single signature key.', str(error.exception))
 
   @test_util.run_v2_only
   def testKerasSequentialModel(self):
