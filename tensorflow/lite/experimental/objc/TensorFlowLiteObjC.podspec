@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.1.0'
+  s.version          = '2.2.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
@@ -24,8 +24,8 @@ Pod::Spec.new do |s|
   s.public_header_files = objc_dir + 'apis/*.h'
   s.source_files = [
     objc_dir + '{apis,sources}/*.{h,m,mm}',
-    tfl_dir + 'experimental/c/c_api.h',
-    tfl_dir + 'experimental/c/c_api_types.h',
+    tfl_dir + 'c/c_api.h',
+    tfl_dir + 'c/common.h',
   ]
   s.module_map = objc_dir + 'apis/framework.modulemap'
   s.dependency 'TensorFlowLiteC', "#{s.version}"

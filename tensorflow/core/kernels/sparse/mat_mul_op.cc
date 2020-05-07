@@ -723,49 +723,53 @@ namespace functor {
 
 namespace {
 
-// CUDADataType<T>::type translates from a C++ type (e.g. float) to a
-// cudaDataType_t (e.g. CUDA_R_32F).
+// GPUDataType<T>::type translates from a C++ type (e.g. float) to a
+// GPUDataType_t (e.g. CUDA_R_32F).
 template <typename T>
-struct CUDADataType;
+struct GPUDataType;
 
 template <>
-struct CUDADataType<Eigen::half> {
+struct GPUDataType<Eigen::half> {
+#if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_16F;
+#elif TENSORFLOW_USE_ROCM
+  static constexpr hipblasDataType_t type = HIPBLAS_R_16F;
+#endif
 };
 
 template <>
-struct CUDADataType<float> {
+struct GPUDataType<float> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_32F;
 #elif TENSORFLOW_USE_ROCM
-  static constexpr cudaDataType_t type = HIPBLAS_R_32F;
+  static constexpr hipblasDataType_t type = HIPBLAS_R_32F;
 #endif
 };
 
 template <>
-struct CUDADataType<std::complex<float>> {
+struct GPUDataType<std::complex<float>> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_C_32F;
 #elif TENSORFLOW_USE_ROCM
-  static constexpr cudaDataType_t type = HIPBLAS_C_32F;
+  static constexpr hipblasDataType_t type = HIPBLAS_C_32F;
 #endif
 };
 
 template <>
-struct CUDADataType<double> {
+struct GPUDataType<double> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_64F;
 #elif TENSORFLOW_USE_ROCM
-  static constexpr cudaDataType_t type = HIPBLAS_R_64F;
+  static constexpr hipblasDataType_t type = HIPBLAS_R_64F;
 #endif
 };
 
 template <>
-struct CUDADataType<std::complex<double>> {
+struct GPUDataType<std::complex<double>> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_C_64F;
 #elif TENSORFLOW_USE_ROCM
-  static constexpr cudaDataType_t type = HIPBLAS_C_64F;
+  static constexpr hipblasDataType_t type = HIPBLAS_C_64F;
 #endif
 };
 
@@ -842,14 +846,14 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
           const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
           CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
-          CUDADataType<T>::type));
+          GPUDataType<T>::type));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseCreateDnMat(&matB, n, k, ldb, const_cast<T*>(b.data()),
-                              CUDADataType<T>::type, CUSPARSE_ORDER_COL));
+                              GPUDataType<T>::type, CUSPARSE_ORDER_COL));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          cusparseCreateDnMat(&matC, m, n, ldc, c.data(), CUDADataType<T>::type,
+          cusparseCreateDnMat(&matC, m, n, ldc, c.data(), GPUDataType<T>::type,
                               CUSPARSE_ORDER_COL));
 
       size_t bufferSize = 0;

@@ -100,7 +100,8 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
             xevent.AddStatValue(*metadata, point->bool_value);
             break;
           case monitoring::ValueType::kString:
-            xevent.AddStatValue(*metadata, point->string_value);
+            xevent.AddStatValue(*metadata, *xplane.GetOrCreateStatMetadata(
+                                               point->string_value));
             break;
           case monitoring::ValueType::kHistogram:
             xevent.AddStatValue(*metadata,

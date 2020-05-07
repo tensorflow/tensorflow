@@ -34,11 +34,13 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor);
 
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
                               const std::vector<int32_t>& shape,
+                              const std::vector<int32_t>& shape_signature,
                               const TensorType& type, float scale,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor);

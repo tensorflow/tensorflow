@@ -419,6 +419,19 @@ TfLiteStatus MicroAllocator::Init() {
   return kTfLiteOk;
 }
 
+size_t MicroAllocator::used_bytes() const {
+  if (active_) {
+    return 0;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter_, "Total buffer usage: %d bytes",
+                       memory_allocator_->GetUsedBytes());
+  TF_LITE_REPORT_ERROR(error_reporter_, "Head usage: %d bytes",
+                       memory_allocator_->GetHeadUsedBytes());
+  TF_LITE_REPORT_ERROR(error_reporter_, "Tail usage: %d bytes",
+                       memory_allocator_->GetTailUsedBytes());
+  return memory_allocator_->GetUsedBytes();
+}
+
 MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                uint8_t* tensor_arena, size_t arena_size,
                                ErrorReporter* error_reporter)

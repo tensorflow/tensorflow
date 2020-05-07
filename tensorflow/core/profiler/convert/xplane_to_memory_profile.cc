@@ -161,16 +161,16 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
         } else if (stat.Type() == StatType::kAddress) {
           metadata.address = stat.IntValue();
         } else if (stat.Type() == StatType::kTfOp) {
-          metadata.tf_op_name = stat.StrValue();
+          metadata.tf_op_name = stat.StrOrRefValue();
         } else if (stat.Type() == StatType::kStepId) {
           metadata.step_id = stat.IntValue();
           if (metadata.step_id != 0) (*step_count)[metadata.step_id]++;
         } else if (stat.Type() == StatType::kRegionType) {
-          metadata.region_type = stat.StrValue();
+          metadata.region_type = stat.StrOrRefValue();
         } else if (stat.Type() == StatType::kDataType) {
           metadata.data_type = stat.IntValue();
         } else if (stat.Type() == StatType::kTensorShapes) {
-          metadata.tensor_shape = stat.StrValue();
+          metadata.tensor_shape = stat.StrOrRefValue();
         }
       });
 
