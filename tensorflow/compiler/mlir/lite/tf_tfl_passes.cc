@@ -73,14 +73,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   }
 
+  if (pass_config.shape_inference) {
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
+  // Keep this pass after the shape inference pass, which couldn't do shape
+  // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
     pass_manager->addPass(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
-  }
-
-  if (pass_config.shape_inference) {
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
   // The conversion pipeline has to follow the following orders:
