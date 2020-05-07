@@ -21,7 +21,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -33,7 +32,6 @@ tf_export("data.experimental.UNKNOWN_CARDINALITY").export_constant(
     __name__, "UNKNOWN")
 
 
-@deprecation.deprecated(None, "Use `tf.data.Dataset.cardinality()")
 @tf_export("data.experimental.cardinality")
 def cardinality(dataset):
   """Returns the cardinality of `dataset`, if known.

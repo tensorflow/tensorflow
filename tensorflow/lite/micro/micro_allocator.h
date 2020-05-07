@@ -91,12 +91,7 @@ class MicroAllocator {
 
   // Returns the arena usage in bytes, only available after
   // `FinishTensorAllocation`. Otherwise, it will return 0.
-  size_t used_bytes() const {
-    if (active_) {
-      return 0;
-    }
-    return memory_allocator_->GetUsedBytes();
-  }
+  size_t used_bytes() const;
 
   // Run through the model to allocate nodes and registrations. We need to keep
   // them for the entire life time of the model to allow persistent tensors.

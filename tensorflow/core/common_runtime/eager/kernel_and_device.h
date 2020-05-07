@@ -66,16 +66,16 @@ class EagerKernelArgs : public FunctionArgsInterface {
 
   ~EagerKernelArgs() override{};
 
-  bool HasRemoteInputs() const override { return false; };
+  bool HasRemoteOrPackedInputs() const override { return false; };
   TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
-  Status GetLocalArg(const int index, Tensor* val) const override;
+  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
 
   std::vector<Tensor> GetLocalTensors() const override;
 
-  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const override {
+  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const {
     return &tensor_args_;
-  };
+  }
 
  protected:
   gtl::InlinedVector<TensorValue, 4> tensor_args_;

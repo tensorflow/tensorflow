@@ -58,6 +58,7 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
         "tf_status_helper.h",
@@ -85,6 +86,13 @@ tf_cuda_library(
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//tensorflow:chromiumos": [
+            ":tf_attrtype",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core/platform:platform",
         ],
         "//conditions:default": [
             ":tf_attrtype",
@@ -532,6 +540,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since

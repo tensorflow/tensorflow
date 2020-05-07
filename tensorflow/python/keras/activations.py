@@ -497,4 +497,4 @@ def get(identifier):
   else:
     raise TypeError(
         'Could not interpret activation function identifier: {}'.format(
-            repr(identifier)))
+            identifier))

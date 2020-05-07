@@ -49,13 +49,6 @@ class DatasetCardinalityOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class DatasetCardinalityV2Op : public OpKernel {
- public:
-  explicit DatasetCardinalityV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override;
-};
-
 class DatasetFromGraphOp : public OpKernel {
  public:
   static constexpr const char* const kGraphDef = "graph_def";

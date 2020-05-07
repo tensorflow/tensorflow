@@ -660,10 +660,53 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertIsNone(json["output_tensor_ids"])
     self.assertIsNone(json["debug_tensor_values"])
 
+  def testDebuggedDeviceToJons(self):
+    debugged_device = debug_events_reader.DebuggedDevice("/TPU:3", 4)
+    self.assertEqual(debugged_device.to_json(), {
+        "device_name": "/TPU:3",
+        "device_id": 4,
+    })
+
+  def testDebuggedGraphToJonsWitouthNameInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        None,
+        "b1c2",
+        outer_graph_id=None,
+    )
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": None,
+            "graph_id": "b1c2",
+            "outer_graph_id": None,
+            "inner_graph_ids": [],
+        })
+
+  def testDebuggedGraphToJonsWithNameAndInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        "loss_function",
+        "b1c2",
+        outer_graph_id="a0b1",
+    )
+    debugged_graph.add_inner_graph_id("c2d3")
+    debugged_graph.add_inner_graph_id("c2d3e4")
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": "loss_function",
+            "graph_id": "b1c2",
+            "outer_graph_id": "a0b1",
+            "inner_graph_ids": ["c2d3", "c2d3e4"],
+        })
+
   def testGraphOpCreationDigestNoInputNoDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
-        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
-        [135], input_names=None, device_name=None)
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2", [135],
+        "machine.cluster", ("a1", "a2"),
+        input_names=None,
+        device_name=None)
     json = op_creation_digest.to_json()
     self.jsonRoundTripCheck(json)
     self.assertEqual(json["wall_time"], 1234)
@@ -671,13 +714,21 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertEqual(json["op_type"], "FooOp")
     self.assertEqual(json["op_name"], "Model_1/Foo_2")
     self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertEqual(json["host_name"], "machine.cluster")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "a2"))
     self.assertIsNone(json["input_names"])
     self.assertIsNone(json["device_name"])
 
   def testGraphOpCreationDigestWithInputsAndDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
-        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
-        [135], input_names=["Bar_1", "Qux_2"], device_name="/device:GPU:0")
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2", [135],
+        "machine.cluster", ("a1", "a2"),
+        input_names=["Bar_1", "Qux_2"],
+        device_name="/device:GPU:0")
     json = op_creation_digest.to_json()
     self.jsonRoundTripCheck(json)
     self.assertEqual(json["wall_time"], 1234)
@@ -685,6 +736,8 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertEqual(json["op_type"], "FooOp")
     self.assertEqual(json["op_name"], "Model_1/Foo_2")
     self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertEqual(json["host_name"], "machine.cluster")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "a2"))
     self.assertEqual(json["input_names"], ("Bar_1", "Qux_2"))
     self.assertEqual(json["device_name"], "/device:GPU:0")
 

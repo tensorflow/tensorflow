@@ -146,6 +146,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "xplane_builder_test",
+    size = "small",
+    srcs = ["xplane_builder_test.cc"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_visitor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "xplane_schema",
     srcs = ["xplane_schema.cc"],

@@ -168,6 +168,12 @@ class DeviceTarget {
       quant::QuantizedMultipliers* output_multipliers,
       quant::QuantizedRanges* output_ranges);
 
+  // For "reshape" type of kernels.
+  static LogicalResult DecomposeSameScale(
+      Operation* op, quant::QuantizedMultipliers* input_multipliers,
+      quant::QuantizedMultipliers* output_multipliers,
+      quant::QuantizedRanges* output_ranges);
+
   // A set of parameters are required to build the signatures.
   FloatType f32_;
   IntegerType i8_, i32_;

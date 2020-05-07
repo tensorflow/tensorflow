@@ -100,6 +100,7 @@ enum HostEventType {
   kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
+  kIteratorGetNextAsOptionalOp,
   // Virtual events for grouping.
   kHostTrainingLoopIteration,
   kAsyncExecutorTraceContext,

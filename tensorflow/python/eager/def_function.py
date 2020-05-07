@@ -632,10 +632,14 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
+        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
+        # check.
         if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError("Attempting to use experimental_compile, "
-                           "but XLA support is not linked in. "
-                           "Rebuild with --define=with_xla_support=true.")
+          raise ValueError(
+              "Attempting to use experimental_compile, "
+              "but XLA support is not linked in. "
+              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
+              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(

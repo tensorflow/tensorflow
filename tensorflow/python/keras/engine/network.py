@@ -51,7 +51,6 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
@@ -60,9 +59,11 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-import-not-at-top
@@ -426,10 +427,6 @@ class Network(base_layer.Layer):
     self._is_graph_network = False
     self.inputs = None
     self.outputs = None
-    # Since we don't know whether the subclass model support ragged inputs,
-    # we leave it as True, otherwise the layer will raise error when a ragged
-    # tensor is called as input.
-    self._supports_ragged_inputs = True
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -529,8 +526,15 @@ class Network(base_layer.Layer):
         layer.reset_states()
 
   @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='This property should not be used in TensorFlow 2.0, '
+      'as updates are applied automatically.')
+  @doc_controls.do_not_generate_docs
   def state_updates(self):
-    """Returns the `updates` from all layers that are stateful.
+    """Deprecated, do NOT use!
+
+    Returns the `updates` from all layers that are stateful.
 
     This is useful for separating training updates and
     state updates, e.g. when we need to update a layer's internal state
@@ -1398,8 +1402,6 @@ class Network(base_layer.Layer):
                         'Note that input tensors are '
                         'instantiated via `tensor = tf.keras.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
-      if isinstance(x, ragged_tensor.RaggedTensor):
-        self._supports_ragged_inputs = True
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [

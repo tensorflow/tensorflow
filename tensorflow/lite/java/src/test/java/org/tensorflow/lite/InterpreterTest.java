@@ -266,10 +266,23 @@ public final class InterpreterTest {
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 
+      // Resize tensor with strict checking. Try invalid resize.
+      inputDims[2] = 5;
+      try {
+        interpreter.resizeInput(0, inputDims, true);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "ResizeInputTensorStrict only allows mutating unknown dimensions identified by -1");
+      }
+      inputDims[2] = 3;
+
       // Set the dimension of the unknown dimension to the expected dimension and ensure shape
       // signature doesn't change.
       inputDims[1] = 3;
-      interpreter.resizeInput(0, inputDims);
+      interpreter.resizeInput(0, inputDims, true);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 

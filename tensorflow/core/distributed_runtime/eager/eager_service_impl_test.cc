@@ -500,11 +500,11 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         : EagerKernelArgs(std::move(tensor_args)),
           serialize_remote_handle_(std::move(serialize_remote_handle)) {}
 
-    bool HasRemoteInputs() const override { return true; }
+    bool HasRemoteOrPackedInputs() const override { return true; }
 
-    Status GetRemoteArg(const int index,
+    Status GetRemoteArg(const FunctionArgIndex& index,
                         eager::RemoteTensorHandle* val) const override {
-      return serialize_remote_handle_(index, val);
+      return serialize_remote_handle_(index.index, val);
     }
 
    private:
@@ -562,7 +562,14 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
-        /*thread_pool=*/nullptr, eager_cluster_flr_.get());
+        /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
+        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        Rendezvous::Factory{[this](const int64 step_id,
+                                   const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          return Status::OK();
+        }});
   }
 
   void CheckOutputTensorAndClose(const Tensor& tensor) {

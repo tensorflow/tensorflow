@@ -1078,7 +1078,7 @@ def _partition_outer_dimension(value, row_partition):
     new_shape = array_ops.concat(
         [[row_partition.nrows(),
           row_partition.uniform_row_length()],
-         array_ops.shape(value, out_type=row_partition.dtype)[2:]],
+         array_ops.shape(value, out_type=row_partition.dtype)[1:]],
         axis=0)
     return array_ops.reshape(value, new_shape)
   elif isinstance(value, (ops.Tensor, ragged_tensor.RaggedTensor)):

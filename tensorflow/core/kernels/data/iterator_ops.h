@@ -69,14 +69,9 @@ class IteratorResource : public ResourceBase {
   // Creates an iterator for `dataset`, and associates the iterator with this
   // iterator resource.
   //
-  // The `job_token` will be passed through the IteratorContext when
-  // creating the iterator. This token is used to read from a tf.data service
-  // job.
-  //
   // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
   // or `Restore`.
-  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset,
-                                JobToken job_token);
+  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
 
@@ -229,11 +224,13 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) override;
 };
 
-class DeleteIteratorOp : public OpKernel {
+class DeleteIteratorOp : public HybridAsyncOpKernel {
  public:
-  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {

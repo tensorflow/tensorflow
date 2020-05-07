@@ -199,6 +199,10 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     # - 4 from activity regularizers on the shared_dense layer.
     self.assertLen(model.losses, 9)
 
+  def test_deserialization_error(self):
+    with self.assertRaisesRegex(ValueError, 'Could not interpret regularizer'):
+      keras.regularizers.get(0)
+
 
 if __name__ == '__main__':
   test.main()

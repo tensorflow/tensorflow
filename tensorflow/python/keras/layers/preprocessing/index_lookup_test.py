@@ -21,6 +21,7 @@ from __future__ import print_function
 import itertools
 import os
 import random
+import six
 import string
 
 from absl.testing import parameterized
@@ -396,7 +397,7 @@ class CategoricalEncodingAdaptTest(
 
     ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
                                             tensor_shape.TensorShape([]))
-    batched_ds = ds.take(100).batch(1)
+    batched_ds = ds.take(2)
     input_t = keras.Input(shape=(), dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=10, num_oov_tokens=0, reserve_zero=False)
@@ -505,6 +506,13 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_get_vocab_returns_str(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    layer = get_layer_class()(vocabulary=vocab_data)
+    layer_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, layer_vocab)
+    self.assertIsInstance(layer_vocab[0], six.text_type)
 
   def test_int_output_explicit_vocab_from_file(self):
     vocab_list = ["earth", "wind", "and", "fire"]

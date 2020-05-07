@@ -256,6 +256,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
+// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
+// at head/tail of TPU cluster to run before/after TPU computation.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUExtractHeadTailOutsideCompilationPass();
+
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUExtractOutsideCompilationPass();

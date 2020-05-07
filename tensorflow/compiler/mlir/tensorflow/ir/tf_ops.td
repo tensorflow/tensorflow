@@ -626,29 +626,6 @@ def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
   TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
 }
 
-def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", []> {
-  let summary = "An op that receives embedding activations on the TPU.";
-
-  let description = [{
-The TPU system performs the embedding lookups and aggregations specified by
-the arguments to TPUEmbeddingEnqueue(Integer/Sparse/SparseTensor)Batch. The
-results of these aggregations are visible to the Tensorflow Graph as the
-outputs of a RecvTPUEmbeddingActivations op. This op returns a list containing
-one Tensor of activations per table specified in the model. There can be at
-most one RecvTPUEmbeddingActivations op in the TPU graph.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Variadic<F32Tensor>:$outputs
-  );
-
-  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
-}
-
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
 def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
@@ -678,6 +655,65 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
+// Multiple variadic operands with different sizes are not supported by the
+// dialect generator, so we manually added the op.
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let description = [{
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+
+gradients: A TensorList of gradients with which to update embedding tables.
+learning_rates: A TensorList of learning rates used for updating the embedding
+    tables via the optimizer. The length of the TensorList must be equal to the
+    number of dynamic learning rate tags specified in the
+    TPUEmbeddingConfiguration proto.
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements. Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_INT32) for embedding lookup or weights (DT_FLOAT) to
+    apply to the output of the embedding lookup operation.
+config: Serialized TPUEmbeddingConfiguration proto.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$gradients,
+    Variadic<TF_Tensor>:$learning_rates,
+    TF_VariantTensor:$deduplication_data,
+    StrAttr:$config
+  );
+
+  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
+}
+
+// Updated the op description text from the auto-generated op definition.
+def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
+  let summary = [{
+Receives deduplication data (indices and weights).
+  }];
+
+  let description = [{
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements. Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_INT32) for
+embedding lookup or weights (DT_FLOAT) to apply to the output of the embedding
+lookup operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output
+  );
 }
 
 def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
@@ -740,5 +776,134 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
+
+//===----------------------------------------------------------------------===//
+// tf.data ops
+//===----------------------------------------------------------------------===//
+
+def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that batches `batch_size` elements from `input_dataset`.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$batch_size,
+    I1Tensor:$drop_remainder,
+
+    DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
+def TF_MapDatasetOp : TF_Op<"MapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_MapAndBatchDatasetOp : TF_Op<"MapAndBatchDataset", [NoSideEffect]> {
+  let summary = "Creates a dataset that fuses mapping with batching.";
+
+  let description = [{
+Creates a dataset that applies `f` to the outputs of `input_dataset` and then
+batches `batch_size` of them.
+
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `batch_size * num_parallel_batches` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I64Tensor:$batch_size,
+    I64Tensor:$num_parallel_calls,
+    I1Tensor:$drop_remainder,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let description = [{
+    Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes
+    up to `num_parallel_calls` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I32Tensor:$num_parallel_calls,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$sloppy,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
+  let summary = [{
+    Creates a dataset that emits each dim-0 slice of `components` once.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
 
 #endif // TF_OPS

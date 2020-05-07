@@ -967,13 +967,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
   @combinations.generate(combinations.keras_mode_combinations())
   def test_composite_call_kwarg_derived_from_keras_layer(self):
 
-    # Create a test layer that accepts composite tensor inputs (note the
-    # 'supports_ragged_inputs = True' in the init method.)
+    # Create a test layer that accepts composite tensor inputs.
     class MaybeAdd(layers.Layer):
-
-      def __init__(self, **kwargs):
-        super(MaybeAdd, self).__init__(**kwargs)
-        self._supports_ragged_inputs = True
 
       def call(self, x1, x2=None):
         # We need to convert this to a tensor for loss calculations -

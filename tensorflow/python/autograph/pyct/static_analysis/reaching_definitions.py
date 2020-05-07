@@ -45,10 +45,12 @@ class Definition(object):
 
   Attributes:
     param_of: Optional[ast.AST]
+    directives: Dict, optional definition annotations
   """
 
   def __init__(self):
     self.param_of = None
+    self.directives = {}
 
   def __repr__(self):
     return '%s[%d]' % (self.__class__.__name__, id(self))
@@ -274,7 +276,7 @@ class TreeAnnotator(transformer.Base):
     return node
 
 
-def resolve(node, source_info, graphs, definition_factory):
+def resolve(node, source_info, graphs, definition_factory=Definition):
   """Resolves reaching definitions for each symbol.
 
   Args:

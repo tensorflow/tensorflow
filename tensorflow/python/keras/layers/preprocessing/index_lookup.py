@@ -85,7 +85,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     mask_zero: If True, input values of 0 (for integers) and `""` (for strings)
       will be treated as masked values and assigned an output value of 0. If
       this option is set, `reserve_zero` must also be set. Defaults to False.
-
   Call arguments:
     inputs: The data to look up. Can be a tf.Tensor or RaggedTensor.
     invert: Controls the lookup direction. If False, the layer will map strings
@@ -149,9 +148,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     super(IndexLookup, self).__init__(
         combiner=_IndexLookupCombiner(self.max_tokens), **kwargs)
-
-    # This layer supports RaggedTensor inputs.
-    self._supports_ragged_inputs = True
 
     # If the layer's input type is int32, we can only output int32 values -
     # MutableHashTable doesn't allow us to map int32->int64.
@@ -291,7 +287,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     keys, values = self._get_table_data()
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
-    return [x for _, x in sorted(zip(values, keys))]
+    if self.dtype == dtypes.string:
+      return [x.decode("utf-8") for _, x in sorted(zip(values, keys))]
+    else:
+      return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
     config = {
@@ -457,12 +456,15 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
       accumulator = self._create_accumulator()
 
     # TODO(momernick): Benchmark improvements to this algorithm.
-    for document in values:
-      if not isinstance(document, list):
-        accumulator.count_dict[document] += 1
-      else:
-        for token in document:
-          accumulator.count_dict[token] += 1
+    if isinstance(values, (str, bytes)):
+      accumulator.count_dict[values] += 1
+    else:
+      for document in values:
+        if not isinstance(document, list):
+          accumulator.count_dict[document] += 1
+        else:
+          for token in document:
+            accumulator.count_dict[token] += 1
 
     return accumulator
 

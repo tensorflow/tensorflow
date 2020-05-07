@@ -828,7 +828,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce",
+       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -849,7 +849,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-       "EnqueueTPUEmbeddingSparseTensorBatch"});
+       "EnqueueTPUEmbeddingSparseTensorBatch",
+       "EnqueueTPUEmbeddingRaggedTensorBatch"});
   return exemption->contains(op);
 }
 

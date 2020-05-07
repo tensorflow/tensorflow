@@ -117,11 +117,13 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     }
     std::unique_ptr<standalone::Iterator>& iter = it->second.iterator;
     if (iter == nullptr) {
+      VLOG(3) << "Task " << request->task_id() << " is already finished";
       response->set_end_of_sequence(true);
       return Status::OK();
     }
     TF_RETURN_IF_ERROR(iter->GetNext(&outputs, &end_of_sequence));
     if (end_of_sequence) {
+      VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
       // Release iterator memory and leave a null entry as a tombstone.
       iter.reset();
       pending_completed_tasks_.push_back(request->task_id());
@@ -130,6 +132,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   }
 
   if (!end_of_sequence) {
+    VLOG(3) << "Producing an element for task " << request->task_id();
     TF_RETURN_IF_ERROR(service_util::Compress(
         outputs, response->mutable_compressed_element()));
   }

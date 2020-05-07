@@ -39,14 +39,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
-#include "tensorflow/compiler/xla/python/cpu_device.h"
-#include "tensorflow/compiler/xla/python/distributed/client.h"
-#include "tensorflow/compiler/xla/python/distributed/distributed.h"
-#include "tensorflow/compiler/xla/python/distributed/service.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
-#include "tensorflow/compiler/xla/python/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -980,10 +980,17 @@ PYBIND11_MODULE(xla_extension, m) {
               py::gil_scoped_release gil_release;
               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                                   device.GetLocalDeviceState());
+              Shape shape_with_layout = shape;
+              ShapeUtil::ForEachMutableSubshape(
+                  &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
+                    if (!subshape->has_layout()) {
+                      LayoutUtil::SetToDefaultLayout(subshape);
+                    }
+                  });
               TF_ASSIGN_OR_RETURN(
                   Literal literal,
                   local_device->client()->TransferFromOutfeedLocal(
-                      shape, local_device->device_ordinal()));
+                      shape_with_layout, local_device->device_ordinal()));
 
               literal_shared = std::make_shared<Literal>(std::move(literal));
             }

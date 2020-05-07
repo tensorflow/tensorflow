@@ -83,15 +83,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
 
-
-# TODO(b/145618471): Remove this dependency.
-# Lazy import to work around circular dependencies
-input_lib = lazy_loader.LazyLoader(
-    'input_lib', globals(),
-    'tensorflow.python.distribute.input_lib')
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
@@ -361,13 +355,12 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
     _tf_ragged_for_stmt(
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
-  elif isinstance(iter_, input_lib.DistributedIterator):
+  elif isinstance(iter_, distribute.Iterator):
     raise NotImplementedError(
         'distributed iterators not supported yet, use the distributed dataset'
         ' directly')
 
-  # TODO(mdan): Resolve the private access issue.
-  elif isinstance(iter_, input_lib._IterableInput):  # pylint:disable=protected-access
+  elif isinstance(iter_, distribute.Iterable):
     _tf_distributed_iterable_for_stmt(
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 

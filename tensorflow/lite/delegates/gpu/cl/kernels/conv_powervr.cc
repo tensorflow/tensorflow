@@ -139,6 +139,18 @@ ConvPowerVR::ConvPowerVR(const OperationDef& definition,
       conv_params_(GuessBestParams(device, definition, attr, dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
+                         const Convolution2DAttributes& attr,
+                         const BHWC& weights_shape, const CLDevice& device,
+                         const BHWC* dst_shape)
+    : GPUOperation(definition),
+      stride_padding_(attr.strides.w, attr.strides.h, -attr.padding.prepended.w,
+                      -attr.padding.prepended.h),
+      kernel_dilation_(weights_shape.w, weights_shape.h, attr.dilations.w,
+                       attr.dilations.h),
+      conv_params_(GuessBestParams(device, definition, attr, weights_shape,
+                                   dst_shape)) {}
+
+ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
                          const CLDevice& device, const BHWC* dst_shape)
     : GPUOperation(definition),
@@ -192,7 +204,11 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
 absl::Status ConvPowerVR::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
+  if (definition_.src_tensors.size() == 1) {
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
+  } else {
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
+  }
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
@@ -779,6 +795,13 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  } else if (device.IsAdreno()) {
+    conv_params.block_size = int3(2, 2, 1);
+    conv_params.work_group_size = int3(8, 2, 1);
+    conv_params.work_group_launch_order = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
+    conv_params.src_depth_loop_size = 1;
+    conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);
@@ -823,6 +846,22 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC* dst_shape) const {
+  const int dst_depth = DivideRoundUp(weights_shape.b, 4);
+  const int src_depth = DivideRoundUp(weights_shape.c, 4);
+  const bool x_kernel_is_1 =
+      weights_shape.w == 1 && attr.strides.w == 1 && attr.dilations.w == 1 &&
+      attr.padding.prepended.w == 0 && attr.padding.appended.w == 0;
+  const bool y_kernel_is_1 =
+      weights_shape.h == 1 && attr.strides.h == 1 && attr.dilations.h == 1 &&
+      attr.padding.prepended.h == 0 && attr.padding.appended.h == 0;
+  return GuessBestParams(device, definition, src_depth, dst_depth,
+                         x_kernel_is_1, y_kernel_is_1, false, dst_shape);
+}
+
+ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
+    const CLDevice& device, const OperationDef& definition,
     const FullyConnectedAttributes& attr, const BHWC* dst_shape) const {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
@@ -861,6 +900,20 @@ absl::Status CreateConvPowerVR(const CreationContext& creation_context,
                                ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
+
+absl::Status CreateConvPowerVRDynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvPowerVR* result, const BHWC* dst_shape) {
+  *result = ConvPowerVR(definition, attr, weights_shape,
+                        *creation_context.device, dst_shape);
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = result->conv_params_.weights_data_type;
+  create_info.aligned_size = weights_shape.b;
+  return CreateLinearStorage(create_info, attr.bias, creation_context.context,
+                             &result->biases_);
 }
 
 absl::Status CreateConvPowerVRWino4x4To6x6(

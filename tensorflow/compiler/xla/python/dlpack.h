@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
 namespace xla {
 

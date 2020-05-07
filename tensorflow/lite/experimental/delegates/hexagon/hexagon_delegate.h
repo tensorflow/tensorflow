@@ -34,6 +34,8 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+// Use TfLiteHexagonDelegateOptionsDefault() for Default options.
 struct TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions {
   // This corresponds to the debug level in the hexagon SDK. 0 (default)
   // means no debug.
@@ -106,6 +108,10 @@ struct TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions {
 // Must outlive the interpreter.
 TfLiteDelegate* TFL_CAPI_EXPORT
 TfLiteHexagonDelegateCreate(const TfLiteHexagonDelegateOptions* options);
+
+// Returns TfLiteHexagonDelegateOptions populated with default values.
+TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions
+TfLiteHexagonDelegateOptionsDefault();
 
 // Do any needed cleanup and delete 'delegate'.
 void TFL_CAPI_EXPORT TfLiteHexagonDelegateDelete(TfLiteDelegate* delegate);

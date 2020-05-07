@@ -26,6 +26,49 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+namespace {
+constexpr const char kParallelEpochs[] = "parallel_epochs";
+constexpr const char kOneEpoch[] = "one_epoch";
+}  // namespace
+
+Status ParseProcessingMode(const std::string& s, ProcessingMode* mode) {
+  if (s == kParallelEpochs) {
+    *mode = ProcessingMode::PARALLEL_EPOCHS;
+  } else if (s == kOneEpoch) {
+    *mode = ProcessingMode::ONE_EPOCH;
+  } else {
+    return errors::InvalidArgument("Unrecognized processing mode: ", s);
+  }
+  return Status::OK();
+}
+
+std::string ProcessingModeToString(ProcessingMode mode) {
+  switch (mode) {
+    case ProcessingMode::PARALLEL_EPOCHS:
+      return kParallelEpochs;
+    case ProcessingMode::ONE_EPOCH:
+      return kOneEpoch;
+    default:
+      DCHECK(false);
+      return "Unknown";
+  }
+}
+
+Status DataServiceMasterClient::RegisterDataset(GraphDef dataset,
+                                                int64* dataset_id) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetOrRegisterDatasetRequest req;
+  *req.mutable_dataset()->mutable_graph() = dataset;
+  GetOrRegisterDatasetResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to register dataset", status);
+  }
+  *dataset_id = resp.dataset_id();
+  return Status::OK();
+}
+
 Status DataServiceMasterClient::CreateJob(int64 dataset_id,
                                           ProcessingMode processing_mode,
                                           int64* job_id) {
@@ -45,18 +88,27 @@ Status DataServiceMasterClient::CreateJob(int64 dataset_id,
   return Status::OK();
 }
 
-Status DataServiceMasterClient::RegisterDataset(GraphDef dataset,
-                                                int64* dataset_id) {
+Status DataServiceMasterClient::GetOrCreateJob(int64 dataset_id,
+                                               ProcessingMode processing_mode,
+                                               const std::string& job_name,
+                                               int job_name_index,
+                                               int64* job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  GetOrRegisterDatasetRequest req;
-  *req.mutable_dataset()->mutable_graph() = dataset;
-  GetOrRegisterDatasetResponse resp;
+  GetOrCreateJobRequest req;
+  req.set_dataset_id(dataset_id);
+  req.set_processing_mode(ProcessingModeDef(processing_mode));
+  req.set_job_name(job_name);
+  req.set_job_name_index(job_name_index);
+  GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);
+  grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);
   if (!status.ok()) {
-    return grpc_util::WrapError("Failed to register dataset", status);
+    return grpc_util::WrapError(
+        absl::StrCat("Failed to get or create job for dataset with id ",
+                     dataset_id),
+        status);
   }
-  *dataset_id = resp.dataset_id();
+  *job_id = resp.job_id();
   return Status::OK();
 }
 
@@ -120,7 +172,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 }
 
 Status CreateDataServiceMasterClient(
-    absl::string_view address, absl::string_view protocol,
+    const std::string& address, const std::string& protocol,
     std::unique_ptr<DataServiceMasterClient>* out) {
   auto client = absl::make_unique<DataServiceMasterClient>(address, protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
@@ -129,7 +181,7 @@ Status CreateDataServiceMasterClient(
 }
 
 Status CreateDataServiceWorkerClient(
-    absl::string_view address, absl::string_view protocol,
+    const std::string& address, const std::string& protocol,
     std::unique_ptr<DataServiceWorkerClient>* out) {
   auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
