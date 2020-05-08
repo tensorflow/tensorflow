@@ -290,10 +290,10 @@ def ctc_greedy_decoder(inputs,
                        blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Notes: 
-  
+  Notes:
+
   - Regardless of the value of merge_repeated, if an index of a
-    given time and batch corresponds to the blank_index, no new 
+    given time and batch corresponds to the blank_index, no new
     element is emitted.
   - Default blank_index is `(num_classes - 1)`, unless overriden by blank_index.
 
@@ -337,10 +337,10 @@ def ctc_greedy_decoder(inputs,
   """
 
   if blank_index is not None:
-    
+
     if blank_index < 0:
-        blank_index += _get_dim(inputs, 2)
-   
+      blank_index += _get_dim(inputs, 2)
+
     if blank_index != _get_dim(inputs, 2) - 1:
       part_before = inputs[:, :, :blank_index]
       part_after = inputs[:, :, blank_index + 1:]
@@ -348,7 +348,7 @@ def ctc_greedy_decoder(inputs,
       inputs = array_ops.concat([part_before, part_after, part_blank], axis=2)
 
   outputs = gen_ctc_ops.ctc_greedy_decoder(
-    inputs, sequence_length, merge_repeated=merge_repeated)
+      inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val,
                                       decoded_shape)], log_probabilities)
