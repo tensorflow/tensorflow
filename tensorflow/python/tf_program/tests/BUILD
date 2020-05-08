@@ -9,22 +9,23 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
-        "@pybind11",
         "@llvm-project//llvm:support",
+        "@pybind11",
     ],
 )
 
 py_test(
     name = "mlir_gen_test",
+    size = "small",
     testonly = True,
     srcs = ["mlir_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":filecheck_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/tf_program:mlir_gen",
         "//tensorflow/python/types",
-        ":filecheck_wrapper",
     ],
-    size="small"
 )

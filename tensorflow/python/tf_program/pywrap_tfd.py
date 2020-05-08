@@ -20,6 +20,10 @@ operations and the basic structure for a tensorflow program
 
 # pylint: disable=invalid-name
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.tf_program.mlir_wrapper import mlir_wrapper as mlir
 
 # Class Definitions
