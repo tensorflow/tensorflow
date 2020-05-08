@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "tensorflow/python/tf_program/mlir_wrapper/mlir_util.h"
 
