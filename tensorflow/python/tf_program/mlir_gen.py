@@ -18,6 +18,10 @@
 # pylint: disable=invalid-name
 # pylint: disable=missing-function-docstring
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gast as ast
 import tensorflow.python.tf_program.pywrap_tfd as tfp
 from tensorflow.python.autograph.pyct import anno

@@ -6,24 +6,31 @@ tf_python_pybind_extension(
     name = "mlir_wrapper",
     srcs = ["mlir_wrapper.cc"],
     module_name = "mlir_wrapper",
+    visibility = ["//visibility:public"],
     deps = [
         ":mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
-        "@pybind11",
         "@llvm-project//mlir:StandardOps",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "@pybind11",
     ],
-    visibility = ["//visibility:public"]
 )
+
 cc_library(
     name = "mlir_util",
+    srcs = [
+        "attrs.cc",
+        "basic_classes.cc",
+        "builders.cc",
+        "ops.cc",
+        "types.cc",
+    ],
     hdrs = ["mlir_util.h"],
-    srcs = ["basic_classes.cc", "types.cc", "builders.cc", "ops.cc", "attrs.cc"],
     deps = [
-        "@pybind11",
-        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
-    ]
+        "@pybind11",
+    ],
 )
