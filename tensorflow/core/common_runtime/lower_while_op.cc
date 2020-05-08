@@ -444,15 +444,14 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
     if (IsResource(i)) {
       continue;
     }
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("next_iteration"), "NextIteration",
-                    graph_->op_registry(), &debug_info_)
-            .Input(NodeOut(body_call_node_, i))
-            .ControlInput(body_call_node_)
-            .Device(while_op_->requested_device())
-            .AssignedDevice(merge_nodes_[op_input_output_to_lowered_node_[i]]
-                                ->assigned_device_name())
-            .Finalize(graph_, &next_iteration));
+    Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
+                                   graph_->op_registry(), &debug_info_)
+                           .Input(NodeOut(body_call_node_, i))
+                           .ControlInput(body_call_node_)
+                           .Device(merge_node->requested_device())
+                           .AssignedDevice(merge_node->assigned_device_name())
+                           .Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);
   }
   return Status::OK();
