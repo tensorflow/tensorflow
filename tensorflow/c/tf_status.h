@@ -87,6 +87,12 @@ TF_CAPI_EXPORT extern TF_Code TF_GetCode(const TF_Status* s);
 // TF_OK.
 TF_CAPI_EXPORT extern const char* TF_Message(const TF_Status* s);
 
+// For propagating errors when calling a function.
+#define TF_C_RETURN_IF_ERROR(_status)         \
+  do {                                        \
+    if (TF_GetCode(_status) != TF_OK) return; \
+  } while (0)
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
