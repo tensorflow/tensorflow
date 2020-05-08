@@ -125,7 +125,8 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return ir_emitter_->EmitElementalReduceWindow(
             Cast<HloReduceWindowInstruction>(hlo),
-            operand_to_generator.at(hlo->operand(0)), index);
+            operand_to_generator.at(hlo->operand(0)),
+            operand_to_generator.at(hlo->operand(1)), index);
       };
     case HloOpcode::kConvolution:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {

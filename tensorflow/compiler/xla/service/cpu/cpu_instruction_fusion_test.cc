@@ -945,6 +945,34 @@ ENTRY main {
   EXPECT_TRUE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
+
+TEST_F(InstructionFusionTest, FuseReduceWindow) {
+  absl::string_view module_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[50,60]{1,0} parameter(1)
+  c = f32[50,60]{1,0} multiply(a, b)
+  init = f32[] constant(0)
+  ROOT r = f32[50,60] reduce-window(c, init), window={size=2x3 pad=0_1x1_1},
+                                              to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_TRUE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
