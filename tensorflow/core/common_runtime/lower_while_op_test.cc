@@ -169,6 +169,99 @@ TEST(LowerWhileOpTest, Simple) {
   }
 }
 
+TEST(LowerWhileOpTest, ForwardAssignedInputDevice) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // Add test functions for cond and body.
+  FunctionDefLibrary f_lib_proto;
+  *f_lib_proto.add_function() = test::function::XTimesTwo();
+  *f_lib_proto.add_function() = test::function::LessThanOrEqualToN(8);
+
+  TF_ASSERT_OK(graph->AddFunctionLibrary(f_lib_proto));
+  auto type = DT_FLOAT;
+  Node* placeholder;
+  TF_CHECK_OK(NodeBuilder("placed_node", "Placeholder")
+                  .Attr("dtype", type)
+                  .Finalize(graph.get(), &placeholder));
+  const string assigned_device_name = "/job:localhost/replica:0/task:0/gpu:0";
+  placeholder->set_assigned_device_name(assigned_device_name);
+  Node* while_node;
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(placeholder)});
+  AttrValue cond_func;
+  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("XTimesTwo");
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &graph->flib_def())
+          .Input(inputs)
+          .Attr("T", {type})
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr("parallel_iterations", 100)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(graph.get(), &while_node));
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  const Node* placeholder_node = nullptr;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->name() == "placed_node") {
+      placeholder_node = op;
+    }
+  }
+  ASSERT_NE(placeholder_node, nullptr);
+  // Verify the assigned device of the Enter node.
+  int enter_consumers = 0;
+  const Node* enter_node = nullptr;
+  for (const Node* consumer : placeholder_node->out_nodes()) {
+    if (consumer->type_string() == "Enter") {
+      enter_consumers += 1;
+      enter_node = consumer;
+      ASSERT_EQ(consumer->assigned_device_name(), assigned_device_name);
+    }
+  }
+  ASSERT_EQ(enter_consumers, 1);
+  // Verify the assigned device of the Merge node.
+  int merge_consumers = 0;
+  const Node* merge_node = nullptr;
+  for (const Node* consumer : enter_node->out_nodes()) {
+    if (consumer->type_string() == "Merge") {
+      merge_consumers += 1;
+      merge_node = consumer;
+      ASSERT_EQ(consumer->assigned_device_name(), assigned_device_name);
+    }
+  }
+  ASSERT_EQ(merge_consumers, 1);
+  // Verify the assigned device of the NextIteration node.
+  int next_iteration_consumers = 0;
+  for (const Node* consumer : merge_node->in_nodes()) {
+    if (consumer->type_string() == "NextIteration") {
+      next_iteration_consumers += 1;
+      ASSERT_EQ(consumer->assigned_device_name(), assigned_device_name);
+    }
+  }
+  ASSERT_EQ(next_iteration_consumers, 1);
+  // Verify the assigned device of the Switch node.
+  int switch_consumers = 0;
+  const Node* switch_node = nullptr;
+  for (const Node* consumer : merge_node->out_nodes()) {
+    if (consumer->type_string() == "Switch") {
+      switch_consumers += 1;
+      switch_node = consumer;
+      ASSERT_EQ(consumer->assigned_device_name(), assigned_device_name);
+    }
+  }
+  ASSERT_EQ(switch_consumers, 1);
+  // Verify the assigned device of the Exit node.
+  int exit_consumers = 0;
+  for (const Node* consumer : switch_node->out_nodes()) {
+    if (consumer->type_string() == "Exit") {
+      exit_consumers += 1;
+      ASSERT_EQ(consumer->assigned_device_name(), assigned_device_name);
+    }
+  }
+  ASSERT_EQ(exit_consumers, 1);
+}
+
 TEST(LowerWhileOpTest, MultipleInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
