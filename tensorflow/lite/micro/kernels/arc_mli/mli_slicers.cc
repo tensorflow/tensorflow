@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "mli_slicers.h"
 
-#define MAX(A,B) (((A) > (B))? (A): (B))
-#define MIN(A,B) (((A) > (B))? (B): (A)) 
+#include <algorithm>
+
 
 namespace tflite {
 namespace ops {
@@ -75,11 +75,11 @@ void TensorSlicer::ComputeSubTensor(void) {
   // begin and end spans the complete input region including padding areas.
   const int begin = (int)sub_cfg_.offset[sliceDim_] - pad_pre_;
   // end is clipped to the end of the full input region. this is needed for cases where the last slice is smaller than the rest.
-  const int end = MIN(begin + sub_cfg_.size[sliceDim_] + overlap_, full_tensor_->shape[sliceDim_] + pad_post_);
+  const int end = std::min(begin + sub_cfg_.size[sliceDim_] + overlap_, full_tensor_->shape[sliceDim_] + pad_post_);
   // The start coordinate of the subtensor is clipped to zero
-  cfg_new.offset[sliceDim_] = MAX(begin, 0);
+  cfg_new.offset[sliceDim_] = std::max(begin, 0);
   // and the stop coordinate is clipped to the size of the full tensor
-  const int stop_coord = MIN(end, full_tensor_->shape[sliceDim_]);
+  const int stop_coord = std::min(end, static_cast<int>(full_tensor_->shape[sliceDim_]));
   // compute the size of the subtensor
   cfg_new.size[sliceDim_] = stop_coord - cfg_new.offset[sliceDim_];
 

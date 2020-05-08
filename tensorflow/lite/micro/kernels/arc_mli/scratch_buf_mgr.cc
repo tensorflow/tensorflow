@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
+
+#include <algorithm>
 #include <limits.h>
-#define MAX(A,B) (((A) > (B))? (A): (B))
-#define MIN(A,B) (((A) > (B))? (B): (A)) 
+
 
 namespace tflite {
 namespace ops {
@@ -242,19 +243,19 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
     *out_slice_height = out_height;
   } else {
     // First compute how many lines fit into the input tensor, and compute how many output lines can be computed with that.
-    max_lines_in = MIN(in_height, in->capacity / line_size_in);
+    max_lines_in = std::min(in_height, static_cast<int>(in->capacity) / line_size_in);
     if (max_lines_in >= in_height) {
       max_out_lines_for_input = out_height;
     } else if (2 * max_lines_in >= in_height) {
       // in this case only two slices are needed, so both could benefit from padding. take the MIN to get the worst case.
-      max_out_lines_for_input = (max_lines_in + MIN(padding_top, padding_bot) - kernel_height + 1) / stride_height;
+      max_out_lines_for_input = (max_lines_in + std::min(padding_top, padding_bot) - kernel_height + 1) / stride_height;
     } else {
       max_out_lines_for_input = (max_lines_in - kernel_height + 1) / stride_height; // TODO add padding exceptions and test by makin fit=false;
     }
     // Ten compute how many ouput lines fit into the output tensor.
-    max_lines_out = MIN(out_height, out->capacity / line_size_out);
+    max_lines_out = std::min(out_height, static_cast<int>(out->capacity) / line_size_out);
     // the smallest of the two determines the slice height for the output, and the derived sliceheight for the input.
-    *out_slice_height = MIN(max_out_lines_for_input, max_lines_out);
+    *out_slice_height = std::min(max_out_lines_for_input, max_lines_out);
     *in_slice_height = *out_slice_height * stride_height;
   }
 
@@ -282,11 +283,11 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_weights(
     *slice_channels = channels;
   } else {
     // First compute how many channels fit into the weights tensor
-    max_ch_weigths = MIN(channels, weights->capacity / ch_size_w);
+    max_ch_weigths = std::min(channels, static_cast<int>(weights->capacity) / ch_size_w);
     // Ten compute how many channels fit into the bias tensor.
-    max_ch_bias = MIN(channels, bias->capacity / ch_size_b);
+    max_ch_bias = std::min(channels, static_cast<int>(bias->capacity) / ch_size_b);
     // the smallest of the two determines the slice size
-    *slice_channels = MIN(max_ch_weigths, max_ch_bias);
+    *slice_channels = std::min(max_ch_weigths, max_ch_bias);
   }
 
   if (*slice_channels > 0) {

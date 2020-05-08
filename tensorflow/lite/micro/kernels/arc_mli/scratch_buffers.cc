@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
+
 #include <limits.h>
-#define MAX(A,B) (((A) > (B))? (A): (B))
-#define MIN(A,B) (((A) > (B))? (B): (A)) 
 
 namespace tflite {
 namespace ops {
