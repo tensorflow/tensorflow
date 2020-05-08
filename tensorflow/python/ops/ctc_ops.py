@@ -284,12 +284,18 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 
 @tf_export("nn.ctc_greedy_decoder")
-def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
+def ctc_greedy_decoder(inputs,
+                       sequence_length,
+                       merge_repeated=True,
+                       blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Note: Regardless of the value of merge_repeated, if the maximum index of a
-  given time and batch corresponds to the blank index `(num_classes - 1)`, no
-  new element is emitted.
+  Notes:
+
+  - Regardless of the value of merge_repeated, if an index of a
+    given time and batch corresponds to the blank_index, no new
+    element is emitted.
+  - Default blank_index is `(num_classes - 1)`, unless overriden by blank_index.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
@@ -305,6 +311,10 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     sequence_length: 1-D `int32` vector containing sequence lengths, having size
       `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
+    blank_index: (optional) Set the class index to use for the blank label.
+      Negative values will start from num_classes, ie, -1 will reproduce the
+      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol,
+      which, actually, corresponds to the default.
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
@@ -325,6 +335,18 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
+
+  if blank_index is not None:
+
+    if blank_index < 0:
+      blank_index += _get_dim(inputs, 2)
+
+    if blank_index != _get_dim(inputs, 2) - 1:
+      part_before = inputs[:, :, :blank_index]
+      part_after = inputs[:, :, blank_index + 1:]
+      part_blank = inputs[:, :, blank_index:blank_index + 1]
+      inputs = array_ops.concat([part_before, part_after, part_blank], axis=2)
+
   outputs = gen_ctc_ops.ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
