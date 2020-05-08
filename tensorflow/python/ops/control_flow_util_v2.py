@@ -33,6 +33,7 @@ from tensorflow.python.util import tf_contextlib
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 _KERAS_LAYER_CONTEXT_FUNCTION = None
+_DISABLE_LOWER_USING_SWITCH_MERGE = False
 
 
 CondBranchFuncGraph = control_flow_v2_func_graphs.CondBranchFuncGraph
@@ -111,7 +112,8 @@ def maybe_set_lowering_attr(op):
   Args:
     op: An `If` or `While` Operation.
   """
-  if (not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
+  if (not _DISABLE_LOWER_USING_SWITCH_MERGE and
+      not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
       context.context().function_call_options.executor_type !=
       "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
@@ -283,6 +285,7 @@ def output_all_intermediates():
 
 def get_func_graph(op, input_shapes, func_name):
   """Generates and returns a FuncGraph for the given op and input_shapes."""
+  fdef = None
   graph = op.graph
   # Recursively search the func in graphs.
   while graph is not None:
@@ -294,6 +297,9 @@ def get_func_graph(op, input_shapes, func_name):
       graph = graph.outer_graph
     else:
       break
+
+  if fdef is None:
+    raise KeyError("%s cannot be found in the graph" % func_name)
 
   # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
   # in the case of nested if ops or when the gradient is being computed

@@ -50,7 +50,7 @@ from tensorflow.python.util.tf_export import tf_export
 newaxis = None
 tf_export("newaxis").export_constant(__name__, "newaxis")
 
-# We override the 'slice' for the "slice" op, so we keep python's
+# We override the 'slice' for the "slice" op, so we keep Python's
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
@@ -296,7 +296,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows python
+  dimension index `axis` of `input`'s shape. The dimension index follows Python
   indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
@@ -322,14 +322,14 @@ def expand_dims(input, axis=None, name=None, dim=None):
   >>> tf.expand_dims(image, axis=1).shape.as_list()
   [10, 1, 10, 3]
 
-  Following standard python indexing rules, a negative `axis` counts from the
+  Following standard Python indexing rules, a negative `axis` counts from the
   end so `axis=-1` adds an inner most dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
 
   This operation requires that `axis` is a valid index for `input.shape`,
-  following python indexing rules:
+  following Python indexing rules:
 
   ```
   -1-tf.rank(input) <= axis <= tf.rank(input)
@@ -368,7 +368,7 @@ def expand_dims_v2(input, axis, name=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows python
+  dimension index `axis` of `input`'s shape. The dimension index follows Python
   indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
@@ -394,14 +394,14 @@ def expand_dims_v2(input, axis, name=None):
   >>> tf.expand_dims(image, axis=1).shape.as_list()
   [10, 1, 10, 3]
 
-  Following standard python indexing rules, a negative `axis` counts from the
+  Following standard Python indexing rules, a negative `axis` counts from the
   end so `axis=-1` adds an inner most dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
 
   This operation requires that `axis` is a valid index for `input.shape`,
-  following python indexing rules:
+  following Python indexing rules:
 
   ```
   -1-tf.rank(input) <= axis <= tf.rank(input)
@@ -1072,7 +1072,7 @@ def strided_slice(input_,
                   shrink_axis_mask=0,
                   var=None,
                   name=None):
-  """Extracts a strided slice of a tensor (generalized python array indexing).
+  """Extracts a strided slice of a tensor (generalized Python array indexing).
 
   See also `tf.slice`.
 
@@ -1699,7 +1699,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
-    shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
+    axis_value = tensor_util.constant_value(axis)
+    if axis_value is not None:
+      axis = axis_value
+      shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
     leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(
@@ -1708,10 +1711,15 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
             shape(tensor)[:axis], [leading_size],
             shape(tensor)[axis + ndims_mask:]
         ], 0))
-    first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
-    tensor.set_shape(
-        tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
-            [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
+    # TODO(yongtang): tf.reshape in C++ kernel might have set the shape
+    # correctly, so the following may not be needed? It still might ben
+    # possible that there are some edge case where tensor_util.constant_value
+    # resolves more case than ShapeInference of tf.reshape in C++ kernel.
+    if axis_value is not None:
+      first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
+      tensor.set_shape(
+          tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
+              [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)
@@ -2220,7 +2228,7 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
     # If we know the number of dimensions (statically), we can do two things:
     # 1. Check that `a` is a (batch) matrix.
-    # 2. Use a python list for perm.  This preserves static shape information
+    # 2. Use a Python list for perm.  This preserves static shape information
     #    and avoids extra computations.
     a_shape = a.get_shape()
     ndims = a_shape.ndims
@@ -3403,6 +3411,9 @@ def meshgrid(*args, **kwargs):
   with ops.name_scope(name, "meshgrid", args) as name:
     ndim = len(args)
     s0 = (1,) * ndim
+
+    if not ndim:
+      return []
 
     # Prepare reshape by inserting dimensions with size 1 where needed
     output = []
@@ -5259,8 +5270,8 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
     # We generate two outputs as follows:
     # 1. 3x3 patches with stride length 5
     # 2. Same as above, but the rate is increased to 2
-    tf.extract_image_patches(images=images,
-                             ksizes=[1, 3, 3, 1],
+    tf.image.extract_patches(images=images,
+                             sizes=[1, 3, 3, 1],
                              strides=[1, 5, 5, 1],
                              rates=[1, 1, 1, 1],
                              padding='VALID')
@@ -5289,7 +5300,7 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   ```
 
   ```
-    tf.extract_image_patches(images=images,
+    tf.image.extract_patches(images=images,
                              sizes=[1, 3, 3, 1],
                              strides=[1, 5, 5, 1],
                              rates=[1, 2, 2, 1],

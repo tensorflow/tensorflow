@@ -70,9 +70,9 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
              return tensorflow::PyoOrThrow(self.OutputIndices());
            })
       .def("ResizeInputTensor",
-           [](InterpreterWrapper& self, int i, py::handle& value) {
+           [](InterpreterWrapper& self, int i, py::handle& value, bool strict) {
              return tensorflow::PyoOrThrow(
-                 self.ResizeInputTensor(i, value.ptr()));
+                 self.ResizeInputTensor(i, value.ptr(), strict));
            })
       .def("NumTensors", &InterpreterWrapper::NumTensors)
       .def("TensorName", &InterpreterWrapper::TensorName)

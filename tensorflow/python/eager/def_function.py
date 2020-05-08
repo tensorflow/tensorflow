@@ -41,6 +41,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
@@ -305,8 +306,11 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 RUN_FUNCTIONS_EAGERLY = False
 
 
+@deprecation.deprecated(
+    None,
+    "Use tf.config.run_functions_eagerly instead of the experimental version.")
 @tf_export("config.experimental_run_functions_eagerly")
-def run_functions_eagerly(run_eagerly):
+def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.
 
   Calling `tf.config.experimental_run_functions_eagerly(True)` will make all
@@ -345,6 +349,60 @@ def run_functions_eagerly(run_eagerly):
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
 
+  Note: This flag has no effect on functions passed into tf.data transformations
+  as arguments. tf.data functions are never executed eagerly and are always
+  executed as a compiled Tensorflow Graph.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+  """
+  return run_functions_eagerly(run_eagerly)
+
+
+@tf_export("config.run_functions_eagerly")
+def run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  Calling `tf.config.run_functions_eagerly(True)` will make all
+  invocations of `tf.function` run eagerly instead of running as a traced graph
+  function.
+
+  This can be useful for debugging or profiling. For example, let's say you
+  implemented a simple iterative sqrt function, and you want to collect the
+  intermediate values and plot the convergence.  Appending the values to a list
+  in `@tf.function` normally wouldn't work since it will just record the Tensors
+  being traced, not the values.  Instead, you can do the following.
+
+  >>> ys = []
+  >>>
+  >>> @tf.function
+  ... def sqrt(x):
+  ...   y = x / 2
+  ...   d = y
+  ...   for _ in range(10):
+  ...     d /= 2
+  ...     if y * y < x:
+  ...       y += d
+  ...     else:
+  ...       y -= d
+  ...     ys.append(y.numpy())
+  ...   return y
+  >>>
+  >>> tf.config.run_functions_eagerly(True)
+  >>> sqrt(tf.constant(2.))
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
+  >>> ys
+  [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
+  1.4150391]
+  >>> tf.config.run_functions_eagerly(False)
+
+  Calling `tf.config.run_functions_eagerly(False)` will undo this
+  behavior.
+
+  Note: This flag has no effect on functions passed into tf.data transformations
+  as arguments. tf.data functions are never executed eagerly and are always
+  executed as a compiled Tensorflow Graph.
+
   Args:
     run_eagerly: Boolean. Whether to run functions eagerly.
   """
@@ -352,9 +410,18 @@ def run_functions_eagerly(run_eagerly):
   RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
 
 
+@deprecation.deprecated(
+    None,
+    "Use tf.config.functions_run_eagerly instead of the experimental version.")
 @tf_export("config.experimental_functions_run_eagerly")
-def functions_run_eagerly():
+def experimental_functions_run_eagerly():
   """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return functions_run_eagerly()
+
+
+@tf_export("config.functions_run_eagerly")
+def functions_run_eagerly():
+  """Returns the value of the `run_functions_eagerly` setting."""
   return RUN_FUNCTIONS_EAGERLY
 
 
@@ -565,10 +632,14 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
+        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
+        # check.
         if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError("Attempting to use experimental_compile, "
-                           "but XLA support is not linked in. "
-                           "Rebuild with --define=with_xla_support=true.")
+          raise ValueError(
+              "Attempting to use experimental_compile, "
+              "but XLA support is not linked in. "
+              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
+              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -700,12 +771,13 @@ class Function(object):
       tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
                       tracing_count=new_tracing_count)
 
-    if without_tracing:
-      _frequent_tracing_detector.called_without_tracing(
-          self._key_for_call_stats)
-    else:
-      _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
-                                                     self._python_function)
+    if context.executing_eagerly():
+      if without_tracing:
+        _frequent_tracing_detector.called_without_tracing(
+            self._key_for_call_stats)
+      else:
+        _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
+                                                       self._python_function)
 
     return result
 
@@ -830,6 +902,13 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
+  def pretty_printed_concrete_signatures(self, verbose=True):
+    joiner = "\n\n" if verbose else "\n"
+    return joiner.join([
+        c.pretty_printed_signature(verbose=verbose)
+        for c in self._list_all_concrete_functions()
+    ])
+
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
@@ -913,12 +992,8 @@ class Function(object):
 
     return initialize_variables.get_concrete_function()
 
-  def _list_all_concrete_functions_for_serialization(self):
-    """Returns all concrete functions for serialization.
-
-    Returns:
-      A list of instances of `ConcreteFunction`.
-    """
+  def _list_all_concrete_functions(self):
+    """Returns all concrete functions."""
     if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
@@ -930,6 +1005,15 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
+    return concrete_functions
+
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all concrete functions for serialization.
+
+    Returns:
+      A list of instances of `ConcreteFunction`.
+    """
+    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
@@ -1260,7 +1344,7 @@ def function(func=None,
   ...     self.v = None
   ...
   ...   @tf.function
-  ...   def call(self, x):
+  ...   def __call__(self, x):
   ...     if self.v is None:
   ...       self.v = tf.Variable(tf.ones_like(x))
   ...     return self.v * x

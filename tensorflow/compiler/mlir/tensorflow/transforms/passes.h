@@ -101,6 +101,11 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 
+// Creates a pass that marks the main function with public visibility, while
+// other functions are marked with private visibility.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOnlyMainFunctionWithPublicVisibilityPass();
+
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device);
@@ -250,6 +255,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+
+// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
+// at head/tail of TPU cluster to run before/after TPU computation.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
+// ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUExtractOutsideCompilationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 void CreateTPUBridgePipeline(OpPassManager& pm);

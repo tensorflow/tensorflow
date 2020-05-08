@@ -52,7 +52,8 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                               $data_format, FalseBoolAttr:$is_training),
+                         $exponential_avg_factor, $data_format,
+                         FalseBoolAttr:$is_training),
     [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
                                $epsilon, (FeatureDimension $data_format, $x)),
      // We already guaranteed that the last four results has no use so it
@@ -434,7 +435,8 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
+def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
+          (TensorCastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
@@ -541,6 +543,7 @@ foreach Mapping = [
                    [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
+                   [TF_RoundOp, HLO_RoundOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],

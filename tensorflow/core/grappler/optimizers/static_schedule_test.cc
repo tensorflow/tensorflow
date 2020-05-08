@@ -111,8 +111,8 @@ TEST_F(StaticScheduleTest, BasicGraph) {
   std::vector<std::string> ordered_node_names =
       GetOrderedNodeNames(completion_times);
   EXPECT_EQ(ordered_node_names,
-            (std::vector<std::string>{"Const/Const", "x", "Square", "Square_1",
-                                      "Square_2", "Square_3", "y"}));
+            (std::vector<std::string>{"Const/Const", "x", "Sign", "Sign_1",
+                                      "Sign_2", "Sign_3", "y"}));
 }
 
 TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
@@ -192,8 +192,8 @@ TEST_F(StaticScheduleTest, RequiredTimes) {
   std::vector<std::string> ordered_node_names =
       GetOrderedNodeNames(required_times);
   EXPECT_EQ(ordered_node_names,
-            (std::vector<std::string>{"Const/Const", "x", "Square", "Square_1",
-                                      "Square_2", "Square_3", "y"}));
+            (std::vector<std::string>{"Const/Const", "x", "Sign", "Sign_1",
+                                      "Sign_2", "Sign_3", "y"}));
 }
 
 }  // namespace

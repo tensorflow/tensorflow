@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -52,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -94,6 +95,19 @@ Status ConvertAttribute(const mlir::FloatAttr& attr, AttrValue* value) {
 
 Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
+}
+
+Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
+  auto* shape = value->mutable_shape();
+  if (attr.hasRank()) {
+    for (auto dim_size : attr.getShape()) {
+      auto* dim = shape->add_dim();
+      dim->set_size(dim_size);
+    }
+  } else {
+    shape->set_unknown_rank(true);
+  }
+  return Status::OK();
 }
 
 Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
@@ -182,6 +196,10 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       }
       TF_RETURN_IF_ERROR(ConvertAttribute(elt_type, &attr_val));
       list->add_type(attr_val.type());
+    } else if (auto attr = a.dyn_cast<mlir::TF::ShapeAttr>()) {
+      AttrValue attr_val;
+      TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
+      *list->add_shape() = attr_val.shape();
     } else {
       return errors::Unimplemented("Unhandled attribute!");
     }
@@ -367,7 +385,8 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ArrayAttr>(), &value));
         break;
-      case mlir::StandardAttributes::DenseElements:
+      case mlir::StandardAttributes::DenseIntOrFPElements:
+      case mlir::StandardAttributes::DenseStringElements:
       case mlir::StandardAttributes::OpaqueElements:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
@@ -379,6 +398,10 @@ Status ConvertAttributes(
       case mlir::StandardAttributes::Unit:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
+        break;
+      case static_cast<unsigned>(mlir::TF::AttrKind::SHAPE):
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::TF::ShapeAttr>(), &value));
         break;
       // AffineMap kind is not implemented.
       case mlir::StandardAttributes::AffineMap:

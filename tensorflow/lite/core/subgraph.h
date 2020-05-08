@@ -531,6 +531,12 @@ class Subgraph {
   // be reallocated if the graph was modified (i.e., the caller does *not* need
   // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
   // they will remain unallocated after delegate application.
+  // Returns one of the following three status codes:
+  // 1. kTfLiteOk: Delegation succeeded
+  // 2. kTfLiteDelegateError: Delegation failed due to an error in the
+  // delegate. The Subgraph has been restored to its pre-delegation state.
+  // NOTE: This reverts all delegates previously applied to the Subgraph.
+  // 3. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains
@@ -558,7 +564,13 @@ class Subgraph {
   void EnsureTensorsVectorCapacity() {
     const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
-      tensors_.reserve(required_capacity);
+      // Whenever it's required to increase the vector capacity, make it at
+      // least twice bigger. The behavior is consistent with the default
+      // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
+      // allocating and copying the underlying buffer.
+      size_t reserved_capacity =
+          std::max(required_capacity, tensors_.capacity() * 2);
+      tensors_.reserve(reserved_capacity);
       context_.tensors = tensors_.data();
     }
   }

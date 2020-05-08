@@ -155,7 +155,15 @@ def selu(x):
 @keras_export('keras.activations.softplus')
 def softplus(x):
   """Softplus activation function, `softplus(x) = log(exp(x) + 1)`.
-
+  
+  Example Usage:
+  
+  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> b = tf.keras.activations.softplus(a) 
+  >>> b.numpy()
+  array([2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00,
+           2.0000000e+01], dtype=float32)
+  
   Arguments:
       x: Input tensor.
 
@@ -168,6 +176,13 @@ def softplus(x):
 @keras_export('keras.activations.softsign')
 def softsign(x):
   """Softsign activation function, `softsign(x) = x / (abs(x) + 1)`.
+  
+  Example Usage:
+  
+  >>> a = tf.constant([-1.0, 0.0, 1.0], dtype = tf.float32)
+  >>> b = tf.keras.activations.softsign(a)
+  >>> b.numpy()
+  array([-0.5,  0. ,  0.5], dtype=float32)
 
   Arguments:
       x: Input tensor.
@@ -180,7 +195,21 @@ def softsign(x):
 
 @keras_export('keras.activations.swish')
 def swish(x):
-  """Swish activation function.
+  """Swish activation function, `swish(x) = x * sigmoid(x)`.
+
+  Swish activation function which returns `x*sigmoid(x)`.
+  It is a smooth, non-monotonic function that consistently matches
+  or outperforms ReLU on deep networks, it is unbounded above and
+  bounded below.
+
+
+  Example Usage:
+
+  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> b = tf.keras.activations.swish(a)
+  >>> b.numpy()
+  array([-4.1223075e-08, -2.6894143e-01,  0.0000000e+00,  7.3105860e-01,
+            2.0000000e+01], dtype=float32)
 
   Arguments:
       x: Input tensor.
@@ -264,14 +293,16 @@ def sigmoid(x):
   the result of the function gets close to 1.
 
   Sigmoid is equivalent to a 2-element Softmax, where the second element is
-  assumed to be zero.
+  assumed to be zero. The sigmoid function always returns a value between
+  0 and 1.
 
   For example:
 
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
-  >>> b.numpy() >= 0
-  array([ True,  True,  True,  True,  True])
+  >>> b.numpy()
+  array([2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01,
+           1.0000000e+00], dtype=float32)
 
   Arguments:
       x: Input tensor.
@@ -456,4 +487,4 @@ def get(identifier):
   else:
     raise TypeError(
         'Could not interpret activation function identifier: {}'.format(
-            repr(identifier)))
+            identifier))

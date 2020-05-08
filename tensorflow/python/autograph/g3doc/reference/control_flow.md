@@ -420,6 +420,21 @@ def extra_test(break_):
 break_, = ag__.for_stmt(range(10), extra_test, ..., (break_,))
 ```
 
+Mixing Tensor-dependent `break` and Python-dependent loops is disallowed:
+
+```
+@tf.function
+def buggy_while_py_true_tf_break(x):
+  while True:   # python conditional
+    if tf.equal(x, 0): # tensor break
+      break
+    x -= 1
+  return x
+
+# Raises OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed
+# buggy_while_true_tf_break(5)
+```
+
 ### `continue` statements
 
 Code blocks in which `continue` statements are used are rewritten with

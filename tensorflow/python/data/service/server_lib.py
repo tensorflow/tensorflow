@@ -38,7 +38,9 @@ class MasterServer(object):
         "grpc+local", and make sure your binary links in
         `data/service:local_credentials`.
     """
+    self._protocol = protocol
     self._server = _pywrap_server_lib.TF_DATA_NewMasterServer(0, protocol)
+    self._running = True
 
   @property
   def target(self):
@@ -47,21 +49,31 @@ class MasterServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_ServerTarget(self._server)
+    port = _pywrap_server_lib.TF_DATA_MasterServerBoundPort(self._server)
+    return "{0}://localhost:{1}".format(self._protocol, port)
 
-  def __del__(self):
+  def num_tasks(self):
+    """Returns the number of tasks on the master."""
+    return _pywrap_server_lib.TF_DATA_MasterServerNumTasks(self._server)
+
+  def stop(self):
     """Shuts down and deletes the server.
 
     This method will block until all outstanding rpcs have completed and the
     server has been shut down.
     """
-    _pywrap_server_lib.TF_DATA_DeleteServer(self._server)
+    if self._running:
+      self._running = False
+      _pywrap_server_lib.TF_DATA_DeleteMasterServer(self._server)
+
+  def __del__(self):
+    self.stop()
 
 
 class WorkerServer(object):
   """An in-process tf.data service worker, for use in testing."""
 
-  def __init__(self, protocol, master_address):
+  def __init__(self, protocol, master_address, port=0):
     """Creates and starts a new tf.data worker server.
 
     The server will choose an available port. Use `target()` to get the string
@@ -73,9 +85,12 @@ class WorkerServer(object):
         "grpc+local", and make sure your binary links in
         `data/service:local_credentials`.
       master_address: The address of the tf.data master server to register with.
+      port: The port to bind to.
     """
+    self._protocol = protocol
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        0, protocol, master_address)
+        port, protocol, master_address, "localhost:%port%")
+    self._running = True
 
   @property
   def target(self):
@@ -84,12 +99,18 @@ class WorkerServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_ServerTarget(self._server)
+    port = _pywrap_server_lib.TF_DATA_WorkerServerBoundPort(self._server)
+    return "{0}://localhost:{1}".format(self._protocol, port)
 
-  def __del__(self):
+  def stop(self):
     """Shuts down and deletes the server.
 
     This method will block until all outstanding rpcs have completed and the
     server has been shut down.
     """
-    _pywrap_server_lib.TF_DATA_DeleteServer(self._server)
+    if self._running:
+      self._running = False
+      _pywrap_server_lib.TF_DATA_DeleteWorkerServer(self._server)
+
+  def __del__(self):
+    self.stop()

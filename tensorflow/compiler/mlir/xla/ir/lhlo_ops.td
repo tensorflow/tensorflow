@@ -37,13 +37,12 @@ def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 // Any floating-point tensor types
 def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
-
 def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
 def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -103,11 +102,35 @@ def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
+def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine">, BASE_HLO_SinOp;
+
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
+
+//===----------------------------------------------------------------------===//
+// XLA complex unary elementwise op definitions.
+//===----------------------------------------------------------------------===//
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
+
+def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
+def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
+def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         LHLO_Op<mnemonic, traits> {
@@ -402,7 +425,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"Builder *builder, OperationState &result, "
+     OpBuilder<"OpBuilder &builder, OperationState &result, "
                "ArrayRef<NamedAttribute> attributes">
    ];
 }

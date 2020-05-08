@@ -41,15 +41,15 @@ using ::mlir::TF::ConstOp;
 class ExecutorConstantSinking
     : public mlir::PassWrapper<ExecutorConstantSinking, FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](tf_device::LaunchOp launch) {
-      LLVM_DEBUG(llvm::dbgs() << "Visit " << *launch.getOperation() << "\n");
+    getFunction().walk([](tf_device::ClusterOp cluster) {
+      LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
       // defined above and sink these constants in the region body.
       // The sunk_constant map keeps a mapping from a ConstOp defined above to
       // a sunk clone of it. This allows for reusing a sunk constant with
       // multiple uses in the region.
       llvm::DenseMap<Value, TF::ConstOp> sunk_constant;
-      Region &body = launch.body();
+      Region &body = cluster.body();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
         Value constant = use->get();
         auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());
@@ -84,7 +84,7 @@ class ExecutorConstantSinking
 
 static mlir::PassRegistration<ExecutorConstantSinking> pass(
     "tf-device-constant-sinking",
-    "Sink constants implicitly captured in a tf_device.launch region. This "
+    "Sink constants implicitly captured in a tf_device.cluster region. This "
     "reduces the number of arguments when outlining later.");
 
 }  // anonymous namespace

@@ -1,11 +1,13 @@
 path: "tensorflow.lite.TFLiteConverter"
 tf_class {
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteFrozenGraphConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBaseV1\'>"
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBase\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'graph_def\', \'input_tensors\', \'output_tensors\', \'input_arrays_with_shape\', \'output_arrays\', \'experimental_debug_info_func\', \'saved_model_dir\', \'saved_model_tags\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'graph_def\', \'input_tensors\', \'output_tensors\', \'input_arrays_with_shape\', \'output_arrays\', \'experimental_debug_info_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convert"

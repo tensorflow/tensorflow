@@ -113,12 +113,12 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
                             input_shape.h / attr.block_size,
                             input_shape.w / attr.block_size,
                             input_shape.c * attr.block_size * attr.block_size);
-    const uint3 grid = uint3(output_shape.w, output_shape.h,
-                             IntegralDivideRoundUp(output_shape.c, 4));
+    const uint3 grid =
+        uint3(output_shape.w, output_shape.h, DivideRoundUp(output_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
-    const int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
-    const int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
-    const int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
+    const int groups_x = DivideRoundUp(grid.x, groups_size.x);
+    const int groups_y = DivideRoundUp(grid.y, groups_size.y);
+    const int groups_z = DivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3(groups_x, groups_y, groups_z));
   };
   return {desc};

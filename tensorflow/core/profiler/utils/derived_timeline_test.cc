@@ -45,8 +45,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event =
-      CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100, {});
+  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
   first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
                                GetStatTypeStr(StatType::kHloModule)),
                            kHloModuleName);
@@ -54,7 +53,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
                                GetStatTypeStr(StatType::kKernelDetails)),
                            kKernelDetails);
   auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300, {});
+      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
   second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
                                 GetStatTypeStr(StatType::kHloModule)),
                             kHloModuleName);
@@ -85,8 +84,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event =
-      CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100, {});
+  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
   first_event.AddStatValue(
       *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
       kTfOpName);
@@ -94,7 +92,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
                                GetStatTypeStr(StatType::kKernelDetails)),
                            kKernelDetails);
   auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300, {});
+      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
   second_event.AddStatValue(
       *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
       kTfOpName);
@@ -164,8 +162,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event =
-      CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100, {});
+  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
   first_event.AddStatValue(
       *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
       kTfOpName);
@@ -173,7 +170,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
                                GetStatTypeStr(StatType::kKernelDetails)),
                            kKernelDetails);
   auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300, {});
+      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
   second_event.AddStatValue(
       *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
       kTfOpName);

@@ -1970,6 +1970,36 @@ TEST(QuantizedActivationsOpTest, PRelu) {
                                       }));
 }
 
+TEST(QuantizedActivationsOpTest, PReluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput<int8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 1, Column 2
+  });
+  m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 1, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         0, 0, 0,     // Row 1, Column 1
+                                         64, 64, 64,  // Row 1, Column 2
+                                         0, -64, 64,  // Row 2, Column 1
+                                         0, -16, 16,  // Row 1, Column 2
+                                     }));
+}
+
 class LeakyReluOpModel : public SingleOpModel {
  public:
   LeakyReluOpModel(const TensorData& input, float alpha) {

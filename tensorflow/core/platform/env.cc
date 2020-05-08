@@ -496,7 +496,7 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
 
 // A ZeroCopyInputStream on a RandomAccessFile.
 namespace {
-class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
+class FileStream : public protobuf::io::ZeroCopyInputStream {
  public:
   explicit FileStream(RandomAccessFile* file) : file_(file), pos_(0) {}
 
@@ -522,7 +522,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
   }
 
  private:
-  static const int kBufSize = 512 << 10;
+  static constexpr int kBufSize = 512 << 10;
 
   RandomAccessFile* file_;
   int64 pos_;
@@ -533,14 +533,14 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 }  // namespace
 
 Status WriteBinaryProto(Env* env, const string& fname,
-                        const ::tensorflow::protobuf::MessageLite& proto) {
+                        const protobuf::MessageLite& proto) {
   string serialized;
   proto.AppendToString(&serialized);
   return WriteStringToFile(env, fname, serialized);
 }
 
 Status ReadBinaryProto(Env* env, const string& fname,
-                       ::tensorflow::protobuf::MessageLite* proto) {
+                       protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
@@ -549,7 +549,7 @@ Status ReadBinaryProto(Env* env, const string& fname,
   // one to parse arbitrarily large messages for MessageLite. One most likely
   // doesn't want to put protobufs larger than 64MB on Android, so we should
   // eventually remove this and quit loud when a large protobuf is passed in.
-  ::tensorflow::protobuf::io::CodedInputStream coded_stream(stream.get());
+  protobuf::io::CodedInputStream coded_stream(stream.get());
   // Total bytes hard limit / warning limit are set to 1GB and 512MB
   // respectively.
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
@@ -563,47 +563,36 @@ Status ReadBinaryProto(Env* env, const string& fname,
 }
 
 Status WriteTextProto(Env* env, const string& fname,
-                      const ::tensorflow::protobuf::Message& proto) {
-#if !defined(TENSORFLOW_LITE_PROTOS)
+                      const protobuf::Message& proto) {
   string serialized;
-  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &serialized)) {
+  if (!protobuf::TextFormat::PrintToString(proto, &serialized)) {
     return errors::FailedPrecondition("Unable to convert proto to text.");
   }
   return WriteStringToFile(env, fname, serialized);
-#else
-  return errors::Unimplemented("Can't write text protos with protolite.");
-#endif
 }
 
-Status ReadTextProto(Env* env, const string& fname,
-                     ::tensorflow::protobuf::Message* proto) {
-#if !defined(TENSORFLOW_LITE_PROTOS)
+Status ReadTextProto(Env* env, const string& fname, protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
-  if (!::tensorflow::protobuf::TextFormat::Parse(stream.get(), proto)) {
+  if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as text proto");
   }
   return Status::OK();
-#else
-  return errors::Unimplemented("Can't parse text protos with protolite.");
-#endif
 }
 
 Status ReadTextOrBinaryProto(Env* env, const string& fname,
-#if !defined(TENSORFLOW_LITE_PROTOS)
-                             ::tensorflow::protobuf::Message* proto
-#else
-                             ::tensorflow::protobuf::MessageLite* proto
-#endif
-) {
-#if !defined(TENSORFLOW_LITE_PROTOS)
+                             protobuf::Message* proto) {
   if (ReadTextProto(env, fname, proto).ok()) {
     return Status::OK();
   }
-#endif
+  return ReadBinaryProto(env, fname, proto);
+}
+
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+                             protobuf::MessageLite* proto) {
   return ReadBinaryProto(env, fname, proto);
 }
 

@@ -132,7 +132,6 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -164,17 +163,9 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = False
       self._batch_input_shape = tuple(input_tensor.shape.as_list())
 
-    # Create an input node to add to self.outbound_node
-    # and set output_tensors' _keras_history.
-    input_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
+    # Create an input node.
     input_tensor._keras_mask = None
-    node_module.Node(
-        self,
-        inbound_layers=[],
-        node_indices=[],
-        tensor_indices=[],
-        input_tensors=[input_tensor],
-        output_tensors=[input_tensor])
+    node_module.Node(layer=self, outputs=input_tensor)
 
   def get_config(self):
     config = {
@@ -294,8 +285,8 @@ def Input(  # pylint: disable=invalid-name
 
   # Return tensor including `_keras_history`.
   # Note that in this case train_output and test_output are the same pointer.
-  outputs = input_layer._inbound_nodes[0].output_tensors
-  if len(outputs) == 1:
+  outputs = input_layer._inbound_nodes[0].outputs
+  if isinstance(outputs, list) and len(outputs) == 1:
     return outputs[0]
   else:
     return outputs

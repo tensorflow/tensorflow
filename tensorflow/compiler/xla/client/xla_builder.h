@@ -364,6 +364,10 @@ class XlaBuilder {
   Status SetInstructionFrontendAttribute(XlaOp op, string attribute,
                                          string value);
 
+  // Returns shapes for the operands.
+  StatusOr<std::vector<Shape>> GetOperandShapes(
+      absl::Span<const XlaOp> operands) const;
+
  private:
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
@@ -391,6 +395,10 @@ class XlaBuilder {
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
 
+  virtual StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
+                                      XlaOp padding_value,
+                                      const PaddingConfig& padding_config);
+
   XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
                 absl::Span<const int64> new_sizes,
                 int64 inferred_dimension = -1);
@@ -406,9 +414,12 @@ class XlaBuilder {
   XlaOp Slice(XlaOp operand, absl::Span<const int64> start_indices,
               absl::Span<const int64> limit_indices,
               absl::Span<const int64> strides);
-
-  XlaOp SliceInDim(XlaOp operand, int64 start_index, int64 limit_index,
-                   int64 stride, int64 dimno);
+  virtual StatusOr<XlaOp> SliceInternal(const Shape& shape, XlaOp operand,
+                                        absl::Span<const int64> start_indices,
+                                        absl::Span<const int64> limit_indices,
+                                        absl::Span<const int64> strides);
+  virtual XlaOp SliceInDim(XlaOp operand, int64 start_index, int64 limit_index,
+                           int64 stride, int64 dimno);
 
   ABSL_DEPRECATED("Use span-of-indices form instead")
   XlaOp DynamicSlice(XlaOp operand, XlaOp start_indices,
@@ -422,14 +433,22 @@ class XlaBuilder {
                            absl::Span<const XlaOp> start_indices);
 
   XlaOp ConcatInDim(absl::Span<const XlaOp> operands, int64 dimension);
+  virtual StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
+                                              absl::Span<const XlaOp> operands,
+                                              int64 dimension);
 
   void Trace(const string& tag, XlaOp operand);
 
   XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
 
   XlaOp Tuple(absl::Span<const XlaOp> elements);
+  virtual StatusOr<XlaOp> TupleInternal(const Shape& shape,
+                                        absl::Span<const XlaOp> elements);
 
   XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
+  virtual StatusOr<XlaOp> GetTupleElementInternal(const Shape& shape,
+                                                  XlaOp tuple_data,
+                                                  int64 index);
 
   XlaOp Dot(XlaOp lhs, XlaOp rhs,
             const PrecisionConfig* precision_config = nullptr);
@@ -476,15 +495,18 @@ class XlaBuilder {
             absl::Span<const int64> fft_length);
 
   XlaOp Infeed(const Shape& shape, const string& config = "");
-  XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
-                        const string& config = "");
+  XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
+  virtual StatusOr<XlaOp> InfeedWithTokenInternal(
+      const Shape& infeed_instruction_shape, XlaOp token, const string& config);
 
   void Outfeed(XlaOp operand, const Shape& shape_with_layout,
                const string& outfeed_config);
   XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
                          const Shape& shape_with_layout,
                          const string& outfeed_config);
-
+  virtual StatusOr<XlaOp> OutfeedWithTokenInternal(
+      XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+      const string& outfeed_config);
   XlaOp Call(const XlaComputation& computation,
              absl::Span<const XlaOp> operands);
 
@@ -535,7 +557,8 @@ class XlaBuilder {
 
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
-                 const std::vector<ReplicaGroup>& replica_groups);
+                 const std::vector<ReplicaGroup>& replica_groups,
+                 const absl::optional<Layout>& layout = absl::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
@@ -605,6 +628,11 @@ class XlaBuilder {
                absl::Span<const int64> slice_sizes,
                bool indices_are_sorted = false);
 
+  virtual StatusOr<XlaOp> GatherInternal(
+      const Shape& shape, XlaOp input, XlaOp start_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
+
   XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                 const XlaComputation& update_computation,
                 const ScatterDimensionNumbers& dimension_numbers,
@@ -619,7 +647,7 @@ class XlaBuilder {
   XlaOp RecvFromHost(XlaOp token, const Shape& shape,
                      const ChannelHandle& handle);
 
-  XlaOp CreateToken();
+  virtual XlaOp CreateToken();
 
   XlaOp AfterAll(absl::Span<const XlaOp> tokens);
 
@@ -679,6 +707,10 @@ class XlaBuilder {
   XlaOp RngOp(RandomDistribution distribution,
               absl::Span<const XlaOp> parameters, const Shape& shape);
 
+  virtual StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
+                                        absl::Span<const XlaOp> parameters,
+                                        const Shape& shape);
+
   virtual StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions);
@@ -695,10 +727,6 @@ class XlaBuilder {
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
-
-  // Returns shapes for the operands.
-  StatusOr<std::vector<Shape>> GetOperandShapes(
-      absl::Span<const XlaOp> operands) const;
 
   // A visitor which checks whether an operation is a compile-time constant,
   // meaning that it doesn't depend on any parameters, or on any stateful
@@ -853,6 +881,10 @@ class XlaBuilder {
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config);
+  virtual StatusOr<XlaOp> DotGeneralInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs,
+      const DotDimensionNumbers& dimension_number,
+      const PrecisionConfig* precision_config);
   friend XlaOp Conv(XlaOp lhs, XlaOp rhs,
                     absl::Span<const int64> window_strides, Padding padding,
                     int64 feature_group_count, int64 batch_group_count,
@@ -966,7 +998,8 @@ class XlaBuilder {
                          const absl::optional<Shape>& shape_with_layout);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
-                        const std::vector<ReplicaGroup>& replica_groups);
+                        const std::vector<ReplicaGroup>& replica_groups,
+                        const absl::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
@@ -1001,6 +1034,7 @@ class XlaBuilder {
   friend XlaOp Imag(XlaOp operand);
   friend XlaOp Sqrt(XlaOp operand);
   friend XlaOp Rsqrt(XlaOp operand);
+  friend XlaOp Cbrt(XlaOp operand);
   friend XlaOp Pow(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(XlaOp operand);
@@ -1762,9 +1796,13 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
+// An optional `layout` can be specified to force the layout of the instruction.
+// This is used to guarantee the same layout for a group of AllToAll ops
+// compiled separately.
 XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups = {});
+               const std::vector<ReplicaGroup>& replica_groups = {},
+               const absl::optional<Layout>& layout = absl::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //
@@ -1850,6 +1888,9 @@ XlaOp Imag(XlaOp operand);
 
 // Enqueues a sqrt computation onto the computation.
 XlaOp Sqrt(XlaOp operand);
+
+// Enqueues a cbrt computation onto the computation.
+XlaOp Cbrt(XlaOp operand);
 
 // Enqueues a rsqrt computation onto the computation.
 XlaOp Rsqrt(XlaOp operand);

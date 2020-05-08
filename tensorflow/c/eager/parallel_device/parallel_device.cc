@@ -574,23 +574,21 @@ void DeleteParallelDevice(void* device_info) {
 
 }  // namespace
 
-void RegisterParallelDevice(TFE_Context* context, const char* device_name,
-                            const char** underlying_devices,
-                            int num_underlying_devices, TF_Status* status) {
-  TFE_CustomDevice custom_device;
-  custom_device.copy_tensor_to_device = &CopyToParallelDevice;
-  custom_device.copy_tensor_from_device = &CopyTensorFromParallelDevice;
-  custom_device.delete_device = &DeleteParallelDevice;
-  custom_device.execute = &ParallelDeviceExecute;
+void AllocateParallelDevice(const char* device_name,
+                            const char* const* underlying_devices,
+                            int num_underlying_devices,
+                            TFE_CustomDevice* device, void** device_info) {
+  device->copy_tensor_to_device = &CopyToParallelDevice;
+  device->copy_tensor_from_device = &CopyTensorFromParallelDevice;
+  device->delete_device = &DeleteParallelDevice;
+  device->execute = &ParallelDeviceExecute;
   std::vector<std::string> underlying_devices_vector;
   underlying_devices_vector.reserve(num_underlying_devices);
   for (int device_index = 0; device_index < num_underlying_devices;
        ++device_index) {
     underlying_devices_vector.push_back(underlying_devices[device_index]);
   }
-  ParallelDevice* d =
-      new ParallelDevice(device_name, underlying_devices_vector);
-  TFE_RegisterCustomDevice(context, custom_device, device_name, d, status);
+  *device_info = new ParallelDevice(device_name, underlying_devices_vector);
 }
 
 }  // namespace eager

@@ -48,6 +48,7 @@ from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -552,6 +553,8 @@ def init_pool(seqs):
   _SHARED_SEQUENCES = seqs
 
 
+@deprecation.deprecated('2020-06-07', 'Please manage pools using the standard '
+                        'Python lib.')
 @keras_export('keras.experimental.terminate_keras_multiprocessing_pools')
 def terminate_keras_multiprocessing_pools(grace_period=0.1, use_sigkill=False):
   """Destroy Keras' multiprocessing pools to prevent deadlocks.

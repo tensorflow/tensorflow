@@ -161,7 +161,6 @@ class CategoryCrossing(Layer):
       self._depth_tuple = depth
     elif depth is not None:
       self._depth_tuple = tuple([i for i in range(1, depth + 1)])
-    self._supports_ragged_inputs = True
 
   def partial_crossing(self, partial_inputs, ragged_out, sparse_out):
     """Gets the crossed output from a partial list/tuple of inputs."""

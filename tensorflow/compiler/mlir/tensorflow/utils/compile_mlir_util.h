@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -50,11 +51,14 @@ namespace tensorflow {
 // shape_representation_fn: when this is set, this shape representation function
 //   will be used to determine argument and result shapes. Otherwise the
 //   original shape will be used as is.
+// custom_legalization_passes: passes to run before the default TF legalization
+//   passes for backend-specific ops.
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool return_tuple,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn = nullptr);
+    const XlaCompiler::ShapeRepresentationFn shape_representation_fn = nullptr,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
@@ -62,15 +66,17 @@ Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result);
+    XlaCompiler::CompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
 // Same as the above but takes input as TensorFlow Graph.
 Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<TensorShape> arg_shapes,
+    const Graph& graph, llvm::ArrayRef<const XlaCompiler::Argument> args,
     llvm::StringRef device_type, bool use_tuple_args,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result);
+    XlaCompiler::CompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
 }  // namespace tensorflow
 

@@ -117,7 +117,11 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
       *type = props.dtype();
     } else if (*type != props.dtype()) {
       return errors::Internal("Group ops don't all have same type");
-    } else if (!TensorShape::IsValid(props.shape())) {
+    } else if (!TensorShape::IsValid(props.shape()) ||
+               props.shape().unknown_rank()) {
+      // TensorShape::IsValid may return true if unknown_rank is True, i.e.
+      // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
+      // need to know the shape fully.
       return errors::Internal("Complete shape not known for ", n->name());
     }
     if (*type != dtype) {

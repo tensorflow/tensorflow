@@ -165,7 +165,7 @@ class MklInputConversionOp : public OpKernel {
                   input1_md, tensor_out, net, net_args, cpu_engine)),
               errors::Internal(
                   "MklInputConversionOp: Failed to create reorder for input0"));
-          ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
+          ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine, context);
           // Input1 will be passed through
           ForwardMklTensorInToOut(context, kInputIndex_1, kInputIndex_1);
           return;
@@ -273,7 +273,7 @@ class MklInputConversionOp : public OpKernel {
                     errors::Internal("MklInputConversionOp: Failed to forward "
                                      "input tensor to output"));
       } else {
-        ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
+        ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine, context);
       }
 
       // -- The tensor in MKL format passes through --

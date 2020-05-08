@@ -32,12 +32,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -75,6 +75,19 @@ Status BuildNodeMap(const Graph& graph,
     }
   }
   return Status::OK();
+}
+
+EngineInfo::EngineType GetEngineType(const ConversionParams& params) {
+  return (params.is_dyn_op || params.use_calibration)
+             ? EngineInfo::EngineType::TRTDynamic
+             : EngineInfo::EngineType::TRTStatic;
+}
+
+// Returns true when use_implicit_batch is false or when we are building dynamic
+// engine, to allow unknown size for dimensions rather than dimension 0.
+bool AllowDynamicNonBatchDimension(const ConversionParams& params) {
+  return !params.use_implicit_batch ||
+         GetEngineType(params) == EngineInfo::EngineType::TRTDynamic;
 }
 
 }  // namespace
@@ -393,9 +406,8 @@ Status CreateTRTNode(const ConversionParams& params,
           for (int i = 1; i < conn.outside_shape.dims(); i++) {
             if (conn.outside_shape.dim_size(i) <= 0) {
               return errors::Internal(
-                  "Input shapes must be fully defined when in static mode. "
-                  "Please try is_dynamic_op=True (shape was ",
-                  conn.outside_shape.DebugString(), ")");
+                  "Not fully defined input shape when in static mode which "
+                  "should have been excluded by the segmenter. ");
             }
           }
         }
@@ -645,11 +657,15 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
+  segment_options.use_implicit_batch = params.use_implicit_batch;
+  segment_options.allow_dynamic_non_batch_dim =
+      AllowDynamicNonBatchDimension(params);
+
   segment::SegmentNodesVector initial_segments;
   TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
                              params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph,
+      &graph, params.graph_properties,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
@@ -686,9 +702,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
-                                   ? EngineInfo::EngineType::TRTDynamic
-                                   : EngineInfo::EngineType::TRTStatic);
+    curr_engine.engine_type = GetEngineType(params);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
@@ -764,6 +778,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Cannot replace " << msg
+                   << " reason: " << status.error_message()
                    << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {

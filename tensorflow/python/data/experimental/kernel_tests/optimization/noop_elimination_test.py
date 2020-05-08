@@ -21,7 +21,6 @@ import functools
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -51,8 +50,7 @@ def _test_combinations():
     ds = ds.map(lambda x: (x, x), num_parallel_calls=2)  # Not eliminated
     return ds.map(lambda x, y: (x, y))  # Eliminated
 
-  parallel_map_name = "ParallelMapV2" if compat.forward_compatible(
-      2020, 3, 6) else "ParallelMap"
+  parallel_map_name = "ParallelMapV2"
 
   cases = [
       ("Skip0", lambda ds: ds.skip(0), None),

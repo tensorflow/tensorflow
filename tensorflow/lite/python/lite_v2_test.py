@@ -480,6 +480,21 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
                   str(error.exception))
 
   @test_util.run_v2_only
+  def testNoConcreteFunctionModel(self):
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    self.assertLen(converter._funcs, 0)
+
+    with self.assertRaises(ValueError) as error:
+      _ = converter.convert()
+    self.assertIn('No ConcreteFunction is specified.', str(error.exception))
+
+  @test_util.run_v2_only
   def testKerasSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
     input_data = tf.constant(1., shape=[1, 1])
@@ -861,8 +876,85 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     np.testing.assert_almost_equal(
         expected_value.numpy(), actual_value[0], decimal=6)
 
+  def _getQuantizedModel(self):
+    # Returns a model with tf.MatMul and unknown dimensions.
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[None, 33], dtype=tf.float32)])
+    def model(in_tensor):
+      # We need the tensor to have more than 1024 elements for quantize_weights
+      # to kick in. Thus, the [33, 33] shape.
+      const_tensor = tf.constant(
+          np.random.uniform(low=-10., high=10., size=[33, 33]),
+          shape=[33, 33],
+          dtype=tf.float32,
+          name='inputB')
+
+      shape = tf.shape(in_tensor)
+      fill = tf.transpose(tf.fill(shape, 1.))
+      mult = tf.matmul(fill, in_tensor)
+      return tf.matmul(mult, const_tensor)
+
+    concrete_func = model.get_concrete_function()
+
+    def calibration_gen():
+      for batch in range(5, 20, 5):
+        for _ in range(5):
+          yield [np.random.uniform(-1, 1, size=(batch, 33)).astype(np.float32)]
+
+    return concrete_func, calibration_gen
+
+  @test_util.run_v2_only
+  def testMatMulQuantize(self):
+    concrete_func, _ = self._getQuantizedModel()
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func])
+    float_converter.experimental_new_converter = True
+    float_tflite_model = float_converter.convert()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func])
+    quantized_converter.experimental_new_converter = True
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_tflite_model = quantized_converter.convert()
+
+    # The default input and output types should be float.
+    quantized_interpreter = Interpreter(model_content=quantized_tflite_model)
+    quantized_interpreter.allocate_tensors()
+    input_details = quantized_interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue((input_details[0]['shape_signature'] == [-1, 33]).all())
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
+
+  @test_util.run_v2_only
+  def testMatMulCalibrateAndQuantize(self):
+    concrete_func, calibration_gen = self._getQuantizedModel()
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func])
+    float_converter.experimental_new_converter = True
+    float_tflite_model = float_converter.convert()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_converter = True
+    quantized_tflite_model = quantized_converter.convert()
+
+    # The default input and output types should be float.
+    quantized_interpreter = Interpreter(model_content=quantized_tflite_model)
+    quantized_interpreter.allocate_tensors()
+    input_details = quantized_interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue((input_details[0]['shape_signature'] == [-1, 33]).all())
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
+
   def testBatchMatMul(self):
-    self.skipTest('BatchMatMulV2 does not support unknown batch size.')
     input_data_1 = tf.constant(
         np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
     input_data_2 = tf.constant(
@@ -886,7 +978,29 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
         input_shapes=[([-1, 256, 256], [1, 256, 256])])
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+    np.testing.assert_almost_equal(
+        expected_value.numpy(), actual_value[0], decimal=4)
+
+  def testSizeInvalid(self):
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, None, 16, 3], dtype=tf.float32)
+    ])
+    def model(in_tensor):
+      return in_tensor + in_tensor
+
+    concrete_func = model.get_concrete_function()
+
+    # Test invalid shape. None after 1st dimension. Run with TOCO in order to
+    # invoke shape checking code.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_new_converter = False
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual(
+        'None is only supported in the 1st dimension. Tensor '
+        '\'in_tensor\' has invalid shape \'[1, None, 16, 3]\'.',
+        str(error.exception))
 
 
 if __name__ == '__main__':

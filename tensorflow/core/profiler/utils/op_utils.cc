@@ -41,7 +41,7 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name);
   if (op_metrics->category().empty())
     op_metrics->set_category(category.data(), category.size());
-  op_metrics->set_is_eager(is_eager);
+  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + 1);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);
@@ -72,7 +72,7 @@ void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
                                                     : string(category));
   if (op_metrics->provenance().empty())
     op_metrics->set_provenance(string(provenance));
-  op_metrics->set_is_eager(is_eager);
+  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);

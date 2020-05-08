@@ -737,16 +737,17 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast) {
   // refer to unique positions.
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
-  HloInstruction* p1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
   HloInstruction* negate = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
-  HloInstruction* bitcast =
-      builder.AddInstruction(HloInstruction::CreateBitcast(shape, negate));
+  HloInstruction* bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(param_shape, negate));
   HloInstruction* add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, p1));
+      HloInstruction::CreateBinary(param_shape, HloOpcode::kAdd, bitcast, p1));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -757,6 +758,8 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast) {
 
   AssignMemorySpace(module.get());
 
+  bitcast = add->mutable_operand(0);
+  EXPECT_EQ(bitcast->opcode(), HloOpcode::kBitcast);
   EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 

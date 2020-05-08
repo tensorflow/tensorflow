@@ -642,9 +642,32 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, input->type, alpha->type);
+
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
+    // This scale check is actually needed for quantized path:
+    // prelu(x) = x if x >= 0 else x * alpha.
+    // So if we translate that for quantized computation:
+    //
+    // input_float = (input_q - input_zp) * input_scale
+    // output_float = (output_q - output_zp) * output_scale
+    // alpha_float = (alpha_q - alpha_zp) * alpha_scale
+    //
+    // When input_q - input_zp >= 0:
+    // ouput_q = (input_q - input_zp) * input_scale / output_scale + output_q
+    // else:
+    // output_q = (input_q - input_zp) * (alpha_q - alpha_zp) * input_scale
+    //            * alpha_scale / output_scale +output_q
+    //
+    // So we have two float values which we need to translate into multiplier
+    // shift languages.
+    // For simplicity & efficiency, if we make sure input_scale
+    // & output_scale are the same, we only need to translate the latter one
+    // into multiplier & shift format.
+    TF_LITE_ENSURE(context,
+                   std::abs(input->params.scale - output->params.scale) < 1e-4);
     double real_multiplier =
         input->params.scale * alpha->params.scale / output->params.scale;
     QuantizeMultiplierSmallerThanOneExp(
@@ -1138,9 +1161,23 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier = data->output_multiplier;
+      op_params.output_shift = data->output_shift;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Only float32 and uint8 are supported currently, got %d.",
+          context,
+          "Only float32 and uint8 and int8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
