@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_filesystem.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 
 #include "google/cloud/storage/client.h"
 
@@ -27,16 +27,18 @@ limitations under the License.
 
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI scheme.
+#define TF_ReturnIfError(status) if(TF_GetCode(status) != TF_OK) return
 
 // We can cast `google::cloud::StatusCode` to `TF_Code` because they have the same integer values.
 // See https://github.com/googleapis/google-cloud-cpp/blob/6c09cbfa0160bc046e5509b4dd2ab4b872648b4a/google/cloud/status.h#L32-L52
-#define TF_SetStatusFromGCSStatus(gcs_status, status) TF_SetStatus(status, static_cast<TF_Code>(gcs_status.code()), gcs_status.message().c_str())
-#define TF_ReturnIfError(status) if(TF_GetCode(status) != TF_OK) return
+static inline void TF_SetStatusFromGCSStatus(const google::cloud::Status& gcs_status, TF_Status* status) {
+	TF_SetStatus(status, static_cast<TF_Code>(gcs_status.code()), gcs_status.message().c_str());
+}
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
-void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket, char** object, TF_Status* status) {
+static void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket, char** object, TF_Status* status) {
   size_t scheme_index = strcspn(fname, "://");
   char* scheme = (char*) malloc(scheme_index + 1);
   sprintf(scheme, "%.*s", (int)scheme_index, fname);
@@ -75,7 +77,7 @@ void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket, char**
   TF_SetStatus(status, TF_OK, "");
 }
 
-std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_) {
+static std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_) {
 	*temp_path_ = (char*) malloc(L_tmpnam);
 	*temp_path_ = tmpnam(*temp_path_);
 	std::shared_ptr<std::fstream> temp_file_ = std::make_shared<std::fstream>(*temp_path_, std::fstream::binary | std::fstream::in | std::fstream::out | std::fstream::trunc);
@@ -83,7 +85,7 @@ std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_) {
 	return temp_file_;
 }
 
-int64_t GetBuffer(const std::shared_ptr<std::fstream>& file, char** buffer) {
+static int64_t GetBuffer(const std::shared_ptr<std::fstream>& file, char** buffer) {
 	file->seekg(0, file->end);
 	int64_t read = file->tellg();
 	file->seekg(0, file->beg);

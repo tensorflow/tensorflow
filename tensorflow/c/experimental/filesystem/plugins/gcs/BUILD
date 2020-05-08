@@ -20,7 +20,6 @@ tf_cc_shared_object(
 cc_library(
     name = "gcs_filesystem_impl",
     srcs = ["gcs_filesystem.cc"],
-    hdrs = ["gcs_filesystem.h"],
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
