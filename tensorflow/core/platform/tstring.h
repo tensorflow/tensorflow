@@ -227,7 +227,7 @@ class tstring {
   friend std::ostream& operator<<(std::ostream& o, const tstring& str);
   #if !defined(__APPLE__)
       friend std::hash<tstring>;
-  #end
+  #endif
   // Tom: The above hash declaration causes the following compilation error on macOS
   /**
    ./tensorflow/core/platform/tstring.h:228:15: error: no template named 'hash'; did you mean 'std::hash'?
