@@ -483,6 +483,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
+  Status FindCompositeDeviceFromName(const char* device_name,
+                                     CompositeDevice** device) const;
+
   Status FindCustomDeviceFromName(const string& device_name,
                                   CustomDevice** dev) const;
 

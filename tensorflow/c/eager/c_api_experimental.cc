@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -637,4 +638,22 @@ TFE_TensorHandle* TFE_NewTensorHandleFromTensor(TFE_Context* ctx, TF_Tensor* t,
                                                 TF_Status* status) {
   return tensorflow::wrap(
       tensorflow::unwrap(ctx)->CreateLocalHandle(t->tensor));
+}
+
+TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
+                                               TFE_TensorHandle** handles,
+                                               int* num_handles,
+                                               TF_Status* status) {
+  std::vector<tensorflow::TensorHandle*> tensor_handles;
+  tensor_handles.reserve(*num_handles);
+  for (int i = 0; i < *num_handles; ++i) {
+    tensor_handles.push_back(
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(handles[i])));
+  }
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::TensorHandle* handle = nullptr;
+  status->status = tensorflow::TensorHandle::CreatePackedHandle(
+      std::move(tensor_handles), context, &handle);
+  return tensorflow::wrap(handle);
 }

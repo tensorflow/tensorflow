@@ -231,6 +231,8 @@ class TensorHandle : public AbstractTensorHandleInterface,
       std::vector<DtypeAndPartialTensorShape>* result);
   Status GetResourceAllowedDevices(std::vector<string>* result);
 
+  // Returns the number of packed handles. 0 if the handle type is not PACKED.
+  int NumPackedHandles() const;
   // It's called on a packed TensorHandle. Extract a handle with the given
   // index.
   Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
@@ -316,6 +318,8 @@ class TensorHandle : public AbstractTensorHandleInterface,
     void Poison(Status status);
     string DebugString() const;
 
+    // Number of packed handles.
+    int NumPackedHandles() const;
     // Extract a handle on the given index.
     Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
 

@@ -158,6 +158,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
@@ -425,7 +426,9 @@ Device* KernelAndDeviceOp::InputDevice(int i) const {
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
-  if (input_dtypes_[i] == DT_RESOURCE) {
+  if ((input_dtypes_[i] == DT_RESOURCE) &&
+      (composite_devices_.find(input_devices_[i]->name()) ==
+       composite_devices_.end())) {
     return host_cpu_device_;
   } else {
     return input_devices_[i];

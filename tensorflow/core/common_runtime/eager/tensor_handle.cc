@@ -124,6 +124,10 @@ string TensorHandle::PackedTensorHandleData::DebugString() const {
   return debug_str;
 }
 
+int TensorHandle::PackedTensorHandleData::NumPackedHandles() const {
+  return handles_.size();
+}
+
 Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
     const int index, TensorHandle** handle) const {
   if (index < 0 || index >= handles_.size()) {
@@ -183,6 +187,13 @@ Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
     *result = resource_handle_info_.allowed_devices;
   };
   return GetResourceHandleInfoImpl(get_resource_info);
+}
+
+int TensorHandle::NumPackedHandles() const {
+  if (Type() != PACKED) {
+    return 0;
+  }
+  return absl::get<PackedTensorHandleData>(data_).NumPackedHandles();
 }
 
 Status TensorHandle::ExtractPackedHandle(const int index,
@@ -315,8 +326,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
       return errors::InvalidArgument(
           "CustomDevice is not supported for packing.");
     } else {
-      devices.push_back(
-          absl::get<Device*>(handle->DeviceOrHostCPU(*ctx))->name());
+      devices.push_back(handle->op_device() ? handle->op_device()->name()
+                                            : ctx->HostCPU()->name());
     }
   }
 
