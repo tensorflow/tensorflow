@@ -436,21 +436,29 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    TF_LITE_ENSURE(context,
-                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+    bool param_scale_pot =
+        CheckedLog2(input->params.scale, &input_scale_log2_rounded);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    param_scale_pot &=
+        (data->input_left_shift == 0 || data->input_left_shift == 1);
+
+    if (!param_scale_pot) {
+      // In case of general scale parameter, we need to do a rescaling.
+      // Magic constant 4096:
+      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
+      // from 16-bit (-2^15, 2^15),
+      // so we need to multiply by
+      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
+      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+    }
 
     int output_scale_log2_rounded;
     TF_LITE_ENSURE(
         context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
     TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
                       -kOutputFractionalBits);
-
-    data->input_left_shift =
-        (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    // Support for shifts is limited until we have a parameterized version of
-    // SaturatingRoundingMultiplyByPOT().
-    TF_LITE_ENSURE(context, data->input_left_shift >= 0);
-    TF_LITE_ENSURE(context, data->input_left_shift <= 1);
   }
 
   return context->ResizeTensor(context, output,
@@ -524,19 +532,28 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    TF_LITE_ENSURE(context,
-                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+    bool param_scale_pot =
+        CheckedLog2(input->params.scale, &input_scale_log2_rounded);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    param_scale_pot &= (data->input_left_shift == 0);
+
+    if (!param_scale_pot) {
+      // In case of general scale parameter, we need to do a rescaling.
+      // Magic constant 4096:
+      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
+      // from 16-bit (-2^15, 2^15),
+      // so we need to multiply by
+      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
+      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+    }
 
     int output_scale_log2_rounded;
     TF_LITE_ENSURE(
         context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
     TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
                       -kOutputFractionalBits);
-
-    data->input_left_shift =
-        (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    // The int16 logistic implementation does not support shifting of the input.
-    TF_LITE_ENSURE_EQ(context, data->input_left_shift, 0);
   }
 
   return context->ResizeTensor(context, output,
@@ -849,13 +866,13 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16: {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
-      if (kernel_type == kReference) {
+      if (kernel_type == kReference || (data->input_multiplier > 0)) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Tanh(data->input_left_shift, size,
-                                    GetTensorData<int16_t>(input),
-                                    GetTensorData<int16_t>(output));
+        reference_integer_ops::Tanh(
+            data->input_multiplier, data->input_left_shift, size,
+            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -924,11 +941,12 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt16: {
       LogisticParams params;
-      if (kernel_type == kReference) {
+      if (kernel_type == kReference || (data->input_multiplier > 0)) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Logistic(size, GetTensorData<int16_t>(input),
+        reference_integer_ops::Logistic(data->input_multiplier, size,
+                                        GetTensorData<int16_t>(input),
                                         GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Logistic(

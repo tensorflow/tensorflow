@@ -438,6 +438,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_TANH:
+    case BuiltinOperator_LOGISTIC:
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_FILL:
       if (op_sig.input_types.size() >= 2 &&
           (op_sig.input_types.at(1) == TensorType_BOOL ||
@@ -479,8 +491,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
-    case BuiltinOperator_TANH:
-    case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
