@@ -479,13 +479,13 @@ def check_bazel_version(min_version, max_version):
   if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
-  curr_version = run_shell(
-      ['bazel', '--batch', '--bazelrc=/dev/null', 'version'])
 
-  for line in curr_version.split('\n'):
-    if 'Build label: ' in line:
-      curr_version = line.split('Build label: ')[1]
-      break
+  stderr = open(os.devnull, 'wb')
+  curr_version = run_shell(['bazel', '--version'],
+                           allow_non_zero = True,
+                           stderr = stderr)
+  if curr_version.startswith('bazel '):
+    curr_version = curr_version.split('bazel ')[1]
 
   min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
