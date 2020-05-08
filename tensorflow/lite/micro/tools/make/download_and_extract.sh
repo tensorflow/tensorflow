@@ -137,7 +137,7 @@ download_and_extract() {
     exit 1
   fi
 
-  # delete anything after the '?' in a url that might confound f
+  # delete anything after the '?' in a url that may mask true file extension
   url=$(echo "${url}" | sed "s/\?.*//")
 
   if [[ "${url}" == *gz ]]; then
