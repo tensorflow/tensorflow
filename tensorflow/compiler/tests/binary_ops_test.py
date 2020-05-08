@@ -1511,7 +1511,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("Enable tf.Cross Compilation")
   def testCross(self):
     for dtype in self.float_types:
       self._testBinary(
