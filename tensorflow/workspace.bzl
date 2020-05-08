@@ -233,6 +233,17 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "mkl_dnn_tp",
+        build_file = clean_dep("//third_party/mkl_dnn:mkldnn_threadpool.BUILD"),
+        sha256 = "54737bcb4dc1961d32ee75da3ecc529fa48198f8b2ca863a079e19a9c4adb70f",
+        strip_prefix = "oneDNN-1.4",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
         # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved

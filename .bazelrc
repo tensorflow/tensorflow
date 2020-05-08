@@ -143,6 +143,11 @@ build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
 
+build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
+build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
+build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
+build:mkl_threadpool -c opt
+
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
 build:using_cuda --define=using_cuda=true
