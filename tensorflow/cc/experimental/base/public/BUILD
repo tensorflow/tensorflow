@@ -57,6 +57,7 @@ cc_library(
         "tensor.h",
     ],
     deps = [
+        ":status",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_tensor",
     ],
