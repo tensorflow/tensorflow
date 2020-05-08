@@ -30,6 +30,12 @@ limitations under the License.
 #endif  // _WIN32
 #endif  // SWIG
 
+// For propagating errors when calling a function.
+#define TF_C_RETURN_IF_ERROR(_status, _value)        \
+  do {                                               \
+    if (TF_GetCode(_status) != TF_OK) return _value; \
+  } while (0)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -86,12 +92,6 @@ TF_CAPI_EXPORT extern TF_Code TF_GetCode(const TF_Status* s);
 // mutation to *s.  Always returns an empty string if TF_GetCode(s) is
 // TF_OK.
 TF_CAPI_EXPORT extern const char* TF_Message(const TF_Status* s);
-
-// For propagating errors when calling a function.
-#define TF_C_RETURN_IF_ERROR(_status)         \
-  do {                                        \
-    if (TF_GetCode(_status) != TF_OK) return; \
-  } while (0)
 
 #ifdef __cplusplus
 } /* end extern "C" */
