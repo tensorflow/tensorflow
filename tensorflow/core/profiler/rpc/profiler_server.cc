@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 

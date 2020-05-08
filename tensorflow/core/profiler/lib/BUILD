@@ -47,12 +47,11 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/util:ptr_util",
+        "@com_google_absl//absl/memory",
     ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
