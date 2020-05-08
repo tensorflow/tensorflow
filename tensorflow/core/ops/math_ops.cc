@@ -936,7 +936,7 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {bfloat16, float, double, complex64, complex128}")
+    .Attr("T: {bfloat16, float}")
     .SetShapeFn(shape_inference::MatMulShape);
 #endif  // INTEL_MKL
 
