@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"

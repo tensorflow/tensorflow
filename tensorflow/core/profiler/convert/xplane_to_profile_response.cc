@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"

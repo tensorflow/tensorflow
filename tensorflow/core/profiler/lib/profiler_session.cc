@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"

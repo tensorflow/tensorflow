@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 
 namespace tensorflow {

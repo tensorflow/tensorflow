@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 // Windows.h #defines ERROR, but it is also used in
