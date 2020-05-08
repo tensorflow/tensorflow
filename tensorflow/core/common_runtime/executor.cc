@@ -403,7 +403,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
-      propagator_(immutable_state, step_id_),
+      propagator_(immutable_state, step_id_, vlog_),
       num_outstanding_ops_(0) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = immutable_state_.params().device;
