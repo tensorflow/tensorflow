@@ -56,7 +56,7 @@ using gpuError_t = hipError_t;
 // macro wrapper to declare dynamic shared memory
 #if GOOGLE_CUDA
 
-#if __APPLE__
+#if defined(__APPLE__)
     // Tom: keyword __align__ is not available on macOS
     #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
     extern __shared__ TYPE NAME[]  
