@@ -40,9 +40,14 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace snapshot_util {
-
-/* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
-/* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+// Tom: Intializing kSnappyReaderInputBufferSizeBytes and kSnappyReaderOutputBufferSizeBytes in class definition and 
+// refer to them in cc file causes symbol not found error on macOS. 
+// The change solves #39262.
+  static constexpr const int64 kSnappyReaderInputBufferSizeBytes =
+  //    1 << 30;  // 1 GiB
+  // TODO(b/148804377): Set this in a smarter fashion.
+  static constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
+  //    32 << 20;  // 32 MiB
 
 Writer::Writer(const std::string& filename, const std::string& compression_type,
                int version, const DataTypeVector& dtypes)

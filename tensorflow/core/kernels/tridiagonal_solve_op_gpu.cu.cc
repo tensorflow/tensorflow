@@ -38,9 +38,13 @@ static const char kNotInvertibleMsg[] = "The matrix is not invertible.";
 
 static const char kNotInvertibleScalarMsg[] =
     "The matrix is not invertible: it is a scalar with value zero.";
-
+// Tom: The following should be a device function. The original declaration will raise a compilation error on macOS such as 
+/**
+tensorflow/core/kernels/tridiagonal_solve_op_gpu.cu.cc(46): error: calling a __host__ function("std::__1::operator ==<float> ") from a __global__ function("tensorflow::SolveForSizeOneOrTwoKernel< ::std::__1::complex<float> > ") is not allowed
+tensorflow/core/kernels/tridiagonal_solve_op_gpu.cu.cc(55): error: calling a __host__ function("std::__1::operator ==<float> ") from a __global__ function("tensorflow::SolveForSizeOneOrTwoKernel< ::std::__1::complex<float> > ") is not allowed
+ * */
 template <typename Scalar>
-__global__ void SolveForSizeOneOrTwoKernel(const int m,
+__device__ void SolveForSizeOneOrTwoKernel(const int m,
                                            const Scalar* __restrict__ diags,
                                            const Scalar* __restrict__ rhs,
                                            const int num_rhs,

@@ -462,7 +462,36 @@ def _check_cuda_lib_params(lib, cpu_value, basedir, version, static = False):
         _lib_path(lib, cpu_value, basedir, version, static),
         _should_check_soname(version, static),
     )
+# Tom: The implementation does not work at macOS since command objdump return different information from linux.
+# The implementation uses a script.py to detect CUDA libraries. But I think the previous version (v2.1.0 or before) is
+# better to generalize to both Linux and macOS. I provide a separate and working version on macOS here.
+def _check_cuda_libs_macOS(repository_ctx, script_path, paths, check_soname = True):
+    """
+      Finds a library among a list of potential paths.
+      Args:
+        paths: List of paths to inspect.
+      Returns:
+        Returns the first path in paths that exist.
+    """
+    objdump = repository_ctx.which("objdump")
+    mismatches = []
+    for path in paths:
+        path = path[0]
+         #print('mypath', path)
+        #if not path.exists:
+        # continue
+        output = repository_ctx.execute([objdump, "-p", str(path)]).stdout
+        output = [line for line in output.splitlines() if "name @rpath/" in line]
+        sonames = [line.strip().split("/")[-1] for line in output]
+        sonames = [sonames[0].strip().split(" ")[0] for line in output]
+        return path
+    if mismatches:
+        auto_configure_fail(
+            "None of the libraries match their SONAME: " + ", ".join(mismatches),
+        )
+    auto_configure_fail("No library found under: " + ", ".join(paths))
 
+# The following original version deos not work on macOS. 
 def _check_cuda_libs(repository_ctx, script_path, libs):
     python_bin = get_python_bin(repository_ctx)
     contents = repository_ctx.read(script_path).splitlines()
@@ -499,7 +528,9 @@ def _find_libs(repository_ctx, check_cuda_libs_script, cuda_config):
         Map of library names to structs of filename and path.
       """
     cpu_value = cuda_config.cpu_value
+    is_macos = cpu_value == "Darwin" # Tom: add for macOS
     stub_dir = "" if is_windows(repository_ctx) else "/stubs"
+    stub_dir = "" if is_macos else "/stubs" # Tom: add for macOS. /stubs is not available on macOS.
 
     check_cuda_libs_params = {
         "cuda": _check_cuda_lib_params(
@@ -575,7 +606,10 @@ def _find_libs(repository_ctx, check_cuda_libs_script, cuda_config):
     }
 
     # Verify that the libs actually exist at their locations.
-    _check_cuda_libs(repository_ctx, check_cuda_libs_script, check_cuda_libs_params.values())
+    if is_macos:
+        _check_cuda_libs_macOS(repository_ctx, check_cuda_libs_script, check_cuda_libs_params.values())
+    else:
+        _check_cuda_libs(repository_ctx, check_cuda_libs_script, check_cuda_libs_params.values())
 
     paths = {filename: v[0] for (filename, v) in check_cuda_libs_params.items()}
     return paths
@@ -639,6 +673,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
     toolkit_path = config["cuda_toolkit_path"]
 
     is_windows = cpu_value == "Windows"
+    is_macos = cpu_value == "Darwin" # Tom: add for macOS
     cuda_version = config["cuda_version"].split(".")
     cuda_major = cuda_version[0]
     cuda_minor = cuda_version[1]
@@ -818,12 +853,13 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
+    # Tom: parameter '-rLf' is not valid on macOS. Therefore, I replace it with '-r -f'.
     return """genrule(
     name = "%s",
     outs = [
 %s
     ],
-    cmd = \"""cp -rLf "%s/." "%s/" \""",
+    cmd = \"""cp -r -f "%s/." "%s/" \""", 
 )""" % (name, "\n".join(outs), src_dir, out_dir)
 
 def _flag_enabled(repository_ctx, flag_name):

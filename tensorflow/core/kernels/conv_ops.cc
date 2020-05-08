@@ -863,11 +863,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   CHECK(common_padding_rows >= 0 && common_padding_cols >= 0)  // Crash OK
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
-
-  constexpr auto kComputeInNHWC =
+  // Tom: remove constexpr to be compatiable with macOS.
+  auto kComputeInNHWC =
       std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
                       se::dnn::FilterLayout::kOutputYXInput);
-  constexpr auto kComputeInNCHW =
+  auto kComputeInNCHW =
       std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
                       se::dnn::FilterLayout::kOutputInputYX);
 
