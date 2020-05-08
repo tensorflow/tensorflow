@@ -83,7 +83,6 @@ load(
     "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_lite_protos",
-    "tf_opts_nortti_if_mobile",
     "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
@@ -99,9 +98,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
-
-# buildifier: disable=same-origin-load
-# Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_deps")
@@ -3087,6 +3083,11 @@ alias(
     actual = "//tensorflow/core/platform:cuda_libdevice_path",
 )
 
+# Normalize CORE_PROTO_SRCS to generate valid output file names.
+PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
+    "//google/protobuf/any.proto.h",
+]
+
 transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
@@ -3099,8 +3100,3 @@ transitive_hdrs(
         "//tensorflow/core/platform:platform_strings",
     ],
 )
-
-# Normalize CORE_PROTO_SRCS to generate valid output file names.
-PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
-    "//google/protobuf/any.proto.h",
-]
