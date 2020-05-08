@@ -34,7 +34,7 @@ constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kDeviceAttr[] = "device";
 
 // Mapping for `_xla_outside_compilation` attribute to ops of a cluster.
-using ClusterMap =
+using OutsideClusterMap =
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<Operation*, 8>, 8>;
 
 // This pass extracts a CPU computation cluster with `_xla_outside_compilation`
@@ -51,7 +51,8 @@ struct TPUExtractOutsideCompilation
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
 // attribute into `clusters` This returns an error if a
 // `_xla_outside_compilation` attribute of an op is empty.
-LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
+LogicalResult CollectAndGroupOutsideClusterOps(Block* block,
+                                               OutsideClusterMap* clusters) {
   for (Operation& op : *block) {
     if (auto attr = op.getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
       if (attr.getValue().empty())
@@ -67,7 +68,7 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
 }
 
 // Moves `cluster_ops` to associated `launch_op` body.
-void MoveClusterOpsToLaunchOp(
+void MoveOutsideClusterOpsToLaunchOp(
     tf_device::LaunchOp launch_op,
     const llvm::SmallVector<Operation*, 8>& cluster_ops) {
   MLIRContext* context = launch_op.getContext();
@@ -84,8 +85,8 @@ void MoveClusterOpsToLaunchOp(
 }
 
 // Creates a `tf_device::LaunchOp` to wrap cluster ops.
-tf_device::LaunchOp CreateLaunchOpForCluster(OpBuilder* builder,
-                                             Operation* last_cluster_op) {
+tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
+    OpBuilder* builder, Operation* last_cluster_op) {
   // TODO(b/154363171): Set the CPU device.
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
@@ -117,14 +118,14 @@ void PropagateParallelExecuteReturnToReplicate(
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
 // 'launch` as regions.
-void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
-                                       const ClusterMap& clusters) {
-  OpBuilder builder(launch);
+void CreateParallelExecuteFromOutsideClusters(
+    tf_device::ClusterOp tpu_cluster, const OutsideClusterMap& clusters) {
+  OpBuilder builder(tpu_cluster);
   // Create parallel_execute regions.  The original TPU cluster computation
   // is the extra region.
   int num_regions = 1 + clusters.size();
   auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
-      launch.getLoc(), num_regions, launch.results().getTypes());
+      tpu_cluster.getLoc(), num_regions, tpu_cluster.results().getTypes());
 
   // Move outside compilation clusters to parallel_execute regions.
   for (const auto& cluster : llvm::enumerate(clusters)) {
@@ -134,21 +135,23 @@ void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
         parallel_execute_op.GetRegionBlockWithIndex(cluster.index());
     builder.setInsertionPointToEnd(&outside_block);
     tf_device::LaunchOp launch_op =
-        CreateLaunchOpForCluster(&builder, cluster_ops.back());
-    MoveClusterOpsToLaunchOp(launch_op, cluster_ops);
+        CreateLaunchOpForOutsideCluster(&builder, cluster_ops.back());
+    MoveOutsideClusterOpsToLaunchOp(launch_op, cluster_ops);
     builder.setInsertionPointToEnd(&outside_block);
     // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
     // regions either through communication with TPU parallel_execute regions
     // or modifying parallel_execute returns.
-    builder.create<tf_device::ReturnOp>(launch.getLoc(), ArrayRef<Value>{});
+    builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
+                                        ArrayRef<Value>{});
   }
 
   // Move the launch body to last parallel_execute block.
   Block& inside_block =
       parallel_execute_op.GetRegionBlockWithIndex(num_regions - 1);
   builder.setInsertionPointToEnd(&inside_block);
-  builder.create<tf_device::ReturnOp>(launch.getLoc(), launch.getResults());
-  launch.getOperation()->moveBefore(inside_block.getTerminator());
+  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
+                                      tpu_cluster.getResults());
+  tpu_cluster.getOperation()->moveBefore(inside_block.getTerminator());
 
   PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
   // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
@@ -157,17 +160,19 @@ void CreateParallelExecuteFromClusters(tf_device::LaunchOp launch,
 }
 
 void TPUExtractOutsideCompilation::runOnFunction() {
-  auto extract_result = getFunction().walk([&](tf_device::LaunchOp launch) {
-    ClusterMap clusters;
-    if (failed(CollectAndGroupClusterOps(&launch.GetBody(), &clusters)))
-      return WalkResult::interrupt();
+  auto extract_result =
+      getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+        OutsideClusterMap clusters;
+        if (failed(CollectAndGroupOutsideClusterOps(&tpu_cluster.GetBody(),
+                                                    &clusters)))
+          return WalkResult::interrupt();
 
-    if (clusters.empty()) return WalkResult::advance();
+        if (clusters.empty()) return WalkResult::advance();
 
-    CreateParallelExecuteFromClusters(launch, clusters);
+        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters);
 
-    return WalkResult::advance();
-  });
+        return WalkResult::advance();
+      });
 
   if (extract_result.wasInterrupted()) return signalPassFailure();
 }
