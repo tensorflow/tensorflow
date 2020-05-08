@@ -21,12 +21,11 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
-#include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace profiler {
