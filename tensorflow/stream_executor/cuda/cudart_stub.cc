@@ -132,9 +132,9 @@ extern __host__ __device__ unsigned CUDARTAPI __cudaPushCallConfiguration(
 }
 
 extern char CUDARTAPI __cudaInitModule(void **fatCubinHandle) {
-  using FuncPtr = cudaError_t(CUDARTAPI *)(void **fatCubinHandle);
+  using FuncPtr = char(CUDARTAPI *)(void **fatCubinHandle);
   static auto func_ptr = LoadSymbol<FuncPtr>("__cudaInitModule");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) return 0;
   return func_ptr(fatCubinHandle);
 }
 
