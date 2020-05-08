@@ -44,10 +44,10 @@ namespace snapshot_util {
 // refer to them in cc file causes symbol not found error on macOS. 
 // The change solves #39262.
   static constexpr const int64 kSnappyReaderInputBufferSizeBytes =
-  //    1 << 30;  // 1 GiB
+      1 << 30;  // 1 GiB
   // TODO(b/148804377): Set this in a smarter fashion.
   static constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
-  //    32 << 20;  // 32 MiB
+      32 << 20;  // 32 MiB
 
 Writer::Writer(const std::string& filename, const std::string& compression_type,
                int version, const DataTypeVector& dtypes)
