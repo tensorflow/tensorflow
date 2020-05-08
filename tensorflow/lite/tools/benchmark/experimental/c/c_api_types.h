@@ -29,6 +29,9 @@ limitations under the License.
 // TfLiteDelegate - allows delegation of nodes to alternative backends.
 //
 // Some abstractions in this file are created and managed by Interpreter.
+//
+// NOTE: The order of values in these structs are "semi-ABI stable". New values
+// should be added only to the end of structs and never reordered.
 
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_
