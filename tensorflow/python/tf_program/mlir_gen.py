@@ -35,6 +35,7 @@ from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.types import core
 
 class SymbolTable:
@@ -413,13 +414,13 @@ def mlir_gen_internal(node, entity_info):
   '''
   Returns mlir module for unprocessed node `node`
   '''
-  node = qual_names.resolve(node)
   namer = naming.Namer({})
-  ctx = transformer.Context(entity_info, namer, None)
-  node = activity.resolve(node, ctx)
   graphs = cfg.build(node)
-  node = reaching_definitions.resolve(node, ctx, graphs,
-                                      reaching_definitions.Definition)
+  ctx = transformer.Context(entity_info, namer, None)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx)
+  node = reaching_definitions.resolve(node, ctx, graphs)
+  node = reaching_fndefs.resolve(node, ctx, graphs)
   node = liveness.resolve(node, ctx, graphs)
   mlir_generator = MLIRGen(ctx)
   mlir_generator.visit(node)
