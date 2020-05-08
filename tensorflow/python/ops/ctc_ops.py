@@ -310,7 +310,7 @@ def ctc_greedy_decoder(inputs,
     merge_repeated: Boolean.  Default: True.
     blank_index: (optional) Set the class index to use for the blank label.
       Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol. 
+      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol.
 
 
   Returns:

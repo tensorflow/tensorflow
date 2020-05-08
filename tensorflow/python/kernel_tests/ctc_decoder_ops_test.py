@@ -246,6 +246,7 @@ class CTCGreedyDecoderTest(test.TestCase):
                 [2, 3], dtype=np.int64)),
     ]
 
+    # Test positive value in blank_index
     self._testCTCDecoder(
         ctc_ops.ctc_greedy_decoder, 
         inputs, 
@@ -253,6 +254,15 @@ class CTCGreedyDecoderTest(test.TestCase):
         log_prob_truth, 
         decode_truth,
         blank_index=2)
+
+    # Test negative value in blank_index
+    self._testCTCDecoder(
+        ctc_ops.ctc_greedy_decoder,
+        inputs,
+        seq_lens,
+        log_prob_truth,
+        decode_truth,
+        blank_index=-2)
 
   @test_util.run_deprecated_v1
   def testCTCDecoderBeamSearch(self):
