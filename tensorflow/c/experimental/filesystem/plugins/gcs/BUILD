@@ -8,11 +8,12 @@ package(
 
 # Filesystem implementation for GCS environments
 tf_cc_shared_object(
-    name = "libgcs_filesystem.so",
+    name = "gcs_filesystem",
     framework_so = [],
     linkstatic = False,
     visibility = ["//visibility:public"],
     deps = [":gcs_filesystem_impl"],
+    per_os_targets = 1,
 )
 
 # The real implementation of the filesystem.
