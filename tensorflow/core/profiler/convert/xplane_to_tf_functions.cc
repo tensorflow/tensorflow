@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -243,9 +243,9 @@ class TfFunctionExecutions {
 
 }  // namespace
 
-std::string DebugString(const TfFunctionDb tf_function_db) {
+std::string DebugString(const TfFunctionDb& tf_function_db) {
   std::string str;
-  ::tensorflow::protobuf::TextFormat::PrintToString(tf_function_db, &str);
+  protobuf::TextFormat::PrintToString(tf_function_db, &str);
   return str;
 }
 
