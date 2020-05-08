@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -25,19 +25,19 @@ namespace profiler {
 namespace {
 
 inline bool IsExplicitHostStepMarker(absl::string_view event_name) {
-  return (str_util::StartsWith(event_name, "train") ||
-          str_util::StartsWith(event_name, "test") ||
-          str_util::StartsWith(event_name, "TraceContext")) &&
-         !str_util::StrContains(event_name, "/");
+  return (absl::StartsWith(event_name, "train") ||
+          absl::StartsWith(event_name, "test") ||
+          absl::StartsWith(event_name, "TraceContext")) &&
+         !absl::StrContains(event_name, "/");
 }
 
 // Returns true if the given event_name should be considered as real computation
 // on CPU.
 inline bool IsRealCpuCompute(absl::string_view event_name) {
-  bool not_real = str_util::StartsWith(event_name, "EagerExecute") ||
-                  str_util::StartsWith(event_name, "EagerLocalExecute") ||
-                  str_util::StartsWith(event_name, "EagerKernelExecute") ||
-                  str_util::StartsWith(event_name, "FunctionRun") ||
+  bool not_real = absl::StartsWith(event_name, "EagerExecute") ||
+                  absl::StartsWith(event_name, "EagerLocalExecute") ||
+                  absl::StartsWith(event_name, "EagerKernelExecute") ||
+                  absl::StartsWith(event_name, "FunctionRun") ||
                   IsExplicitHostStepMarker(event_name);
   return !not_real;
 }
