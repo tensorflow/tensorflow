@@ -206,6 +206,12 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
                                   const ConcatAttributes& attr,
                                   BHWC* output_shape);
 
+// @return shape of a tensor after Concat operation is applied to the given
+//         input.
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape);
+
 // @return padding for pooling operation to make sure output keep the same shape
 // as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,

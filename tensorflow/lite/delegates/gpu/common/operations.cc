@@ -562,6 +562,62 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
   return absl::OkStatus();
 }
 
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape) {
+  BHWDC new_shape = input[0];
+  switch (attr.axis) {
+    case Axis::CHANNELS:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Height, Width and Depth must be the same when concatenating "
+              "by channels axis");
+        }
+        new_shape.c += input[i].c;
+      }
+      break;
+    case Axis::HEIGHT:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Width, Depth and Channels must be the same when concatenating "
+              "by height axis");
+        }
+        new_shape.h += input[i].h;
+      }
+      break;
+    case Axis::WIDTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Height, Depth and Channels must be the same when concatenating "
+              "by width axis");
+        }
+        new_shape.w += input[i].w;
+      }
+      break;
+    case Axis::DEPTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
+            input[i].c != new_shape.c) {
+          return absl::InvalidArgumentError(
+              "Width, Height and Channels must be the same when concatenating "
+              "by depth axis");
+        }
+        new_shape.d += input[i].d;
+      }
+      break;
+    default:
+      return absl::InvalidArgumentError("Invalid axis");
+  }
+  *output_shape = new_shape;
+  return absl::OkStatus();
+}
+
 Padding2D CalculateSamePadding(const BHWC& input,
                                const Convolution2DAttributes& attr) {
   return MakeSamePadding(input, attr);
