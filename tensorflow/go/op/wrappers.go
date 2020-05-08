@@ -1950,8 +1950,8 @@ func GatherV2BatchDims(value int64) GatherV2Attr {
 // Gather slices from `params` axis `axis` according to `indices`.
 //
 // `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
-// Produces an output tensor with shape `params.shape[:axis] + indices.shape +
-// params.shape[axis + 1:]` where:
+// Produces an output tensor with shape `params.shape[:axis] +
+// indices.shape[batch_dims:] + params.shape[axis + 1:]` where:
 //
 // ```python
 //     # Scalar indices (output is rank(params) - 1).

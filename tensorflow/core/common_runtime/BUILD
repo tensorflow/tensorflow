@@ -1212,6 +1212,7 @@ cc_library(
         ":propagator_debug_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )

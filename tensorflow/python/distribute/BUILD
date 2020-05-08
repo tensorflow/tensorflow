@@ -1647,3 +1647,25 @@ py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+cuda_py_test(
+    name = "strategy_common_test",
+    srcs = ["strategy_common_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
+        # runner can run on guitar.
+        "noguitar",
+    ],
+    xla_enable_strict_auto_jit = True,
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

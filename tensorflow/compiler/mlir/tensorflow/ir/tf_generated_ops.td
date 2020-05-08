@@ -1217,7 +1217,7 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ClipByValueOp : TF_Op<"ClipByValue", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ClipByValueOp : TF_Op<"ClipByValue", [NoSideEffect]> {
   let summary = "Clips tensor values to a specified min and max.";
 
   let description = [{
@@ -1677,6 +1677,27 @@ Given an input tensor, this function computes hyperbolic cosine of every
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_CrossOp : TF_Op<"Cross", [NoSideEffect]> {
+  let summary = "Compute the pairwise cross product.";
+
+  let description = [{
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$a,
+    TF_IntOrFpTensor:$b
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$product
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

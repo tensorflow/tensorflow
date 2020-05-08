@@ -6261,10 +6261,12 @@ def add_to_collection(name, value):
   Args:
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
-    value: The value to add to the collection.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -6279,10 +6281,12 @@ def add_to_collections(names, value):
   Args:
     names: The key for the collections. The `GraphKeys` class contains many
       standard names for collections.
-    value: The value to add to the collections.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 

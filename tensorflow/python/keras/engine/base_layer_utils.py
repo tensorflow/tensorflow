@@ -676,15 +676,7 @@ def enable_v2_dtype_behavior():
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  >>> tf.compat.v1.keras.layers.disable_v2_dtype_behavior()
   >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
-  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  >>> print(layer.dtype)  # None since V2 behavior is disabled
-  None
-  >>> y = layer(x)  # Doesn't cast inputs since V2 dtype behavior is disabled
-  >>> print(y.dtype.name)
-  float64
-  >>> tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
   >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
   >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
   float32

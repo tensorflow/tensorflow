@@ -213,9 +213,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         self.units = units
 
       def build(self, input_shape):
-        self.w = self.add_weight(shape=(input_shape[-1], self.units),
-                                 initializer='random_normal',
-                                 trainable=True)
+        self.w = self.add_weight(
+            'weight',
+            shape=(input_shape[-1], self.units),
+            initializer='random_normal',
+            trainable=True)
         self.min_var = self.add_weight(
             'min',
             initializer=tf.keras.initializers.Constant(-6.0),
@@ -748,7 +750,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
-    model = tf.keras.models.Sequential([rnn_obj])
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'),
+        rnn_obj,
+    ])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -787,6 +792,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
             recurrent_v2.LSTM(units=10, return_sequences=True),
