@@ -31,9 +31,13 @@ limitations under the License.
 #endif  // SWIG
 
 // For propagating errors when calling a function.
-#define TF_C_RETURN_IF_ERROR(_status, _value)        \
-  do {                                               \
-    if (TF_GetCode(_status) != TF_OK) return _value; \
+#define TF_C_RETURN_IF_ERROR(_status, _value)           \
+  do {                                                  \
+    if (TF_GetCode(_status) != TF_OK) {                 \
+      printf("Error Code: %d, Error Message: %s\n",     \
+             TF_GetCode(_status), TF_Message(_status)); \
+      return _value;                                    \
+    }                                                   \
   } while (0)
 
 #ifdef __cplusplus
