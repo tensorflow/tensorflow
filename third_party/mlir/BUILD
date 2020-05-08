@@ -657,6 +657,7 @@ gentbl(
     td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
@@ -715,24 +716,35 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "StandardOpsTransformsPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [(
+        "-gen-pass-decls",
+        "include/mlir/Dialect/StandardOps/Transforms/Passes.h.inc",
+    )],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/StandardOps/Transforms/Passes.td",
+    td_srcs = [":PassBaseTdFiles"],
+)
+
 cc_library(
     name = "StandardOpsTransforms",
-    srcs = glob(
-        [
-            "lib/Dialect/StandardOps/Transforms/*.cpp",
-            "lib/Dialect/StandardOps/Transforms/*.h",
-        ],
-    ),
-    hdrs = glob([
-        "include/mlir/Dialect/StandardOps/Transforms/*.h",
+    srcs = glob([
+        "lib/Dialect/StandardOps/Transforms/*.cpp",
+        "lib/Dialect/StandardOps/Transforms/*.h",
     ]),
+    hdrs = glob(["include/mlir/Dialect/StandardOps/Transforms/*.h"]),
     includes = ["include"],
     deps = [
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
+        ":Pass",
         ":StandardOps",
+        ":StandardOpsTransformsPassIncGen",
         ":Support",
+        ":Transforms",
         "@llvm-project//llvm:support",
     ],
 )
@@ -2471,6 +2483,7 @@ cc_library(
         ":NVVMDialect",
         ":Parser",
         ":Pass",
+        ":StandardOpsTransforms",
         ":StandardToSPIRVConversions",
         ":StandardToStandard",
         ":Support",
@@ -2568,6 +2581,8 @@ cc_library(
         ":SPIRVPassIncGen",
         ":Shape",
         ":StandardOps",
+        ":StandardOpsTransforms",
+        ":StandardOpsTransformsPassIncGen",
         ":StandardToSPIRVConversions",
         ":StandardToStandard",
         ":Transforms",
