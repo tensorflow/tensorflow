@@ -290,9 +290,12 @@ def ctc_greedy_decoder(inputs,
                        blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Note: Regardless of the value of merge_repeated, if the maximum index of a
-  given time and batch corresponds to the blank index `(num_classes - 1)`, no
-  new element is emitted.
+  Notes: 
+  
+  - Regardless of the value of merge_repeated, if there is an index of a
+    given time and batch that corresponds to the blank_index, no
+    new element is emitted.
+  - Default blank_index is `(num_classes - 1)`, unless overriden by blank_index.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
@@ -310,8 +313,8 @@ def ctc_greedy_decoder(inputs,
     merge_repeated: Boolean.  Default: True.
     blank_index: (optional) Set the class index to use for the blank label.
       Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol.
-
+      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol,
+      which, actually, corresponds to the default.
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
