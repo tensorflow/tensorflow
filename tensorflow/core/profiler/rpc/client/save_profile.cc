@@ -15,20 +15,28 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
-#include <cstdio>
-#include <ctime>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
+
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
 #undef ERROR
@@ -56,9 +64,9 @@ string ProfilerJoinPathImpl(std::initializer_list<absl::string_view> paths) {
 
     path = absl::StripPrefix(path, kPathSep);
     if (absl::EndsWith(result, kPathSep)) {
-      strings::StrAppend(&result, path);
+      absl::StrAppend(&result, path);
     } else {
-      strings::StrAppend(&result, kPathSep, path);
+      absl::StrAppend(&result, kPathSep, path);
     }
   }
 
@@ -75,7 +83,8 @@ string ProfilerJoinPath(const T&... args) {
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
-Status DumpToolDataToLogDirectory(StringPiece run_dir, const string& host,
+Status DumpToolDataToLogDirectory(absl::string_view run_dir,
+                                  absl::string_view host,
                                   const ProfileToolData& tool,
                                   std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
