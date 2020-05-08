@@ -332,11 +332,6 @@ def load_function_def_library(library, load_shared_name_suffix=None):
 
     functions[fdef.signature.name] = func
     renamed_functions[func.name] = func
-    if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
-      # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
-      # is fixed. Currently it's leaking memory to maintain bug compatibility
-      # with previous behavior.
-      func.add_to_graph(ops.get_default_graph())
 
   return functions
 
