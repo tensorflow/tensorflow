@@ -122,7 +122,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Value*> EmitElementalReduceWindow(
       const HloReduceWindowInstruction* reduce_window,
       const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& initial_value_generator,
       const llvm_ir::IrArray::Index& index);
   // Emit code to emit the element at `index` for a convolution instruction.
   StatusOr<llvm::Value*> EmitElementalConvolution(

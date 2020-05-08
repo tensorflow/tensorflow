@@ -53,18 +53,12 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: %fused_computation (param_0.1: f32[32]) -> f32[] {
-; CHECK-NEXT:    %param_0.1 = f32[32]{0} parameter(0)
-; CHECK-NEXT:    %zero.1 = f32[] constant(0)
-; CHECK-NEXT:    %reduce-window.2 = f32[1]{0} reduce-window(%param_0.1, %zero.1), window={size=32 stride=32}, to_apply=%add
-; CHECK-NEXT:    ROOT %reshape.1 = f32[] reshape(%reduce-window.2)
-; CHECK-NEXT:   }
-
 ; CHECK-LABEL: ENTRY %main (input: f32[1000]) -> f32[] {
 ; CHECK-NEXT:    %input = f32[1000]{0} parameter(0)
 ; CHECK-NEXT:    %zero = f32[] constant(0)
 ; CHECK-NEXT:    %reduce-window = f32[32]{0} reduce-window(%input, %zero)
-; CHECK-NEXT:    ROOT %fusion = f32[] fusion(%reduce-window), kind=kLoop, calls=%fused_computation
+; CHECK-NEXT:    %reduce-window.1 = f32[1]{0} reduce-window(%reduce-window, %zero), window={size=32 stride=32}, to_apply=%add
+; CHECK-NEXT:    ROOT %bitcast = f32[] bitcast(%reduce-window.1)
       )");
 }
 

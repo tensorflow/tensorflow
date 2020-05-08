@@ -705,7 +705,6 @@ llvm::Value* IrEmitter::EmitElementalMap(
 StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
     const HloReduceWindowInstruction* reduce_window,
     const llvm_ir::ElementGenerator& input_generator,
-    const llvm_ir::ElementGenerator& initial_value_generator,
     const llvm_ir::IrArray::Index& index) {
   const HloInstruction* operand = reduce_window->operand(0);
   const Window& window = reduce_window->window();
@@ -717,10 +716,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
       llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
       "reduce_window_accumulator_address", &b_,
       MinimumAlignmentForPrimitiveType(operand_element_type));
-  TF_ASSIGN_OR_RETURN(
-      llvm::Value* const initial_value,
-      initial_value_generator(llvm_ir::IrArray::Index(index.GetType())));
-  Store(initial_value, accumulator_address);
+  Store(Load(GetEmittedValueFor(reduce_window->operand(1))),
+        accumulator_address);
 
   llvm_ir::ForLoopNest loops(IrName(reduce_window, "inner"), &b_);
   std::vector<int64> window_size;
