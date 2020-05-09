@@ -863,11 +863,24 @@ def Gradient(inputs, f, name=None):
   return symbolic_gradient(input=inputs, Tout=tlist, f=f, name=name)
 
 
+def _GetInputDtypes(func):
+  """Returns the input dtypes of func, excluding dtypes for captured inputs."""
+  if isinstance(func, function._DefinedFunction):  # pylint: disable=protected-access
+    return func.declared_input_types
+
+  # We assume that `func` is a ConcreteFunction here, but we are not able to
+  # verify since importing eager function library will cause cyclic dependence.
+  #
+  # ConcreteFunction.inputs includes captured inputs.
+  num_non_captured_inputs = len(func.inputs) - len(func.captured_inputs)
+  inputs_without_captured = func.inputs[:num_non_captured_inputs]
+  return [t.dtype for t in inputs_without_captured]
+
+
 def _LoopBodyCaptureWrapper(func):
   """Returns a wrapper for `func` that handles loop-carried captured inputs."""
 
-  @function.Defun(
-      *func.declared_input_types, func_name="%s_Wrapper" % func.name)
+  @function.Defun(*_GetInputDtypes(func), func_name="%s_Wrapper" % func.name)
   def Wrapper(*args):
     """A wrapper that handles loop-carried captured inputs."""
     result = func(*args)
@@ -877,11 +890,11 @@ def _LoopBodyCaptureWrapper(func):
     if isinstance(result, ops.Operation):
       return extra_args
     # Unary functions return a single Tensor value.
-    elif not isinstance(result, tuple):
+    elif not isinstance(result, (list, tuple)):
       return (result,) + extra_args
     # N-ary functions return a tuple of Tensors.
     else:
-      return result + extra_args
+      return result + type(result)(extra_args)
 
   return Wrapper
 
@@ -917,19 +930,23 @@ def While(input_, cond, body, name=None, hostmem=None):
     raise ValueError("While op 'cond' argument must be a function "
                      "without implicitly captured inputs.")
 
-  if cond.declared_input_types != body.declared_input_types:
+  cond_input_types = _GetInputDtypes(cond)
+  body_input_types = _GetInputDtypes(body)
+
+  if cond_input_types != body_input_types:
     raise ValueError(
         "While op 'cond' and 'body' signatures do not match. %r vs %r" %
-        (cond.declared_input_types, body.declared_input_types))
+        (cond_input_types, body_input_types))
 
   if body.captured_inputs:
-    cond_dtypes = list(
-        body.declared_input_types) + [t.dtype for t in body.captured_inputs]
+    cond_dtypes = list(body_input_types) + [
+        t.dtype for t in body.captured_inputs
+    ]
 
     @function.Defun(*cond_dtypes, func_name="%s_Wrapper" % cond.name)
     def CondWrapper(*args):
       """A wrapper that handles loop-carried captured inputs."""
-      return cond(*args[:len(body.declared_input_types)])
+      return cond(*args[:len(body_input_types)])
 
     ret = gen_functional_ops._while(
         input_ + body.captured_inputs,
@@ -1184,8 +1201,8 @@ def partitioned_call(args,
   if hasattr(f, "graph"):
     _set_read_only_resource_inputs_attr(op, f.graph)
     if hasattr(f.graph, "collective_manager_ids_used"):
-      ops.set_int_list_attr(
-          op, acd.COLLECTIVE_MANAGER_IDS, f.graph.collective_manager_ids_used)
+      ops.set_int_list_attr(op, acd.COLLECTIVE_MANAGER_IDS,
+                            f.graph.collective_manager_ids_used)
   return outputs if outputs else op
 
 
