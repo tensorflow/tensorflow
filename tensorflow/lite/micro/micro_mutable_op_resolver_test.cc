@@ -137,4 +137,41 @@ TF_LITE_MICRO_TEST(TestZeroVersionRegistration) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
 }
 
+TF_LITE_MICRO_TEST(TestZeroModelVersion) {
+  using tflite::MicroOpResolver;
+  using tflite::OpResolver;
+
+  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
+                                 tflite::MockPrepare, tflite::MockInvoke};
+
+  MicroOpResolver<2> micro_op_resolver;
+  micro_op_resolver.AddCustom("mock_custom", &r, 1, 2);
+  TF_LITE_MICRO_EXPECT_EQ(2, micro_op_resolver.GetRegistrationLength());
+  OpResolver* resolver = &micro_op_resolver;
+
+  // If the Op version in the model is 0, we should always get the first
+  // registration.
+  const TfLiteRegistration* registration = resolver->FindOp("mock_custom", 0);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  TF_LITE_MICRO_EXPECT_EQ(1, registration->version);
+  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
+
+  // If a non-zero version is requested, the correct version'd op should be
+  // returned. TODO(b/151245712): Realistically, we are better off removing
+  // these version checks altogether.
+  for (int i = 1; i <= 2; ++i) {
+    registration = resolver->FindOp("mock_custom", i);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+    TF_LITE_MICRO_EXPECT_EQ(i, registration->version);
+    TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
+  }
+
+  registration = resolver->FindOp("mock_custom", 42);
+  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+}
+
 TF_LITE_MICRO_TESTS_END
