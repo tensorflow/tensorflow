@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/event_span.h"
 
-#include <chrono>  // NOLINT
-#include <ctime>
-#include <thread>  // NOLINT
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -269,10 +266,7 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
 
 // Converts from overlapped step-events to non-overlapped step-events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
-  auto start_time = std::chrono::steady_clock::now();
   StepEvents non_overlapped_step_events;
-
-  // We could parallelize the following loop if necessary.
   for (const auto& step_events : overlapped_step_events) {
     const auto& step_id = step_events.first;
     const auto& step_details = step_events.second;
@@ -281,12 +275,6 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
     *non_overlapped_step_events[step_id].MutableEvents() =
         ToNonOverlappedEvents(step_details.Events());
   }
-  auto end_time = std::chrono::steady_clock::now();
-  auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
-      end_time - start_time);
-  double elapsed_time_ms = elapsed_time_us.count() / 1000.0;
-  LOG(INFO) << "Generation of step-events took " << elapsed_time_ms << " ms"
-            << std::endl;
   return non_overlapped_step_events;
 }
 
