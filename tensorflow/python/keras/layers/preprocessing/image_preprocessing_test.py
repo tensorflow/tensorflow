@@ -48,8 +48,8 @@ class ResizingTest(keras_parameterized.TestCase):
       testing_utils.layer_test(
           image_preprocessing.Resizing,
           kwargs=kwargs,
-          input_shape=(num_samples, orig_width, orig_height, channels),
-          expected_output_shape=(None, expected_width, expected_height,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
   @parameterized.named_parameters(
@@ -126,13 +126,13 @@ class ResizingTest(keras_parameterized.TestCase):
 
 
 def get_numpy_center_crop(images, expected_height, expected_width):
-  orig_height = images.shape[2]
-  orig_width = images.shape[1]
+  orig_height = images.shape[1]
+  orig_width = images.shape[2]
   height_start = int((orig_height - expected_height) / 2)
   width_start = int((orig_width - expected_width) / 2)
   height_end = height_start + expected_height
   width_end = width_start + expected_width
-  return images[:, width_start:width_end, height_start:height_end, :]
+  return images[:, height_start:height_end, width_start:width_end, :]
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -146,17 +146,17 @@ class CenterCropTest(keras_parameterized.TestCase):
     channels = 3
     kwargs = {'height': expected_height, 'width': expected_width}
     input_images = np.random.random(
-        (num_samples, orig_width, orig_height, channels)).astype(np.float32)
+        (num_samples, orig_height, orig_width, channels)).astype(np.float32)
     expected_output = get_numpy_center_crop(
         input_images, expected_height, expected_width)
     with tf_test_util.use_gpu():
       testing_utils.layer_test(
           image_preprocessing.CenterCrop,
           kwargs=kwargs,
-          input_shape=(num_samples, orig_width, orig_height, channels),
+          input_shape=(num_samples, orig_height, orig_width, channels),
           input_data=input_images,
           expected_output=expected_output,
-          expected_output_shape=(None, expected_width, expected_height,
+          expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
   @parameterized.named_parameters(
@@ -210,8 +210,8 @@ class RandomCropTest(keras_parameterized.TestCase):
       testing_utils.layer_test(
           image_preprocessing.RandomCrop,
           kwargs=kwargs,
-          input_shape=(num_samples, orig_width, orig_height, channels),
-          expected_output_shape=(None, expected_width, expected_height,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
   @parameterized.named_parameters(
@@ -233,16 +233,16 @@ class RandomCropTest(keras_parameterized.TestCase):
     height, width = 3, 4
     height_offset = np.random.randint(low=0, high=3)
     width_offset = np.random.randint(low=0, high=5)
-    mock_offset = [0, width_offset, height_offset, 0]
+    mock_offset = [0, height_offset, width_offset, 0]
     with test.mock.patch.object(
         stateless_random_ops, 'stateless_random_uniform',
         return_value=mock_offset):
       with tf_test_util.use_gpu():
         layer = image_preprocessing.RandomCrop(height, width)
-        inp = np.random.random((12, 8, 5, 3))
+        inp = np.random.random((12, 5, 8, 3))
         actual_output = layer(inp, training=1)
-        expected_output = inp[:, width_offset:(width_offset + width),
-                              height_offset:(height_offset + height), :]
+        expected_output = inp[:, height_offset:(height_offset + height),
+                              width_offset:(width_offset + width), :]
         self.assertAllClose(expected_output, actual_output)
 
   @parameterized.named_parameters(
@@ -257,7 +257,22 @@ class RandomCropTest(keras_parameterized.TestCase):
     with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
       self._run_test(expected_height, expected_width)
 
-  def test_predicting_with_mock_longer_width(self):
+  def test_random_crop_full_height(self):
+    self._run_test(5, 2)
+
+  def test_random_crop_full_width(self):
+    self._run_test(3, 8)
+
+  def test_random_crop_full(self):
+    np.random.seed(1337)
+    height, width = 8, 16
+    inp = np.random.random((12, 8, 16, 3))
+    with tf_test_util.use_gpu():
+      layer = image_preprocessing.RandomCrop(height, width)
+      actual_output = layer(inp, training=0)
+      self.assertAllClose(inp, actual_output)
+
+  def test_predicting_with_mock_longer_height(self):
     np.random.seed(1337)
     height, width = 3, 3
     inp = np.random.random((12, 10, 6, 3))
@@ -269,15 +284,15 @@ class RandomCropTest(keras_parameterized.TestCase):
       expected_output = resized_inp[:, 1:4, :, :]
       self.assertAllClose(expected_output, actual_output)
 
-  def test_predicting_with_mock_longer_height(self):
+  def test_predicting_with_mock_longer_width(self):
     np.random.seed(1337)
     height, width = 4, 6
     inp = np.random.random((12, 8, 16, 3))
     with tf_test_util.use_gpu():
       layer = image_preprocessing.RandomCrop(height, width)
       actual_output = layer(inp, training=0)
-      resized_inp = image_ops.resize_images_v2(inp, size=[6, 12])
-      expected_output = resized_inp[:, :, 4:8, :]
+      resized_inp = image_ops.resize_images_v2(inp, size=[4, 8])
+      expected_output = resized_inp[:, :, 1:7, :]
       self.assertAllClose(expected_output, actual_output)
 
   def test_config_with_custom_name(self):
@@ -570,6 +585,29 @@ class RandomTranslationTest(keras_parameterized.TestCase):
         ]).astype(dtype)
         # pyformat: enable
         expected_output = np.reshape(expected_output, (1, 5, 5, 1))
+        self.assertAllEqual(expected_output, output_image)
+
+  def test_random_translation_asymmetric_size_numeric_reflect(self):
+    for dtype in (np.int64, np.float32):
+      with tf_test_util.use_gpu():
+        input_image = np.reshape(np.arange(0, 16), (1, 8, 2, 1)).astype(dtype)
+        # Shifting by .5 * 8 = 1 pixel.
+        layer = image_preprocessing.RandomTranslation(
+            height_factor=(.5, .5), width_factor=0.)
+        output_image = layer(input_image)
+        # pyformat: disable
+        expected_output = np.asarray([
+            [6, 7],
+            [4, 5],
+            [2, 3],
+            [0, 1],
+            [0, 1],
+            [2, 3],
+            [4, 5],
+            [6, 7],
+        ]).astype(dtype)
+        # pyformat: enable
+        expected_output = np.reshape(expected_output, (1, 8, 2, 1))
         self.assertAllEqual(expected_output, output_image)
 
   def test_random_translation_down_numeric_constant(self):
@@ -1027,11 +1065,11 @@ class RandomHeightTest(keras_parameterized.TestCase):
     orig_width = 8
     channels = 3
     with tf_test_util.use_gpu():
-      img = np.random.random((num_samples, orig_width, orig_height, channels))
+      img = np.random.random((num_samples, orig_height, orig_width, channels))
       layer = image_preprocessing.RandomHeight(factor)
       img_out = layer(img, training=True)
       self.assertEqual(img_out.shape[0], 2)
-      self.assertEqual(img_out.shape[1], 8)
+      self.assertEqual(img_out.shape[2], 8)
       self.assertEqual(img_out.shape[3], 3)
 
   @parameterized.named_parameters(('random_height_4_by_6', (.4, .6)),
@@ -1046,38 +1084,39 @@ class RandomHeightTest(keras_parameterized.TestCase):
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
       with tf_test_util.use_gpu():
-        img = np.random.random((12, 8, 5, 3))
+        img = np.random.random((12, 5, 8, 3))
         layer = image_preprocessing.RandomHeight(.4)
         img_out = layer(img, training=True)
-        self.assertEqual(img_out.shape[2], 3)
+        self.assertEqual(img_out.shape[1], 3)
 
   def test_random_height_longer_numeric(self):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
-        input_image = np.reshape(np.arange(0, 6), (3, 2, 1)).astype(dtype)
+        input_image = np.reshape(np.arange(0, 6), (2, 3, 1)).astype(dtype)
         layer = image_preprocessing.RandomHeight(factor=(1., 1.))
         output_image = layer(np.expand_dims(input_image, axis=0))
         # pyformat: disable
         expected_output = np.asarray([
-            [0, 0.25, 0.75, 1],
-            [2, 2.25, 2.75, 3],
-            [4, 4.25, 4.75, 5]
+            [0, 1, 2],
+            [0.75, 1.75, 2.75],
+            [2.25, 3.25, 4.25],
+            [3, 4, 5]
         ]).astype(dtype)
         # pyformat: enable
-        expected_output = np.reshape(expected_output, (1, 3, 4, 1))
+        expected_output = np.reshape(expected_output, (1, 4, 3, 1))
         self.assertAllEqual(expected_output, output_image)
 
   def test_random_height_shorter_numeric(self):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
-        input_image = np.reshape(np.arange(0, 8), (2, 4, 1)).astype(dtype)
+        input_image = np.reshape(np.arange(0, 8), (4, 2, 1)).astype(dtype)
         layer = image_preprocessing.RandomHeight(
             factor=(-.5, -.5), interpolation='nearest')
         output_image = layer(np.expand_dims(input_image, axis=0))
         # pyformat: disable
         expected_output = np.asarray([
-            [1, 3],
-            [5, 7]
+            [2, 3],
+            [6, 7]
         ]).astype(dtype)
         # pyformat: enable
         expected_output = np.reshape(expected_output, (1, 2, 2, 1))
@@ -1114,11 +1153,11 @@ class RandomWidthTest(keras_parameterized.TestCase):
     orig_width = 8
     channels = 3
     with tf_test_util.use_gpu():
-      img = np.random.random((num_samples, orig_width, orig_height, channels))
+      img = np.random.random((num_samples, orig_height, orig_width, channels))
       layer = image_preprocessing.RandomWidth(factor)
       img_out = layer(img, training=True)
       self.assertEqual(img_out.shape[0], 2)
-      self.assertEqual(img_out.shape[2], 5)
+      self.assertEqual(img_out.shape[1], 5)
       self.assertEqual(img_out.shape[3], 3)
 
   @parameterized.named_parameters(('random_width_4_by_6', (.4, .6)),
@@ -1133,39 +1172,38 @@ class RandomWidthTest(keras_parameterized.TestCase):
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
       with tf_test_util.use_gpu():
-        img = np.random.random((12, 5, 8, 3))
+        img = np.random.random((12, 8, 5, 3))
         layer = image_preprocessing.RandomWidth(.4)
         img_out = layer(img, training=True)
-        self.assertEqual(img_out.shape[1], 3)
+        self.assertEqual(img_out.shape[2], 3)
 
   def test_random_width_longer_numeric(self):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
-        input_image = np.reshape(np.arange(0, 6), (2, 3, 1)).astype(dtype)
+        input_image = np.reshape(np.arange(0, 6), (3, 2, 1)).astype(dtype)
         layer = image_preprocessing.RandomWidth(factor=(1., 1.))
         output_image = layer(np.expand_dims(input_image, axis=0))
         # pyformat: disable
         expected_output = np.asarray([
-            [0, 1, 2],
-            [0.75, 1.75, 2.75],
-            [2.25, 3.25, 4.25],
-            [3, 4, 5]
+            [0, 0.25, 0.75, 1],
+            [2, 2.25, 2.75, 3],
+            [4, 4.25, 4.75, 5]
         ]).astype(dtype)
         # pyformat: enable
-        expected_output = np.reshape(expected_output, (1, 4, 3, 1))
+        expected_output = np.reshape(expected_output, (1, 3, 4, 1))
         self.assertAllEqual(expected_output, output_image)
 
   def test_random_width_shorter_numeric(self):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
-        input_image = np.reshape(np.arange(0, 8), (4, 2, 1)).astype(dtype)
+        input_image = np.reshape(np.arange(0, 8), (2, 4, 1)).astype(dtype)
         layer = image_preprocessing.RandomWidth(
             factor=(-.5, -.5), interpolation='nearest')
         output_image = layer(np.expand_dims(input_image, axis=0))
         # pyformat: disable
         expected_output = np.asarray([
-            [2, 3],
-            [6, 7]
+            [1, 3],
+            [5, 7]
         ]).astype(dtype)
         # pyformat: enable
         expected_output = np.reshape(expected_output, (1, 2, 2, 1))

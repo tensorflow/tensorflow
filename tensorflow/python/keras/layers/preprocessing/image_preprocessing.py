@@ -51,9 +51,8 @@ _RESIZE_METHODS = {
     'mitchellcubic': ResizeMethod.MITCHELLCUBIC
 }
 
-# Visually the data format should be NWHC instead of NHWC.
-H_AXIS = 2
-W_AXIS = 1
+H_AXIS = 1
+W_AXIS = 2
 
 
 def check_fill_mode_and_interpolation(fill_mode, interpolation):
@@ -71,7 +70,7 @@ class Resizing(Layer):
   """Image resizing layer.
 
   Resize the batched image input to target height and width. The input should
-  be a 4-D tensor, channels_last format.
+  be a 4-D tensor in the format of NHWC.
 
   Arguments:
     height: Integer, the height of the output shape.
@@ -98,14 +97,14 @@ class Resizing(Layer):
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
         images=inputs,
-        size=[self.target_width, self.target_height],
+        size=[self.target_height, self.target_width],
         method=self._interpolation_method)
     return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape(
-        [input_shape[0], self.target_width, self.target_height, input_shape[3]])
+        [input_shape[0], self.target_height, self.target_width, input_shape[3]])
 
   def get_config(self):
     config = {
@@ -123,11 +122,11 @@ class CenterCrop(Layer):
 
   Input shape:
     4D tensor with shape:
-    `(samples, width, height, channels)`, data_format='channels_last'.
+    `(samples, height, width, channels)`, data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(samples, target_width, target_height, channels)`.
+    `(samples, target_height, target_width, channels)`.
 
   If the input height/width is even and the target height/width is odd (or
   inversely), the input image is left-padded by 1 pixel.
@@ -164,16 +163,16 @@ class CenterCrop(Layer):
     with ops.control_dependencies(checks):
       bbox_h_start = math_ops.cast(img_hd_diff / 2, dtypes.int32)
       bbox_w_start = math_ops.cast(img_wd_diff / 2, dtypes.int32)
-      bbox_begin = array_ops.stack([0, bbox_w_start, bbox_h_start, 0])
+      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
       bbox_size = array_ops.stack(
-          [-1, self.target_width, self.target_height, -1])
+          [-1, self.target_height, self.target_width, -1])
       outputs = array_ops.slice(inputs, bbox_begin, bbox_size)
       return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape(
-        [input_shape[0], self.target_width, self.target_height, input_shape[3]])
+        [input_shape[0], self.target_height, self.target_width, input_shape[3]])
 
   def get_config(self):
     config = {
@@ -197,11 +196,11 @@ class RandomCrop(Layer):
 
   Input shape:
     4D tensor with shape:
-    `(samples, width, height, channels)`, data_format='channels_last'.
+    `(samples, height, width, channels)`, data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(samples, target_width, target_height, channels)`.
+    `(samples, target_height, target_width, channels)`.
 
   Arguments:
     height: Integer, the height of the output shape.
@@ -226,10 +225,10 @@ class RandomCrop(Layer):
       """Cropped inputs with stateless random ops."""
       input_shape = array_ops.shape(inputs)
       crop_size = array_ops.stack(
-          [input_shape[0], self.width, self.height, input_shape[3]])
+          [input_shape[0], self.height, self.width, input_shape[3]])
       check = control_flow_ops.Assert(
           math_ops.reduce_all(input_shape >= crop_size),
-          [self.width, self.height])
+          [self.height, self.width])
       input_shape = control_flow_ops.with_dependencies([check], input_shape)
       limit = input_shape - crop_size + 1
       offset = stateless_random_ops.stateless_random_uniform(
@@ -257,14 +256,14 @@ class RandomCrop(Layer):
                                 input_width_t.dtype))
       # pylint: enable=g-long-lambda
       resized_inputs = image_ops.resize_images_v2(
-          images=inputs, size=array_ops.stack([resized_width, resized_height]))
+          images=inputs, size=array_ops.stack([resized_height, resized_width]))
 
       img_hd_diff = resized_height - self.height
       img_wd_diff = resized_width - self.width
       bbox_h_start = math_ops.cast(img_hd_diff / 2, dtypes.int32)
       bbox_w_start = math_ops.cast(img_wd_diff / 2, dtypes.int32)
-      bbox_begin = array_ops.stack([0, bbox_w_start, bbox_h_start, 0])
-      bbox_size = array_ops.stack([-1, self.width, self.height, -1])
+      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops.stack([-1, self.height, self.width, -1])
       outputs = array_ops.slice(resized_inputs, bbox_begin, bbox_size)
       return outputs
 
@@ -272,14 +271,14 @@ class RandomCrop(Layer):
                                  resize_and_center_cropped_inputs)
     original_shape = inputs.shape.as_list()
     batch_size, num_channels = original_shape[0], original_shape[3]
-    output_shape = [batch_size] + [self.width, self.height] + [num_channels]
+    output_shape = [batch_size] + [self.height, self.width] + [num_channels]
     output.set_shape(output_shape)
     return output
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape(
-        [input_shape[0], self.width, self.height, input_shape[3]])
+        [input_shape[0], self.height, self.width, input_shape[3]])
 
   def get_config(self):
     config = {
@@ -345,11 +344,11 @@ class RandomFlip(Layer):
 
   Input shape:
     4D tensor with shape:
-    `(samples, width, height, channels)`, data_format='channels_last'.
+    `(samples, height, width, channels)`, data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(samples, width, height, channels)`, data_format='channels_last'.
+    `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
     mode: String indicating which flip mode to use. Can be "horizontal",
@@ -452,11 +451,11 @@ class RandomTranslation(Layer):
     name: A string, the name of the layer.
 
   Input shape:
-    4D tensor with shape: `(samples, width, height, channels)`,
+    4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
 
   Output shape:
-    4D tensor with shape: `(samples, width, height, channels)`,
+    4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
 
   Raise:
@@ -603,8 +602,8 @@ def transform(images,
   """Applies the given transform(s) to the image(s).
 
   Args:
-    images: A tensor of shape (num_images, num_rows, num_columns, num_channels),
-      (num_rows, num_columns, num_channels) (HWC), or (num_rows,
+    images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
+      (NHWC), (num_rows, num_columns, num_channels) (HWC), or (num_rows,
       num_columns) (HW). The rank must be statically known (the shape is not
       `TensorShape(None)`.
     transforms: Projective transform matrix/matrices. A vector of length 8 or
@@ -1098,10 +1097,10 @@ class RandomHeight(Layer):
     name: A string, the name of the layer.
 
   Input shape:
-    4D tensor with shape: `(samples, width, height, channels)`
+    4D tensor with shape: `(samples, height, width, channels)`
       (data_format='channels_last').
   Output shape:
-    4D tensor with shape: `(samples, width, random_height, channels)`.
+    4D tensor with shape: `(samples, random_height, width, channels)`.
   """
 
   def __init__(self,
@@ -1145,11 +1144,11 @@ class RandomHeight(Layer):
           minval=(1.0 + self.height_lower),
           maxval=(1.0 + self.height_upper))
       adjusted_height = math_ops.cast(height_factor * img_hd, dtypes.int32)
-      adjusted_size = array_ops.stack([img_wd, adjusted_height])
+      adjusted_size = array_ops.stack([adjusted_height, img_wd])
       output = image_ops.resize_images_v2(
           images=inputs, size=adjusted_size, method=self._interpolation_method)
       original_shape = inputs.shape.as_list()
-      output_shape = original_shape[0:2] + [None] + [original_shape[3]]
+      output_shape = [original_shape[0]] + [None] + original_shape[2:4]
       output.set_shape(output_shape)
       return output
 
@@ -1158,7 +1157,7 @@ class RandomHeight(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape(
-        [input_shape[0], input_shape[1], None, input_shape[3]])
+        [input_shape[0], None, input_shape[2], input_shape[3]])
 
   def get_config(self):
     config = {
@@ -1196,11 +1195,11 @@ class RandomWidth(Layer):
 
   Input shape:
     4D tensor with shape:
-    `(samples, width, height, channels)` (data_format='channels_last').
+    `(samples, height, width, channels)` (data_format='channels_last').
 
   Output shape:
     4D tensor with shape:
-    `(samples, random_width, height, channels)`.
+    `(samples, height, random_width, channels)`.
   """
 
   def __init__(self,
@@ -1243,11 +1242,11 @@ class RandomWidth(Layer):
           minval=(1.0 + self.width_lower),
           maxval=(1.0 + self.width_upper))
       adjusted_width = math_ops.cast(width_factor * img_wd, dtypes.int32)
-      adjusted_size = array_ops.stack([adjusted_width, img_hd])
+      adjusted_size = array_ops.stack([img_hd, adjusted_width])
       output = image_ops.resize_images_v2(
           images=inputs, size=adjusted_size, method=self._interpolation_method)
       original_shape = inputs.shape.as_list()
-      output_shape = [original_shape[0]] + [None] + original_shape[2:4]
+      output_shape = original_shape[0:2] + [None] + [original_shape[3]]
       output.set_shape(output_shape)
       return output
 
@@ -1256,7 +1255,7 @@ class RandomWidth(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape(
-        [input_shape[0], None, input_shape[2], input_shape[3]])
+        [input_shape[0], input_shape[1], None, input_shape[3]])
 
   def get_config(self):
     config = {
