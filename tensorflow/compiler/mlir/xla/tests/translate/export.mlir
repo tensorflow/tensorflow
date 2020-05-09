@@ -294,6 +294,12 @@ func @main() {
   // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
   %cst_8 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
 
+  // CHECK: c64[] constant((1, 0))
+  %cst_9 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+
+  // CHECK: c128[] constant((1, 0))
+  %cst_10 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+
   return
 }
 

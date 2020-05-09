@@ -933,6 +933,8 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
     case xla::PrimitiveType::F16: {
       llvm::SmallVector<xla::half, 16> values;
       values.reserve(attr.getNumElements());
