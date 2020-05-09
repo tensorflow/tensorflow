@@ -20,6 +20,11 @@ tf_cc_shared_object(
 cc_library(
     name = "gcs_filesystem_impl",
     srcs = ["gcs_filesystem.cc"],
+    copts = select({
+        "//conditions:default": ["-std=c++17"],
+        "//tensorflow:macos": ["-lc++fs", "-std=c++17"],
+        "//tensorflow:windows": ["/std:c++17"],
+    }),
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",

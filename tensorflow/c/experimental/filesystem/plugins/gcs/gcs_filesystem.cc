@@ -20,6 +20,9 @@ limitations under the License.
 #include <memory>
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <filesystem>
+#include <string_view>
 
 #include <stdio.h>
 
@@ -72,11 +75,19 @@ static void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket,
 	memcpy(*object, object_view.data(), object_view.length());
 }
 
-static std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_) {
-	*temp_path_ = (char*) malloc(L_tmpnam);
-	*temp_path_ = tmpnam(*temp_path_);
+static std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_, TF_Status* status) {
+	uint64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+	std::error_code errorCode;
+	auto path = std::filesystem::temp_directory_path(errorCode);
+	if(errorCode) {
+		TF_SetStatus(status, TF_UNKNOWN, (std::to_string(errorCode.value()) + ": " + errorCode.message()).c_str());
+		return nullptr;
+	}
+	path /= std::to_string(now) + "_tmp_gcs_filesystem";
+	std::string path_str = path.string();
+	*temp_path_ = static_cast<char*>(plugin_memory_allocate(path_str.length()));
+	memcpy(*temp_path_, path_str.c_str(), path_str.length());
 	std::shared_ptr<std::fstream> temp_file_ = std::make_shared<std::fstream>(*temp_path_, std::fstream::binary | std::fstream::in | std::fstream::out | std::fstream::trunc);
-	//printf("TempFile: %s isopen: %d\n", *temp_path_, temp_file_->is_open());
 	return temp_file_;
 }
 
@@ -151,7 +162,7 @@ static void Cleanup(TF_WritableFile* file) {
   // This would be safe to free using `free` directly as it is only opaque.
   // However, it is better to be consistent everywhere.
 	// gcs_client is not owned by GCSFile and therefore we do not free it here.
-	// remove(gcs_file->temp_path_);
+	remove(gcs_file->temp_path_);
   plugin_memory_free(const_cast<char*>(gcs_file->bucket));
 	plugin_memory_free(const_cast<char*>(gcs_file->object));
 	plugin_memory_free(const_cast<char*>(gcs_file->temp_path_));
@@ -290,8 +301,8 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
 	char* temp_path_ = nullptr;
-	std::shared_ptr<std::fstream> temp_file_ = CreateTempFile(&temp_path_);
-	//printf("TempFile: &s isopen: %d\n", temp_path_, temp_file_->is_open());
+	std::shared_ptr<std::fstream> temp_file_ = CreateTempFile(&temp_path_, status);
+	TF_ReturnIfError(status);
 	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, gcs_client, temp_file_, temp_path_, false});
 	TF_SetStatus(status, TF_OK, "");
 }
@@ -321,7 +332,8 @@ static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
 	}
 
 	char* temp_path_ = nullptr;
-	std::shared_ptr<std::fstream> temp_file_ = CreateTempFile(&temp_path_);
+	std::shared_ptr<std::fstream> temp_file_ = CreateTempFile(&temp_path_, status);
+	TF_ReturnIfError(status);
 	temp_file_->write(buffer, read);
 	//printf("NewAppenableFile: buffer: %s, read: %d\n", buffer, read);
 	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, gcs_client, temp_file_, temp_path_, false});
