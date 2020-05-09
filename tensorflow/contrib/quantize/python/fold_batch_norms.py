@@ -90,6 +90,7 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
             name='bias')
 
         correction_scale, correction_recip, correction_offset = None, None, None
+        is_training = match.bn_op.get_attr('is_training')
         if is_training:
           correction_scale, correction_recip, correction_offset = (
               _ComputeBatchNormCorrections(
