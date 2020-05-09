@@ -992,7 +992,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   VLOG(3) << "Compute Conv2DBackpropInput with cuDNN:"
           << " data_format=" << ToString(data_format)
           << " compute_data_format=" << ToString(compute_data_format);
-  // Tom: remove constexpr to be compatiable with macOS.
+  
   auto kComputeInNHWC =
       std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
                       se::dnn::FilterLayout::kOutputYXInput);

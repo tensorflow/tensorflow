@@ -838,12 +838,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   VLOG(3) << "Compute Conv2DBackpropFilter with cuDNN:"
           << " data_format=" << ToString(data_format)
           << " compute_data_format=" << ToString(compute_data_format);
-  // Tom: return type as constexpr will raise an compilation error on macOS such as 
-  /**
-   tensorflow/core/kernels/conv_grad_filter_ops.cc:736:18: error: constexpr variable 'kComputeInNHWC' must be initialized by a constant expression
-  constexpr auto kComputeInNHWC =
-   */
-  // Therefore, I removed the keyword constexpr. This change is also applied to conv_grad_input_ops.cc, and conv_ops.cc.
+  
   auto kComputeInNHWC =
       std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
                       se::dnn::FilterLayout::kOutputYXInput);
