@@ -181,6 +181,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kUnpack, 3}, "2.2.0"},
           {{OperatorType::kUnpack, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kLeakyRelu, 1}, "1.13.1"},
+          {{OperatorType::kLeakyRelu, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kLogistic, 1}, "1.14.0"},
           {{OperatorType::kLogistic, 2}, "1.14.0"},
           {{OperatorType::kLogistic, 3}, kPendingReleaseOpVersion},

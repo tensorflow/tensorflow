@@ -470,6 +470,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_LEAKY_RELU:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
       // In case of int16 inputs, the version is 3.
