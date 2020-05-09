@@ -39,42 +39,37 @@ static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
 static void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket, char** object, TF_Status* status) {
-  size_t scheme_index = strcspn(fname, "://");
-  char* scheme = (char*) malloc(scheme_index + 1);
-  sprintf(scheme, "%.*s", (int)scheme_index, fname);
-  scheme[scheme_index] = '\0';
-  if(strcmp(scheme, "gs")) {
+	std::string_view fname_view {fname};
+	size_t scheme_end = fname_view.find("://") + 2;
+	if(fname_view.substr(0, scheme_end + 1) != "gs://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "GCS path doesn't start with 'gs://'.");
     return;
-  }
+	}
 
-  size_t bucket_index = strcspn(fname + scheme_index + 3, "/");
-  if(!bucket_index) {
+	size_t bucket_end = fname_view.find("/", scheme_end + 1);
+	if(bucket_end == std::string_view::npos) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "GCS path doesn't contain a bucket name.");
     return;
   }
-  *bucket = (char*) malloc(bucket_index + 1);
-  sprintf(*bucket, "%.*s", (int) bucket_index, fname + scheme_index + 3);
-  (*bucket)[bucket_index] = '\0';
+	std::string_view bucket_view = fname_view.substr(scheme_end + 1, bucket_end - scheme_end - 1);
+	*bucket = static_cast<char*>(plugin_memory_allocate(bucket_view.length() + 1));
+	memcpy(*bucket, bucket_view.data(), bucket_view.length());
+	(*bucket)[bucket_view.length() + 1] = '\0';
 
-  size_t object_index = strlen(fname + scheme_index + 3 + bucket_index + 1);
-  if(object_index == 0) {
-    if(object_empty_ok) {
-      TF_SetStatus(status, TF_OK, "");
+	std::string_view object_view = fname_view.substr(bucket_end + 1);
+	if(object_view == "") {
+		if(object_empty_ok) {
       *object = nullptr;
       return;
-    }
-    else {
-      TF_SetStatus(status, TF_INVALID_ARGUMENT, "GCS path doesn't contain an object name.");
+		}
+		else {
+			TF_SetStatus(status, TF_INVALID_ARGUMENT, "GCS path doesn't contain an object name.");
       return;
-    }
-  }
-  *object = (char*) malloc(object_index + 1);
-  sprintf(*object, "%.*s", (int) object_index, fname + scheme_index + 3 + bucket_index + 1);
-  (*object)[object_index] = '\0';
-
-  free(scheme);
-  TF_SetStatus(status, TF_OK, "");
+		}
+	}
+  *object = static_cast<char*>(plugin_memory_allocate(object_view.length()));
+	// object_view.data() is a null-terminated string_view because fname is.
+	memcpy(*object, object_view.data(), object_view.length());
 }
 
 static std::shared_ptr<std::fstream> CreateTempFile(char** temp_path_) {
