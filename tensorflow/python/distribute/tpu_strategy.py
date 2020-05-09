@@ -140,10 +140,6 @@ class TPUStrategy(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
-    # TODO(b/155193424): Enable OwnedMultiDeviceIterator on TPU Pod.
-    if self.extended.num_hosts > 1:
-      self._enable_legacy_iterators = True
-
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
