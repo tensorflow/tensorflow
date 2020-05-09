@@ -549,6 +549,12 @@ class XlaBuilder {
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
 
+  XlaOp AllGather(
+      XlaOp operand, int64 all_gather_dimension, int64 shard_count,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+      const absl::optional<Layout>& layout = absl::nullopt);
+
   XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
@@ -992,6 +998,11 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
+  friend XlaOp AllGather(XlaOp operand, int64 all_gather_dimension,
+                         int64 shard_count,
+                         absl::Span<const ReplicaGroup> replica_groups,
+                         const absl::optional<ChannelHandle>& channel_id,
+                         const absl::optional<Layout>& layout);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const absl::optional<ChannelHandle>& channel_id,
@@ -1770,6 +1781,11 @@ XlaOp ReduceWindowWithGeneralPadding(
 // sum for each subgroup.
 XlaOp CrossReplicaSum(XlaOp operand,
                       absl::Span<const ReplicaGroup> replica_groups = {});
+
+XlaOp AllGather(XlaOp operand, int64 all_gather_dimension, int64 shard_count,
+                absl::Span<const ReplicaGroup> replica_groups = {},
+                const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+                const absl::optional<Layout>& layout = absl::nullopt);
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then

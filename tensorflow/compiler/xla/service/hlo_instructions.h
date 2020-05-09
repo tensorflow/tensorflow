@@ -348,6 +348,38 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   bool constrain_layout_;
 };
 
+class HloAllGatherInstruction : public HloCollectiveInstruction {
+ public:
+  explicit HloAllGatherInstruction(
+      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+  // Same as HloAllReduceInstruction::use_global_device_ids.
+  bool use_global_device_ids() const { return use_global_device_ids_; }
+
+  // The dimension on which data from different participants are concatenated.
+  int64 all_gather_dimension() const { return all_gather_dimension_; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 all_gather_dimension_;
+  bool use_global_device_ids_;
+};
+
 class HloAllReduceInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllReduceInstruction(
