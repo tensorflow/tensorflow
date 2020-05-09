@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 
 #include <functional>
-#include <unordered_map>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
