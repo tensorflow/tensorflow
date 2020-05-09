@@ -1,3 +1,7 @@
+# Release 2.1.1
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.1.0
 
 TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support [officially ends an January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update). [As announced earlier](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ), TensorFlow will also stop supporting Python 2 starting January 1, 2020, and no more releases are expected in 2019.
