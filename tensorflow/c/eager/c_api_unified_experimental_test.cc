@@ -131,6 +131,7 @@ TEST(UnifedCAPI, TestBasicGraph) {
   string fn_name = "double";
   TF_AbstractFunction* func = TF_ExecutionContextToFunction(
       graph_ctx, fn_name.c_str(), 1, placeholder_t, 1, output_t, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TF_DeleteAbstractTensor(placeholder_t);
   TF_DeleteAbstractTensor(output_t);
 
