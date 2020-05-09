@@ -84,8 +84,10 @@ struct LeakyReluOpData : public OpData {
 };
 
 struct PreluOpData : public OpData {
-  int32_t output_multiplier = 0;
-  int output_shift = 0;
+  int32_t output_multiplier_1 = 0;
+  int32_t output_shift_1 = 0;
+  int32_t output_multiplier_2 = 0;
+  int32_t output_shift_2 = 0;
 };
 
 struct HardSwishData {
@@ -664,7 +666,6 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
       output->type == kTfLiteInt16) {
-    // This scale check is actually needed for quantized path:
     // prelu(x) = x if x >= 0 else x * alpha.
     // So if we translate that for quantized computation:
     //
@@ -676,19 +677,19 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
     // ouput_q = (input_q - input_zp) * input_scale / output_scale + output_q
     // else:
     // output_q = (input_q - input_zp) * (alpha_q - alpha_zp) * input_scale
-    //            * alpha_scale / output_scale +output_q
+    //            * alpha_scale / output_scale + output_q
     //
-    // So we have two float values which we need to translate into multiplier
-    // shift languages.
-    // For simplicity & efficiency, if we make sure input_scale
-    // & output_scale are the same, we only need to translate the latter one
-    // into multiplier & shift format.
-    TF_LITE_ENSURE(context,
-                   std::abs(input->params.scale - output->params.scale) < 1e-4);
-    double real_multiplier =
+    // So for input_q - input_zp >= 0:
+    // output real multiplier 1 is input_scale / output_scale;
+    // for input_q - input_zp < 0:
+    // output real multiplier 2 is input_scale  * alpha_scale/ output_scale.
+    double real_multiplier_1 = input->params.scale / output->params.scale;
+    double real_multiplier_2 =
         input->params.scale * alpha->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
+    QuantizeMultiplier(real_multiplier_1, &data->output_multiplier_1,
+                       &data->output_shift_1);
+    QuantizeMultiplier(real_multiplier_2, &data->output_multiplier_2,
+                       &data->output_shift_2);
   }
 
   // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
@@ -1171,8 +1172,10 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.input_offset = -input->params.zero_point;
       op_params.alpha_offset = -alpha->params.zero_point;
       op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier = data->output_multiplier;
-      op_params.output_shift = data->output_shift;
+      op_params.output_multiplier_1 = data->output_multiplier_1;
+      op_params.output_shift_1 = data->output_shift_1;
+      op_params.output_multiplier_2 = data->output_multiplier_2;
+      op_params.output_shift_2 = data->output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
@@ -1184,8 +1187,10 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.input_offset = -input->params.zero_point;
       op_params.alpha_offset = -alpha->params.zero_point;
       op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier = data->output_multiplier;
-      op_params.output_shift = data->output_shift;
+      op_params.output_multiplier_1 = data->output_multiplier_1;
+      op_params.output_shift_1 = data->output_shift_1;
+      op_params.output_multiplier_2 = data->output_multiplier_2;
+      op_params.output_shift_2 = data->output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(alpha), GetTensorData<int8_t>(alpha),

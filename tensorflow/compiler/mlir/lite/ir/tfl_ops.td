@@ -2269,8 +2269,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
           TFL_OperandIsUnrankedPred<1>,
           CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == "
                 "$_op.getOperand(1).getType().cast<ShapedType>().getRank() "
-                "+ 1">]>>,
-    SameOperandsAndResultsScale]> {
+                "+ 1">]>>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{

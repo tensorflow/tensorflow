@@ -86,7 +86,7 @@ def make_prelu_tests(options):
       alpha_shape.append(1 if dim in shared_axes else input_shape[dim])
 
     alpha_values = create_tensor_data(
-        np.float32, alpha_shape, min_value=-1, max_value=1)
+        np.float32, alpha_shape, min_value=-5, max_value=5)
 
     # There should be only 1 trainable variable tensor.
     variables = tf.compat.v1.all_variables()

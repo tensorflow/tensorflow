@@ -818,7 +818,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_PRELU:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = false;
       property.version = 1;
       break;
     case BuiltinOperator_LEAKY_RELU:
