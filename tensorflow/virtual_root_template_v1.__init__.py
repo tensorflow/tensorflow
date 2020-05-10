@@ -54,6 +54,9 @@ class _LazyLoader(_types.ModuleType):
     module = self._load()
     return dir(module)
 
+  def __reduce__(self):
+    return __import__, (self.__name__,)
+
 
 # Forwarding a module is as simple as lazy loading the module from the new path
 # and then registering it to sys.modules using the old path
