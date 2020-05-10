@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -383,6 +384,18 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+  xla::ThenExecuteFunction then_execute;
+  if (ctx->op_device_context()) {
+    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
+      Status status = ctx->op_device_context()->ThenExecute(
+          static_cast<Device*>(ctx->device()), stream, std::move(fn));
+      if (!status.ok()) {
+        // This should never happen.
+        LOG(ERROR) << "ThenExecute failed " << status;
+      }
+    };
+    run_options.set_then_execute_function(&then_execute);
+  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -579,6 +592,18 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+  xla::ThenExecuteFunction then_execute;
+  if (ctx->op_device_context()) {
+    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
+      Status status = ctx->op_device_context()->ThenExecute(
+          static_cast<Device*>(ctx->device()), stream, std::move(fn));
+      if (!status.ok()) {
+        // This should never happen.
+        LOG(ERROR) << "ThenExecute failed " << status;
+      }
+    };
+    run_options.set_then_execute_function(&then_execute);
+  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
