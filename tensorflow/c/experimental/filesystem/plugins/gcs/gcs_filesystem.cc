@@ -100,6 +100,32 @@ static int64_t GetBuffer(const std::shared_ptr<std::fstream>& file, char** buffe
 	return read;
 } 
 
+static int64_t ReadObjectImpl(const char* bucket, const char* object, google::cloud::storage::Client* gcs_client, uint64_t offset, size_t n, char** buffer, TF_Status* status) {
+	google::cloud::storage::ObjectReadStream reader;
+	if(n == 0) {
+		reader = std::move(gcs_client->ReadObject(bucket, object));
+	}
+	else {
+		reader = std::move(gcs_client->ReadObject(bucket, object, google::cloud::storage::ReadRange(offset, offset + n)));
+	}
+	TF_SetStatusFromGCSStatus(reader.status(), status);
+	if(TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE) return -1;
+
+	int64_t read = std::stoll(reader.headers().find("content-length")->second);
+	if(read < n) TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
+
+	if(!(*buffer)) {
+		*buffer = static_cast<char*>(plugin_memory_allocate(read));
+	}
+	reader.read(*buffer, read);
+	if(!reader) {
+		TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
+		read = reader.gcount();
+	}
+	reader.Close();
+	return read;
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
@@ -124,20 +150,7 @@ static void Cleanup(TF_RandomAccessFile* file) {
 static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
                     char* buffer, TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	int64_t read = 0;
-	auto reader = gcs_file->gcs_client->ReadObject(gcs_file->bucket, gcs_file->object, gcs::ReadRange(offset, offset + n));
-
-	TF_SetStatusFromGCSStatus(reader.status(), status);
-	if(TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE) return -1;
-
-	std::string contents{std::istreambuf_iterator<char>{reader}, {}};
-	read = contents.size();
-	//printf("Read: file: %s, size: %d, read: %d\n", gcs_file->object, n, read);
-	if(read < n) TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
-
-	strncpy(buffer, contents.c_str(), read);
-	reader.Close();
-	return read;
+	return ReadObjectImpl(gcs_file->bucket, gcs_file->object, gcs_file->gcs_client, offset, n, &buffer, status);
 }
 
 }  // namespace tf_random_access_file
@@ -315,26 +328,18 @@ static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
 	TF_ReturnIfError(status);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-	auto reader = gcs_client->ReadObject(bucket, object);
 	char* buffer = nullptr;
-	int64_t read = 0;
-	if(reader.status().code() == google::cloud::StatusCode::kOk || reader.status().code() == google::cloud::StatusCode::kOutOfRange) {
-		std::string contents{std::istreambuf_iterator<char>{reader}, {}};
-		read = contents.size();
-		if(read > 0) {
-			buffer = (char*)plugin_memory_allocate(read);
-			strncpy(buffer, contents.c_str(), read);
-		}
-	}
-	else if(reader.status().code() != google::cloud::StatusCode::kNotFound) {
-		TF_SetStatusFromGCSStatus(reader.status(), status);
+	int64_t read = ReadObjectImpl(bucket, object, gcs_client, 0, 0, &buffer, status);
+	if(read < 0 && TF_GetCode(status) != TF_NOT_FOUND) {
 		return;
 	}
 
 	char* temp_path_ = nullptr;
 	std::shared_ptr<std::fstream> temp_file_ = CreateTempFile(&temp_path_, status);
 	TF_ReturnIfError(status);
-	temp_file_->write(buffer, read);
+	if(read > 0 && buffer) {
+		temp_file_->write(buffer, read);
+	}
 	//printf("NewAppenableFile: buffer: %s, read: %d\n", buffer, read);
 	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, gcs_client, temp_file_, temp_path_, false});
 }
@@ -349,26 +354,14 @@ static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
 	TF_ReturnIfError(status);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-	auto reader = gcs_client->ReadObject(bucket, object);
 	char* buffer = nullptr;
-	int64_t read = 0;
-	if(reader.status().code() == google::cloud::StatusCode::kOk) {
-		std::string contents{std::istreambuf_iterator<char>{reader}, {}};
-		read = contents.size();
-		//printf("Reader ReadOnly: read: %d\n", read);
-		if(read > 0) {
-			buffer = (char*)plugin_memory_allocate(read);
-			strncpy(buffer, contents.c_str(), read);
-			region->plugin_memory_region = new tf_read_only_memory_region::GCSMemoryRegion({buffer, static_cast<uint64_t>(read)});
-			return;
-		}
-		else {
-			TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
-			return;
-		}
+	int64_t read = ReadObjectImpl(bucket, object, gcs_client, 0, 0, &buffer, status);
+	if(read > 0 || buffer) {
+		region->plugin_memory_region = new tf_read_only_memory_region::GCSMemoryRegion({buffer, static_cast<uint64_t>(read)});
+		return;
 	}
-	else {
-		TF_SetStatusFromGCSStatus(reader.status(), status);
+	if(read == 0) {
+		TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
 		return;
 	}
 }
