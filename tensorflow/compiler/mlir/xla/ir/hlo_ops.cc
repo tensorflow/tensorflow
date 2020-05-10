@@ -1240,7 +1240,7 @@ static LogicalResult Verify(SelectOp op) {
 // the return type based on operand type.
 LogicalResult SelectOp::inferReturnTypes(
     MLIRContext*, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   auto x_type = operands[1].getType();
   auto y_type = operands[2].getType();

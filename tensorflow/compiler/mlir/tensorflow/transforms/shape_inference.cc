@@ -323,8 +323,8 @@ bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti,
   Operation* op = infer_ti.getOperation();
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
-      op->getContext(), op->getLoc(), op->getOperands(), op->getAttrs(),
-      op->getRegions(), inferred);
+      op->getContext(), op->getLoc(), op->getOperands(),
+      op->getAttrDictionary(), op->getRegions(), inferred);
   if (failed(res)) {
     op->emitOpError("failed to refine type as inference failed");
     return false;

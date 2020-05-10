@@ -104,8 +104,7 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     let extraClassDeclaration = [{
       static  LogicalResult inferReturnTypeComponents(
           MLIRContext* context, Optional<Location> location,
-          ValueRange operands, ArrayRef<NamedAttribute> attributes,
-          RegionRange regions,
+          ValueRange operands, DictionaryAttr attributes, RegionRange regions,
           SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
         return failure();
       }
@@ -254,7 +253,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
   let extraClassDeclaration = [{
     static  LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location, ValueRange operands,
-        ArrayRef<NamedAttribute> attributes, RegionRange regions,
+        DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
       return failure();
     }

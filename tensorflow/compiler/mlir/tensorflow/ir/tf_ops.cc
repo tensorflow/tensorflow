@@ -984,7 +984,7 @@ void ConstOp::build(OpBuilder &builder, OperationState &result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   for (NamedAttribute named_attr : attributes) {
     if (named_attr.first.strref() != "value") continue;
