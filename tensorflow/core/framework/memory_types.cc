@@ -50,6 +50,7 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   for (size_t i = 0; i < host_memory_args->size(); ++i) {
     auto iter = name_map.find((*host_memory_args)[i]);
     if (iter != name_map.end()) {
+      VLOG(2)<<(*host_memory_args)[i]<<" "<<iter->second.first<<" "<<iter->second.second;
       for (int j = iter->second.first; j < iter->second.second; ++j) {
         (*memory_types)[j] = HOST_MEMORY;
       }
@@ -64,7 +65,9 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
 
 bool IsFunctionCallOp(const string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
-         op_type == "StatefulPartitionedCall" || op_type == "While";
+         op_type == "StatefulPartitionedCall" || op_type == "While" ||
+         op_type == "StatelessWhile" || op_type == "If" || 
+         op_type == "StatelessIf";
 }
 
 }  // namespace
@@ -104,14 +107,27 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     return it != ndef.attr().end() && it->second.b();
   }();
 
-  bool has_kernel_def = status.ok() && !IsFunctionCallOp(ndef.op());
+  bool is_fn = IsFunctionCallOp(ndef.op());
+  bool has_kernel_def = status.ok() && !is_fn;
   auto host_memory_required = [&](const DataType& dt) {
-    bool int32_on_device =
+    bool int32_on_device = 
         has_kernel_def || device_type.type_string() == "TPU" || has_xla_compile;
     return DataTypeAlwaysOnHost(dt) || (dt == DT_INT32 && !int32_on_device);
   };
+  
+  //  Edge cases:
+  //  1. If[Tcond=DT_BOOL, Tin=[DT_FLOAT,DT_INT32], Tout=[DT_FLOAT,DT_INT32]]
+  //     * Tcond marked HostMemory by kernel_def
+  //     * Tin[1] should be on host since it's INT32
+  //  2. ResourceGather[Tindices=DT_INT32](resource, indices)
+  //     * 'resource' marked HostMemory on the host
+  //     *  'indices' must be on the device (because the kernel expects it so)
+  //       - therefore, ignore the type
 
-  if (has_kernel_def) {
+  // Set all datatype to DEVICE_MEMORY by default, later on change it to
+  // HOST_MEMORY where it is required by the datatype.
+
+  if (has_kernel_def || is_fn) {
     // Gets the input/output names and their corresponding endpoint ranges.
     NameRangeMap inp_names;
     NameRangeMap out_names;
@@ -119,22 +135,30 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
         NameRangesForNode(ndef, *op_def, &inp_names, &out_names));
 
     // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
-    inp_mtypes->resize(GetTotal(inp_names), DEVICE_MEMORY);
-    out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
+    // Stick to old behavior except for function calls
+    // (since some kernels incorrectly rely on INT32 being on the GPU)
+    if(is_fn) {
+      inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
+      out_mtypes->resize(out_dtypes.size(), DEVICE_MEMORY);
+    }
+    else {
+      inp_mtypes->resize(GetTotal(inp_names), DEVICE_MEMORY);
+      out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
+    }
 
-    // Fills in host memory types based on the kernel def.
-    const auto& from_proto = kdef->host_memory_arg();
-    std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
-    MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
-    MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
-    if (!host_memory_args.empty()) {
-      return errors::InvalidArgument(
-          "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
-          "' not found in OpDef: ", SummarizeOpDef(*op_def));
+    // Fills in host memory types based on the kernel def
+    if(kdef != nullptr) {  // can this ever be false?
+      const auto& from_proto = kdef->host_memory_arg();
+      std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
+      MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
+      MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
+      if (!host_memory_args.empty()) {
+        return errors::InvalidArgument(
+            "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
+            "' not found in OpDef: ", SummarizeOpDef(*op_def));
+      }
     }
   } else {
-    // Set all the datatype to DEVICE_MEMORY by default, later on change it to
-    // HOST_MEMORY where it is required by the datatype.
     inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
     out_mtypes->resize(out_dtypes.size(), DEVICE_MEMORY);
   }
@@ -146,6 +170,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     if (host_memory_required(inp_dtypes[i])) {
       (*inp_mtypes)[i] = HOST_MEMORY;
     }
+    VLOG(2)<<i<<" "<<(*inp_mtypes)[i];
   }
   for (int i = 0; i < out_mtypes->size(); ++i) {
     if (host_memory_required(out_dtypes[i])) {
