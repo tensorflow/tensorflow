@@ -210,7 +210,7 @@ __global__ void ShuffleInTensor3Simple(int nthreads,
   }
 }
 
-constexpr int kUnroll = 4;
+static constexpr int kUnroll = 4;
 
 template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
 __global__ void ShuffleInTensor3SimpleVector(int nthreads,
@@ -246,7 +246,7 @@ __global__ void ShuffleInTensor3SimpleVector(int nthreads,
     *out = *reinterpret_cast<float2*>(buf);
   }
 
-  for(; output_index < nthreads; output_index++) {
+  for (; output_index < nthreads; ++output_index) {
     Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
 
     Index<3> input_tensor_index;
