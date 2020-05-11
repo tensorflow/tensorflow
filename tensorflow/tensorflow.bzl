@@ -193,10 +193,10 @@ def if_macos(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
-def if_ios(a):
+def if_ios(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:ios"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_ios_x86_64(a):

@@ -112,6 +112,7 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
+    "tf_portable_proto_lib",
     "tf_proto_library",
     "tf_proto_library_cc",
     "tf_protos_all_impl",
@@ -1378,10 +1379,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_all_cc_impl",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core:mobile_additional_lib_deps",
-    ] + tf_portable_deps_no_runtime(),
+    ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
