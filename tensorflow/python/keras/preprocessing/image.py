@@ -49,6 +49,7 @@ random_brightness = image.random_brightness
 apply_affine_transform = image.apply_affine_transform
 
 
+@keras_export('keras.preprocessing.image.smart_resize', v1=[])
 def smart_resize(x, size, interpolation='bilinear'):
   """Resize images to a target size without aspect ratio distortion.
 
@@ -65,7 +66,7 @@ def smart_resize(x, size, interpolation='bilinear'):
   ```
 
   However, if you do this, you distort the aspect ratio of your images, since
-  in general they do not all have the same aspect ratio. This is
+  in general they do not all have the same aspect ratio as `size`. This is
   fine in many cases, but not always (e.g. for GANs this can be a problem).
 
   Note that passing the argument `preserve_aspect_ratio=True` to `resize`
