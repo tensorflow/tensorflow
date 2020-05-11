@@ -2422,6 +2422,28 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
+    case HloOpcode::kReduceWindow:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        return EmitElementalReduceWindow(
+            Cast<HloReduceWindowInstruction>(hlo),
+            operand_to_generator.at(hlo->operand(0)),
+            operand_to_generator.at(hlo->operand(1)), index);
+      };
+    case HloOpcode::kReduce:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        auto reduce_instr = Cast<HloReduceInstruction>(hlo);
+        std::vector<llvm_ir::ElementGenerator> input_generators;
+        for (const HloInstruction* instr : reduce_instr->inputs()) {
+          input_generators.push_back(operand_to_generator.at(instr));
+        }
+
+        std::vector<llvm_ir::ElementGenerator> initial_value_generators;
+        for (const HloInstruction* instr : reduce_instr->init_values()) {
+          initial_value_generators.push_back(operand_to_generator.at(instr));
+        }
+        return EmitElementalReduce(reduce_instr, std::move(input_generators),
+                                   std::move(initial_value_generators), index);
+      };
     default:
       return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
@@ -2449,6 +2471,206 @@ llvm::Value* ElementalIrEmitter::EmitComposeComplex(const HloInstruction* op,
     complex = InsertValue(complex, imag, {1});
   }
   return complex;
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
+    const HloReduceWindowInstruction* reduce_window,
+    const llvm_ir::ElementGenerator& input_generator,
+    const llvm_ir::ElementGenerator& initial_value_generator,
+    const llvm_ir::IrArray::Index& index) {
+  // Pseudocode:
+  // for each index I in output
+  //   value = init_value
+  //   for each index W in window
+  //     for each dimension i from 0 to rank - 1
+  //       (input index I)[i] = O[i] * stride[i] + W[i] - pad_low[i]
+  //     if I in bounds of input
+  //       value = function(value, input[I])
+  //     output[O] = value
+  const HloInstruction* operand = reduce_window->operand(0);
+  const Window& window = reduce_window->window();
+
+  PrimitiveType operand_element_type = operand->shape().element_type();
+  llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
+      llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
+      "reduce_window_accum_ptr", b_);
+  {
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value* const init_value,
+        initial_value_generator(llvm_ir::IrArray::Index(index.GetType())));
+    Store(init_value, accum_ptr);
+  }
+
+  llvm::Type* index_type = index.GetType();
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return index.GetConstantWithIndexType(c);
+  };
+
+  llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
+  std::vector<int64> window_size;
+  for (const auto& dim : window.dimensions()) {
+    window_size.push_back(dim.size());
+  }
+  const IrArray::Index window_index = loops.AddLoopsForShape(
+      ShapeUtil::MakeShape(operand_element_type, window_size), "window");
+  CHECK_EQ(window_index.size(), index.size());
+
+  SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
+
+  std::vector<llvm::Value*> input_multi_index(index.size());
+  llvm::Value* in_bounds = b_->getInt1(true);
+  for (size_t i = 0; i < index.size(); ++i) {
+    llvm::Value* stridden_index =
+        NSWMul(index[i], index_typed_const(window.dimensions(i).stride()));
+    input_multi_index[i] = NSWSub(
+        NSWAdd(
+            stridden_index,
+            NSWMul(window_index[i],
+                   index_typed_const(window.dimensions(i).window_dilation()))),
+        index_typed_const(window.dimensions(i).padding_low()));
+
+    // We need to verify that we are not in the dilated base area.
+    llvm::Value* dilation_condition =
+        ICmpEQ(SRem(input_multi_index[i],
+                    index_typed_const(window.dimensions(i).base_dilation())),
+               index_typed_const(0));
+    in_bounds = And(in_bounds, dilation_condition);
+
+    // Apply base dilation to the index.
+    input_multi_index[i] =
+        SDiv(input_multi_index[i],
+             index_typed_const(window.dimensions(i).base_dilation()));
+
+    // We must check whether 0 <= input_multi_index[i] < bound, as
+    // otherwise we are in the pad and so can skip the computation. This
+    // comparison is equivalent to the unsigned comparison
+    // input_multi_index[i] < bound, as a negative value wraps to a large
+    // positive value.
+    in_bounds = And(in_bounds,
+                    ICmpULT(input_multi_index[i],
+                            index_typed_const(operand->shape().dimensions(i))));
+  }
+
+  llvm_ir::LlvmIfData if_data =
+      llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
+  SetToFirstInsertPoint(if_data.true_block, b_);
+
+  // We are not in pad, so do the computation.
+  IrArray::Index input_index(input_multi_index, operand->shape(), index_type);
+  TF_ASSIGN_OR_RETURN(llvm::Value * input_value, input_generator(input_index));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<llvm::Value*> accum_values,
+      EmitThreadLocalCall(*reduce_window->to_apply(),
+                          {Load(accum_ptr), input_value}, "reducer_function"));
+  CHECK_EQ(accum_values.size(), 1);
+  Store(accum_values[0], accum_ptr);
+
+  SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b_);
+  return Load(accum_ptr);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
+    const HloReduceInstruction* reduce,
+    std::vector<llvm_ir::ElementGenerator> input_generators,
+    std::vector<llvm_ir::ElementGenerator> initial_value_generators,
+    const llvm_ir::IrArray::Index& index) {
+  const Shape& out_shape = reduce->shape();
+  bool is_variadic = !out_shape.IsArray();
+  int accumulators_count = 1;
+  if (is_variadic) {
+    CHECK(out_shape.IsTuple());
+    accumulators_count = out_shape.tuple_shapes_size();
+  }
+
+  absl::Span<const int64> reduced_dimensions(reduce->dimensions());
+
+  std::vector<llvm::Value*> accumulator_addrs;
+  std::vector<llvm::Type*> accumulator_types;
+  llvm::Type* index_type = index.GetType();
+  for (int i = 0; i < accumulators_count; i++) {
+    const Shape& element_shape =
+        is_variadic ? out_shape.tuple_shapes(i) : out_shape;
+    PrimitiveType accumulator_type = element_shape.element_type();
+    llvm::Type* accumulator_llvm_type =
+        llvm_ir::PrimitiveTypeToIrType(accumulator_type, module_);
+    accumulator_types.push_back(accumulator_llvm_type);
+
+    // Initialize an accumulator with init_value.
+    llvm::AllocaInst* accumulator_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+        accumulator_llvm_type, "accumulator_" + std::to_string(i), b());
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value* const init_value,
+        initial_value_generators[i](llvm_ir::IrArray::Index(index_type)));
+    Store(init_value, accumulator_addr);
+    accumulator_addrs.push_back(accumulator_addr);
+  }
+
+  // The enclosing loops go over all the target elements. Now we have to compute
+  // the actual target element. For this, we build a new loop nest to iterate
+  // over all the reduction dimensions in the argument.
+  // AddLoopsForShapeOnDimensions will return an Index where induction Value*s
+  // are placed for each dimension in dimensions, and all the rest are nullptrs.
+  llvm_ir::ForLoopNest loops(IrName(reduce, "inner"), b(), index_type);
+  const HloInstruction* arg = reduce->operand(0);
+  std::vector<llvm::Value*> input_multi_index =
+      loops.AddLoopsForShapeOnDimensions(arg->shape(), reduced_dimensions,
+                                         "reduction_dim");
+
+  SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
+
+  // Build a full index for the input argument, using input_multi_index as the
+  // base. In input_multi_index only the reduction dimensions are filled in. We
+  // fill in the rest of the dimensions with induction Value*s taken from
+  // 'index' which iterates over the target array.  See the high-level
+  // description in the XLA documentation for details.
+  auto it = index.begin();
+
+  for (auto& i : input_multi_index) {
+    if (i == nullptr) {
+      i = *it++;
+    }
+  }
+  CHECK(index.end() == it);
+  llvm_ir::IrArray::Index input_index(input_multi_index, arg->shape(),
+                                      index_type);
+
+  std::vector<llvm::Value*> reduction_operands;
+  for (llvm::Value* accum : accumulator_addrs) {
+    llvm::Value* accum_value = Load(accum);
+    reduction_operands.push_back(accum_value);
+  }
+
+  for (int i = 0; i < accumulators_count; i++) {
+    TF_ASSIGN_OR_RETURN(llvm::Value* const input_element,
+                        input_generators[i](input_index));
+    reduction_operands.push_back(input_element);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<llvm::Value*> results,
+      EmitThreadLocalCall(*reduce->to_apply(), reduction_operands,
+                          "reduce_function"));
+
+  CHECK(results.size() == accumulators_count);
+  for (int i = 0; i < accumulators_count; i++) {
+    Store(results[i], accumulator_addrs[i]);
+  }
+  SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b());
+
+  if (is_variadic) {
+    // Emit a structure, as that what the LoopEmitter expects.
+    llvm::Value* returned_structure = llvm::UndefValue::get(
+        llvm::StructType::get(b()->getContext(), accumulator_types));
+    for (int i = 0; i < accumulators_count; i++) {
+      llvm::Value* accumulator_value = Load(accumulator_addrs[i]);
+      returned_structure =
+          b()->CreateInsertValue(returned_structure, accumulator_value, i);
+    }
+    return returned_structure;
+  } else {
+    CHECK_EQ(accumulator_addrs.size(), 1);
+    return Load(accumulator_addrs[0]);
+  }
 }
 
 }  // namespace xla

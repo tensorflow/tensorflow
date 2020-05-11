@@ -17,12 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 
 #include <unordered_map>
+#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -219,6 +223,22 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& dot_result_index);
+
+  virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name) = 0;
+
+  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+      const HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& initial_value_generator,
+      const llvm_ir::IrArray::Index& index);
+
+  StatusOr<llvm::Value*> EmitElementalReduce(
+      const HloReduceInstruction* reduce,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generators,
+      const llvm_ir::IrArray::Index& index);
 
   llvm::IRBuilder<>* const b_;
 
