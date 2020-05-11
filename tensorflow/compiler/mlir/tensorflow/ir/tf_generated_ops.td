@@ -192,6 +192,44 @@ retained with length 1.
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_AllToAllOp : TF_Op<"AllToAll", [NoSideEffect]> {
+  let summary = "An Op to exchange data across TPU replicas.";
+
+  let description = [{
+On each replica, the input is split into `split_count` blocks along
+`split_dimension` and send to the other replicas given group_assignment. After
+receiving `split_count` - 1 blocks from other replicas, we concatenate the
+blocks along `concat_dimension` as the output.
+
+For example, suppose there are 2 TPU replicas:
+replica 0 receives input: `[[A, B]]`
+replica 1 receives input: `[[C, D]]`
+
+group_assignment=`[[0, 1]]`
+concat_dimension=0
+split_dimension=1
+split_count=2
+
+replica 0's output: `[[A], [C]]`
+replica 1's output: `[[B], [D]]`
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    I32Tensor:$group_assignment,
+
+    I64Attr:$concat_dimension,
+    I64Attr:$split_dimension,
+    I64Attr:$split_count
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AngleOp : TF_Op<"Angle", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Returns the argument of a complex number.";
 

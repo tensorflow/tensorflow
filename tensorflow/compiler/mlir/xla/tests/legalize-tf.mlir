@@ -4097,6 +4097,21 @@ func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg
 }
 
 //===----------------------------------------------------------------------===//
+// AllToAll op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @alltoall_basic
+func @alltoall_basic(%input: tensor<10xf32>) -> tensor<10xf32> {
+  %group_assignment = "tf.Const" () {
+    value = dense<[[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi32>
+  } : () -> tensor<3x4xi32>
+  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 1 : i64, split_count = 2 : i64, split_dimension = 0 : i64} :  (tensor<10xf32>, tensor<3x4xi32>)  -> tensor<10xf32>
+  // CHECK: xla_hlo.all_to_all
+  // CHECK-SAME: replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi64>
+  return %result : tensor<10xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Cumsum op legalizations.
 //===----------------------------------------------------------------------===//
 

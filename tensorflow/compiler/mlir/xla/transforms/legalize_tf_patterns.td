@@ -274,6 +274,13 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
             (CastElementsToI64Elements $group_assignment))>;
 
 //===----------------------------------------------------------------------===//
+// All2All op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment), I64Attr:$concat_dimension, $split_dimension, $split_count),
+          (HLO_AllToAllOp $input, $split_dimension, $concat_dimension, $split_count, (CastElementsToI64Elements $group_assignment))>;
+
+//===----------------------------------------------------------------------===//
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
