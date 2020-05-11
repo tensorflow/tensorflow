@@ -92,7 +92,7 @@ constexpr char kBadArrayAttrLengthMsg[] =
 //
 // Would become following ops (unimportant attributes, types are omitted):
 //    %1 = "tf.Shape"(%0)
-//    %2:2 = "tf.MLIRCompileToTPU"(%1) {module = "<Serialized @tpu_func>"}
+//    %2:2 = "tf._TPUCompileMlir"(%1) {module = "<Serialized @tpu_func>"}
 //    "tf.TPUCompileSucceededAssert"(%2#0)
 //    %3 = "tf.TPUExecute"(%0, %2#1)
 //    %4 = "tf.SomeOp"(%3)
@@ -687,6 +687,16 @@ LogicalResult Rewrite(
   // Create compile op.
   auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
   builder->setInsertionPoint(cluster_func);
+
+  // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
+  // parallel_execute region if it exists.
+  if (llvm::isa<tf_device::ParallelExecuteOp>(cluster_func.getParentOp())) {
+    // Currently, outside compilation and model parallelism are not supported
+    // together.
+    assert(num_cores_per_replica == 1);
+    builder->setInsertionPoint(cluster_func.getParentOp());
+  }
+
   Operation* compile_op = BuildCompileOp(
       cluster_func, num_replicas, num_cores_per_replica,
       tpu_device_assignment.compilation_device,
@@ -712,6 +722,7 @@ LogicalResult Rewrite(
       num_cores_per_replica, cluster_func, &output_shardings);
   if (failed(result)) return failure();
 
+  builder->setInsertionPoint(cluster_func);
   if (num_cores_per_replica > 1) {
     // For model parallelism, tf_device.parallel_execute is used to express
     // concurrent device execution across multiple logical devices.
