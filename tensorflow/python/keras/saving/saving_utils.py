@@ -227,7 +227,7 @@ def compile_args_from_training_config(training_config, custom_objects=None):
       weighted_metrics = _deserialize_nested_config(_deserialize_metric,
                                                     weighted_metrics_config)
 
-    sample_weight_mode = training_config['sample_weight_mode']
+    sample_weight_mode = training_config.get('sample_weight_mode', None)
     loss_weights = training_config['loss_weights']
 
   return dict(
