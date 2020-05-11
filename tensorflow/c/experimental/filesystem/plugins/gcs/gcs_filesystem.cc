@@ -22,8 +22,7 @@ limitations under the License.
 #include <chrono>
 #include <filesystem>
 #include <string_view>
-
-#include <stdio.h>
+#include <fstream>
 
 #include "tensorflow/c/tf_status.h"
 
@@ -69,12 +68,12 @@ static void ParseGCSPath(const char* fname, bool object_empty_ok, char** bucket,
       return;
 		}
 	}
-  *object = static_cast<char*>(plugin_memory_allocate(object_view.length()));
+  *object = static_cast<char*>(plugin_memory_allocate(object_view.length() + 1));
 	// object_view.data() is a null-terminated string_view because fname is.
-	memcpy(*object, object_view.data(), object_view.length());
+	strcpy(*object, object_view.data());
 }
 
-static FILE* CreateTempFILE(char** temp_path_, TF_Status* status) {
+static char* CreateTempPath(TF_Status* status) {
 	uint64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
 	std::error_code errorCode;
 	auto path = std::filesystem::temp_directory_path(errorCode);
@@ -82,51 +81,71 @@ static FILE* CreateTempFILE(char** temp_path_, TF_Status* status) {
 		TF_SetStatus(status, TF_UNKNOWN, (std::to_string(errorCode.value()) + ": " + errorCode.message()).c_str());
 		return NULL;
 	}
-	path /= std::to_string(now) + "_tmp_gcs_filesystem";
+	path /= "tensorflow_tmp_" + std::to_string(now) + "_tmp_gcs_filesystem";
 	std::string path_str = path.string();
-	*temp_path_ = static_cast<char*>(plugin_memory_allocate(path_str.length()));
-	memcpy(*temp_path_, path_str.c_str(), path_str.length());
-	auto temp_file_ = fopen(*temp_path_, "wb+");
-	if(!temp_file_) {
-		TF_SetStatusFromIOError(status, errno, *temp_path_);
-		return NULL;
-	}
-	return temp_file_;
+	auto temp_path_ = static_cast<char*>(plugin_memory_allocate(path_str.length() + 1));
+	strcpy(temp_path_, path_str.c_str());
+	return temp_path_;
 }
 
-static int64_t GetBuffer(FILE* file, char** buffer) {
-	fseek(file, 0, SEEK_END);
-	int64_t read = ftell(file);
-	fseek(file, 0, SEEK_SET);
-	*buffer = static_cast<char*>(plugin_memory_allocate(read));
-	fread(*buffer, 1, read, file);
-	return read;
-}
-
-static int64_t ReadObjectImpl(const char* bucket, const char* object, google::cloud::storage::Client* gcs_client, uint64_t offset, size_t n, char** buffer, TF_Status* status) {
-	google::cloud::storage::ObjectReadStream reader;
-	if(n == 0) {
-		reader = std::move(gcs_client->ReadObject(bucket, object));
+static int64_t ReadObjectImpl(const char* bucket, const char* object, const char* temp_path,
+															std::shared_ptr<std::fstream>* temp_file, 
+															google::cloud::storage::Client* gcs_client, uint64_t offset,
+															size_t n, char** buffer, bool read_to_buffer, TF_Status* status) {
+	int64_t read = 0;
+	if(*temp_file == nullptr) {
+		google::cloud::Status gcs_status;
+		if(n == 0)
+			gcs_status = gcs_client->DownloadToFile(bucket, object, temp_path);
+		else {
+			gcs_status = gcs_client->DownloadToFile(bucket, object, temp_path,
+																						google::cloud::storage::ReadRange(offset, offset + n));
+			offset = 0;
+		}
+		TF_SetStatusFromGCSStatus(gcs_status, status);
+		if(TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE) return -1;
+		*temp_file = std::make_shared<std::fstream>();
+		(*temp_file)->open(temp_path, std::ios::binary | std::ios::in | std::ios::out | std::ios::ate);
 	}
-	else {
-		reader = std::move(gcs_client->ReadObject(bucket, object, google::cloud::storage::ReadRange(offset, offset + n)));
+
+	if(!(*temp_file)->is_open()) {
+		TF_SetStatus(status, TF_FAILED_PRECONDITION, "Could not open downloaded temporary file.");
+		return -1;
 	}
-	TF_SetStatusFromGCSStatus(reader.status(), status);
-	if(TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE) return -1;
 
-	int64_t read = std::stoll(reader.headers().find("content-length")->second);
-	if(read < n) TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
+	std::error_code errorCode;
+	read = std::filesystem::file_size(temp_path, errorCode) - offset;
+	if(errorCode) {
+		TF_SetStatus(status, TF_UNKNOWN, (std::to_string(errorCode.value()) + ": " + errorCode.message()).c_str());
+		return -1;
+	}
 
-	if(!(*buffer)) {
+	if(read < n)
+		TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested.");
+
+	if(!read_to_buffer)
+		return read;
+
+	if(!(*buffer))
 		*buffer = static_cast<char*>(plugin_memory_allocate(read));
+	if(*buffer == NULL) {
+		TF_SetStatus(status, TF_INTERNAL, "Could not allocate buffer to save data from downloaded temporary file.");
+		return -1;
 	}
-	reader.read(*buffer, read);
-	if(!reader) {
-		TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
-		read = reader.gcount();
+	(*temp_file)->seekg(offset);
+	(*temp_file)->read(*buffer, read);
+	if((*temp_file)->fail()) {
+		TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested.");
+		read = (*temp_file)->gcount();
 	}
-	reader.Close();
 	return read;
+}
+
+static void SyncObjectImpl(const char* bucket, const char* object, const char* temp_path,
+														google::cloud::storage::Client* gcs_client, TF_Status* status) {
+	auto metadata = gcs_client->UploadFile(temp_path, bucket, object);
+	if(!metadata)
+		TF_SetStatusFromGCSStatus(metadata.status(), status);
 }
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
@@ -137,14 +156,18 @@ namespace gcs = google::cloud::storage;
 typedef struct GCSFile {
 	const char* bucket;
 	const char* object;
+	const char* temp_path;
 	gcs::Client* gcs_client;
+	std::shared_ptr<std::fstream> temp_file;
 } GCSFile;
 
 static void Cleanup(TF_RandomAccessFile* file) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  // This would be safe to free using `free` directly as it is only opaque.
-  // However, it is better to be consistent everywhere.
-	// gcs_client is not owned by GCSFile and therefore we do not free it here.
+	if(gcs_file->temp_file) {
+		gcs_file->temp_file->close();
+		//std::remove(gcs_file->temp_path);
+	}
+	plugin_memory_free(const_cast<char*>(gcs_file->temp_path));
   plugin_memory_free(const_cast<char*>(gcs_file->bucket));
 	plugin_memory_free(const_cast<char*>(gcs_file->object));
   delete gcs_file;
@@ -153,7 +176,9 @@ static void Cleanup(TF_RandomAccessFile* file) {
 static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
                     char* buffer, TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	return ReadObjectImpl(gcs_file->bucket, gcs_file->object, gcs_file->gcs_client, offset, n, &buffer, status);
+	return ReadObjectImpl(gcs_file->bucket, gcs_file->object,
+												gcs_file->temp_path, &gcs_file->temp_file,
+												gcs_file->gcs_client, offset, n, &buffer, true, status);
 }
 
 }  // namespace tf_random_access_file
@@ -166,76 +191,86 @@ namespace gcs = google::cloud::storage;
 typedef struct GCSFile {
 	const char* bucket;
 	const char* object;
+	const char* temp_path;
 	gcs::Client* gcs_client;
-	FILE* temp_file_;
-	const char* temp_path_;
-	bool sync_need_;
+	std::shared_ptr<std::fstream> temp_file;
+	bool sync_need;
 } GCSFile;
 
 static void Cleanup(TF_WritableFile* file) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  // This would be safe to free using `free` directly as it is only opaque.
-  // However, it is better to be consistent everywhere.
-	// gcs_client is not owned by GCSFile and therefore we do not free it here.
-	remove(gcs_file->temp_path_);
+	//if(gcs_file->temp_file != nullptr)
+		//std::remove(gcs_file->temp_path);
   plugin_memory_free(const_cast<char*>(gcs_file->bucket));
 	plugin_memory_free(const_cast<char*>(gcs_file->object));
-	plugin_memory_free(const_cast<char*>(gcs_file->temp_path_));
+	plugin_memory_free(const_cast<char*>(gcs_file->temp_path));
 	delete gcs_file;
 }
 
 static void Append(const TF_WritableFile* file, const char* buffer, size_t n,
                    TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	//printf("Append: buffer: %s, size: %d, bucket: %s, object: %s\n", buffer, n, gcs_file->bucket, gcs_file->object);
-
-	if(fwrite(buffer, 1, n, gcs_file->temp_file_) != n){
-		TF_SetStatusFromIOError(status, errno, gcs_file->temp_path_);
+	if(gcs_file->temp_file == nullptr) {
+		gcs_file->temp_file = std::make_shared<std::fstream>();
+		gcs_file->temp_file->open(gcs_file->temp_path, 
+															std::ios::binary | std::ios::in |
+															std::ios::out | std::ios::trunc);
 	}
-	gcs_file->sync_need_ = true;
+	if(!gcs_file->temp_file->is_open()) {
+		TF_SetStatus(status, TF_FAILED_PRECONDITION, "Could not open the internal temporary file.");
+	}
+
+	if(gcs_file->temp_file->fail()) {
+		TF_SetStatus(status, TF_FAILED_PRECONDITION, "The internal temporary file is not writable.");
+	}
+	gcs_file->temp_file->seekp(0, std::ios::end);
+	gcs_file->temp_file->write(buffer, n);
+	if(gcs_file->temp_file->fail()) {
+		TF_SetStatus(status, TF_INTERNAL, "Could not append to temporary internal file.");
+	}
+	gcs_file->sync_need = true;
 }
 
 static int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	int64_t position = int64_t(ftell(gcs_file->temp_file_));
+	if(gcs_file->temp_file == nullptr)
+		return 0;
+	int64_t position = int64_t(gcs_file->temp_file->tellp());
 	if(position == -1) {
 		TF_SetStatus(status, TF_INTERNAL, "Could not tellp on the internal temporary file");
 	}
 	return position;
 }
 
-// In `gcs_cloud_cpp`, `Close()` is the only way to upload internal file to cloud
 static void Flush(const TF_WritableFile* file, TF_Status* status) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  if(gcs_file->sync_need_) {
-		auto writer = gcs_file->gcs_client->WriteObject(gcs_file->bucket, gcs_file->object);
-		char* buffer;
-		int64_t read = GetBuffer(gcs_file->temp_file_, &buffer);
-		writer.write(buffer, read);
-		//printf("GetBuffer success: %s, length: %d\n", buffer, read);
-		writer.Close();
-		free(buffer);
-		if(!writer.metadata()) {
-			TF_SetStatusFromGCSStatus(writer.metadata().status(), status);
-		}
+  if(gcs_file->sync_need) {
+		TF_ReturnIfError(status);
+		gcs_file->temp_file->operator<<(std::flush);
+		SyncObjectImpl(gcs_file->bucket, gcs_file->object, gcs_file->temp_path, gcs_file->gcs_client, status);
 	}
-	gcs_file->sync_need_ = false;
+	gcs_file->sync_need = false;
 }
 
 static void Sync(const TF_WritableFile* file, TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	gcs_file->sync_need_ = true;
+	Append(file, "", 0, status);
   Flush(file, status);
+	gcs_file->sync_need = false;
 }
 
 static void Close(const TF_WritableFile* file, TF_Status* status) {
 	auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-	if(gcs_file->sync_need_) Sync(file, status);
-	TF_ReturnIfError(status);
-	if(fclose(gcs_file->temp_file_) != 0) {
-		TF_SetStatusFromIOError(status, errno, gcs_file->temp_path_);
+	if(gcs_file->sync_need) {
+		Flush(file, status);
+		TF_ReturnIfError(status);
 	}
-	
+	if(gcs_file->temp_file != nullptr) {
+		gcs_file->temp_file->close();
+		if(gcs_file->temp_file->fail()) {
+			TF_SetStatus(status, TF_INTERNAL, "Could not close temporary file.");
+		}
+	}
 }
 
 }  // namespace tf_writable_file
@@ -299,7 +334,10 @@ static void NewRandomAccessFile(const TF_Filesystem* filesystem,
 	TF_ReturnIfError(status);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-	file->plugin_file = new tf_random_access_file::GCSFile({bucket, object, gcs_client});
+	const char* temp_path = CreateTempPath(status);
+	TF_ReturnIfError(status);
+
+	file->plugin_file = new tf_random_access_file::GCSFile({bucket, object, temp_path, gcs_client, nullptr});
 	TF_SetStatus(status, TF_OK, "");
 }
 
@@ -309,13 +347,12 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
 	char* object;
 	ParseGCSPath(path, false, &bucket, &object, status);
 	TF_ReturnIfError(status);
-	//printf("NewWritableFile bucket: %s, object: %s\n", bucket, object);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-	char* temp_path_ = nullptr;
-	FILE* temp_file_ = CreateTempFILE(&temp_path_, status);
+	char* temp_path = CreateTempPath(status);
 	TF_ReturnIfError(status);
-	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, gcs_client, temp_file_, temp_path_, false});
+	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, temp_path, gcs_client, nullptr, false});
+
 	TF_SetStatus(status, TF_OK, "");
 }
 
@@ -327,22 +364,17 @@ static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
 	TF_ReturnIfError(status);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+	char* temp_path = CreateTempPath(status);
+	TF_ReturnIfError(status);
+	std::shared_ptr<std::fstream> temp_file = nullptr;
 	char* buffer = nullptr;
-	int64_t read = ReadObjectImpl(bucket, object, gcs_client, 0, 0, &buffer, status);
+	int64_t read = ReadObjectImpl(bucket, object, temp_path, &temp_file, gcs_client, 0, 0, &buffer, false, status);
 	if(read < 0 && TF_GetCode(status) != TF_NOT_FOUND) {
 		return;
 	}
 
-	char* temp_path_ = nullptr;
-	FILE* temp_file_ = CreateTempFILE(&temp_path_, status);
-	TF_ReturnIfError(status);
-	if(read > 0 && buffer) {
-		if(fwrite(buffer, 1, read, temp_file_) != read) {
-			TF_SetStatusFromIOError(status, errno, temp_path_);
-		}
-	}
-	//printf("NewAppenableFile: buffer: %s, read: %d\n", buffer, read);
-	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, gcs_client, temp_file_, temp_path_, false});
+	file->plugin_file = new tf_writable_file::GCSFile({bucket, object, temp_path, gcs_client, temp_file, false});
+	TF_SetStatus(status, TF_OK, "");
 }
 
 static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
@@ -355,9 +387,12 @@ static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
 	TF_ReturnIfError(status);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+	char* temp_path = CreateTempPath(status);
+	TF_ReturnIfError(status);
+	std::shared_ptr<std::fstream> temp_file = nullptr;
 	char* buffer = nullptr;
-	int64_t read = ReadObjectImpl(bucket, object, gcs_client, 0, 0, &buffer, status);
-	if(read > 0 || buffer) {
+	int64_t read = ReadObjectImpl(bucket, object, temp_path, &temp_file, gcs_client, 0, 0, &buffer, true, status);
+	if(read > 0 && buffer) {
 		region->plugin_memory_region = new tf_read_only_memory_region::GCSMemoryRegion({buffer, static_cast<uint64_t>(read)});
 		return;
 	}
@@ -375,7 +410,7 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
 	TF_ReturnIfError(status);
 	char* object = nullptr;
 	if(object_temporary[strlen(object_temporary) - 1] != '/') {
-		object = (char*)malloc(strlen(object_temporary) + 2);
+		object = static_cast<char*>(plugin_memory_allocate(strlen(object_temporary) + 2));
 		strcpy(object, object_temporary);
 		object[strlen(object_temporary)] = '/';
 		object[strlen(object_temporary) + 1] = '\0';
@@ -384,7 +419,6 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
 	else {
 		object = object_temporary;
 	}
-	//printf("CreateDir: bucket: %s, object: %s, object_temp: %s\n", bucket, object, object_temporary);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
 	auto inserter = gcs_client->InsertObject(bucket, object, "");
@@ -414,7 +448,7 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
 	TF_ReturnIfError(status);
 	char* object = nullptr;
 	if(object_temporary[strlen(object_temporary) - 1] != '/') {
-		object = (char*)malloc(strlen(object_temporary) + 2);
+		object = static_cast<char*>(plugin_memory_allocate(strlen(object_temporary) + 2));
 		strcpy(object, object_temporary);
 		object[strlen(object_temporary)] = '/';
 		object[strlen(object_temporary) + 1] = '\0';
@@ -423,7 +457,6 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
 	else {
 		object = object_temporary;
 	}
-	//printf("DeleteDir: bucket: %s, object: %s, object_temp: %s\n", bucket, object, object_temporary);
 
 	auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
 	auto gcs_status = gcs_client->DeleteObject(bucket, object);
@@ -433,6 +466,8 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
 static void DeleteRecursively(const TF_Filesystem* filesystem, const char* path,
                              uint64_t* undeleted_files,
                              uint64_t* undeleted_dirs, TF_Status* status) {
+	*undeleted_dirs = 0;
+	*undeleted_files = 0;
 	TF_SetStatus(status, TF_UNIMPLEMENTED, "DeleteRecursively is not implemented");
 }
 
@@ -507,8 +542,14 @@ static void PathExists(const TF_Filesystem* filesystem, const char* path,
 	Stat(filesystem, path, &stats, status);
 }
 
+static bool IsDirectory(const TF_Filesystem* filesystem, const char* path,
+												TF_Status* status) {
+	TF_SetStatus(status, TF_UNIMPLEMENTED, "IsDirectory is not implemented");
+	return true;
+}
+
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
-  char* name = (char*) malloc(strlen(uri) + 1);
+  char* name = (char*) plugin_memory_allocate(strlen(uri) + 1);
   strcpy(name, uri);
   return name;
 }
@@ -560,8 +601,9 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->path_exists = tf_gcs_filesystem::PathExists;
   ops->filesystem_ops->stat = tf_gcs_filesystem::Stat;
 	ops->filesystem_ops->translate_name = tf_gcs_filesystem::TranslateName;
-	ops->filesystem_ops->recursively_create_dir = nullptr;
-	ops->filesystem_ops->delete_recursively = nullptr;
+	ops->filesystem_ops->recursively_create_dir = tf_gcs_filesystem::CreateDir;
+	ops->filesystem_ops->delete_recursively = tf_gcs_filesystem::DeleteRecursively;
+	ops->filesystem_ops->is_directory = tf_gcs_filesystem::IsDirectory;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {
