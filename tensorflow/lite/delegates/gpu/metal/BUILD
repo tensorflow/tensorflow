@@ -80,7 +80,7 @@ objc_library(
 ios_unit_test(
     name = "common_test",
     testonly = 1,
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -117,7 +117,7 @@ objc_library(
 ios_unit_test(
     name = "compiled_model_test",
     testonly = 1,
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -205,7 +205,7 @@ objc_library(
 ios_unit_test(
     name = "inference_context_test",
     testonly = 1,
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -235,7 +235,7 @@ ios_application(
         "iphone",
     ],
     infoplists = ["Info.plist"],
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal:provisioning_profile.mobileprovision",
     tags = tf_gpu_tests_tags() + [
         "local",
@@ -267,7 +267,7 @@ objc_library(
 
 ios_unit_test(
     name = "ComponentsTests",
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + ["notap"],
     test_host = ":TestApplication",
