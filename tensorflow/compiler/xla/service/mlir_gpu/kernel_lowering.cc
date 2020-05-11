@@ -31,9 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -132,7 +132,7 @@ struct StoreForwardingPass
     // No store operation found. Continue search outside of the parallel
     // loop if block is in a parallel loop.
     if (auto parallelOp =
-            llvm::dyn_cast<mlir::loop::ParallelOp>(block->getParentOp())) {
+            llvm::dyn_cast<mlir::scf::ParallelOp>(block->getParentOp())) {
       return findStore(parallelOp.getOperation(), matches);
     }
     return {};
@@ -388,8 +388,8 @@ struct MapParallelLoops
 struct FuseInnerParallelLoops
     : public mlir::PassWrapper<FuseInnerParallelLoops, mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](mlir::loop::ParallelOp op) {
-      mlir::loop::naivelyFuseParallelOps(op.region());
+    getFunction().walk([](mlir::scf::ParallelOp op) {
+      mlir::scf::naivelyFuseParallelOps(op.region());
     });
   }
 };
@@ -401,7 +401,7 @@ struct ParallelLoopCollapsingToFirstDim
   void runOnOperation() override {
     mlir::Operation* module = getOperation();
 
-    module->walk([&](mlir::loop::ParallelOp op) {
+    module->walk([&](mlir::scf::ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       std::vector<unsigned> combinedLoops;
       combinedLoops.reserve(num_loops);

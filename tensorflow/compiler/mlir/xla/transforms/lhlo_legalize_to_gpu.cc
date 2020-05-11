@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -112,7 +112,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto step = rewriter.create<mlir::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
-      auto loop = rewriter.create<mlir::loop::ForOp>(loc, zero, upper, step);
+      auto loop = rewriter.create<mlir::scf::ForOp>(loc, zero, upper, step);
 
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
@@ -173,8 +173,7 @@ struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           gpu::GPUDialect, loop::LoopOpsDialect,
-                           XlaLhloDialect>();
+                           gpu::GPUDialect, scf::SCFDialect, XlaLhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());

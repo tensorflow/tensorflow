@@ -556,7 +556,7 @@ cc_library(
     deps = [
         ":tensorflow",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LoopOpsTransforms",
+        "@llvm-project//mlir:SCFTransforms",
     ],
     alwayslink = 1,
 )
