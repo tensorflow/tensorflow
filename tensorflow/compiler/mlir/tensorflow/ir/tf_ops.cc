@@ -986,18 +986,15 @@ LogicalResult ConstOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  for (NamedAttribute named_attr : attributes) {
-    if (named_attr.first.strref() != "value") continue;
-    auto value = named_attr.second;
-    if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
-      inferredReturnTypes.assign({elem_attr.getType()});
-      return success();
-    }
-    return emitOptionalError(location,
-                             "attribute 'value' failed to satisfy constraint: "
-                             "constant vector/tensor");
+  auto value = attributes.get("value");
+  if (!value) return emitOptionalError(location, "missing attribute 'value'");
+  if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
+    inferredReturnTypes.assign({elem_attr.getType()});
+    return success();
   }
-  return emitOptionalError(location, "missing attribute 'value'");
+  return emitOptionalError(location,
+                           "attribute 'value' failed to satisfy constraint: "
+                           "constant vector/tensor");
 }
 
 //===----------------------------------------------------------------------===//
