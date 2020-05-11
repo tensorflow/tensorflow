@@ -16,7 +16,7 @@ In case MLI implementation can’t be used, kernels in this folder fallback to T
 
 For ARC EM SDP board, a pre-compiled MLI library is downloaded and used in the application. For a custom target ARC-based platform, MLI sources are downloaded and compiled during project generation phase. To build library from sources for ARC EM SDP platform, add `BUILD_ARC_MLI=true` option to make command:
 
-    make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp BUILD_ARC_MLI=true generate_person_detection_int8_make_project.
+    make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp BUILD_ARC_MLI=true generate_person_detection_int8_make_project
 
 If an application exclusively uses accelerated MLI kernel implementations, one can strip out TFLM reference kernel implementations to reduce code size of application. Build application with `MLI_ONLY=true` option in generated project (after the project was built):
 

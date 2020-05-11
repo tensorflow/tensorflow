@@ -13,6 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This test checks that slicing logic doesn`t affect result of fully
+// connected kernel
+//
+// This test doesn`t replace default fully connected test
+// (tensorflow/lite/micro/kernels/fully_connected_test.cc). It is added to the
+// whole testset only in case MLI for ARC platform is used during generation
+// (which is handled in arc_mli.inc). So such tests won`t be generated for other
+// platforms.
+
 #include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
