@@ -431,6 +431,17 @@ struct PadAttributes {
 // @return shape of a tensor after Pad operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr);
 
+struct Pad3DAttributes {
+  PaddingContentType type = PaddingContentType::ZEROS;
+
+  BHWDC prepended;
+  BHWDC appended;
+};
+
+// @return shape of a tensor after Pad3D operation is applied to the given
+// input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr);
+
 struct ConstTensorAttributes {
   Tensor<BHWC, DataType::FLOAT32> tensor;
 };
