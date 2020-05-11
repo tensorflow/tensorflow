@@ -4182,6 +4182,68 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
   }
 };
 
+// Converts a TF InplaceUpdate op to DynamicUpdateSlice HLO.
+class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::InplaceUpdateOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.x();
+    auto indices = op.i();
+    auto updates = op.v();
+
+    // Slice each row of `i` and `v` to perform a separate dynamic-update-slice
+    // on the contents of `x`.
+    auto input_type = input.getType().cast<ShapedType>();
+    auto updates_type = updates.getType().cast<ShapedType>();
+    auto indices_type = indices.getType().cast<ShapedType>();
+    if (!indices_type.hasStaticShape()) return failure();
+
+    if (indices_type.getRank() != 1) return failure();
+
+    SmallVector<Type, 4> unpacked_indices_type(
+        indices_type.getDimSize(0),
+        RankedTensorType::get({}, indices_type.getElementType()));
+    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(64), 0);
+    auto unpacked_indices = rewriter.create<TF::UnpackOp>(
+        op.getLoc(), unpacked_indices_type, indices, zero_attr);
+
+    SmallVector<int64_t, 4> split_updates_shape;
+    split_updates_shape.append(updates_type.getShape().begin(),
+                               updates_type.getShape().end());
+    split_updates_shape.front() = 1;
+    SmallVector<Type, 4> split_updates_type;
+    split_updates_type.resize(
+        updates_type.getShape().front(),
+        RankedTensorType::get(split_updates_shape,
+                              updates_type.getElementType()));
+
+    auto cst =
+        rewriter.create<xla_hlo::ConstOp>(op.getLoc(), zero_attr).getResult();
+    auto split_updates = rewriter.create<TF::SplitOp>(
+        op.getLoc(), split_updates_type, cst, updates);
+
+    SmallVector<Value, 6> input_indices;
+    input_indices.resize(input_type.getRank(), cst);
+
+    SmallVector<int64_t, 6> starts(updates_type.getRank(), 0);
+    SmallVector<int64_t, 6> strides(updates_type.getRank(), 1);
+    SmallVector<int64_t, 6> limits(updates_type.getShape().begin(),
+                                   updates_type.getShape().end());
+
+    for (auto pair :
+         llvm::zip(unpacked_indices.output(), split_updates.output())) {
+      input_indices.front() = std::get<0>(pair);
+      input = rewriter.create<xla_hlo::DynamicUpdateSliceOp>(
+          op.getLoc(), op.getType(), input, std::get<1>(pair), input_indices);
+    }
+
+    rewriter.replaceOp(op, input);
+    return success();
+  }
+};
+
 // Converts a TF XlaDynamicUpdateSlice op to DynamicUpdateSlice HLO.
 class ConvertXlaDynamicUpdateSliceOp
     : public OpRewritePattern<TF::XlaDynamicUpdateSliceOp> {
@@ -4863,12 +4925,13 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv3DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
       ConvertEinsumOp, ConvertFusedBatchNormGradOp,
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPoolOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
