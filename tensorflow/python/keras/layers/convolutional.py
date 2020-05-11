@@ -78,11 +78,6 @@ class Conv(Layer):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
-    groups: A positive integer specifying the number of groups in which the
-      input is split along the channel axis. Each group is convolved
-      separately with `filters / groups` filters. The output is the
-      concatenation of all the `groups` results along the channel axis.
-      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
@@ -105,15 +100,13 @@ class Conv(Layer):
     name: A string, the name of the layer.
   """
 
-  def __init__(self,
-               rank,
+  def __init__(self, rank,
                filters,
                kernel_size,
                strides=1,
                padding='valid',
                data_format=None,
                dilation_rate=1,
-               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -135,11 +128,6 @@ class Conv(Layer):
     if filters is not None and not isinstance(filters, int):
       filters = int(filters)
     self.filters = filters
-    self.groups = groups or 1
-    if filters is not None and filters % self.groups != 0:
-      raise ValueError(
-          'The number of filters must be evenly divisible by the number of '
-          'groups. Received: groups={}, filters={}'.format(groups, filters))
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
     if not all(self.kernel_size):
@@ -167,14 +155,7 @@ class Conv(Layer):
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_channel = self._get_input_channel(input_shape)
-    if input_channel % self.groups != 0:
-      raise ValueError(
-          'The number of input channels must be evenly divisible by the number '
-          'of groups. Received groups={}, but the input has {} channels '
-          '(full input shape is {}).'.format(self.groups, input_channel,
-                                             input_shape))
-    kernel_shape = self.kernel_size + (input_channel // self.groups,
-                                       self.filters)
+    kernel_shape = self.kernel_size + (input_channel, self.filters)
 
     self.kernel = self.add_weight(
         name='kernel',
@@ -269,38 +250,22 @@ class Conv(Layer):
 
   def get_config(self):
     config = {
-        'filters':
-            self.filters,
-        'kernel_size':
-            self.kernel_size,
-        'strides':
-            self.strides,
-        'padding':
-            self.padding,
-        'data_format':
-            self.data_format,
-        'dilation_rate':
-            self.dilation_rate,
-        'groups':
-            self.groups,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'filters': self.filters,
+        'kernel_size': self.kernel_size,
+        'strides': self.strides,
+        'padding': self.padding,
+        'data_format': self.data_format,
+        'dilation_rate': self.dilation_rate,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     }
     base_config = super(Conv, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -406,11 +371,6 @@ class Conv1D(Conv):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
-    groups: A positive integer specifying the number of groups in which the
-      input is split along the channel axis. Each group is convolved
-      separately with `filters / groups` filters. The output is the
-      concatenation of all the `groups` results along the channel axis.
-      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -453,7 +413,6 @@ class Conv1D(Conv):
                padding='valid',
                data_format='channels_last',
                dilation_rate=1,
-               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -472,7 +431,6 @@ class Conv1D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
-        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -559,11 +517,6 @@ class Conv2D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    groups: A positive integer specifying the number of groups in which the
-      input is split along the channel axis. Each group is convolved
-      separately with `filters / groups` filters. The output is the
-      concatenation of all the `groups` results along the channel axis.
-      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -613,7 +566,6 @@ class Conv2D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1),
-               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -632,7 +584,6 @@ class Conv2D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
-        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -704,11 +655,6 @@ class Conv3D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    groups: A positive integer specifying the number of groups in which the
-      input is split along the channel axis. Each group is convolved
-      separately with `filters / groups` filters. The output is the
-      concatenation of all the `groups` results along the channel axis.
-      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -764,7 +710,6 @@ class Conv3D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1, 1),
-               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -783,7 +728,6 @@ class Conv3D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
-        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
