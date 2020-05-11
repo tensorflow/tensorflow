@@ -34,11 +34,13 @@ constexpr int kMaxNumberOfReducedAxis = 2;
 struct OpData {
   int32_t multiplier;
   int shift;
+  int temp_buffer_idx;
 };
 
 void* InitMean(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op_data = new OpData();
-  return op_data;
+  void* raw;
+  context->AllocatePersistentBuffer(context, sizeof(OpData), &raw);
+  return raw;
 }
 
 TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
@@ -61,12 +63,19 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   if (input->type == kTfLiteInt8) {
-    OpData* data = reinterpret_cast<OpData*>(node->user_data);
     const TfLiteTensor* output = GetOutput(context, node, 0);
     const double real_multiplier = static_cast<double>(input->params.scale) /
                                    static_cast<double>(output->params.scale);
-    QuantizeMultiplier(real_multiplier, &data->multiplier, &data->shift);
+    QuantizeMultiplier(real_multiplier, &op_data->multiplier, &op_data->shift);
+  }
+
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  int output_size = NumElements(output);
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+    context->RequestScratchBufferInArena(context, output_size * sizeof(int32_t),
+                                         &op_data->temp_buffer_idx);
   }
 
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
@@ -92,7 +101,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   int num_axis = static_cast<int>(NumElements(axis));
   int temp_index[kMaxNumberOfAxis];
@@ -133,21 +142,24 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       if (params->keep_dims) {
         reference_integer_ops::Mean(
-            op_params, data->multiplier, data->shift, GetTensorShape(input),
-            GetTensorData<int8_t>(input), input->params.zero_point,
-            GetTensorShape(output), GetTensorData<int8_t>(output),
-            output->params.zero_point);
+            op_params, op_data->multiplier, op_data->shift,
+            GetTensorShape(input), GetTensorData<int8_t>(input),
+            input->params.zero_point, GetTensorShape(output),
+            GetTensorData<int8_t>(output), output->params.zero_point);
       } else if (input->params.zero_point == output->params.zero_point &&
                  input->params.scale == output->params.scale) {
+        int32_t* temp_buffer = static_cast<int32_t*>(
+            context->GetScratchBuffer(context, op_data->temp_buffer_idx));
         TF_LITE_ENSURE(
-            context,
-            reference_ops::Mean(
-                GetTensorData<int8_t>(input), input->dims->data,
-                input->dims->size, GetTensorData<int8_t>(output),
-                output->dims->data, output->dims->size,
-                GetTensorData<int>(axis), num_axis, params->keep_dims,
-                temp_index, resolved_axis, GetTensorData<int>(output)));
+            context, reference_ops::Mean(
+                         GetTensorData<int8_t>(input), input->dims->data,
+                         input->dims->size, GetTensorData<int8_t>(output),
+                         output->dims->data, output->dims->size,
+                         GetTensorData<int>(axis), num_axis, params->keep_dims,
+                         temp_index, resolved_axis, temp_buffer));
       } else {
+        int32_t* temp_buffer = static_cast<int32_t*>(
+            context->GetScratchBuffer(context, op_data->temp_buffer_idx));
         TF_LITE_ENSURE(
             context,
             reference_ops::QuantizedMeanOrSum(
@@ -156,7 +168,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
                 GetTensorData<int8_t>(output), output->params.zero_point,
                 output->params.scale, output->dims->data, output->dims->size,
                 GetTensorData<int>(axis), num_axis, params->keep_dims,
-                temp_index, resolved_axis, GetTensorData<int>(output), false));
+                temp_index, resolved_axis, temp_buffer, false));
       }
     } break;
     case kTfLiteUInt8: {
@@ -168,15 +180,18 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
             output->params.zero_point, output->params.scale);
       } else if (input->params.zero_point == output->params.zero_point &&
                  input->params.scale == output->params.scale) {
+        uint32_t* temp_buffer = static_cast<uint32_t*>(
+            context->GetScratchBuffer(context, op_data->temp_buffer_idx));
         TF_LITE_ENSURE(
-            context,
-            reference_ops::Mean(
-                GetTensorData<uint8_t>(input), input->dims->data,
-                input->dims->size, GetTensorData<uint8_t>(output),
-                output->dims->data, output->dims->size,
-                GetTensorData<int>(axis), num_axis, params->keep_dims,
-                temp_index, resolved_axis, GetTensorData<int>(output)));
+            context, reference_ops::Mean(
+                         GetTensorData<uint8_t>(input), input->dims->data,
+                         input->dims->size, GetTensorData<uint8_t>(output),
+                         output->dims->data, output->dims->size,
+                         GetTensorData<int>(axis), num_axis, params->keep_dims,
+                         temp_index, resolved_axis, temp_buffer));
       } else {
+        uint32_t* temp_buffer = static_cast<uint32_t*>(
+            context->GetScratchBuffer(context, op_data->temp_buffer_idx));
         TF_LITE_ENSURE(
             context,
             reference_ops::QuantizedMeanOrSum(
@@ -185,7 +200,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
                 GetTensorData<uint8_t>(output), output->params.zero_point,
                 output->params.scale, output->dims->data, output->dims->size,
                 GetTensorData<int>(axis), num_axis, params->keep_dims,
-                temp_index, resolved_axis, GetTensorData<int>(output), false));
+                temp_index, resolved_axis, temp_buffer, false));
       }
     } break;
     default:
