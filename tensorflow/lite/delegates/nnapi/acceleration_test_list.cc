@@ -300,13 +300,15 @@ VariedShapeSpec/ReshapeOpTest/RegularShapes/1
 VariedShapeSpec/ReshapeOpTest/WithStretchDimension/1
 
 # resize_bilinear_test
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeBilinearOpTest/ResizeBilinearOpTest.+HalfPixelCenters.*,30
 // Only models with constant size tensor are accelerated
 ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 
 # resize_nearest_neighbor_test
-// align_corners & half_pixel_centers are not implemented in NNAPI.
--ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*,29
--ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*,29
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*,30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*,30
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
