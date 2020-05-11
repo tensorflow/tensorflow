@@ -17,9 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_OVERVIEW_PAGE_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -34,11 +32,11 @@ namespace profiler {
 // the tf-functions profiled.
 const double kTfFunctionReportThresholdInPercent = 20;
 
-void SetCommonRecommendation(const string& input_classification,
-                             const string& input_statement,
-                             const string& output_statement,
+void SetCommonRecommendation(absl::string_view input_classification,
+                             absl::string_view input_statement,
+                             absl::string_view output_statement,
                              HardwareType hardware_type,
-                             const string& tf_function_statement_html,
+                             absl::string_view tf_function_statement_html,
                              OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(

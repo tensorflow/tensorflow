@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 
-#include <algorithm>
-#include <utility>
+#include <string>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
@@ -30,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/errors.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
@@ -51,20 +50,18 @@ struct TfFunctionInfo {
   double expensive_call_percent;
 };
 
-OverviewPageTip MakeOverviewPageTip(const string& text) {
+OverviewPageTip MakeOverviewPageTip(std::string text) {
   OverviewPageTip tip;
-  tip.set_link(text);
+  tip.set_link(std::move(text));
   return tip;
 }
 
 // Makes a recommendation for looking up a document.
 // doc_url is expected to be already be escaped suitably for use in an HTML
 // attribute.
-OverviewPageTip MakeOverviewPageTipDocLink(const string& doc_url,
-                                           const string& text) {
-  OverviewPageTip tip;
-  tip.set_link(AnchorElement(doc_url, text));
-  return tip;
+OverviewPageTip MakeOverviewPageTipDocLink(absl::string_view doc_url,
+                                           absl::string_view text) {
+  return MakeOverviewPageTip(AnchorElement(doc_url, text));
 }
 
 void ComputeHostTips(OverviewPageRecommendation* re) {
@@ -78,12 +75,13 @@ void ComputeHostTips(OverviewPageRecommendation* re) {
 
 void ComputeDeviceTips(HardwareType hardware_type,
                        OverviewPageRecommendation* re) {
-  const string& device_name = HardwareType_Name(hardware_type);
-  string timeline_name =
-      (hardware_type == tensorflow::profiler::TPU) ? "TPU core" : device_name;
-  string op_stats_toolname = (hardware_type == tensorflow::profiler::TPU)
-                                 ? "op_profile"
-                                 : "tensorflow_stats";
+  absl::string_view device_name = HardwareType_Name(hardware_type);
+  absl::string_view timeline_name = device_name;
+  absl::string_view op_stats_toolname = "tensorflow_stats";
+  if (hardware_type == tensorflow::profiler::TPU) {
+    timeline_name = "TPU core";
+    op_stats_toolname = "op_profile";
+  }
   *re->add_device_tips() = MakeOverviewPageTip(
       absl::StrCat(op_stats_toolname,
                    " (identify the time-consuming operations "
@@ -124,16 +122,16 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
 
 }  // namespace
 
-void SetCommonRecommendation(const string& input_classification,
-                             const string& input_statement,
-                             const string& output_statement,
+void SetCommonRecommendation(absl::string_view input_classification,
+                             absl::string_view input_statement,
+                             absl::string_view output_statement,
                              HardwareType hardware_type,
-                             const string& tf_function_statement_html,
+                             absl::string_view tf_function_statement_html,
                              OverviewPageRecommendation* re) {
-  re->set_bottleneck(input_classification);
-  re->set_statement(input_statement);
-  re->set_output_statement(output_statement);
-  re->set_tf_function_statement_html(tf_function_statement_html);
+  re->set_bottleneck(std::string(input_classification));
+  re->set_statement(std::string(input_statement));
+  re->set_output_statement(std::string(output_statement));
+  re->set_tf_function_statement_html(std::string(tf_function_statement_html));
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
