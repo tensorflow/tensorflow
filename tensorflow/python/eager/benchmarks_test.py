@@ -180,22 +180,18 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func()  # Warmup.
       self._run(func, 3000)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_create_float_constant(self):
     self._benchmark_create_constant(42.0, dtype=None)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_create_float_constant_uncached(self):
     self._benchmark_create_constant(42.0, dtype=None, cached=False)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_create_int32_constant(self):
     if context.num_gpus():
       return  # int32 constants are always allocated on CPU.
 
     self._benchmark_create_constant(42, dtype=dtypes.int32)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_create_int32_constant_uncached(self):
     if context.num_gpus():
       return  # int32 constants are always allocated on CPU.
@@ -211,21 +207,17 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func()  # Warmup.
       self._run(func, 30000)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_add_float_scalars(self):
     self._benchmark_add(42.0, 24.0)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_add_int32_scalars(self):
     self._benchmark_add(42, 24)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_add_float_scalar_tensor(self):
     tensor_a = constant_op.constant(42.0)
     tensor_b = constant_op.constant(24.0)
     self._benchmark_add(tensor_a, tensor_b)
 
-  @test_util.disable_tfrt("Scalars are not handled correctly")
   def benchmark_add_int32_scalar_tensor(self):
     tensor_a = constant_op.constant(42)
     tensor_b = constant_op.constant(24)
