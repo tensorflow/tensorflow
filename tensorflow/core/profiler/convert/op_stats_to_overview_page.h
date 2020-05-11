@@ -29,10 +29,16 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Reports tf-function optimization opportunity in the Overview Page if the
+// expensive-call-time percentage is over this threshold for at least one of
+// the tf-functions profiled.
+const double kTfFunctionReportThresholdInPercent = 20;
+
 void SetCommonRecommendation(const string& input_classification,
                              const string& input_statement,
                              const string& output_statement,
                              HardwareType hardware_type,
+                             const string& tf_function_statement_html,
                              OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(
@@ -46,6 +52,9 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type);
+
+// Returns a html which provides tf-function related recommendation.
+std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
 
 void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis);
 

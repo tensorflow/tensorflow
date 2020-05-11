@@ -52,6 +52,14 @@ cc_library(
 )
 
 cc_library(
+    name = "html_utils",
+    hdrs = ["html_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "op_metrics_db_utils",
     srcs = ["op_metrics_db_utils.cc"],
     hdrs = ["op_metrics_db_utils.h"],

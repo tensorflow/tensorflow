@@ -33,6 +33,8 @@ const absl::string_view kTracedXla = "traced-xla";
 const absl::string_view kNotTracedNonXla = "notTraced-nonXla";
 const absl::string_view kNotTracedXla = "notTraced-xla";
 
+constexpr double kMaxError = 0.001;
+
 TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
   TfFunctionDb result;
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
@@ -75,6 +77,8 @@ TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
       tf_function_db.tf_functions().at(kFunctionName);
   EXPECT_EQ(tf_function.total_tracing_count(), 4);
   EXPECT_EQ(tf_function.compiler(), MIXED_COMPILER);
+  EXPECT_NEAR(tf_function.expensive_call_percent(), 90, kMaxError);
+
   const auto& metrics = tf_function.metrics();
   EXPECT_EQ(metrics.size(), 2);
   EXPECT_EQ(metrics.count(TRACED_MODE), 1);
@@ -108,6 +112,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
       tf_function_db.tf_functions().at(kOuterFunctionName);
   EXPECT_EQ(outer.total_tracing_count(), 1);
   EXPECT_EQ(outer.compiler(), OTHER_COMPILER);
+  EXPECT_NEAR(outer.expensive_call_percent(), 100, kMaxError);
   const auto& outer_metrics = outer.metrics();
   EXPECT_EQ(outer_metrics.size(), 1);
   EXPECT_EQ(outer_metrics.count(TRACED_MODE), 1);
@@ -118,6 +123,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
       tf_function_db.tf_functions().at(kInnerFunctionName);
   EXPECT_EQ(inner.total_tracing_count(), 0);
   EXPECT_EQ(inner.compiler(), XLA_COMPILER);
+  EXPECT_NEAR(inner.expensive_call_percent(), 0, kMaxError);
   const auto& inner_metrics = inner.metrics();
   EXPECT_EQ(inner_metrics.size(), 1);
   EXPECT_EQ(inner_metrics.count(NOT_TRACED_MODE), 1);
@@ -148,6 +154,7 @@ TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
       tf_function_db.tf_functions().at(kEagerFunctionName);
   EXPECT_EQ(eager.total_tracing_count(), 0);
   EXPECT_EQ(eager.compiler(), INVALID_COMPILER);
+  EXPECT_NEAR(eager.expensive_call_percent(), 100, kMaxError);
   const auto& eager_metrics = eager.metrics();
   EXPECT_EQ(eager_metrics.size(), 1);
   EXPECT_EQ(eager_metrics.count(EAGER_MODE), 1);
@@ -158,6 +165,7 @@ TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
       tf_function_db.tf_functions().at(kConcreteFunctionName);
   EXPECT_EQ(concrete.total_tracing_count(), 0);
   EXPECT_EQ(concrete.compiler(), INVALID_COMPILER);
+  EXPECT_NEAR(concrete.expensive_call_percent(), 0, kMaxError);
   const auto& concrete_metrics = concrete.metrics();
   EXPECT_EQ(concrete_metrics.size(), 1);
   EXPECT_EQ(concrete_metrics.count(CONCRETE_MODE), 1);

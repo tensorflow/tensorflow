@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/errors.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -325,10 +326,6 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
       100.0 * SafeDivide(op_metrics.self_time_ps(), input_op_time_ps));
   details.set_category(InputOpCategoryString(category));
   return details;
-}
-
-string AnchorElement(absl::string_view url, absl::string_view text) {
-  return absl::StrCat("<a href=\"", url, "\" target=\"_blank\">", text, "</a>");
 }
 
 // Returns the ratio of the host-to-device time in each step to the step-time.

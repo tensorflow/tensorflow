@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -52,6 +53,21 @@ std::pair<TfFunctionExecutionMode, TfFunctionCompiler> Decode(
              << std::endl;
   return {INVALID_MODE, INVALID_COMPILER};
   DCHECK(false);
+}
+
+double ComputeExpensiveCallPercent(const TfFunction& tf_function) {
+  // Computes the expensiveness in terms of time (rather than count).
+  uint64 total_call_time_ps = 0;
+  uint64 expensive_call_time_ps = 0;
+  for (const auto& mode_metrics : tf_function.metrics()) {
+    const auto mode = mode_metrics.first;
+    const auto& metrics = mode_metrics.second;
+    total_call_time_ps += metrics.self_time_ps();
+    if (mode == TRACED_MODE || mode == EAGER_MODE) {
+      expensive_call_time_ps += metrics.self_time_ps();
+    }
+  }
+  return SafeDivide(100.0 * expensive_call_time_ps, total_call_time_ps);
 }
 
 // Each invocation of a tf-function creates an ActivationRecord.
@@ -133,6 +149,7 @@ void CombineTfFunction(const TfFunction& src, TfFunction* dst) {
       CombineTfFunctionMetrics(src_metrics, dst_metrics);
     }
   }
+  dst->set_expensive_call_percent(ComputeExpensiveCallPercent(*dst));
 }
 
 // Execution history of all tf-functions invoked.
@@ -209,6 +226,10 @@ class TfFunctionExecutions {
           &(*fun->mutable_metrics())[record.execution_mode];
       metrics->set_count(metrics->count() + 1);
       metrics->set_self_time_ps(metrics->self_time_ps() + self_time_ps);
+    }
+    for (auto& name_fun : *result.mutable_tf_functions()) {
+      TfFunction& fun = name_fun.second;
+      fun.set_expensive_call_percent(ComputeExpensiveCallPercent(fun));
     }
     return result;
   }
