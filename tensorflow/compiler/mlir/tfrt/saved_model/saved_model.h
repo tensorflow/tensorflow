@@ -57,12 +57,15 @@ struct TFRTSavedModelCompileOptions {
   std::string force_data_format;
 };
 
-// Map captured global tensors for each function.
-void MapFunctionGlobalTensorCapturesFromTFSavedModelMLIR(
+// Map signatures (eg. input/output names, variables) for each function.
+void MapFunctionSignaturesFromTFSavedModelMLIR(
     mlir::ModuleOp module,
-    llvm::function_ref<
-        void(llvm::StringRef func_name,
-             llvm::ArrayRef<mlir::tf_saved_model::GlobalTensorOp> captures)>
+    llvm::function_ref<void(
+        llvm::StringRef func_name,
+        llvm::ArrayRef<std::pair<llvm::StringRef, llvm::StringRef>>
+            input_names_and_devices,
+        llvm::ArrayRef<llvm::StringRef> output_names,
+        llvm::ArrayRef<mlir::tf_saved_model::GlobalTensorOp> global_tensors)>
         map_fn);
 
 // Compile MLIR in TF saved model dialect into BEF.
