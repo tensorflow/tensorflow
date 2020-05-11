@@ -609,7 +609,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
         std::pow(2, -15) * cell_to_output_weight_scale / intermediate_scale[9];
   }
 
-  // Calculate effecgive scales.
+  // Calculate effective scales.
   QuantizeMultiplier(effective_input_to_input_scale,
                      &integer_lstm_param->effective_input_to_input_scale_a,
                      &integer_lstm_param->effective_input_to_input_scale_b);
