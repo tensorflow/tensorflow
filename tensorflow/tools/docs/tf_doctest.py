@@ -42,7 +42,7 @@ tf.keras.preprocessing = preprocessing
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('module', None, 'A specific module to run doctest on.')
+flags.DEFINE_list('module', [], 'A list of specific module to run doctest on.')
 flags.DEFINE_list('module_prefix_skip', [],
                   'A list of modules to ignore when resolving modules.')
 flags.DEFINE_boolean('list', None,
@@ -71,23 +71,24 @@ def find_modules():
   return tf_modules
 
 
-def filter_on_submodules(all_modules, submodule):
-  """Filters all the modules based on the module flag.
+def filter_on_submodules(all_modules, submodules):
+  """Filters all the modules based on the modules flag.
 
   The module flag has to be relative to the core package imported.
-  For example, if `submodule=keras.layers` then, this function will return
+  For example, if `module=keras.layers` then, this function will return
   all the modules in the submodule.
 
   Args:
     all_modules: All the modules in the core package.
-    submodule: Submodule to filter from all the modules.
+    submodules: Submodules to filter from all the modules.
 
   Returns:
     All the modules in the submodule.
   """
 
   filtered_modules = [
-      mod for mod in all_modules if PACKAGE + submodule in mod.__name__
+      mod for mod in all_modules
+      if any(PACKAGE + submodule in mod.__name__ for submodule in submodules)
   ]
   return filtered_modules
 

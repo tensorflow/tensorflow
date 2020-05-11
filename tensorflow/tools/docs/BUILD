@@ -23,7 +23,7 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
-    args = ["--module_prefix_skip=tpu."],
+    args = ["--module_prefix_skip=tpu.,distribute.tpu_strategy"],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
@@ -45,7 +45,7 @@ py_test(
 tpu_py_test(
     name = "tf_doctest_tpu",
     srcs = ["tf_doctest.py"],
-    args = ["--module=tpu."],
+    args = ["--module=tpu.,distribute.tpu_strategy"],
     disable_experimental = True,
     disable_v3 = True,
     main = "tf_doctest.py",
