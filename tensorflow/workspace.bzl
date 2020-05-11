@@ -162,8 +162,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
-    TFRT_COMMIT = "d8e16ab39a26772027c1846386a9a0fef613e470"
-    TFRT_SHA256 = "d51a6fecae1319d225cc84614c96370ea3eb4e8824b79b7da6bf0e5caeb8fbdd"
+    TFRT_COMMIT = "341ba0448c117af4e29ae3911141265ee8e57860"
+    TFRT_SHA256 = "27716458f8ca7d91fc2d0f681127dbdd478eea78d6da5153c51b4696ebd14d55"
     TFRT_URLS = [
         "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/{commit}.zip".format(commit = TFRT_COMMIT),
         "https://github.com/tensorflow/runtime/archive/{commit}.zip".format(commit = TFRT_COMMIT),
