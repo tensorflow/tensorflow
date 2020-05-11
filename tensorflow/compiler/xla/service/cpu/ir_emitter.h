@@ -115,11 +115,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit an LLVM global variable for every constant buffer allocation.
   Status EmitConstantGlobals();
 
-  // Emit code to map one element according to `map_instr`.
-  llvm::Value* EmitElementalMap(
-      const HloMapInstruction& map_instr,
-      absl::Span<llvm::Value* const> elemental_operands,
-      absl::string_view name);
   // Emit code to emit the element at `index` for a convolution instruction.
   StatusOr<llvm::Value*> EmitElementalConvolution(
       const HloConvolutionInstruction* convolution,

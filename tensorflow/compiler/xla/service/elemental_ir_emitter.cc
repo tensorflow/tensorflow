@@ -2422,6 +2422,21 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
+    case HloOpcode::kMap:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        std::vector<llvm::Value*> operands;
+        for (int i = 0; i < hlo->operand_count(); i++) {
+          TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                              operand_to_generator.at(hlo->operand(i))(index));
+          operands.push_back(operand_value);
+        }
+        std::vector<llvm_ir::ElementGenerator> input_generators;
+        for (const HloInstruction* instr : hlo->operands()) {
+          input_generators.push_back(operand_to_generator.at(instr));
+        }
+        return EmitElementalMap(Cast<HloMapInstruction>(hlo), operands);
+      };
     case HloOpcode::kReduceWindow:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return EmitElementalReduceWindow(
@@ -2471,6 +2486,17 @@ llvm::Value* ElementalIrEmitter::EmitComposeComplex(const HloInstruction* op,
     complex = InsertValue(complex, imag, {1});
   }
   return complex;
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalMap(
+    const HloMapInstruction* map_instr,
+    absl::Span<llvm::Value* const> elemental_operands) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<llvm::Value*> values,
+      EmitThreadLocalCall(*map_instr->to_apply(), elemental_operands,
+                          llvm_ir::IrName(map_instr)));
+  CHECK_EQ(values.size(), 1);
+  return values[0];
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(

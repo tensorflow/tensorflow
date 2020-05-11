@@ -305,29 +305,5 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 
-llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
-    const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator) {
-  switch (hlo->opcode()) {
-    case HloOpcode::kMap:
-      return [=, &operand_to_generator](
-                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        TF_RET_CHECK(!hlo->operands().empty())
-            << "Zero operand map not implemented in GPU backend.";
-        TF_RET_CHECK(hlo->to_apply()->num_parameters() > 0);
-        std::vector<llvm::Value*> operand_elements;
-        for (HloInstruction* operand : hlo->operands()) {
-          TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                              operand_to_generator.at(operand)(index));
-          operand_elements.push_back(value);
-        }
-        return compute_nested_(*hlo->to_apply(), operand_elements);
-      };
-    default:
-      return ElementalIrEmitter::MakeElementGenerator(hlo,
-                                                      operand_to_generator);
-  }
-}
-
 }  // namespace gpu
 }  // namespace xla

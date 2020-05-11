@@ -695,13 +695,6 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-llvm::Value* IrEmitter::EmitElementalMap(
-    const HloMapInstruction& map_instr,
-    absl::Span<llvm::Value* const> elemental_operands, absl::string_view name) {
-  return EmitScalarReturningThreadLocalCall(*map_instr.to_apply(),
-                                            elemental_operands, name);
-}
-
 Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   // Pseudo code for reduce window:
   //

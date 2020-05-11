@@ -109,18 +109,6 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
-    case HloOpcode::kMap:
-      return [this, hlo, &operand_to_generator](
-                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        std::vector<llvm::Value*> operands;
-        for (int i = 0; i < hlo->operand_count(); i++) {
-          TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                              operand_to_generator.at(hlo->operand(i))(index));
-          operands.push_back(operand_value);
-        }
-        return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
-                                             operands, llvm_ir::IrName(hlo));
-      };
     case HloOpcode::kConvolution:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return ir_emitter_->EmitElementalConvolution(

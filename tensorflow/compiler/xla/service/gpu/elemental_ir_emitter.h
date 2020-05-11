@@ -47,10 +47,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                         llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
-
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,

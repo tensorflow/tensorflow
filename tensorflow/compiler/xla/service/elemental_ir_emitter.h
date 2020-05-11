@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -227,6 +228,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name) = 0;
+
+  StatusOr<llvm::Value*> EmitElementalMap(
+      const HloMapInstruction* map_instr,
+      absl::Span<llvm::Value* const> elemental_operands);
 
   StatusOr<llvm::Value*> EmitElementalReduceWindow(
       const HloReduceWindowInstruction* reduce_window,
