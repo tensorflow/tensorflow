@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
+#include <memory>
+
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -49,9 +51,12 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   StaticDeviceMgr device_mgr(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
   Device* device0 = device_mgr.ListDevices().at(0);
-  StaticDeviceMgr remote_device_mgr(
+  auto remote_device_mgr = absl::make_unique<DynamicDeviceMgr>();
+  std::vector<std::unique_ptr<Device>> remote_devices;
+  remote_devices.emplace_back(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
-  Device* device1 = remote_device_mgr.ListDevices().at(0);
+  TF_ASSERT_OK(remote_device_mgr->AddDevices(std::move(remote_devices)));
+  Device* device1 = remote_device_mgr->ListDevices().at(0);
 
   Status s;
   std::unique_ptr<CompositeDevice> composite_device =
@@ -64,6 +69,17 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
       &device_mgr, false, nullptr, nullptr, nullptr);
+
+  // Set a RemoteMgr to the EagerContext.
+  auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
+      /*is_master=*/true, ctx);
+  TF_ASSERT_OK(ctx->InitializeRemoteMaster(
+      /*server=*/nullptr, /*worker_env=*/nullptr,
+      /*worker_session=*/nullptr, /*remote_eager_workers=*/nullptr,
+      std::move(remote_device_mgr), /*remote_contexts=*/{},
+      EagerContext::NewContextId(),
+      /*r=*/nullptr, &device_mgr, /*keep_alive_secs*/ 600,
+      /*cluster_flr=*/nullptr, std::move(remote_mgr)));
 
   DataType dtype = DT_FLOAT;
   Tensor t0(dtype, TensorShape({}));
