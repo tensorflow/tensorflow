@@ -90,48 +90,100 @@ adb push tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp  /data/l
 adb push /tmp/labels.txt /data/local/tmp
 ```
 
-Run it, `adb shell "/data/local/tmp/label_image \ -m
-/data/local/tmp/mobilenet_v1_1.0_224.tflite \ -i
-/data/local/tmp/grace_hopper.bmp \ -l /data/local/tmp/labels.txt"` then you
-should see something like the followings: `Loaded model
-/data/local/tmp/mobilenet_v1_1.0_224.tflite resolved reporter INFO: Initialized
-TensorFlow Lite runtime. invoked average time: 25.03 ms 0.907071: 653 military
-uniform 0.0372416: 907 Windsor tie 0.00733753: 466 bulletproof vest 0.00592852:
-458 bow tie 0.00414091: 514 cornet`
+Run it,
+```
+adb shell "/data/local/tmp/label_image \
+ -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
+ -i /data/local/tmp/grace_hopper.bmp \
+ -l /data/local/tmp/labels.txt"
+```
+then you should see something like the followings:
+```
+Loaded model /data/local/tmp/mobilenet_v1_1.0_224.tflite
+resolved reporter
+INFO: Initialized
+TensorFlow Lite runtime.
+invoked
+average time: 25.03 ms
+0.907071: 653 military uniform
+0.0372416: 907 Windsor tie
+0.00733753: 466 bulletproof vest
+0.00592852: 458 bow tie
+0.00414091: 514 cornet
+```
 
-Run the model with NNAPI delegate (`-a 1`), `adb shell
-"/data/local/tmp/label_image \ -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
--i /data/local/tmp/grace_hopper.bmp \ -l /data/local/tmp/labels.txt -a 1 -f 1"`
-then you should see something like the followings: `Loaded model
-/data/local/tmp/mobilenet_v1_1.0_224.tflite resolved reporter INFO: Initialized
-TensorFlow Lite runtime. INFO: Created TensorFlow Lite delegate for NNAPI.
-Applied NNAPI delegate. invoked average time:10.348 ms 0.905401: 653 military
-uniform 0.0379589: 907 Windsor tie 0.00735866: 466 bulletproof vest 0.00605307:
-458 bow tie 0.00422573: 514 cornet`
+Run the model with NNAPI delegate (`-a 1`),
+```
+adb shell "/data/local/tmp/label_image \
+ -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
+ -i /data/local/tmp/grace_hopper.bmp \
+ -l /data/local/tmp/labels.txt -a 1 -f 1"
+```
+then you should see something like the followings:
+```
+Loaded model /data/local/tmp/mobilenet_v1_1.0_224.tflite
+resolved reporter
+INFO: Initialized
+TensorFlow Lite runtime.
+INFO: Created TensorFlow Lite delegate for NNAPI.
+Applied NNAPI delegate.
+invoked
+average time:10.348 ms
+0.905401: 653 military uniform
+0.0379589: 907 Windsor tie
+0.00735866: 466 bulletproof vest
+0.00605307: 458 bow tie
+0.00422573: 514 cornet
+```
 
 To run a model with the Hexagon Delegate, assuming we have followed the
 [Hexagon Delegate Guide](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
-and installed Hexagon libraries in `/data/local/tmp`. Run it `adb shell
-"/data/local/tmp/label_image \ -m
-/data/local/tmp/mobilenet_v1_1.0_224_quant.tflite \ -i
-/data/local/tmp/grace_hopper.bmp \ -l /data/local/tmp/labels.txt -j 1"` then you
-should see something like the followings: ``` Loaded model
-/data/local/tmp/mobilenet_v1_1.0_224_quant.tflite resolved reporter INFO:
-Initialized TensorFlow Lite runtime. INFO: Created TensorFlow Lite delegate for
-Hexagon. INFO: Hexagon delegate: 31 nodes delegated out of 31 nodes.
+and installed Hexagon libraries in `/data/local/tmp`. Run it
+```
+adb shell \
+  "/data/local/tmp/label_image \
+  -m /data/local/tmp/mobilenet_v1_1.0_224_quant.tflite \
+  -i /data/local/tmp/grace_hopper.bmp \
+  -l /data/local/tmp/labels.txt -j 1"
+```
+then you should see something like the followings:
+```
+Loaded model /data/local/tmp/mobilenet_v1_1.0_224_quant.tflite
+resolved reporter
+INFO: Initialized TensorFlow Lite runtime.
+loaded libcdsprpc.so
+INFO: Created TensorFlow Lite delegate for Hexagon.
+INFO: Hexagon delegate: 31 nodes delegated out of 31 nodes with 1 partitions.
 
-remote_handle_control available and used Applied Hexagon delegate.invoked
-average time: 8.307 ms 0.729412: 653 military uniform 0.0980392: 907 Windsor tie
-0.0313726: 466 bulletproof vest 0.0313726: 458 bow tie 0.0117647: 700 panpipe
+Applied Hexagon delegate.invoked
+average time: 4.231 ms
+0.639216: 458 bow tie
+0.329412: 653 military uniform
+0.00784314: 835 suit
+0.00784314: 611 jersey
+0.00392157: 514 cornet
 ```
 
-Run the model with the XNNPACK delegate (`-x 1`), `adb shell
-"/data/local/tmp/label_image \ -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
--i /data/local/tmp/grace_hopper.bmp \ -l /data/local/tmp/labels.txt -x 1"` then
-you should see something like the followings: `Loaded model
-/data/local/tmp/mobilenet_v1_1.0_224.tflite resolved reporter INFO: Initialized
-TensorFlow Lite runtime. Applied XNNPACK delegate.invoked average time: 11.0237
-ms 0.90707: 653 military uniform 0.0372418: 907 Windsor tie 0.0073376: 466
-bulletproof vest 0.00592856: 458 bow tie 0.00414093: 514 cornet`
+Run the model with the XNNPACK delegate (`-x 1`),
+```
+adb shell \
+  "/data/local/tmp/label_image \
+  -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
+  -i /data/local/tmp/grace_hopper.bmp \
+  -l /data/local/tmp/labels.txt -x 1"
+```
+then you should see something like the followings:
+```
+Loaded model /data/local/tmp/mobilenet_v1_1.0_224.tflite
+resolved reporter
+INFO: Initialized TensorFlow Lite runtime.
+Applied XNNPACK delegate.invoked
+average time: 17.33 ms
+0.90707: 653 military uniform
+0.0372418: 907 Windsor tie
+0.0073376: 466 bulletproof vest
+0.00592857: 458 bow tie
+0.00414093: 514 cornet
+```
 
 See the `label_image.cc` source code for other command line options.
