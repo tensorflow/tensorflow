@@ -31,9 +31,9 @@
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace {
-bool ParseStringList(std::string string_list, std::vector<uint32>* result) {
+bool ParseStringList(std::string string_list, std::vector<uint32_t>* result) {
   result->clear();
-  uint32 item;
+  uint32_t item;
   auto items = absl::StrSplit(string_list, ',');
   for (const auto& item_str : items) {
     if (!absl::SimpleAtoi(item_str, &item)) {
@@ -48,10 +48,10 @@ bool ParseStringList(std::string string_list, std::vector<uint32>* result) {
 
 int main(int argc, char** argv) {
   std::string output_file = "foo.bin";
-  int32 architecture = 50;
-  std::vector<uint32> tile_sizes;
-  std::vector<uint32> unroll_factors;
-  std::vector<uint32> same_shape;
+  int32_t architecture = 50;
+  std::vector<uint32_t> tile_sizes;
+  std::vector<uint32_t> unroll_factors;
+  std::vector<uint32_t> same_shape;
 
   auto parse_tile_sizes = [&tile_sizes](std::string tile_sizes_str) {
     if (!ParseStringList(tile_sizes_str, &tile_sizes)) {
@@ -91,8 +91,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::pair<int32, int32> compute_capability(architecture / 10,
-                                             architecture % 10);
+  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
+                                                 architecture % 10);
 
   auto cubin = tensorflow::kernel_gen::GenerateCubinForTfCode(
       argv[1], compute_capability, tile_sizes, same_shape, unroll_factors);

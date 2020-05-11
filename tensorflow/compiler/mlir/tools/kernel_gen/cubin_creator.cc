@@ -64,9 +64,9 @@ using xla::StatusOr;
 
 StatusOr<std::string> GetLibdeviceDir(
     const xla::HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : tensorflow::CandidateCudaRoots(
+  for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
            hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
-    string libdevice_dir =
+    std::string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
     if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
