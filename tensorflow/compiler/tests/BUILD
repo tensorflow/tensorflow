@@ -1386,6 +1386,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["fused_batchnorm_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
