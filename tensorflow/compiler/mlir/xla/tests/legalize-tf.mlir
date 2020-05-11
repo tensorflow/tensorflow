@@ -1596,6 +1596,44 @@ func @unhandled_partitioned_call_2(%arg0: tensor<i32>, %arg1: tensor<*xi32>) -> 
   return %0, %1 : tensor<i32>, tensor<i32>
 }
 
+
+//===----------------------------------------------------------------------===//
+// ReverseV2 op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @reverse_func_32
+func @reverse_func_32(%arg0: tensor<5xi32>) -> tensor<5xi32> {
+  %axis = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> (tensor<1xi32>)
+
+  // CHECK: [[VAL:%.+]] = "xla_hlo.reverse"(%arg0) {dimensions = dense<0> : tensor<1xi64>}
+  %reversed = "tf.ReverseV2"(%arg0, %axis) : (tensor<5xi32>, tensor<1xi32>) -> tensor<5xi32>
+
+  // CHECK: return [[VAL]] : tensor<5xi32>
+  return %reversed : tensor<5xi32>
+}
+
+// CHECK-LABEL: @reverse_func_64
+func @reverse_func_64(%arg0: tensor<5xi32>) -> tensor<5xi32> {
+  %axis = "tf.Const"() {value = dense<0> : tensor<1xi64>} : () -> (tensor<1xi64>)
+
+  // CHECK: [[VAL:%.+]] = "xla_hlo.reverse"(%arg0) {dimensions = dense<0> : tensor<1xi64>}
+  %reversed = "tf.ReverseV2"(%arg0, %axis) : (tensor<5xi32>, tensor<1xi64>) -> tensor<5xi32>
+
+  // CHECK: return [[VAL]] : tensor<5xi32>
+  return %reversed : tensor<5xi32>
+}
+
+// CHECK-LABEL: @reverse_func_neg
+func @reverse_func_neg(%arg0: tensor<5x5xi32>) -> tensor<5x5xi32> {
+  %axis = "tf.Const"() {value = dense<[-1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+
+  // CHECK: [[VAL:%.+]] = "xla_hlo.reverse"(%arg0) {dimensions = dense<1> : tensor<1xi64>}
+  %reversed = "tf.ReverseV2"(%arg0, %axis) : (tensor<5x5xi32>, tensor<1xi32>) -> tensor<5x5xi32>
+
+  // CHECK: return [[VAL]] : tensor<5x5xi32>
+  return %reversed : tensor<5x5xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // StatefulPartitionedCall op legalization.
 //===----------------------------------------------------------------------===//

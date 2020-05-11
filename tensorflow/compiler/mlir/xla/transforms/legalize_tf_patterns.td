@@ -521,6 +521,16 @@ foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
 }
 
 //===----------------------------------------------------------------------===//
+// Reverse op patterns.
+//===----------------------------------------------------------------------===//
+
+// Handles axis conversion for TF reverse.
+def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, $1, &$_builder)">;
+
+def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
+    (HLO_ReverseOp $values, (ConvertAxisAttr $values, $axis))>;
+
+//===----------------------------------------------------------------------===//
 // Ternary op patterns.
 //===----------------------------------------------------------------------===//
 

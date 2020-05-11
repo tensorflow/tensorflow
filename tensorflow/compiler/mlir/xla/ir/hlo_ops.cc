@@ -1170,9 +1170,22 @@ OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+  auto input = operand();
+
   // No dimensions to reverse.
-  if (dimensions().getNumElements() == 0) return operand();
-  return nullptr;
+  if (dimensions().getNumElements() == 0) return input;
+
+  llvm::SmallVector<APInt, 5> new_dims;
+  new_dims.reserve(dimensions().getNumElements());
+
+  auto shaped_type = input.getType().cast<ShapedType>();
+  for (auto dim : dimensions().getValues<APInt>()) {
+    if (shaped_type.getDimSize(dim.getLimitedValue()) != 1) {
+      return nullptr;
+    }
+  }
+
+  return input;
 }
 
 //===----------------------------------------------------------------------===//

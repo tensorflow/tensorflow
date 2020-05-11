@@ -2590,6 +2590,21 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
   }
 };
 
+ElementsAttr ConvertAxisAttr(Value val, ElementsAttr attr, Builder *builder) {
+  auto int_attr = attr.cast<DenseIntElementsAttr>();
+  auto type = val.getType().cast<ShapedType>();
+
+  SmallVector<int64_t, 6> axis;
+  axis.reserve(int_attr.getNumElements());
+
+  int64_t rank = type.getRank();
+  for (auto val : int_attr.getValues<APInt>()) {
+    axis.push_back((val.getSExtValue() + rank) % rank);
+  }
+
+  return builder->getI64TensorAttr(axis);
+}
+
 /// Converts the LinSpace tensorflow op to a xla_hlo.iota op with a scaling
 /// and offset applied to generate the linspace values. The output tensor needs
 /// to have a static shape.  The implementation is defined in C++ because there
