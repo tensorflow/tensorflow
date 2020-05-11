@@ -97,6 +97,14 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertIn(dense.op, sp.consumers())
       self.assertIn(out.op, sp.consumers())
 
+  def testWithValues(self):
+      source = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 2]], values=[1., 2], dense_shape=[3, 4])
+      new_tensor = tensor.with_values([5.0, 1.0])
+      self.assertAllEqual(new_tensor.indices, source.indices)
+      self.assertAllEqual(new_tensor.values, [5.0, 1.0])
+      self.assertAllEqual(new_tensor.dense_shape, source.dense_shape)
+
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
 
