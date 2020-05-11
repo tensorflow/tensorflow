@@ -35,6 +35,7 @@ OpBuilder* CreatePool2DBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateReshapeBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateSoftmaxBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateReduceBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateMirrorPadBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreatePadBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateResizeNearestNeighborBuilder(GraphBuilder* graph_builder,
                                               int op_type);
