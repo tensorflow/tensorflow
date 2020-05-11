@@ -243,6 +243,7 @@ filegroup(
         "memory_types.h",
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
+        "mkl_tfconversion_pass.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
@@ -1028,9 +1029,13 @@ cc_library(
 cc_library(
     name = "mkl_layout_pass",
     srcs = ["mkl_layout_pass.cc"],
-    hdrs = ["mkl_layout_pass.h"],
+    hdrs = [
+        "mkl_layout_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1043,9 +1048,13 @@ cc_library(
 cc_library(
     name = "mkl_tfconversion_pass",
     srcs = ["mkl_tfconversion_pass.cc"],
-    hdrs = ["mkl_tfconversion_pass.h"],
+    hdrs = [
+        "mkl_tfconversion_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
