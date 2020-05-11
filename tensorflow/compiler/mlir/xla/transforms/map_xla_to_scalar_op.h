@@ -281,11 +281,9 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
-  // TODO(dfki-ehna): Add other primitive type conversions
-  // if (mlir::FpToSiOp::areCastCompatible(sourceType, targetType)) {
-  //   return b.create<mlir::FpToSiOp>(loc, result_types,
-  //   args,mlir::None);
-  // }
+  if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
+    return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);
+  }
   return nullptr;
 }
 
