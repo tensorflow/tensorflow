@@ -216,6 +216,21 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testMaxOutstandingRequests(self):
+    num_elements = 10
+    num_workers = 3
+    service = self.create_cluster(num_workers)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops._distribute(
+            "parallel_epochs",
+            service,
+            max_outstanding_requests=1,
+            task_refresh_interval_hint_ms=20))
+    self.assertCountEqual(num_workers * list(range(num_elements)),
+                          self.getDatasetOutput(ds))
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):
     num_workers = 3
     num_elements = 10

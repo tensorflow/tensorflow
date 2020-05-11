@@ -84,15 +84,29 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     if task_refresh_interval_hint_ms is None:
       task_refresh_interval_hint_ms = dataset_ops.AUTOTUNE
 
+    self._dataset_id = ops.convert_to_tensor(
+        dataset_id, dtype=dtypes.int64, name="dataset_id")
+    self._processing_mode = ops.convert_to_tensor(
+        processing_mode, dtype=dtypes.string, name="processing_mode")
+    self._address = ops.convert_to_tensor(
+        address, dtype=dtypes.string, name="address")
+    self._protocol = ops.convert_to_tensor(
+        protocol, dtype=dtypes.string, name="protocol")
+    self._job_name = ops.convert_to_tensor(
+        job_name, dtype=dtypes.string, name="job_name")
+    self._max_outstanding_requests = ops.convert_to_tensor(
+        max_outstanding_requests,
+        dtype=dtypes.int64,
+        name="max_outstanding_requests")
     self._element_spec = input_dataset.element_spec
 
     variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
-        dataset_id=dataset_id,
-        processing_mode=processing_mode,
-        address=address,
-        protocol=protocol,
-        job_name=job_name,
-        max_outstanding_requests=max_outstanding_requests,
+        dataset_id=self._dataset_id,
+        processing_mode=self._processing_mode,
+        address=self._address,
+        protocol=self._protocol,
+        job_name=self._job_name,
+        max_outstanding_requests=self._max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
         ),
@@ -297,5 +311,8 @@ def distribute(processing_mode,
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
-  return _distribute(processing_mode, service, job_name,
-                     max_outstanding_requests)
+  return _distribute(
+      processing_mode=processing_mode,
+      service=service,
+      job_name=job_name,
+      max_outstanding_requests=max_outstanding_requests)
