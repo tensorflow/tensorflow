@@ -3769,7 +3769,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
         }
       } else if (reg->builtin_code == kTfLiteBuiltinMaximum ||
                  reg->builtin_code == kTfLiteBuiltinMinimum) {
-        const TfLiteTensor& operand_tensor = context->tensors[input_pos];
+        const TfLiteTensor& operand_tensor =
+            context->tensors[node->inputs->data[input_pos]];
         if (operand_tensor.dims->size == 0) {
           int tensor_index;
 
@@ -3814,7 +3815,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
                   reg->builtin_code == kTfLiteBuiltinSum) &&
                  (input_pos == 1)) {
         // The axis needs, be converted to a tensor if specified as scalar
-        const TfLiteTensor& axis_tensor = context->tensors[1];
+        const TfLiteTensor& axis_tensor =
+            context->tensors[node->inputs->data[input_pos]];
         if (axis_tensor.dims->size == 0) {
           TF_LITE_ENSURE_STATUS(
               builder.AddVectorInt32Operand(axis_tensor.data.i32, 1));
