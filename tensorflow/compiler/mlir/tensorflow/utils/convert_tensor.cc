@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -132,13 +133,21 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case DTYPE:                      \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for more types.
+  // TODO(fengliuai): customize the conversions for quantized and string types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
     CONVERT_FLAT(DT_DOUBLE, double)
+    CONVERT_FLAT(DT_INT8, int8)
+    CONVERT_FLAT(DT_INT16, int16)
     CONVERT_FLAT(DT_INT32, int32)
     CONVERT_FLAT(DT_INT64, int64)
+    CONVERT_FLAT(DT_UINT8, uint8)
+    CONVERT_FLAT(DT_UINT16, uint16)
+    CONVERT_FLAT(DT_UINT32, uint32)
+    CONVERT_FLAT(DT_UINT64, uint64)
+    CONVERT_FLAT(DT_COMPLEX64, std::complex<float>)
+    CONVERT_FLAT(DT_COMPLEX128, std::complex<double>)
 
     // BFLOAT16 is a special case that it needs to be cast to double type to
     // match its storage type.
@@ -213,6 +222,15 @@ void ConvertStringElementsAttr(
     protobuf::RepeatedPtrField<std::string>* output) {
   for (const auto& val : attr.getRawStringData())
     output->Add({val.data(), val.size()});
+}
+
+template <typename T>
+void ConvertComplexElementsAttr(const mlir::DenseElementsAttr attr,
+                                protobuf::RepeatedField<T>* output) {
+  for (const auto& val : attr.getValues<std::complex<T>>()) {
+    output->Add(val.real());
+    output->Add(val.imag());
+  }
 }
 
 // Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
@@ -310,6 +328,12 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       ConvertIntElementsAttr(dense_attr.cast<DenseIntElementsAttr>(),
                              output->mutable_int_val());
       break;
+    case DT_UINT32:
+      ConvertElementsAttr(dense_attr, output->mutable_uint32_val());
+      break;
+    case DT_UINT64:
+      ConvertElementsAttr(dense_attr, output->mutable_uint64_val());
+      break;
     case DT_INT64:
       ConvertElementsAttr(dense_attr, output->mutable_int64_val());
       break;
@@ -323,6 +347,12 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case DT_STRING:
       ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
                                 output->mutable_string_val());
+      break;
+    case DT_COMPLEX64:
+      ConvertComplexElementsAttr(dense_attr, output->mutable_scomplex_val());
+      break;
+    case DT_COMPLEX128:
+      ConvertComplexElementsAttr(dense_attr, output->mutable_dcomplex_val());
       break;
     default:
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",
