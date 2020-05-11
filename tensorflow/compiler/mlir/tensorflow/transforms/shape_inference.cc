@@ -536,6 +536,11 @@ ShapeHandle ComputeOutputAsShape(OpResult result, InferenceContext* ic) {
   return ic->MakeShape(dims);
 }
 
+// Performs shape inference on the provided op and return true if the type of
+// at least one result has been changed.
+// A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
+// `graph_version` indicates the current GraphDef compatibility versions
+// (the versions field in graph.proto).
 bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
                                   int64_t graph_version) {
   assert(tf_dialect == op->getDialect());
@@ -755,6 +760,12 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   return changed;
 }
 
+// Infers shape on the provided region, including nested ones, iterate until fix
+// point with a limit of max_iteration. Returns success if fix point is reached
+// before max_iteration.
+LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
+                                      int64_t max_iteration = 10);
+
 // Updates input types and refine shapes inside body of functions that are
 // attached to ControlFlow ops (If/While). These functions include Then/Else
 // branches of IfOp and Cond/Body functions of WhileOp. These functions share
@@ -945,6 +956,19 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                     int64_t graph_version) {
+  if (arg_shapes.empty()) {
+    if (failed(InferShapeUntilFixPoint(&func.getBody(), graph_version)))
+      return failure();
+    // TODO(b/156276510): Verify that it is always fine to refine a function's
+    // return type, as long as we do not change the argument shapes.
+    if (auto return_types = InferShapeForFunctionReturnType(func)) {
+      func.setType(mlir::FunctionType::get(func.getType().getInputs(),
+                                           return_types.getValue(),
+                                           func.getContext()));
+    }
+
+    return success();
+  }
   mlir::FunctionType func_type = func.getType();
   bool needs_refinement = false;
   llvm::SmallVector<mlir::Type, 4> new_arg_types;
@@ -994,16 +1018,6 @@ LogicalResult InferShapeForFunction(FuncOp func,
                                            ? return_types.getValue()
                                            : func.getType().getResults(),
                                        func.getContext()));
-
-  return success();
-}
-
-LogicalResult InferShapeForFunctionType(FuncOp func) {
-  if (auto return_types = InferShapeForFunctionReturnType(func)) {
-    func.setType(mlir::FunctionType::get(func.getType().getInputs(),
-                                         return_types.getValue(),
-                                         func.getContext()));
-  }
 
   return success();
 }
