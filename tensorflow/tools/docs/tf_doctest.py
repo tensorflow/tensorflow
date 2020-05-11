@@ -43,6 +43,8 @@ tf.keras.preprocessing = preprocessing
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('module', None, 'A specific module to run doctest on.')
+flags.DEFINE_list('module_prefix_skip', [],
+                  'A list of modules to ignore when resolving modules.')
 flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
 flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
@@ -50,6 +52,7 @@ flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
 flags.mark_flags_as_mutual_exclusive(['module', 'file'])
 flags.mark_flags_as_mutual_exclusive(['list', 'file'])
 
+# Both --module and --module_prefix_skip are relative to PACKAGE.
 PACKAGE = 'tensorflow.python.'
 
 
@@ -140,6 +143,9 @@ def load_tests(unused_loader, tests, unused_ignore):
     tf_modules = get_module_and_inject_docstring(FLAGS.file)
 
   for module in tf_modules:
+    if any(module.__name__.startswith(PACKAGE + prefix)
+           for prefix in FLAGS.module_prefix_skip):
+      continue
     testcase = TfTestCase()
     tests.addTests(
         doctest.DocTestSuite(
