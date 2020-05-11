@@ -1337,6 +1337,8 @@ tf_kernel_library(
         "tile_functor_cpu_int32.cc",
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_tstring.cc",
         "tile_functor_cpu_uint8.cc",
         "tile_functor_sycl.cc",
