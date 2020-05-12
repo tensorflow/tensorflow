@@ -2295,7 +2295,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
-    ] + if_mkl([":mkl_array_ops_op_lib"]),
+    ] + if_mkl(["//tensorflow/core:mkl_array_ops_op_lib"]),
 )
 
 tf_cc_test(
