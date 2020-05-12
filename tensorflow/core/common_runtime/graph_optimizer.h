@@ -91,6 +91,17 @@ class GraphOptimizer {
   TF_DISALLOW_COPY_AND_ASSIGN(GraphOptimizer);
 };
 
+// Applies graph rewrite optimization such as inlining, dead code
+// removal, etc.
+//
+// **g is a graph constructed based on the runtime library 'lib'.
+// OptimizeGraph mutates **g extensively and replaces '*g' with a
+// complete copy. Therefore, the caller should not keep any references
+// to nodes *g.
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options);
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_

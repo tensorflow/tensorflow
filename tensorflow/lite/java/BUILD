@@ -211,6 +211,8 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/string.bin",
+        # Takes a scalar string and reshapes to a rank-1, single element string.
+        "src/testdata/string_scalar.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],
@@ -238,6 +240,7 @@ java_test(
     data = [
         "src/testdata/add.bin",
         "src/testdata/add_unknown_dimensions.bin",
+        "//tensorflow/lite:testdata/dynamic_shapes.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
@@ -342,6 +345,14 @@ filegroup(
     name = "portable_flex_tests",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_gpu_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
     ],
     visibility = ["//visibility:public"],
 )

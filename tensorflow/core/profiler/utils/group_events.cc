@@ -15,13 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/group_events.h"
 
-#include <stack>
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -422,8 +434,20 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kSessionRun,
        HostEventType::kExecutorDoneCallback,
        {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kExecutorDoneCallback,
+       {StatType::kStepId}},
+      {HostEventType::kRunGraph,
+       HostEventType::kRunGraphDone,
+       {StatType::kStepId}},
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextOp,
+       {StatType::kStepId, StatType::kIterNum}},
+      {HostEventType::kExecutorStateProcess,
+       HostEventType::kIteratorGetNextAsOptionalOp,
        {StatType::kStepId, StatType::kIterNum}},
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
@@ -450,7 +474,8 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
       CreateInterThreadConnectInfoList();
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kTraceContext, HostEventType::kFunctionRun,
-       HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});
+       HostEventType::kSessionRun, HostEventType::kRunGraph,
+       HostEventType::kHostTrainingLoopIteration});
   EventForest event_forest(connect_info_list, root_event_types,
                            CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {

@@ -44,6 +44,19 @@ namespace {
 // events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
 PyObject* eager_tensor_profiler = nullptr;
 
+// Read-only dict. Please don't use this in any setting where the dict might
+// actually get mutated. This is only used to pass empty kwargs when creating a
+// new EagerTensor.
+PyObject* EmptyDict() {
+  static PyObject* empty_dict = PyDict_New();
+  return empty_dict;
+}
+
+PyObject* EmptyTuple() {
+  static PyObject* empty_tuple = PyTuple_New(0);
+  return empty_tuple;
+}
+
 TFE_Context* GetContextHandle(PyObject* py_context) {
   tensorflow::Safe_PyObjectPtr py_context_handle(
       PyObject_GetAttrString(py_context, "_handle"));
@@ -749,7 +762,11 @@ static PyTypeObject _EagerTensorType = {
     sizeof(EagerTensor),                /* tp_basicsize */
     0,                                  /* tp_itemsize */
     (destructor)EagerTensor_dealloc,    /* tp_dealloc */
+#if PY_VERSION_HEX < 0x03080000
     nullptr,                            /* tp_print */
+#else
+    0, /* tp_vectorcall_offset */
+#endif
     nullptr,                            /* tp_getattr */
     nullptr,                            /* tp_setattr */
     nullptr,                            /* tp_compare */
@@ -801,7 +818,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     return nullptr;
   }
   EagerTensor* t = reinterpret_cast<EagerTensor*>(
-      EagerTensorType->tp_new(EagerTensorType, Py_None, Py_None));
+      EagerTensorType->tp_new(EagerTensorType, EmptyTuple(), EmptyDict()));
   if (t != nullptr) {
     t->id = get_uid();
     Py_INCREF(Py_None);

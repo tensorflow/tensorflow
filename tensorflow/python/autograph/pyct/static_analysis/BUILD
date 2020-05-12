@@ -23,6 +23,7 @@ py_library(
         "annos.py",
         "liveness.py",
         "reaching_definitions.py",
+        "reaching_fndefs.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

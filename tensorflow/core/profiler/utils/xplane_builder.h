@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 
+#include <stddef.h>
+
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -53,12 +58,12 @@ class XStatsBuilder {
   void AddStatValue(const XStatMetadata& metadata, absl::string_view value,
                     bool is_bytes = false) {
     if (is_bytes) {
-      AddStat(metadata)->set_bytes_value(string(value));
+      AddStat(metadata)->set_bytes_value(std::string(value));
     } else {
-      AddStat(metadata)->set_str_value(string(value));
+      AddStat(metadata)->set_str_value(std::string(value));
     }
   }
-  void AddStatValue(const XStatMetadata& metadata, string&& value,
+  void AddStatValue(const XStatMetadata& metadata, std::string&& value,
                     bool is_bytes = false) {
     if (is_bytes) {
       AddStat(metadata)->set_bytes_value(std::move(value));
@@ -160,7 +165,7 @@ class XLineBuilder {
 
   int64 NumEvents() { return line_->events_size(); }
 
-  void SetName(absl::string_view name) { line_->set_name(string(name)); }
+  void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
     if (line_->name().empty()) SetName(name);
@@ -205,7 +210,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   int64 Id() { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
-  void SetName(absl::string_view name) { plane_->set_name(string(name)); }
+  void SetName(absl::string_view name) { plane_->set_name(std::string(name)); }
 
   void ReserveLines(size_t num_lines) {
     plane_->mutable_lines()->Reserve(num_lines);
@@ -222,7 +227,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
-  XEventMetadata* GetOrCreateEventMetadata(string&& name);
+  XEventMetadata* GetOrCreateEventMetadata(std::string&& name);
   inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
@@ -251,7 +256,7 @@ void XStatsBuilder<T>::AddStat(const XStatMetadata& key, const XStat& stat,
   if (stat.value_case() == XStat::kRefValue) {
     const auto& stat_metadata_map = src.stat_metadata();
     const auto it = stat_metadata_map.find(stat.ref_value());
-    if (ABSL_PREDICT_FALSE(it == stat_metadata_map.end())) {
+    if (TF_PREDICT_FALSE(it == stat_metadata_map.end())) {
       // the reference value in stat is not found in XStatMetadata from src.
       return;
     }

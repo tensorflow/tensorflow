@@ -82,8 +82,8 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
         "Custom devices and remote execution are currently not supported "
         "together.");
   }
-  TF_RETURN_IF_ERROR(
-      handle->RemoteAddress(absl::get<Device*>(device), op_id, output_num));
+  TF_RETURN_IF_ERROR(handle->RemoteAddressUntilReady(absl::get<Device*>(device),
+                                                     op_id, output_num));
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
       GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
@@ -124,7 +124,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
     const string& device_name, const bool serialize_resource_dtype_and_shape) {
   int64 op_id;
   int32 output_num;
-  if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
+  if (!in->RemoteAddressUntilReady(device, &op_id, &output_num).ok()) {
     tf_shared_lock l(remote_tensor_handle_mu_);
     TF_RETURN_IF_ERROR(GetRemoteTensorHandle(in, &op_id, &output_num));
   }

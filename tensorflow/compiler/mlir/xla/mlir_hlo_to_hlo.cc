@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using ::stream_executor::port::StatusOr;
@@ -906,8 +907,12 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
 namespace mlir {
 namespace {
 
-StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
-  xla::Shape shape = xla::TypeToShape(type);
+StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
+  if (attr.isa<OpaqueElementsAttr>())
+    return tensorflow::errors::Unimplemented(
+        "Opaque elements attr not supported");
+
+  xla::Shape shape = xla::TypeToShape(attr.getType());
 
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
   case xla_type: {                                         \
@@ -924,11 +929,27 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64)
-    // TODO(b/130356985): Update once MLIR supports unsigned integers.
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
+    case xla::PrimitiveType::F16: {
+      llvm::SmallVector<xla::half, 16> values;
+      values.reserve(attr.getNumElements());
+      for (APFloat val : attr.getValues<APFloat>()) {
+        bool loses_info = false;
+        CHECK_EQ(val.convert(llvm::APFloat::IEEEsingle(),
+                             llvm::APFloat::rmTowardZero, &loses_info),
+                 llvm::APFloat::opOK);
+        CHECK(!loses_info);
+        values.push_back(xla::half(val.convertToFloat()));
+      }
+      xla::Array<xla::half> source_data(shape.dimensions());
+      source_data.SetValues(values);
+      return xla::LiteralUtil::CreateFromArray(source_data);
+    }
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
       auto attr_values = attr.getValues<APFloat>();
@@ -965,11 +986,26 @@ LogicalResult ConvertToHloModule::Lower(
     return LowerFunctionCall(&call_op, builder, &value_map);
   }
 
+  if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
+    Value operand = op.getOperand();
+    auto ty = operand.getType().dyn_cast<ShapedType>();
+    // If this was a cast from a static shaped tensors, then it is a noop for
+    // export to HLO and we can use the operand.
+    if (!ty || !ty.hasStaticShape()) {
+      inst->emitOpError()
+          << "requires static shaped operand for HLO translation";
+      return failure();
+    }
+
+    value_map[op.getResult()] = value_map[operand];
+    return success();
+  }
+
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    auto literal_or =
-        CreateLiteralFromAttr(*inst->result_type_begin(), const_attr);
-    if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
+    auto literal_or = CreateLiteralFromAttr(const_attr);
+    if (!literal_or.ok())
+      return inst->emitError(literal_or.status().ToString());
     value_map[inst->getResult(0)] =
         xla::ConstantLiteral(builder, literal_or.ValueOrDie());
     return success();

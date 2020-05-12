@@ -132,7 +132,7 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
 }
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out) {
+void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out) {
   obj->Ref();
   out->Clear();
   // Defines a lambda to unref "obj" when Cord deletes this piece of
@@ -144,7 +144,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out) {
                             cleanup);
 }
 
-void EncodeStringList(const tstring* strings, int64 n, Cord* out) {
+void EncodeStringList(const tstring* strings, int64 n, absl::Cord* out) {
   out->Clear();
   for (int i = 0; i < n; ++i) {
     ::strings::CordAppendVarint(strings[i].size(), out);
@@ -154,7 +154,7 @@ void EncodeStringList(const tstring* strings, int64 n, Cord* out) {
   }
 }
 
-bool DecodeStringList(const Cord& src, string* strings, int64 n) {
+bool DecodeStringList(const absl::Cord& src, string* strings, int64 n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
   int64 tot = 0;
@@ -177,7 +177,7 @@ bool DecodeStringList(const Cord& src, string* strings, int64 n) {
   return true;
 }
 
-bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
+bool DecodeStringList(const absl::Cord& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
   int64 tot = 0;
@@ -200,13 +200,13 @@ bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
   return true;
 }
 
-void CopyFromArray(Cord* c, const char* base, size_t bytes) {
+void CopyFromArray(absl::Cord* c, const char* base, size_t bytes) {
   c->CopyFrom(base, bytes);
 }
 
 class CordStringListEncoderImpl : public StringListEncoder {
  public:
-  explicit CordStringListEncoderImpl(Cord* out) : out_(out) {}
+  explicit CordStringListEncoderImpl(absl::Cord* out) : out_(out) {}
   ~CordStringListEncoderImpl() override = default;
 
   void Append(const protobuf::MessageLite& m) override {
@@ -222,13 +222,13 @@ class CordStringListEncoderImpl : public StringListEncoder {
   void Finalize() override { out_->Append(rest_); }
 
  private:
-  Cord* out_;
+  absl::Cord* out_;
   string rest_;
 };
 
 class CordStringListDecoderImpl : public StringListDecoder {
  public:
-  explicit CordStringListDecoderImpl(const Cord& in) : reader_(in) {}
+  explicit CordStringListDecoderImpl(const absl::Cord& in) : reader_(in) {}
   ~CordStringListDecoderImpl() override = default;
 
   bool ReadSizes(std::vector<uint32>* sizes) override {
@@ -254,11 +254,11 @@ class CordStringListDecoderImpl : public StringListDecoder {
   std::vector<char> tmp_;
 };
 
-std::unique_ptr<StringListEncoder> NewStringListEncoder(Cord* out) {
+std::unique_ptr<StringListEncoder> NewStringListEncoder(absl::Cord* out) {
   return std::unique_ptr<StringListEncoder>(new CordStringListEncoderImpl(out));
 }
 
-std::unique_ptr<StringListDecoder> NewStringListDecoder(const Cord& in) {
+std::unique_ptr<StringListDecoder> NewStringListDecoder(const absl::Cord& in) {
   return std::unique_ptr<StringListDecoder>(new CordStringListDecoderImpl(in));
 }
 

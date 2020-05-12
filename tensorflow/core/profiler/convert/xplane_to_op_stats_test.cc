@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -96,7 +101,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70, {});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -142,6 +147,42 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
       op_stats.device_op_metrics_db().precision_stats();
   EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
   EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
+}
+
+TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(1);
+  std::string kFunctionName = "increment";
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            10, 100, "traced-nonXla", 1);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            150, 20, "notTraced-nonXla", 1);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            200, 80, "traced-nonXla", 2);
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const TfFunctionDb& tf_function_db = op_stats.tf_function_db();
+
+  EXPECT_EQ(tf_function_db.tf_functions().size(), 1);
+  EXPECT_EQ(tf_function_db.tf_functions().count(kFunctionName), 1);
+  const TfFunction& tf_function =
+      tf_function_db.tf_functions().at(kFunctionName);
+  EXPECT_EQ(tf_function.total_tracing_count(), 2);
+  EXPECT_EQ(tf_function.compiler(), OTHER_COMPILER);
+  const auto& metrics = tf_function.metrics();
+  EXPECT_EQ(metrics.size(), 2);
+  EXPECT_EQ(metrics.count(TRACED_MODE), 1);
+  EXPECT_EQ(metrics.count(NOT_TRACED_MODE), 1);
+  const auto& traced_mode = metrics.at(TRACED_MODE);
+  EXPECT_EQ(traced_mode.count(), 2);
+  EXPECT_EQ(traced_mode.self_time_ps(), 180);
+  const auto& not_traced_mode = metrics.at(NOT_TRACED_MODE);
+  EXPECT_EQ(not_traced_mode.count(), 1);
+  EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
 }
 
 }  // namespace

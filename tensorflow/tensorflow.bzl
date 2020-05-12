@@ -58,7 +58,7 @@ load(
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -193,10 +193,10 @@ def if_macos(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
-def if_ios(a):
+def if_ios(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:ios"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_ios_x86_64(a):
@@ -1128,7 +1128,7 @@ def tf_gpu_cc_test(
         kernels = kernels,
         linkopts = linkopts,
         linkstatic = linkstatic,
-        tags = tags + ["manual"],
+        tags = tags,
         deps = deps,
     )
     tf_cc_test(
@@ -2518,46 +2518,103 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
-def tf_local_platform_constraint():
-    return ["@local_execution_config_platform//:platform_constraint"]
+def _local_exec_transition_impl(settings, attr):
+    return {
+        # Force all targets in the subgraph to build on the local machine.
+        "//command_line_option:modify_execution_info": ".*=+no-remote-exec",
+    }
+
+# A transition that forces all targets in the subgraph to be built locally.
+_local_exec_transition = transition(
+    implementation = _local_exec_transition_impl,
+    inputs = [],
+    outputs = [
+        "//command_line_option:modify_execution_info",
+    ],
+)
+
+def _local_genrule_impl(ctx):
+    ctx.actions.run_shell(
+        outputs = [ctx.outputs.out],
+        inputs = [f for t in ctx.attr.srcs for f in t.files.to_list()],
+        tools = [ctx.executable.exec_tool],
+        arguments = [f.path for t in ctx.attr.srcs for f in t.files.to_list()] +
+                    [ctx.outputs.out.path],
+        command = "%s %s" % (ctx.executable.exec_tool.path, ctx.attr.arguments),
+        execution_requirements = {"no-remote-exec": ""},
+        use_default_shell_env = True,
+    )
+
+# A genrule that executes locally and forces the tool it runs to be built locally.
+# For python, we want to build all py_binary rules locally that we also want
+# to execute locally, as the remote image might use a different python version.
+# TODO(klimek): Currently we still need to annotate the py_binary rules to use
+# the local platform when building. When we know how to change the platform
+# (https://github.com/bazelbuild/bazel/issues/11035) use this to not require
+# annotating the py_binary rules.
+_local_genrule_internal = rule(
+    implementation = _local_genrule_impl,
+    attrs = {
+        "out": attr.output(),
+        "exec_tool": attr.label(
+            executable = True,
+            cfg = _local_exec_transition,
+            allow_files = True,
+        ),
+        "arguments": attr.string(),
+        "srcs": attr.label_list(
+            allow_files = True,
+        ),
+        "_whitelist_function_transition": attr.label(default = "@bazel_tools//tools/whitelists/function_transition_whitelist"),
+    },
+)
+
+# Wrap the rule in a macro so we can pass in exec_compatible_with.
+def _local_genrule(**kwargs):
+    _local_genrule_internal(
+        exec_compatible_with = [
+            "@local_execution_config_platform//:platform_constraint",
+        ],
+        **kwargs
+    )
 
 def tf_version_info_genrule(name, out):
     # TODO(gunan): Investigate making this action hermetic so we do not need
     # to run it locally.
-    native.genrule(
+    _local_genrule(
         name = name,
+        out = out,
+        exec_tool = "//tensorflow/tools/git:gen_git_source",
         srcs = [
-            clean_dep("@local_config_git//:gen/spec.json"),
-            clean_dep("@local_config_git//:gen/head"),
-            clean_dep("@local_config_git//:gen/branch_ref"),
+            "@local_config_git//:gen/spec.json",
+            "@local_config_git//:gen/head",
+            "@local_config_git//:gen/branch_ref",
         ],
-        outs = [out],
-        cmd =
-            "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
-        local = 1,
-        exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
-        exec_compatible_with = tf_local_platform_constraint(),
+        arguments = "--generate \"$@\" --git_tag_override=${GIT_TAG_OVERRIDE:-}",
     )
 
-def tf_py_build_info_genrule(name, out, exec_compatible_with, **kwargs):
-    native.genrule(
+def dict_to_kv(d):
+    """Convert a dictionary to a space-joined list of key=value pairs."""
+    return " " + " ".join(["%s=%s" % (k, v) for k, v in d.items()])
+
+def tf_py_build_info_genrule(name, out):
+    _local_genrule(
         name = name,
-        outs = [out],
-        cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" " +
-            " --is_config_cuda " + if_cuda("True", "False") +
-            " --is_config_rocm " + if_rocm("True", "False") +
-            " --key_value " +
-            if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
-            if_windows(" msvcp_dll_names=msvcp140.dll,msvcp140_1.dll ", "") +
-            if_windows_cuda(" ".join([
-                "nvcuda_dll_name=nvcuda.dll",
-                "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
-                "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
-            ]), ""),
-        local = 1,
-        exec_tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
-        **kwargs
+        out = out,
+        exec_tool = "//tensorflow/tools/build_info:gen_build_info",
+        arguments =
+            "--raw_generate \"$@\" " +
+            " --key_value" +
+            " is_rocm_build=" + if_rocm("True", "False") +
+            " is_cuda_build=" + if_cuda("True", "False") +
+            # TODO(angerson) Can we reliably load CUDA compute capabilities here?
+            if_windows(dict_to_kv({
+                "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll",
+            }), "") + if_windows_cuda(dict_to_kv({
+                "nvcuda_dll_name": "nvcuda.dll",
+                "cudart_dll_name": "cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
+                "cudnn_dll_name": "cudnn64_$${TF_CUDNN_VERSION:-}.dll",
+            }), ""),
     )
 
 def cc_library_with_android_deps(

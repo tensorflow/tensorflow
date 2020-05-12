@@ -51,7 +51,8 @@ INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
 class TableConfig(
     collections.namedtuple('TableConfig', [
         'vocabulary_size', 'dimension', 'initializer', 'combiner',
-        'hot_id_replication', 'learning_rate', 'learning_rate_fn'
+        'hot_id_replication', 'learning_rate', 'learning_rate_fn',
+        'optimization_parameters',
     ])):
   """Embedding table configuration."""
 
@@ -62,7 +63,8 @@ class TableConfig(
               combiner='mean',
               hot_id_replication=False,
               learning_rate=None,
-              learning_rate_fn=None):
+              learning_rate_fn=None,
+              optimization_parameters=None):
     """Embedding table configuration.
 
     Args:
@@ -81,16 +83,19 @@ class TableConfig(
       hot_id_replication: If true, enables hot id replication, which can make
         embedding lookups faster if there are some hot rows in the table.
       learning_rate: float, static learning rate for this table. If
-        learning_rate and learning_rate_fn are both `None`, global
-        static learning rate as specified in `optimization_parameters` in
-        `TPUEmbedding` constructor will be used. `learning_rate_fn` must be
-        `None` if `learning_rate` is not `None.
+        learning_rate and learning_rate_fn are both `None`, static learning
+        rate as specified in local `optimization_parameters` will be used.
+        In case local `optimization_parameters` is `None`, global
+        `optimization_parameters` in `TPUEmbedding` constructor will be used.
+        `learning_rate_fn` must be `None` if `learning_rate` is not `None.
       learning_rate_fn: string, use dynamic learning rate given by the function.
         This function function will be passed the current global step. If
-        learning_rate and learning_rate_fn are both `None`, global static
-        learning rate as specified in `optimization_parameters` in
-        `TPUEmbedding` constructor will be used. `learning_rate` must be `None`
-        if `learning_rate_fn` is not `None.
+        learning_rate and learning_rate_fn are both `None`, static
+        learning rate as specified in `optimization_parameters` is used.
+        `learning_rate` must be `None` if `learning_rate_fn` is not `None.
+      optimization_parameters: `AdagradParameters`, `AdamParameters`,
+        `Stochasticgradientdescentparameters`. Specifies table level optimizer.
+        If it's `None` global optimizer in `TPUEmbedding` constructor is used.
 
     Returns:
       `TableConfig`.
@@ -123,9 +128,17 @@ class TableConfig(
                        'can be None; got {} and {}'
                        .format(learning_rate, learning_rate_fn))
 
-    return super(TableConfig, cls).__new__(
-        cls, vocabulary_size, dimension, initializer, combiner,
-        hot_id_replication, learning_rate, learning_rate_fn)
+    if optimization_parameters is not None:
+      if not isinstance(optimization_parameters, _OptimizationParameters):
+        raise ValueError('`optimization_parameters` must inherit from '
+                         '`_OptimizationParameters`. '
+                         '`type(optimization_parameters)`={}'.format(
+                             type(optimization_parameters)))
+
+    return super(TableConfig,
+                 cls).__new__(cls, vocabulary_size, dimension, initializer,
+                              combiner, hot_id_replication, learning_rate,
+                              learning_rate_fn, optimization_parameters)
 
 
 class FeatureConfig(
@@ -815,7 +828,7 @@ class TPUEmbedding(object):
   ...     end_learning_rate=0.0)
   >>> wordpiece_table_config = TableConfig(
   ...   vocabulary_size=119547,
-  ...   dimension=768,
+  ...   dimension=256,
   ...   learning_rate_fn=learning_rate_fn)
   >>> wordpiece_feature_config = FeatureConfig(
   ...   table_id='bert/embeddings/word_embeddings',
@@ -833,11 +846,11 @@ class TPUEmbedding(object):
   ...  batch_size=128,
   ...  mode=TRAINING,
   ...  optimization_parameters=optimization_parameters,
-  ...  device_config=DeviceConfig(
-  ...    num_cores=64, num_hosts=4, job_name='tpu_worker'))
+  ...  master='')
   >>> with tf.Graph().as_default():
   ...   init_tpu_op = tf.compat.v1.tpu.initialize_system(
-  ...     embedding_config=tpu_embedding.config_proto, job='tpu_worker')
+  ...     embedding_config=tpu_embedding.config_proto)
+  ...   tf.compat.v1.Session().run(init_tpu_op)
   """
 
   # TODO(shizhiw): Consider adding a field to FeatureConfig that indicates that
@@ -882,8 +895,9 @@ class TPUEmbedding(object):
       mode: `TRAINING` or `INFERENCE`.
       master: A `string` representing the TensorFlow master to use.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
-        `Stochasticgradientdescentparameters`. Must be set in training and must
-        be `None` in inference.
+        `Stochasticgradientdescentparameters`. Must be set in training unless
+        all tables specify their own optimizers. And it must be `None` in
+        inference.
       cluster_def: A ClusterDef object describing the TPU cluster.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
@@ -963,7 +977,8 @@ class TPUEmbedding(object):
 
     # TODO(shizhiw): remove `mode`?
     if mode == TRAINING:
-      _validate_optimization_parameters(optimization_parameters)
+      _validate_optimization_parameters(optimization_parameters,
+                                        self._table_to_config_dict)
       self._optimization_parameters = optimization_parameters
     elif mode == INFERENCE:
       if optimization_parameters is not None:
@@ -980,8 +995,8 @@ class TPUEmbedding(object):
     # and create special handler for inference that inherits from
     # StochasticGradientDescentHandler with more user-friendly error message
     # on get_slot().
-    self._optimizer_handler = _get_optimization_handler(
-        self._optimization_parameters)
+    self._optimizer_handler_dict = self._get_optimizer_handler_by_table()
+
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
     self._learning_rate_fn = list(set(
@@ -1076,35 +1091,39 @@ class TPUEmbedding(object):
 
       table_descriptor.num_features = self._table_to_num_features_dict[table]
 
+      optimization_parameters = (
+          self._optimizer_handler_dict[table].get_optimization_parameters())
+
       parameters = table_descriptor.optimization_parameters
       if table_config.learning_rate:
-        parameters.learning_rate.constant = (table_config.learning_rate)
+        parameters.learning_rate.constant = table_config.learning_rate
       elif table_config.learning_rate_fn:
         parameters.learning_rate.dynamic.tag = (
             self._learning_rate_fn_to_tag[table_config.learning_rate_fn])
       else:
         parameters.learning_rate.constant = (
-            self._optimization_parameters.learning_rate)
+            optimization_parameters.learning_rate)
       parameters.gradient_accumulation_status = (
           optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
-          if self._optimization_parameters.use_gradient_accumulation else
+          if optimization_parameters.use_gradient_accumulation else
           optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
-      if self._optimization_parameters.clip_weight_min is not None:
+      if optimization_parameters.clip_weight_min is not None:
         parameters.clipping_limits.lower.value = (
-            self._optimization_parameters.clip_weight_min)
-      if self._optimization_parameters.clip_weight_max is not None:
+            optimization_parameters.clip_weight_min)
+      if optimization_parameters.clip_weight_max is not None:
         parameters.clipping_limits.upper.value = (
-            self._optimization_parameters.clip_weight_max)
-      if self._optimization_parameters.weight_decay_factor:
+            optimization_parameters.clip_weight_max)
+      if optimization_parameters.weight_decay_factor:
         parameters.weight_decay_factor = (
-            self._optimization_parameters.weight_decay_factor)
-        if (self._optimization_parameters
+            optimization_parameters.weight_decay_factor)
+        if (optimization_parameters
             .multiply_weight_decay_factor_by_learning_rate):
           parameters.multiply_weight_decay_factor_by_learning_rate = True
       if table_config.hot_id_replication:
         parameters.hot_id_replication_configuration.status = (
             optimization_parameters_pb2.HotIdReplicationConfiguration.ENABLED)
-      self._optimizer_handler.set_optimization_parameters(table_descriptor)
+      optimizer_handler = self._optimizer_handler_dict[table]
+      optimizer_handler.set_optimization_parameters(table_descriptor)
 
     config_proto.mode = self._mode
     config_proto.batch_size_per_tensor_core = self._batch_size_per_core
@@ -1167,8 +1186,9 @@ class TPUEmbedding(object):
       if slot_variable_names_by_table:
         slot_variable_names = slot_variable_names_by_table[table]
       else:
+        optimizer_handler = self._optimizer_handler_dict[table]
         slot_variable_names = (
-            self._optimizer_handler.get_default_slot_variable_names(table))
+            optimizer_handler.get_default_slot_variable_names(table))
 
       # TODO(b/139144091): Multi-host support for mid-level API in
       #  eager context (TF 2.0)
@@ -1192,7 +1212,7 @@ class TPUEmbedding(object):
         # on the first host, other nodes would use config from the first node.
         config = None if i else self.config_proto.SerializeToString()
         slot_variables_for_table, load_ops_fn, retrieve_ops_fn = (
-            self._optimizer_handler.create_variables_and_ops(
+            self._optimizer_handler_dict[table].create_variables_and_ops(
                 table, slot_variable_names, self._num_hosts,
                 self._table_to_config_dict[table], table_variables, config))
         slot_variables_by_table[table] = slot_variables_for_table
@@ -1524,6 +1544,17 @@ class TPUEmbedding(object):
                         for fn in self._learning_rate_fn],
         config=self.config_proto.SerializeToString())
 
+  def _get_optimizer_handler_by_table(self):
+    optimizer_handlers = {}
+    for table, table_config in self.table_to_config_dict.items():
+      if table_config.optimization_parameters is not None:
+        optimizer = table_config.optimization_parameters
+      else:
+        optimizer = self._optimization_parameters
+      optimizer_handlers[table] = _get_optimization_handler(optimizer)
+
+    return optimizer_handlers
+
 
 def _validate_table_to_config_dict(table_to_config_dict):
   """Validate `table_to_config_dict`."""
@@ -1560,12 +1591,35 @@ def _validate_batch_size(batch_size, num_cores):
                          batch_size, num_cores))
 
 
-def _validate_optimization_parameters(optimization_parameters):
-  if not isinstance(optimization_parameters, _OptimizationParameters):
-    raise ValueError('`optimization_parameters` must inherit from '
-                     '`_OptimizationParameters`. '
-                     '`type(optimization_parameters)`={}'.format(
-                         type(optimization_parameters)))
+def _validate_optimization_parameters(optimization_parameters,
+                                      table_to_config_dict):
+  """Validate global optimization_parameters and per table optimizers.
+
+  If global optimizer is `None`, all table optimizers should be non `None`.
+
+  Args:
+      optimization_parameters: global optimizer provided in `TPUEmbedding`
+         constructor.
+      table_to_config_dict: A dictionary mapping from string of table name to
+        `TableConfig`.
+
+  """
+  tbl_optimizer_missing = False
+  for _, table_config in table_to_config_dict.items():
+    if table_config.optimization_parameters is None:
+      tbl_optimizer_missing = True
+      break
+
+  if optimization_parameters:
+    if not isinstance(optimization_parameters, _OptimizationParameters):
+      raise ValueError('`optimization_parameters` must inherit from '
+                       '`_OptimizationParameters`. '
+                       '`type(optimization_parameters)`={}'.format(
+                           type(optimization_parameters)))
+  else:
+    # Missing global optimization_parameters.
+    if tbl_optimizer_missing:
+      ValueError('`optimization_parameters` is missing.')
 
 
 class _OptimizerHandler(object):
@@ -1573,6 +1627,9 @@ class _OptimizerHandler(object):
 
   def __init__(self, optimization_parameters):
     self._optimization_parameters = optimization_parameters
+
+  def get_optimization_parameters(self):
+    return self._optimization_parameters
 
   def set_optimization_parameters(self, table_descriptor):
     raise NotImplementedError()

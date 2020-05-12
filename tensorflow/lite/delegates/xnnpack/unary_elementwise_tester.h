@@ -51,6 +51,13 @@ class UnaryElementwiseTester {
 
   int32_t Size() const { return size_; }
 
+  inline UnaryElementwiseTester& RelativeTolerance(float relative_tolerance) {
+    relative_tolerance_ = relative_tolerance;
+    return *this;
+  }
+
+  float RelativeTolerance() const { return relative_tolerance_; }
+
   void Test(tflite::BuiltinOperator unary_op, TfLiteDelegate* delegate) const;
 
  private:
@@ -60,6 +67,7 @@ class UnaryElementwiseTester {
 
   std::vector<int32_t> shape_;
   int32_t size_;
+  float relative_tolerance_{10.0f};
 };
 
 }  // namespace xnnpack

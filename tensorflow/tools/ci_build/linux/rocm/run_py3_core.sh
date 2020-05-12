@@ -51,4 +51,5 @@ bazel test \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
       //tensorflow/... \
-      -//tensorflow/compiler/...
+      -//tensorflow/compiler/... \
+      -//tensorflow/lite/...

@@ -17,6 +17,51 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+
+#if !defined(IS_MOBILE_PLATFORM)
+bool ExecuteNodeArgs::IsRemote(EagerContext* ctx, Device* input_device,
+                               TensorHandle* handle) {
+  uint64 context_view_id = ctx->GetContextViewId();
+  if (handle->Type() == TensorHandle::REMOTE ||
+      handle->HasRemoteMirror(input_device, context_view_id)) {
+    if (!has_remote_inputs_) {
+      has_remote_inputs_ = true;
+    }
+    return true;
+  }
+  return false;
+}
+#endif  // IS_MOBILE_PLATFORM
+
+Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
+                                         Device* input_device,
+                                         TensorHandle* packed_handle) {
+  int num_handles = packed_handle->NumPackedHandles();
+  packed_args_.emplace(index, gtl::InlinedVector<TensorValue, 4>(num_handles));
+  TensorValue* packed_arg_flat = &(packed_args_[index][0]);
+  for (int i = 0; i < num_handles; ++i) {
+    TensorHandle* h = nullptr;
+    TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));
+    // We have validated that h->device() is not a CustomDevice when
+    // constructing a pack TensorHandle.
+    const Status status =
+        h->TensorValue(absl::get<Device*>(h->device()), &packed_arg_flat[i]);
+    if (!status.ok()) {
+#if !defined(IS_MOBILE_PLATFORM)
+      if (IsRemote(ctx, input_device, h)) {
+        continue;
+      }
+#endif  // IS_MOBILE_PLATFORM
+      if (h->Type() == TensorHandle::PACKED) {
+        return errors::InvalidArgument(
+            "Nested packed handles are not supported");
+      }
+      return status;
+    }
+  }
+  return Status::OK();
+}
+
 Status ExecuteNodeArgs::Init(
     EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
@@ -35,15 +80,17 @@ Status ExecuteNodeArgs::Init(
       Status s = in->TensorValue(ctx->CanonicalDevice(d), &tensor_args_flat[i]);
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
-        uint64 context_view_id = ctx->GetContextViewId();
-        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
-          if (!has_remote_inputs_) {
-            has_remote_inputs_ = true;
-          }
+        if (IsRemote(ctx, d, in)) {
           continue;
         }
 #endif
-        return s;
+        if (in->Type() != TensorHandle::PACKED) {
+          return s;
+        }
+        if (!has_packed_inputs_) {
+          has_packed_inputs_ = true;
+        }
+        TF_RETURN_IF_ERROR(InitPackedHandle(i, ctx, d, in));
       }
     }
   }
@@ -51,21 +98,46 @@ Status ExecuteNodeArgs::Init(
 #if !defined(IS_MOBILE_PLATFORM)
   if (has_remote_inputs_) {
     serialize_remote_handle_ =
-        [ctx, &op_inputs](const int i,
+        [ctx, &op_inputs](const FunctionArgIndex& index,
                           eager::RemoteTensorHandle* handle) -> Status {
-      VariantDevice variant_device = op_inputs[i]->device();
+      TensorHandle* h = op_inputs[index.index];
+      if (op_inputs[index.index]->Type() == TensorHandle::PACKED) {
+        TF_RETURN_IF_ERROR(
+            op_inputs[index.index]->ExtractPackedHandle(index.sub_index, &h));
+      }
+      VariantDevice variant_device = h->device();
       if (VariantDeviceIsCustom(variant_device)) {
         return errors::Internal(
             "Custom devices and remote execution are currently not supported "
             "together.");
       }
       Device* device = absl::get<Device*>(variant_device);
-      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          op_inputs[i], handle, device, device->name());
+      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(h, handle, device,
+                                                           device->name());
     };
   }
 #endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
+}
+
+Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
+                                    Tensor* val) const {
+  Status s = EagerKernelArgs::GetLocalArg(index, val);
+  if (s.ok()) {
+    return Status::OK();
+  }
+  if (packed_args_.contains(index.index)) {
+    Tensor* arg = packed_args_.at(index.index).at(index.sub_index).tensor;
+    if (arg) {
+      *val = *arg;
+      return Status::OK();
+    } else {
+      return errors::NotFound("Argument (", index.index, ",", index.sub_index,
+                              ") has no local tensor.");
+    }
+  } else {
+    return s;
+  }
 }
 
 }  // namespace tensorflow

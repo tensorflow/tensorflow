@@ -40,6 +40,9 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:dlpack",
         "//tensorflow/c/eager:tape",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -621,7 +624,6 @@ py_library(
     deps = [":test"],
 )
 
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
@@ -958,7 +960,6 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
-        "notsan",  # TODO(b/152075365)
     ],
     deps = [
         "//tensorflow/python:array_ops",

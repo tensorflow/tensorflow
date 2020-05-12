@@ -51,7 +51,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testAdd(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -72,7 +71,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                 np.array([7, 11], dtype=dtype)),
           expected=np.array([[8, 13], [10, 15]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testBroadcast(self):
     for dtype in self.numeric_types:
       v = np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2])
@@ -81,7 +79,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
 
-  @test_util.disable_mlir_bridge('Unsigned ints are not supported yet')
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -93,7 +91,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
-  @test_util.disable_mlir_bridge('Unsigned ints are not supported yet')
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -110,7 +108,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                       xla_data_pb2.PrecisionConfig.HIGHEST)
 
   @parameterized.parameters(*PRECISION_VALUES)
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testConv(self, precision):
     for dtype in set(self.float_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -195,7 +192,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.array([1, 2, 3], dtype=dtype),),
           expected=np.array([-1, -2, -3], dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testPad(self):
     for dtype in self.numeric_types:
 
@@ -308,6 +304,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(
           lambda x: xla.transpose(x, [1, 0]), args=(v,), expected=v.T)
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSlice(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -320,6 +317,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -333,6 +331,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():

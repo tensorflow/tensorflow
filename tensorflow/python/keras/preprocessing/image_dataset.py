@@ -167,6 +167,8 @@ def image_dataset_from_directory(directory,
         '`color_mode` must be one of {"rbg", "rgba", "grayscale"}. '
         'Received: %s' % (color_mode,))
   interpolation = image_preprocessing.get_interpolation(interpolation)
+  dataset_utils.check_validation_split_arg(
+      validation_split, subset, shuffle, seed)
 
   if seed is None:
     seed = np.random.randint(1e6)

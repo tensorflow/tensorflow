@@ -29,6 +29,9 @@ limitations under the License.
 // TfLiteDelegate - allows delegation of nodes to alternative backends.
 //
 // Some abstractions in this file are created and managed by Interpreter.
+//
+// NOTE: The order of values in these structs are "semi-ABI stable". New values
+// should be added only to the end of structs and never reordered.
 
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_
@@ -155,8 +158,16 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
   do {                                              \
     (context)->ReportError((context), __VA_ARGS__); \
   } while (false)
+
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)        \
+  do {                                                \
+    if ((context) != nullptr) {                       \
+      (context)->ReportError((context), __VA_ARGS__); \
+    }                                                 \
+  } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define TF_LITE_KERNEL_LOG(context, ...)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from

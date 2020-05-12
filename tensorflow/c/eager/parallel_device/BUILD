@@ -27,6 +27,7 @@ cc_library(
     name = "parallel_device",
     srcs = [":sources"],
     hdrs = [":headers"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",

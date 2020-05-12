@@ -338,6 +338,7 @@ cc_library(
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
+        "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
@@ -356,9 +357,9 @@ cc_test(
         ":cpu_backend_context",
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest",
-        # ruy's reference path provides the reference implementation
+        # ruy:reference_mul provides the reference implementation
         # that this test compares against.
-        "@ruy//ruy",
+        "@ruy//ruy:reference_mul",
     ],
 )
 
@@ -525,6 +526,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_gemm",
         ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",

@@ -431,11 +431,9 @@ TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
 // A reference to an op's name -> attribute mapping
 typedef struct TFE_OpAttrs TFE_OpAttrs;
 
-// Fetch a struct with a reference to information about attributes of `op`.
-//
-// The `attrs` struct does not own any memory, and `op` must outlive it.
-TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
-
+// Fetch a reference to `op`'s attributes. The returned reference is only valid
+// while `op` is alive.
+const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op);
 // Add attributes in `attrs` to `op`.
 //
 // Does not overwrite or update existing attributes, but adds new ones.
@@ -542,6 +540,14 @@ TF_CAPI_EXPORT extern TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx,
 // The context should be identical to that of the Tensor.
 TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
     TFE_Context* ctx, TF_Tensor* t, TF_Status* status);
+
+// Create a packed TensorHandle with the given list of TensorHandles.
+// If `handles` are on the same device, assign the same device to the packed
+// handle; if `handles` are on different deivces, assign a CompositeDevice to
+// it.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_CreatePackedTensorHandle(
+    TFE_Context* ctx, TFE_TensorHandle** handles, int* num_handles,
+    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

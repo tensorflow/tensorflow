@@ -82,7 +82,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       return xla_client.XlaBuilder(name)
 
     def _Execute(self, c, arguments):
-      compiled_c = self.backend.compile(c.Build())
+      compiled_c = self.backend.compile(c.build())
       return xla_client.execute_with_python_values(
           compiled_c, arguments, backend=self.backend)
 
@@ -136,34 +136,34 @@ def TestFactory(xla_backend, cloud_tpu=False):
           builder, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
       x = ops.Mul(p0, p1)
       ops.Add(x, x)
-      return builder.Build()
+      return builder.build()
 
     def testComputationToHloText(self):
       computation = self.ExampleComputation()
-      hlo_text = computation.GetHloText()
+      hlo_text = computation.as_hlo_text()
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
 
     def testComputationToHloGraph(self):
       computation = self.ExampleComputation()
-      hlo_dot_graph = computation.GetHloDotGraph()
+      hlo_dot_graph = computation.as_hlo_dot_graph()
       self.assertTrue(hlo_dot_graph.startswith("digraph "))
 
     def testHloModuleToHloText(self):
       computation = self.ExampleComputation()
-      hlo_text = computation.get_hlo_module().to_string()
+      hlo_text = computation.as_hlo_module().to_string()
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
 
     def testHloModuleToHloGraph(self):
       computation = self.ExampleComputation()
       hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
-          computation.get_hlo_module())
+          computation.as_hlo_module())
       self.assertTrue(hlo_dot_graph.startswith("digraph "))
 
     @unittest.skipIf(cloud_tpu, "not implemented")
     def testCompiledHloModuleToHloText(self):
       computation = self.ExampleComputation()
       executable = self.backend.compile(computation)
-      hlo_modules = executable.get_hlo_modules()
+      hlo_modules = executable.hlo_modules()
       self.assertLen(hlo_modules, 1)
       hlo_text = hlo_modules[0].to_string()
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
@@ -180,7 +180,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       p1 = ops.Parameter(
           builder0, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
       ops.Mul(p0, p1)
-      computation0 = builder0.Build()
+      computation0 = builder0.build()
 
       builder1 = xla_client.XlaBuilder("computation1")
       p0 = ops.Parameter(builder1, 0,
@@ -188,9 +188,9 @@ def TestFactory(xla_backend, cloud_tpu=False):
       p1 = ops.Parameter(
           builder1, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
       ops.Mul(p0, p1)
-      computation1 = builder1.Build()
+      computation1 = builder1.build()
 
-      self.assertEqual(computation0.Hash(), computation1.Hash())
+      self.assertEqual(computation0.hash(), computation1.hash())
 
   tests.append(ComputationHashTest)
 
@@ -395,15 +395,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testExecuteFromProto(self):
       # Build the HLO proto
       b = xla_client.XlaBuilder("computation")
-      ops.Add(ops.Constant(b, np.int8(1)), ops.Constant(b, np.int8(2)))
-      serialized_proto = b.Build().GetSerializedProto()
+      ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
+      serialized_proto = b.build().as_serialized_hlo_module_proto()
 
       # Load and execute the proto
-      c = xla_client.Computation(
-          xla_client._xla.XlaComputation(serialized_proto))
+      c = xla_client.XlaComputation(serialized_proto)
       ans, = xla_client.execute_with_python_values(
-          c.Compile(), backend=self.backend)
-      np.testing.assert_equal(ans, np.int8(3))
+          self.backend.compile(c), (), backend=self.backend)
+      np.testing.assert_equal(ans, np.int32(3))
 
   tests.append(ComputationFromProtoTest)
 
@@ -479,22 +478,22 @@ def TestFactory(xla_backend, cloud_tpu=False):
           ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0.))),
           ops.Constant(c, np.float32(3.14)))
       arg = NumpyArrayF32(1.11)
-      compiled_c = self.backend.compile(c.Build())
-      arg_buffer = xla_client.Buffer.from_pyval(arg, backend=self.backend)
+      compiled_c = self.backend.compile(c.build())
+      arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.delete()
       with self.assertRaises(RuntimeError):
-        compiled_c.Execute([arg_buffer])
+        compiled_c.execute([arg_buffer])
 
     def testShape(self):
       pyval = np.array([[1., 2.]], np.float32)
-      local_buffer = xla_client.Buffer.from_pyval(pyval)
+      local_buffer = self.backend.buffer_from_pyval(pyval)
       xla_shape = local_buffer.shape()
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
     def testBlockHostUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
-      arg_buffer = xla_client.Buffer.from_pyval(arg)
+      arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.block_host_until_ready()
       # This test merely checks that nothing goes awry when we call
       # block_host_until_ready(); it's difficult to test anything else.
@@ -502,8 +501,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testCopyToHost(self):
       arg0 = np.array([[1., 2.]], np.float32)
       arg1 = np.array([[3., 4.]], np.float32)
-      arg0_buffer = xla_client.Buffer.from_pyval(arg0)
-      arg1_buffer = xla_client.Buffer.from_pyval(arg1)
+      arg0_buffer = self.backend.buffer_from_pyval(arg0)
+      arg1_buffer = self.backend.buffer_from_pyval(arg1)
       # Prefetch two buffers using copy_to_host_async, and then retrieve their
       # values using to_py.
       arg0_buffer.copy_to_host_async()
@@ -518,8 +517,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testDevice(self):
       x = np.arange(8, dtype=np.int32)
       for device in self.backend.local_devices():
-        buf = xla_client.Buffer.from_pyval(
-            x, device=device, backend=self.backend)
+        buf = self.backend.buffer_from_pyval(x, device=device)
         self.assertEqual(buf.device(), device)
         np.testing.assert_equal(x, buf.to_py())
 
@@ -565,7 +563,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       self.assertLen(result, 1)
       expected = np.array(x, dtype=dst_dtype)
 
@@ -592,7 +590,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       self.assertLen(result, 1)
       expected = x.view(dst_dtype)
 
@@ -1128,7 +1126,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           ops.Constant(c, NumpyArrayBool([True, False, False, True]))
       ])
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       self.assertLen(result, 3)
       np.testing.assert_equal(result[0], 42)
       np.testing.assert_allclose(result[1], [1.0, 2.0])
@@ -1167,7 +1165,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       # since the result is random, we just check shape and uniqueness
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1183,7 +1181,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       # since the result is random, we just check shape, uniqueness, and range
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1201,7 +1199,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.S32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       # since the result is random, we just check shape, integrality, and range
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1230,7 +1228,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       c = self._NewComputation()
       ops.Sort(c, (ops.Constant(c, keys), ops.Constant(c, values)), dimension=0)
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()), backend=self.backend)
+          self.backend.compile(c.build()), (), backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
       np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
@@ -1242,7 +1240,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       p1 = ops.Parameter(b, 2, xla_client.shape_from_pyval(NumpyArrayS32(0)))
       q1 = ops.Parameter(b, 3, xla_client.shape_from_pyval(NumpyArrayS32(0)))
       ops.Or(ops.Lt(p0, q0), ops.And(ops.Eq(p0, q0), ops.Gt(p1, q1)))
-      comparator = b.Build()
+      comparator = b.build()
 
       keys = np.array([[2, 3, 1, 3], [3, 1, 2, 2]], dtype=np.float32)
       values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
@@ -1252,7 +1250,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
           dimension=1,
           comparator=comparator)
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.Build()))
+          self.backend.compile(c.build()), (), backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_allclose(result[0], [[1, 2, 3, 3], [1, 2, 2, 3]])
       np.testing.assert_equal(result[1], [[2, 0, 3, 1], [5, 7, 6, 4]])
@@ -1322,8 +1320,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
       x = ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayS32(0)))
       const_expr = ops.Sub(b, a)
       non_const_expr = ops.Mul(const_expr, x)
-      self.assertTrue(c.IsConstant(const_expr))
-      self.assertFalse(c.IsConstant(non_const_expr))
+      self.assertTrue(c.is_constant(const_expr))
+      self.assertFalse(c.is_constant(non_const_expr))
 
     def testGather(self):
       a = np.arange(9).astype(np.int32).reshape((3, 3))
@@ -1413,7 +1411,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Parameter(c, 0,
                     xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
       ops.Constant(c, out_dtype(1))
-      return c.Build()
+      return c.build()
 
     def _CreateMulBy2Computation(self, dtype):
       """Computation (dtype) -> dtype that multiplies its parameter by 2."""
@@ -1424,7 +1422,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
               xla_client.shape_from_pyval(np.array(
                   0, dtype=dtype)).with_major_to_minor_layout_if_absent()),
           ops.Constant(c, dtype(2.0)))
-      return c.Build()
+      return c.build()
 
     def _CreateMulF32ByParamComputation(self):
       """Computation (f32) -> f32 that multiplies one parameter by the other."""
@@ -1432,7 +1430,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Mul(
           ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0))),
           ops.Parameter(c, 1, xla_client.shape_from_pyval(NumpyArrayF32(0))))
-      return c.Build()
+      return c.build()
 
     def _CreateBinaryAddComputation(self, dtype):
       """Computation (dtype, dtype) -> dtype that adds its two parameters."""
@@ -1440,7 +1438,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
       shape = shape.with_major_to_minor_layout_if_absent()
       ops.Add(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
-      return c.Build()
+      return c.build()
 
     def _CreateBinaryGeComputation(self, dtype):
       """Computation (dtype, dtype) -> bool that tests param0 >= param1."""
@@ -1448,7 +1446,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
       shape = shape.with_major_to_minor_layout_if_absent()
       ops.Ge(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
-      return c.Build()
+      return c.build()
 
     def _MakeSample3DArray(self, dtype):
       return np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]],
@@ -1517,7 +1515,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         c = self._NewComputation("div_param0_by_param1")
         shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
         ops.Div(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
-        return c.Build()
+        return c.build()
 
       c = self._NewComputation()
       ops.Map(c, (ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=dtype)),
@@ -1540,7 +1538,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       window_strides = (1, 2)
       padding = xla_client.window_padding_type_to_pad_values(
           xla_client.PaddingType.VALID,
-          c.GetShape(operand).dimensions(), window_dimensions, window_strides)
+          c.get_shape(operand).dimensions(), window_dimensions, window_strides)
       ops.SelectAndScatterWithGeneralPadding(
           operand,
           select=self._CreateBinaryGeComputation(dtype),
@@ -1687,7 +1685,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         c = self._NewComputation("test_lt_10")
         shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
         ops.Lt(ops.Parameter(c, 0, shape), ops.Constant(c, dtype(10.)))
-        return c.Build()
+        return c.build()
 
       cond = LessThan10Cond()
       body = self._CreateMulBy2Computation(dtype)
@@ -1729,14 +1727,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
               ops.CreateToken(c),
               xla_client.shape_from_pyval(
                   to_infeed[0]).with_major_to_minor_layout_if_absent()), 0)
-      compiled_c = self.backend.compile(c.Build())
+      compiled_c = self.backend.compile(c.build())
       device = self.backend.local_devices()[0]
       for item in to_infeed:
-        xla_client.transfer_to_infeed(item, device=device)
+        device.transfer_to_infeed(item)
 
       for item in to_infeed:
         result, = xla_client.execute_with_python_values(
-            compiled_c, backend=self.backend)
+            compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
@@ -1748,12 +1746,12 @@ def TestFactory(xla_backend, cloud_tpu=False):
               ops.CreateToken(c),
               xla_client.shape_from_pyval(
                   to_infeed).with_major_to_minor_layout_if_absent()), 0)
-      compiled_c = self.backend.compile(c.Build())
+      compiled_c = self.backend.compile(c.build())
       device = self.backend.local_devices()[0]
-      xla_client.transfer_to_infeed(to_infeed, device=device)
+      device.transfer_to_infeed(to_infeed)
 
       result = xla_client.execute_with_python_values(
-          compiled_c, backend=self.backend)
+          compiled_c, (), backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_equal(result[0], to_infeed[0])
       np.testing.assert_equal(result[1], to_infeed[1])
@@ -1772,14 +1770,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
           to_round_trip[0]).with_major_to_minor_layout_if_absent()
       ops.OutfeedWithToken(x, token, outfeed_shape)
 
-      compiled_c = self.backend.compile(c.Build())
+      compiled_c = self.backend.compile(c.build())
       device = self.backend.local_devices()[0]
 
       for want in to_round_trip:
-        execution = threading.Thread(target=lambda: compiled_c.Execute([]))
+        execution = threading.Thread(target=lambda: compiled_c.execute([]))
         execution.start()
-        xla_client.transfer_to_infeed(want, device=device)
-        got = xla_client.transfer_from_outfeed(outfeed_shape, device=device)
+        device.transfer_to_infeed(want)
+        got = device.transfer_from_outfeed(outfeed_shape)
         execution.join()
         self.assertEqual(want, got)
 
@@ -1812,9 +1810,9 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
     def testCompileWithWrongElementTypeInLayout(self):
       c = self._NewComputation()
-      c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
+      c.set_op_metadata(xla_client.CurrentSourceInfoMetadata())
       ops.Parameter(c, 0, xla_client.shape_from_pyval(self.s32_scalar_2))
-      c.ClearOpMetadata()
+      c.clear_op_metadata()
 
       options = xla_client.CompileOptions()
       options.argument_layouts = [
@@ -1822,7 +1820,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ]
 
       def TestFun():
-        return self.backend.compile(c.Build(), compile_options=options)
+        return self.backend.compile(c.build(), compile_options=options)
 
       self.assertRaisesRegex(
           RuntimeError, r".*Invalid argument shape.*"
@@ -1830,13 +1828,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
     def testInvokeWithWrongElementType(self):
       c = self._NewComputation()
-      c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
+      c.set_op_metadata(xla_client.CurrentSourceInfoMetadata())
       ops.Parameter(c, 0, xla_client.shape_from_pyval(self.s32_scalar_2))
-      c.ClearOpMetadata()
+      c.clear_op_metadata()
 
       def TestFun():
         return xla_client.execute_with_python_values(
-            self.backend.compile(c.Build()), [self.f32_scalar_2])
+            self.backend.compile(c.build()), [self.f32_scalar_2], self.backend)
 
       self.assertRaisesRegex(
           RuntimeError, r"Invalid argument: Argument does not match.*"
@@ -1854,7 +1852,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Add(result, ops.Constant(c, np.float32(1.618)))
 
       arg = NumpyArrayF32(1.0)
-      compiled_c = self.backend.compile(c.Build(result))
+      compiled_c = self.backend.compile(c.build(result))
       ans, = xla_client.execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
@@ -1870,16 +1868,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
       sharding.type = sharding.type.REPLICATED
       sharding.tile_assignment_dimensions.extend([1])
       sharding.tile_assignment_devices.extend([0])
-      # Set Sharding.
-      c.SetSharding(sharding)
+      c.set_sharding(sharding)
       x = ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(2.0)))
-      # Clear Sharding.
-      c.ClearSharding()
+      c.clear_sharding()
 
       result = ops.Add(x, ops.Constant(c, np.float32(3.14)))
       ops.Add(result, ops.Constant(c, np.float32(1.618)))
       arg = NumpyArrayF32(1.0)
-      compiled_c = self.backend.compile(c.Build(result))
+      compiled_c = self.backend.compile(c.build(result))
       ans, = xla_client.execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
@@ -1899,8 +1895,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
           xla_client.shape_from_pyval(
               NumpyArrayF32(1.0)).with_major_to_minor_layout_if_absent())
       out = ops.Add(p1, p2)
-      c.SetUpAlias([], 0, [])
-      c = c.Build(out)
+      c.setup_alias([], 0, [])
+      c = c.build(out)
       if self.backend.platform != "tpu":
         with self.assertRaisesRegex(
             RuntimeError, "Buffer aliasing is not supported "
@@ -1941,21 +1937,22 @@ def TestFactory(xla_backend, cloud_tpu=False):
     } for dtype in dlpack_dtypes for shape in testcase_shapes)
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
-      buffer = xla_client.Buffer.from_pyval(x, backend=self.backend)
-      dlt = xla_client._xla.BufferToDLPackManagedTensor(buffer)
+      buffer = self.backend.buffer_from_pyval(x)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.DLPackManagedTensorToBuffer(dlt, self.backend.client)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          dlt, self.backend)
       np.testing.assert_array_equal(x, y.to_py())
 
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
-      buffer = xla_client.Buffer.from_pyval(x, backend=self.backend)
-      dlt = xla_client._xla.BufferToDLPackManagedTensor(buffer)
+      buffer = self.backend.buffer_from_pyval(x)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       def ConsumeDLPackTensor():
-        _ = xla_client._xla.DLPackManagedTensorToBuffer(dlt,
-                                                        self.backend.client)
+        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
+            dlt, self.backend)
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(
@@ -1982,24 +1979,23 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       x_ptr = x.__array_interface__["data"][0]
-      buffer = xla_client.Buffer.from_pyval(x, backend=self.backend)
+      buffer = self.backend.buffer_from_pyval(x)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
       # If the input was sufficiently aligned, the input and output should
       # alias.
-      self.assertTrue((x_ptr & 63) != 0 or x_ptr == y_ptr)
+      self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
-      buffer2 = xla_client.Buffer.from_pyval(
-          x, backend=self.backend, force_copy=True)
+      buffer2 = self.backend.buffer_from_pyval(x, force_copy=True)
       z = np.array(buffer2, copy=False)
       self.assertNotEqual(x.__array_interface__["data"][0],
                           z.__array_interface__["data"][0])
 
     def testDeleteWithActiveView(self):
       x = np.random.randn(20, 10)
-      buffer = xla_client.Buffer.from_pyval(x, backend=self.backend)
+      buffer = self.backend.buffer_from_pyval(x)
       buffer_ptr = buffer.unsafe_buffer_pointer()
       y = np.array(buffer, copy=False)
       buffer.delete()

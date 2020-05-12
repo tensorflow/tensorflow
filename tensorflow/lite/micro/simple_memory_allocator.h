@@ -51,6 +51,9 @@ class SimpleMemoryAllocator {
   size_t GetAvailableMemory() const { return tail_ - head_; }
   size_t GetUsedBytes() const { return GetBufferSize() - GetAvailableMemory(); }
 
+  size_t GetHeadUsedBytes() const { return head_ - buffer_head_; }
+  size_t GetTailUsedBytes() const { return buffer_tail_ - tail_; }
+
  private:
   size_t GetBufferSize() const { return buffer_tail_ - buffer_head_; }
 

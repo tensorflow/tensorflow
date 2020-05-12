@@ -87,6 +87,14 @@ class TensorHandle : public AbstractTensorHandleInterface,
                                               Device* resource_device,
                                               tensorflow::DataType dtype,
                                               EagerContext* ctx);
+
+  // Create a handle which packs the given handles of the same dtype and shape.
+  // If handles are on different devices, assign the packed handle to a
+  // CompositeDevice.
+  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                   EagerContext* ctx,
+                                   TensorHandle** packed_handle);
+
 #if !defined(IS_MOBILE_PLATFORM)
   static TensorHandle* CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                                   const string& remote_task,
@@ -152,8 +160,10 @@ class TensorHandle : public AbstractTensorHandleInterface,
   Status AddResourceShapeMirror(const Device* d, int64 op_id, int output_num,
                                 EagerContext* ctx);
 
-  // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(const Device* d, int64* op_id, int32* output_num) const;
+  // Return the op_id and output num if the handle refers to a remote tensor;
+  // and blocks until the remote tensor is ready on the given remote worker.
+  Status RemoteAddressUntilReady(const Device* d, int64* op_id,
+                                 int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -200,7 +210,10 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // ready.
   const tensorflow::DataType dtype;
 
-  bool IsRemote() const;
+  enum HandleType { LOCAL = 0, PACKED = 1, REMOTE = 2 };
+
+  HandleType Type() const;
+  string TypeString() const;
 
   string DebugString() const;
 
@@ -218,7 +231,19 @@ class TensorHandle : public AbstractTensorHandleInterface,
       std::vector<DtypeAndPartialTensorShape>* result);
   Status GetResourceAllowedDevices(std::vector<string>* result);
 
+  // Returns the number of packed handles. 0 if the handle type is not PACKED.
+  int NumPackedHandles() const;
+  // It's called on a packed TensorHandle. Extract a handle with the given
+  // index.
+  Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+
  private:
+  friend class PackedTensorHandleTest;
+
+  TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
+               const tensorflow::DataType dtype,
+               const tensorflow::TensorShape& shape, EagerContext* ctx);
+
   ~TensorHandle() override;
 
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -275,12 +300,45 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // devices for the underlying resource.
   ResourceHandleInfo resource_handle_info_;
 
+  // A handle data which refers to multiple TensorHandles of the same dtype and
+  // shape.
+  class PackedTensorHandleData {
+   public:
+    PackedTensorHandleData(std::vector<TensorHandle*>&& handles,
+                           const TensorShape& shape);
+
+    ~PackedTensorHandleData();
+
+    Status Shape(TensorShape* shape) const;
+    Status NumDims(int* num_dims) const;
+    Status Dim(int dim_index, int64* dim) const;
+    Status NumElements(int64* num_elements) const;
+    Status Unprotect();
+    bool IsReady() const;
+    void Poison(Status status);
+    string DebugString() const;
+
+    // Number of packed handles.
+    int NumPackedHandles() const;
+    // Extract a handle on the given index.
+    Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+
+   private:
+    const std::vector<TensorHandle*> handles_;
+    const TensorShape shape_;
+
+    mutable mutex mu_;
+    Status is_poisoned_ TF_GUARDED_BY(mu_);
+  };
+
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, data_ is immutable.
 #if !defined(IS_MOBILE_PLATFORM)
-  absl::variant<LocalTensorHandleData, RemoteTensorHandleData> data_;
+  absl::variant<LocalTensorHandleData, PackedTensorHandleData,
+                RemoteTensorHandleData>
+      data_;
 #else
-  absl::variant<LocalTensorHandleData> data_;
+  absl::variant<LocalTensorHandleData, PackedTensorHandleData> data_;
 #endif
 
   PartialTensorShape inference_shape_;

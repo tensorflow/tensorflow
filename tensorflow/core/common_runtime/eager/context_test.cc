@@ -170,5 +170,37 @@ TEST_F(EagerContextTest, SelectDeviceExplicitSoftPlacement) {
   EXPECT_EQ(dev->device_type(), DEVICE_CPU);
 }
 
+TEST_F(EagerContextTest, CompositeDevice) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  std::vector<string> underlying_devices = {
+      "/job:worker/replica:0/task:0/device:CPU:0",
+      "/job:worker/replica:0/task:0/device:CPU:1"};
+  CompositeDevice* composite_device_0 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_0));
+  EXPECT_EQ(composite_device_0->name(),
+            "/job:worker/replica:0/task:0/device:COMPOSITE:0");
+  CompositeDevice* device = nullptr;
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:0", &device));
+  EXPECT_EQ(device, composite_device_0);
+  CompositeDevice* composite_device_1 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_1));
+  EXPECT_EQ(composite_device_1, composite_device_0);
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:2");
+  CompositeDevice* composite_device_2 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_2));
+  EXPECT_EQ(composite_device_2->name(),
+            "/job:worker/replica:0/task:0/device:COMPOSITE:1");
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:1", &device));
+  EXPECT_EQ(device, composite_device_2);
+
+  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:2", &device)));
+}
+
 }  // namespace
 }  // namespace tensorflow

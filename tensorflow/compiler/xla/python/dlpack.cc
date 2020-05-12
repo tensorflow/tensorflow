@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -210,7 +210,7 @@ StatusOr<DLContext> DLContextForDevice(const Device& device) {
   return context;
 }
 
-StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
+StatusOr<Device*> DeviceForDLContext(const PjRtClient& client,
                                      const DLContext& context) {
   se::Platform::Id platform_id;
   switch (context.device_type) {
@@ -239,7 +239,7 @@ StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
 
 }  // namespace
 
-StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
+StatusOr<py::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer) {
   auto pack = absl::make_unique<DLPackTensor>();
   // Block on outstanding operations, so that it is safe to read or mutate the
   // returned buffer.
@@ -293,8 +293,8 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   return capsule;
 }
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PyLocalClient* client) {
+StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, PjRtClient* client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -344,8 +344,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return absl::make_unique<PyLocalBuffer>(
-      shape, shape, std::move(device_buffer), client, device);
+  return absl::make_unique<PjRtBuffer>(shape, shape, std::move(device_buffer),
+                                       client, device);
 }
 
 }  // namespace xla

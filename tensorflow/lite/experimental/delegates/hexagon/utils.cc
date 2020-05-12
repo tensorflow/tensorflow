@@ -80,6 +80,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
     case kTfLiteBuiltinMaxPool2d:
+    case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinQuantize:
@@ -159,6 +160,17 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       // causes an unexpected shift in dequantized values.
       return false;
     }
+    case kTfLiteBuiltinMirrorPad: {
+      if (!InputsWithCorrectTypes(
+              node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) ||
+          !IsConstantTensor(GetInput(context, node, 1)))
+        return false;
+      const TfLiteMirrorPaddingParams* params =
+          reinterpret_cast<const TfLiteMirrorPaddingParams*>(
+              node->builtin_data);
+      return params->mode == kTfLiteMirrorPaddingReflect ||
+             params->mode == kTfLiteMirrorPaddingSymmetric;
+    }
     case kTfLiteBuiltinPad: {
       // TODO(b/139277813): Currently we only support padding with the default
       // of 0. Add support for user-defined constant if required.
@@ -197,11 +209,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
             !TensorTypeMatch(node->inputs->data[i], context, kTfLiteInt8))
           return false;
       }
-      // Hexagon only supports concatenation at axis 3.
-      const TfLiteConcatenationParams* concat_params =
-          reinterpret_cast<const TfLiteConcatenationParams*>(
-              node->builtin_data);
-      return (concat_params->axis == 3);
+      return true;
     }
     case kTfLiteBuiltinMaxPool2d: {
       if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
@@ -289,6 +297,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (
           InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}));
     }
+    case kTfLiteBuiltinHardSwish:
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:

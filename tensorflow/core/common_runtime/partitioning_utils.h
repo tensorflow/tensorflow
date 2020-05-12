@@ -58,14 +58,10 @@ Status PartitionFunctionGraph(
 //  (3) records which `Arg` and `Retval` nodes live in host memory in
 //      `*_alloc_attrs`.
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
-    std::vector<int>* ret_indices,
+    Graph* subgraph, const string& device_type,
+    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs);
-
-// Extracts tensors at `indices` from `arguments`.
-std::vector<Tensor> GetArgsForIndices(const std::vector<int>& indices,
-                                      gtl::ArraySlice<Tensor> arguments);
 
 // Utility for generating function names not present in `flib_def`, using
 // given `name` as the base for the name.

@@ -46,7 +46,10 @@ class WorkerSession {
   const string& session_name() const { return session_name_; }
   const string& worker_name() const { return worker_name_; }
 
-  WorkerCacheInterface* worker_cache() const { return worker_cache_.get(); }
+  WorkerCacheInterface* worker_cache() const {
+    tf_shared_lock l(worker_session_state_mu_);
+    return worker_cache_.get();
+  }
   GraphMgr* graph_mgr() const { return graph_mgr_.get(); }
 
   ClusterFunctionLibraryRuntime* cluster_flr() const {
@@ -70,6 +73,7 @@ class WorkerSession {
   // worker in the cache is used in RPCs, the caller should hold a shared
   // pointer to avoid the workers getting deleted.
   std::shared_ptr<WorkerCacheInterface> GetSharedWorkerCache() {
+    tf_shared_lock l(worker_session_state_mu_);
     return worker_cache_;
   }
 
@@ -96,8 +100,10 @@ class WorkerSession {
   // The name of the worker. E.g., /job:mnist/replica:0/task:1.
   const string worker_name_;
 
+  mutable mutex worker_session_state_mu_;
   // Object from which WorkerInterface instances can be obtained.
-  std::shared_ptr<WorkerCacheInterface> worker_cache_;
+  std::shared_ptr<WorkerCacheInterface> worker_cache_
+      TF_GUARDED_BY(worker_session_state_mu_);
 
   // graph_mgr keeps track of the registered graphs of this session.
   //

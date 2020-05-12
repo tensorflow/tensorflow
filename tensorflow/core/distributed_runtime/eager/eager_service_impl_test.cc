@@ -90,6 +90,12 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
 
+  void RunComponentFunctionAsync(const RunComponentFunctionRequest* request,
+                                 RunComponentFunctionResponse* response,
+                                 StatusCallback done) override {
+    impl_->RunComponentFunction(request, response, std::move(done));
+  }
+
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
@@ -494,11 +500,11 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         : EagerKernelArgs(std::move(tensor_args)),
           serialize_remote_handle_(std::move(serialize_remote_handle)) {}
 
-    bool HasRemoteInputs() const override { return true; }
+    bool HasRemoteOrPackedInputs() const override { return true; }
 
-    Status GetRemoteArg(const int index,
+    Status GetRemoteArg(const FunctionArgIndex& index,
                         eager::RemoteTensorHandle* val) const override {
-      return serialize_remote_handle_(index, val);
+      return serialize_remote_handle_(index.index, val);
     }
 
    private:
@@ -556,7 +562,14 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
-        /*thread_pool=*/nullptr, eager_cluster_flr_.get());
+        /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
+        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        Rendezvous::Factory{[this](const int64 step_id,
+                                   const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          return Status::OK();
+        }});
   }
 
   void CheckOutputTensorAndClose(const Tensor& tensor) {
@@ -702,7 +715,7 @@ TEST_F(FunctionWithRemoteInputsTest,
   CheckOutputTensorAndClose(outputs.at(0));
 }
 
-// Test executes a remote function through KernelAndDeviceFunc.
+// Test executes a remote function through KernelAndDeviceFunc::Run.
 TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   Init();
   Device* local_device;
@@ -715,7 +728,9 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
@@ -744,6 +759,60 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
                            /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt));
 
+  CheckOutputsAndClose(op_id);
+}
+
+// Test executes a remote function through KernelAndDeviceFunc::RunAsync.
+TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
+  Init();
+  Device* local_device;
+  TF_ASSERT_OK(device_mgr_->LookupDevice(local_device_, &local_device));
+  std::vector<Device*> input_dev_ptrs;
+  input_dev_ptrs.push_back(local_device);
+  FunctionLibraryRuntime* flr = eager_pflr_->GetFLR(remote_device_);
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
+  core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
+  const int64 op_id = 2;
+  kernel.reset(new KernelAndDeviceFunc(
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
+      /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+      [=]() { return op_id; }));
+
+  // Instantiate MatMulFunction on remote_device.
+  const NodeDef node_def = MatMulFunctionNodeDef();
+  TF_ASSERT_OK(kernel->InstantiateFunc(node_def, nullptr));
+
+  // Run MatMulFunction on remote_device.
+  gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
+  RemoteTensorHandle input;
+  input.set_op_id(1);
+  input.set_output_num(0);
+  input.set_op_device(local_device_);
+  input.set_device(local_device_);
+  std::vector<RemoteTensorHandle> remote_handles = {input};
+  TestExecuteNodeArgs inputs(
+      std::move(input_tensors),
+      [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
+        *handle = remote_handles.at(index);
+        return Status::OK();
+      });
+  std::vector<Tensor> outputs;
+
+  Status status;
+  Notification n;
+  kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
+                   /*cancellation_manager=*/nullptr,
+                   /*remote_func_params=*/absl::nullopt,
+                   [&status, &n](const Status& s) {
+                     status = s;
+                     n.Notify();
+                   });
+  n.WaitForNotification();
+  TF_ASSERT_OK(status);
   CheckOutputsAndClose(op_id);
 }
 

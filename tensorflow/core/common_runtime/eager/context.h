@@ -32,8 +32,10 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/optional.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -171,6 +173,11 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   AbstractTensorInterface* CreateTensor(
       DataType dtype, absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
+                                        int num_dims, void* data, size_t len,
+                                        bool convert_string,
+                                        MemoryReleaser memory_releaser,
+                                        void* memory_releaser_arg) override;
 
   AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) override;
@@ -202,7 +209,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  const std::vector<DeviceType>& prioritized_device_type_list() const {
+  const std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
+      const {
+    mutex_lock l(device_type_list_mu_);
     return prioritized_device_type_list_;
   }
 
@@ -342,8 +351,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
-  void StartStep();
-  void EndStep();
+  void StartStep() override;
+  void EndStep() override;
   ScopedStepContainer* StepContainer();
 
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
@@ -479,11 +488,19 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
+  Status FindCompositeDeviceFromName(const char* device_name,
+                                     CompositeDevice** device) const;
+
   Status FindCustomDeviceFromName(const string& device_name,
                                   CustomDevice** dev) const;
 
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
+
+  // Find or create a composite device with the given `underlying_devices`.
+  Status FindOrCreateCompositeDevice(
+      const std::vector<string>& underlying_devices,
+      CompositeDevice** composite_device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
@@ -560,10 +577,19 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
   Device* host_cpu_device_;  // Owned by device_manager
-  std::vector<DeviceType> prioritized_device_type_list_;
+  mutable mutex device_type_list_mu_;
+  std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list_
+      TF_GUARDED_BY(device_type_list_mu_);
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
+
+  mutable mutex composite_devices_mu_;
+  // Maps from the fingerprint of a set of device names to a virtual
+  // CompositeDevice.
+  // TODO(b/145922293): Consider taking device names as keys.
+  absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
+      composite_devices_ GUARDED_BY(composite_devices_mu_);
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
@@ -621,6 +647,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   OwnedOrUnownedHelper<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+  std::vector<string> GetRemoteContexts() TF_LOCKS_EXCLUDED(remote_state_mu_);
+  bool IsRemoteContextsEmpty() TF_LOCKS_EXCLUDED(remote_state_mu_);
   void CloseAndClearAllRemoteContexts();
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
                            uint64 context_id, uint64 context_view_id);
@@ -642,7 +670,6 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   std::unique_ptr<ServerInterface> server_;
   WorkerEnv* worker_env_ = nullptr;
   std::shared_ptr<WorkerSession> worker_session_;
-  std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
   mutable mutex remote_state_mu_;
 
@@ -651,7 +678,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
   uint64 context_view_id_ TF_GUARDED_BY(remote_state_mu_);
-  std::vector<string> remote_contexts_;
+  std::vector<string> remote_contexts_ TF_GUARDED_BY(remote_state_mu_);
+  std::unique_ptr<eager::EagerClientCache> remote_eager_workers_
+      TF_GUARDED_BY(remote_state_mu_);
 
   int keep_alive_secs_ TF_GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;

@@ -47,7 +47,7 @@ Status TestCluster::Initialize() {
   initialized_ = true;
   TF_RETURN_IF_ERROR(NewMasterServer(/*port=*/0, kProtocol, &master_));
   TF_RETURN_IF_ERROR(master_->Start());
-  TF_RETURN_IF_ERROR(AddressFromTarget(master_->Target(), &master_address_));
+  master_address_ = absl::StrCat("localhost:", master_->BoundPort());
   workers_.reserve(num_workers_);
   worker_addresses_.reserve(num_workers_);
   for (int i = 0; i < num_workers_; ++i) {
@@ -61,10 +61,8 @@ Status TestCluster::AddWorker() {
   TF_RETURN_IF_ERROR(
       NewWorkerServer(/*port=*/0, kProtocol, master_address_, &worker));
   TF_RETURN_IF_ERROR(worker->Start());
-  std::string address;
-  TF_RETURN_IF_ERROR(AddressFromTarget(worker->Target(), &address));
+  worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));
-  worker_addresses_.push_back(address);
   return Status::OK();
 }
 

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import copy
 import functools
 import itertools
 import threading
@@ -313,7 +313,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
-    self._supports_ragged_inputs = False
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
@@ -797,15 +796,22 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       raise RuntimeError(
           'You must call `super().__init__()` in the layer constructor.')
 
-    # Grab the first positional or keyword argument.
-    if args:
-      inputs = args[0]
-      args = args[1:]
-    elif self._call_fn_args[0] in kwargs:
-      inputs = kwargs.pop(self._call_fn_args[0])
-    else:
-      raise ValueError(
-          'The first argument to `Layer.call` must always be passed.')
+    # 'inputs` (the first arg in the method spec) is special cased in
+    # layer call due to historical reasons.
+    # This special casing currently takes the form of:
+    # - 'inputs' must be explicitly passed. A layer cannot have zero arguments,
+    #   and inputs cannot have been provided via the default value of a kwarg.
+    # - numpy/scalar values in `inputs` get converted to tensors
+    # - implicit masks / mask metadata are only collected from 'inputs`
+    # - Layers are built using shape info from 'inputs' only
+    # - input_spec compatibility is only checked against `inputs`
+    # - checking if a layer has ragged tensor support is only done against
+    #   `inputs`
+    # - mixed precision casting (autocast) is only applied to `inputs`,
+    #   not to any other argument.
+    # - configuring the Functional API SavedModel saving spec for deciding what
+    #   should be serialized during SavedModel saving
+    inputs, args, kwargs = self._split_out_first_arg(args, kwargs)
 
     call_context = base_layer_utils.call_context()
     input_list = nest.flatten(inputs)
@@ -814,6 +820,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # This is always the case in graph mode. It can also be the case in eager
     # mode when all inputs can be traced back to `keras.Input()` (when building
     # models using the functional API).
+    # TODO(kaftan): make this not special case inputs. Instead
+    # build a functional api model if *any* *arg or **kwarg is symbolic,
+    # even if part of the data structure in that arg is not symbolic.
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
     # Accept NumPy and scalar inputs by converting to Tensors.
@@ -838,16 +847,17 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       mask_arg_passed_by_framework = True
       kwargs['mask'] = input_masks
 
-    # If `training` argument was not explicitly passed, propagate `training`
-    # value from this layer's calling layer.
+    # If `training` argument is None or not explicitly passed,
+    # propagate `training` value from this layer's calling layer.
+    training_value = None
     training_arg_passed_by_framework = False
     # Priority 1: `training` was explicitly passed.
     if self._call_arg_was_passed('training', args, kwargs):
       training_value = self._get_call_arg_value('training', args, kwargs)
       if not self._expects_training_arg:
         kwargs.pop('training')
-    else:
-      training_value = None
+
+    if training_value is None:
       # Priority 2: `training` was passed to a parent layer.
       if call_context.training is not None:
         training_value = call_context.training
@@ -867,12 +877,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
-        kwargs['training'] = training_value
+        args, kwargs = self._set_call_arg_value(
+            'training', training_value, args, kwargs)
         training_arg_passed_by_framework = True
 
     # Only create Keras history if at least one tensor originates from a
     # `keras.Input`. Otherwise this Layer may be being used outside the Keras
     # framework.
+    # TODO(kaftan): make this not special case inputs
     if build_graph and base_layer_utils.needs_keras_history(inputs):
       base_layer_utils.create_keras_history(inputs)
 
@@ -892,12 +904,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
-        if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
-            and not self._supports_ragged_inputs):
-          raise ValueError('Layer %s does not support RaggedTensors as input. '
-                           'Inputs received: %s. You can try converting your '
-                           'input to an uniform tensor.' % (self.name, inputs))
-
         graph = backend.get_graph()
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
@@ -953,13 +959,16 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             raise ValueError('A layer\'s `call` method should return a '
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
+          # TODO(kaftan): This should be 'any' and check all args
           if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
-              kwargs.pop('training')
+              args, kwargs = self._set_call_arg_value(
+                  'training', None, args, kwargs, pop_kwarg_if_none=True)
             if mask_arg_passed_by_framework:
               kwargs.pop('mask')
-            inputs, outputs = self._set_connectivity_metadata_(
-                inputs, outputs, args, kwargs)
+            # Node connectivity does not special-case the first argument.
+            outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
+                                                      outputs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
           if hasattr(self, '_set_inputs') and not self.inputs:
@@ -1197,7 +1206,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           collected_losses.append(loss_tensor)
     return collected_losses
 
-  def add_loss(self, losses, inputs=None):
+  def add_loss(self, losses, **kwargs):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
@@ -1214,7 +1223,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     ```python
     class MyLayer(tf.keras.layers.Layer):
       def call(self, inputs):
-        self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
+        self.add_loss(tf.abs(tf.reduce_mean(inputs)))
         return inputs
     ```
 
@@ -1254,14 +1263,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
-      inputs: Ignored when executing eagerly. If anything other than None is
-        passed, it signals the losses are conditional on some of the layer's
-        inputs, and thus they should only be run where these inputs are
-        available. This is the case for activity regularization losses, for
-        instance. If `None` is passed, the losses are assumed
-        to be unconditional, and will apply across all dataflows of the layer
-        (e.g. weight regularization losses).
+      **kwargs: Additional keyword arguments for backward compatibility.
+        Accepted values:
+          inputs - Deprecated, will be automatically inferred.
     """
+    kwargs.pop('inputs', None)
+    if kwargs:
+      raise TypeError('Unknown keyword arguments: %s' % (kwargs.keys(),))
 
     def _tag_callable(loss):
       """Tags callable loss tensor as `_unconditional_loss`."""
@@ -1669,9 +1677,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.updates` instead.')
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
-    """Retrieves updates relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves updates relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
@@ -1681,9 +1693,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     return self.updates
 
-  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.losses` instead.')
+  @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
-    """Retrieves losses relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves losses relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
@@ -2299,70 +2315,45 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     args_dict = dict(zip(call_fn_args, args))
     return args_dict[arg_name]
 
-  def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
+  def _set_call_arg_value(
+      self, arg_name, new_value, args,
+      kwargs, inputs_in_args=False, pop_kwarg_if_none=False):
+    arg_pos = self._call_fn_arg_positions.get(arg_name, None)
+    if arg_pos is not None:
+      if not inputs_in_args:
+        # Ignore `inputs` arg.
+        arg_pos = arg_pos - 1
+      if len(args) > arg_pos:
+        args = list(args)
+        args[arg_pos] = new_value
+        return args, kwargs
+    if new_value is None and pop_kwarg_if_none:
+      kwargs.pop(arg_name, None)
+    else:
+      kwargs[arg_name] = new_value
+    return args, kwargs
 
-    # If the layer returns tensors from its inputs, unmodified,
-    # we copy them to avoid loss of tensor metadata.
-    output_ls = nest.flatten(outputs)
-    inputs_ls = object_identity.ObjectIdentitySet(nest.flatten(inputs))
-    output_ls_copy = []
-    for x in output_ls:
-      if x in inputs_ls:
+  def _set_connectivity_metadata(self, args, kwargs, outputs):
+    # If the layer returns tensors from its inputs unmodified,
+    # we copy them to avoid loss of KerasHistory metadata.
+    flat_outputs = nest.flatten(outputs)
+    flat_inputs = nest.flatten((args, kwargs))
+    inputs_set = object_identity.ObjectIdentitySet(flat_inputs)
+    outputs_copy = []
+    for x in flat_outputs:
+      if x in inputs_set:
         with backend.name_scope(self.name):
           x = array_ops.identity(x)
-      output_ls_copy.append(x)
-    outputs = nest.pack_sequence_as(outputs, output_ls_copy)
+      outputs_copy.append(x)
+    outputs = nest.pack_sequence_as(outputs, outputs_copy)
 
-    # Ignore `inputs` arg.
-    arguments = dict(zip(self._call_fn_args[1:], args))
-    arguments.update(kwargs)
-
-    # Add an inbound node to the layer, so it can keep track of this call.
-    # This updates the layer history of the output tensor(s).
-    self._add_inbound_node(
-        input_tensors=inputs, output_tensors=outputs, arguments=arguments)
-    return inputs, outputs
-
-  def _add_inbound_node(self,
-                        input_tensors,
-                        output_tensors,
-                        arguments=None):
-    """Internal method to create an inbound node for the layer.
-
-    Arguments:
-        input_tensors: list of input tensors.
-        output_tensors: list of output tensors.
-        arguments: dictionary of keyword arguments that were passed to the
-            `call` method of the layer at the call that created the node.
-    """
-    inbound_layers = nest.map_structure(lambda t: t._keras_history.layer,
-                                        input_tensors)
-    node_indices = nest.map_structure(lambda t: t._keras_history.node_index,
-                                      input_tensors)
-    tensor_indices = nest.map_structure(lambda t: t._keras_history.tensor_index,
-                                        input_tensors)
-
-    # Create node, add it to inbound nodes.
-    node_module.Node(
-        self,
-        inbound_layers=inbound_layers,
-        node_indices=node_indices,
-        tensor_indices=tensor_indices,
-        input_tensors=input_tensors,
-        output_tensors=output_tensors,
-        arguments=arguments)
-
-    # Update tensor history metadata.
-    # The metadata attribute consists of
-    # 1) a layer instance
-    # 2) a node index for the layer
-    # 3) a tensor index for the node.
-    # The allows layer reuse (multiple nodes per layer) and multi-output
-    # or multi-input layers (e.g. a layer can return multiple tensors,
-    # and each can be sent to a different layer).
-    for i, tensor in enumerate(nest.flatten(output_tensors)):
-      tensor._keras_history = KerasHistory(self,
-                                           len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+    # Create node, Node wires itself to inbound and outbound layers.
+    # The Node constructor actually updates this layer's self._inbound_nodes,
+    # sets _keras_history on the outputs, and adds itself to the
+    # `_outbound_nodes` of the layers that produced the inputs to this
+    # layer call.
+    node_module.Node(self, call_args=args, call_kwargs=kwargs, outputs=outputs)
+    return outputs
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -2708,6 +2699,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   @tracking.cached_per_instance
+  def _call_fn_arg_positions(self):
+    call_fn_arg_positions = dict()
+    for pos, arg in enumerate(self._call_fn_args):
+      call_fn_arg_positions[arg] = pos
+    return call_fn_arg_positions
+
+  @property
+  @tracking.cached_per_instance
   def _call_accepts_kwargs(self):
     return self._call_full_argspec.varkw is not None
 
@@ -2742,6 +2741,21 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Track the Variable's identity to avoid __eq__ issues.
         seen_weights.add(w)
     return output
+
+  def _split_out_first_arg(self, args, kwargs):
+    # Grab the argument corresponding to the first argument in the
+    # layer's `call` method spec. This will either be the first positional
+    # argument, or it will be provided as a keyword argument.
+    if args:
+      inputs = args[0]
+      args = args[1:]
+    elif self._call_fn_args[0] in kwargs:
+      kwargs = copy.copy(kwargs)
+      inputs = kwargs.pop(self._call_fn_args[0])
+    else:
+      raise ValueError(
+          'The first argument to `Layer.call` must always be passed.')
+    return inputs, args, kwargs
 
   # SavedModel properties. Please see keras/saving/saved_model for details.
 
@@ -2950,31 +2964,6 @@ class AddMetric(Layer):
         'metric_name': self.metric_name
     })
     return config
-
-
-class KerasHistory(
-    collections.namedtuple('KerasHistory',
-                           ['layer', 'node_index', 'tensor_index'])):
-  """Tracks the Layer call that created a Tensor, for Keras Graph Networks.
-
-  During construction of Keras Graph Networks, this metadata is added to
-  each Tensor produced as the output of a Layer, starting with an
-  `InputLayer`. This allows Keras to track how each Tensor was produced, and
-  this information is later retraced by the `keras.engine.Network` class to
-  reconstruct the Keras Graph Network.
-
-  Attributes:
-    layer: The Layer that produced the Tensor.
-    node_index: The specific call to the Layer that produced this Tensor. Layers
-      can be called multiple times in order to share weights. A new node is
-      created every time a Layer is called.
-    tensor_index: The output index for this Tensor. Always zero if the Layer
-      that produced this Tensor only has one output. Nested structures of
-      Tensors are deterministically assigned an index via `nest.flatten`.
-  """
-  # Added to maintain memory and performance characteristics of `namedtuple`
-  # while subclassing.
-  __slots__ = ()
 
 
 # Avoid breaking users who directly import this symbol from this file.

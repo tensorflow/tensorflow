@@ -91,10 +91,13 @@ py_any = any
 
 # The internal graph maintained by Keras and used by the symbolic Keras APIs
 # while executing eagerly (such as the functional API for model-building).
-_GRAPH = None
+# This is thread-local to allow building separate models in different threads
+# concurrently, but comes at the cost of not being able to build one model
+# across threads.
+_GRAPH = threading.local()
 
 # A graph which is used for constructing functions in eager mode.
-_CURRENT_SCRATCH_GRAPH = None
+_CURRENT_SCRATCH_GRAPH = threading.local()
 
 # This is a thread local object that will hold the default internal TF session
 # used by Keras. It can be set manually via `set_session(sess)`.
@@ -133,6 +136,7 @@ class _DummyEagerGraph(threading.local):
     # get a different key.
     super(_DummyEagerGraph, self).__init__()
     self.key = _DummyEagerGraph._WeakReferencableClass()
+    self.learning_phase_is_set = False
 
 
 _DUMMY_EAGER_GRAPH = _DummyEagerGraph()
@@ -289,12 +293,13 @@ def clear_session():
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
   global _GRAPH
   global _FREEZABLE_VARS
-  _GRAPH = None
+  _GRAPH.graph = None
   ops.reset_default_graph()
   reset_uids()
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
+    _DUMMY_EAGER_GRAPH.learning_phase_is_set = False
     _GRAPH_LEARNING_PHASES.clear()
     # Create the learning phase placeholder in graph using the default factory.
     _GRAPH_LEARNING_PHASES.setdefault(graph)
@@ -332,7 +337,7 @@ def learning_phase():
       Learning phase (scalar integer tensor or Python integer).
   """
   graph = ops.get_default_graph()
-  if graph is _GRAPH:
+  if graph is getattr(_GRAPH, 'graph', None):
     # Don't enter an init_scope for the learning phase if eager execution
     # is enabled but we're inside the Keras workspace graph.
     learning_phase = symbolic_learning_phase()
@@ -351,7 +356,7 @@ def learning_phase():
 
 
 def global_learning_phase_is_set():
-  return _DUMMY_EAGER_GRAPH.key in _GRAPH_LEARNING_PHASES
+  return _DUMMY_EAGER_GRAPH.learning_phase_is_set
 
 
 def _mark_func_graph_as_unsaveable(graph, learning_phase):
@@ -388,6 +393,9 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
+@deprecated('2020-10-11',
+            'Simply pass a True/False value to the `training` argument '
+            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
@@ -420,6 +428,7 @@ def set_learning_phase(value):
     if context.executing_eagerly():
       # In an eager context, the learning phase values applies to both the eager
       # context and the internal Keras graph.
+      _DUMMY_EAGER_GRAPH.learning_phase_is_set = True
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
@@ -451,11 +460,14 @@ def learning_phase_scope(value):
           _DUMMY_EAGER_GRAPH.key, None)
     previous_graph_value = _GRAPH_LEARNING_PHASES.get(get_graph(), None)
 
+  learning_phase_previously_set = _DUMMY_EAGER_GRAPH.learning_phase_is_set
   try:
     set_learning_phase(value)
     yield
   finally:
     # Restore learning phase to initial value.
+    if not learning_phase_previously_set:
+      _DUMMY_EAGER_GRAPH.learning_phase_is_set = False
     with ops.init_scope():
       if context.executing_eagerly():
         if previous_eager_value is not None:
@@ -569,9 +581,9 @@ tracking_util.register_session_provider(get_session)
 def get_graph():
   if context.executing_eagerly():
     global _GRAPH
-    if _GRAPH is None:
-      _GRAPH = func_graph.FuncGraph('keras_graph')
-    return _GRAPH
+    if not getattr(_GRAPH, 'graph', None):
+      _GRAPH.graph = func_graph.FuncGraph('keras_graph')
+    return _GRAPH.graph
   else:
     return ops.get_default_graph()
 
@@ -594,20 +606,22 @@ def _scratch_graph(graph=None):
     The current scratch graph.
   """
   global _CURRENT_SCRATCH_GRAPH
-  if (_CURRENT_SCRATCH_GRAPH is not None and graph is not None and
-      _CURRENT_SCRATCH_GRAPH is not graph):
+  scratch_graph = getattr(_CURRENT_SCRATCH_GRAPH, 'graph', None)
+  # If scratch graph and `graph` are both configured, they must match.
+  if (scratch_graph is not None and graph is not None and
+      scratch_graph is not graph):
     raise ValueError('Multiple scratch graphs specified.')
 
-  if _CURRENT_SCRATCH_GRAPH:
-    yield _CURRENT_SCRATCH_GRAPH
+  if scratch_graph:
+    yield scratch_graph
     return
 
   graph = graph or func_graph.FuncGraph('keras_scratch_graph')
   try:
-    _CURRENT_SCRATCH_GRAPH = graph
+    _CURRENT_SCRATCH_GRAPH.graph = graph
     yield graph
   finally:
-    _CURRENT_SCRATCH_GRAPH = None
+    _CURRENT_SCRATCH_GRAPH.graph = None
 
 
 @keras_export(v1=['keras.backend.set_session'])

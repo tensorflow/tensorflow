@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -686,8 +689,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
 
   status->status = tensorflow::Status::OK();
-  return new TFE_TensorHandle{
-      tensorflow::TensorHandle::CreateLocalHandle(tensor)};
+  return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(tensor));
 }
 
 namespace {
@@ -708,7 +710,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   // New server created for new server_def. Unused if updating server_def.
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
@@ -822,14 +824,13 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  node_def.set_name(tfe_op->operation->Name());
-  node_def.set_op(tfe_op->operation->Name());
+  tensorflow::AbstractOperationInterface* op = tensorflow::unwrap(tfe_op);
+  node_def.set_name(op->Name());
+  node_def.set_op(op->Name());
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  OperationFromInterface(tfe_op->operation)
-      ->Attrs()
-      .FillAttrValueMap(node_def.mutable_attr());
+  OperationFromInterface(op)->Attrs().FillAttrValueMap(node_def.mutable_attr());
 
   const tensorflow::OpRegistrationData* op_reg_data;
   status->status =

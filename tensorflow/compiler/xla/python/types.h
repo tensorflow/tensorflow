@@ -26,7 +26,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,16 +38,16 @@ namespace xla {
 
 // Custom holder types.
 //
-// We must keep the PyLocalClient object alive as long as any of the runtime
+// We must keep the PjRtClient object alive as long as any of the runtime
 // objects are alive. Since we don't have a lot of control over Python
-// destructor ordering, we keep the PyLocalClient object as a std::shared_ptr<>,
+// destructor ordering, we keep the PjRtClient object as a std::shared_ptr<>,
 // and ensure that each Python runtime object holds a reference to the
-// PyLocalClient. An alternative design would be to keep a single global
-// singleton PyLocalClient, although this seems less flexible, especially for
+// PjRtClient. An alternative design would be to keep a single global
+// singleton PjRtClient, although this seems less flexible, especially for
 // writing tests.
 //
-// To maintain PyLocalClient references, we define pybind11 holder classes that
-// are custom smart pointers that also keep a reference to a PyLocalClient.
+// To maintain PjRtClient references, we define pybind11 holder classes that
+// are custom smart pointers that also keep a reference to a PjRtClient.
 // pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
 // seem sufficiently flexible to describe ownership relationships in cases where
 // the ownership doesn't pertain to a direct argument or return value of a
@@ -55,7 +55,7 @@ namespace xla {
 // objects that contain both a reference and a runtime class; holder classes
 // seem less tedious to define.
 
-// A pair of a PyLocalClient reference and an unowned pointer to T.
+// A pair of a PjRtClient reference and an unowned pointer to T.
 template <typename T>
 struct ClientAndPtr {
   ClientAndPtr() = default;
@@ -70,7 +70,7 @@ struct ClientAndPtr {
   ClientAndPtr& operator=(const ClientAndPtr&) = default;
   ClientAndPtr& operator=(ClientAndPtr&&) = default;
 
-  std::shared_ptr<PyLocalClient> client;
+  std::shared_ptr<PjRtClient> client;
   T* contents;
 
   T* get() const { return contents; }
@@ -81,7 +81,7 @@ struct ClientAndPtr {
 // By defining a templated helper function, we can use return type deduction
 // and avoid specifying types at the caller.
 template <typename T>
-ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+ClientAndPtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
                                T* contents) {
   ClientAndPtr<T> result;
   result.client = std::move(client);
@@ -89,7 +89,7 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
   return result;
 }
 
-// A pair of a PyLocalClient reference and an owned pointer to T.
+// A pair of a PjRtClient reference and an owned pointer to T.
 template <typename T>
 struct ClientAndUniquePtr {
   ClientAndUniquePtr() = default;
@@ -103,7 +103,7 @@ struct ClientAndUniquePtr {
   ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
   ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
 
-  std::shared_ptr<PyLocalClient> client;
+  std::shared_ptr<PjRtClient> client;
   std::unique_ptr<T> contents;
 
   T* get() const { return contents.get(); }
@@ -112,7 +112,7 @@ struct ClientAndUniquePtr {
 };
 
 template <typename T>
-ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
                                      std::unique_ptr<T> contents) {
   ClientAndUniquePtr<T> result;
   result.client = std::move(client);

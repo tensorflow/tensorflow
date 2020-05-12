@@ -31,6 +31,7 @@ import random
 import re
 import tempfile
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
@@ -457,6 +458,38 @@ def skip_if(condition):
     return wrapper
 
   return real_skip_if
+
+
+@contextlib.contextmanager
+def skip_if_error(test_obj, error_type, messages=None):
+  """Context manager to skip cases not considered failures by the tests.
+
+  Note that this does not work if used in setUpClass/tearDownClass.
+  Usage in setUp/tearDown works fine just like regular test methods.
+
+  Args:
+    test_obj: A test object provided as `self` in the test methods; this object
+      is usually an instance of `unittest.TestCase`'s subclass and should have
+      `skipTest` method.
+    error_type: The error type to skip. Note that if `messages` are given, both
+      `error_type` and `messages` need to match for the test to be skipped.
+    messages: Optional, a string or list of strings. If `None`, the test will be
+      skipped if `error_type` matches what is raised; otherwise, the test is
+      skipped if any of the `messages` is contained in the message of the error
+      raised, and `error_type` matches the error raised.
+
+  Yields:
+    Nothing.
+  """
+  if messages:
+    messages = nest.flatten(messages)
+  try:
+    yield
+  except error_type as e:
+    if not messages or any([message in str(e) for message in messages]):
+      test_obj.skipTest("Skipping error: {}".format(str(e)))
+    else:
+      raise
 
 
 def enable_c_shapes(fn):
@@ -1074,7 +1107,6 @@ def eager_lazy_remote_copy_on_and_off(f):
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
-                                 reset_test=True,
                                  assert_no_eager_garbage=False):
   """Execute the decorated test with and without enabling eager execution.
 
@@ -1116,8 +1148,6 @@ def run_in_graph_and_eager_modes(func=None,
     config: An optional config_pb2.ConfigProto to use to configure the session
       when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
-    reset_test: If True, tearDown and SetUp the test case between the two
-      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
       the test with eager execution enabled. This will fail if there are
@@ -1161,17 +1191,15 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
       with graph_for_eager_test.as_default(), context.eager_mode():
-        if reset_test:
-          self.setUp()
+        self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
@@ -1787,23 +1815,29 @@ def disable_mlir_bridge(description):  # pylint: disable=unused-argument
 # The description is just for documentation purposes.
 def disable_tfrt(unused_description):
 
-  def disable_tfrt_impl(func):
-    """Execute the test method only if tfrt is not enabled."""
+  def disable_tfrt_impl(cls_or_func):
+    """Execute the test only if tfrt is not enabled."""
 
-    def decorator(func):
+    if tf_inspect.isclass(cls_or_func):
+      if is_tfrt_enabled():
+        return None
+      else:
+        return cls_or_func
+    else:
+      def decorator(func):
 
-      def decorated(self, *args, **kwargs):
-        if is_tfrt_enabled():
-          return
-        else:
-          return func(self, *args, **kwargs)
+        def decorated(self, *args, **kwargs):
+          if is_tfrt_enabled():
+            return
+          else:
+            return func(self, *args, **kwargs)
 
-      return decorated
+        return decorated
 
-    if func is not None:
-      return decorator(func)
+      if cls_or_func is not None:
+        return decorator(cls_or_func)
 
-    return decorator
+      return decorator
 
   return disable_tfrt_impl
 
@@ -1902,6 +1936,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads = []
     self._tempdir = None
     self._cached_session = None
+    self._test_start_time = None
 
   def setUp(self):
     self._ClearCachedSession()
@@ -1925,7 +1960,15 @@ class TensorFlowTestCase(googletest.TestCase):
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
 
+    self._test_start_time = time.time()
+
   def tearDown(self):
+    # If a subclass overrides setUp and doesn't call the parent class's setUp,
+    # then we may not have set the start time.
+    if self._test_start_time is not None:
+      logging.info("time(%s): %ss", self.id(),
+                   round(time.time() - self._test_start_time, 2))
+
     for thread in self._threads:
       thread.check_termination()
 

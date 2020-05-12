@@ -1139,7 +1139,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
  public:
   SparseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
                               int batches, const TensorData& input,
-                              std::initializer_list<int> weights_shape,
+                              const TensorData& weights,
                               std::initializer_list<T> weights_data)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
@@ -1149,7 +1149,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
     input_size_ = total_input_size / batches_;
 
     input_ = AddInput(input);
-    weights_ = AddConstSparseInput(input.type, weights_shape, weights_data);
+    weights_ = AddConstSparseInput(weights, weights_data);
 
     TensorData bias{input.type, {units_}};
     bias_ = AddInput(bias);
@@ -1192,15 +1192,19 @@ class SparseFullyConnectedOpTest : public SingleOpTest {
 };
 
 TEST_P(SparseFullyConnectedOpTest, SimpleTest) {
-  std::initializer_list<int> weight_shape = {3, 10};
   std::initializer_list<float> weight_data = {
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {3, 10};
+  weight.traversal_order = {0, 1};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
   SparseFullyConnectedOpModel<float> m(
       GetRegistration(), /*units=*/3, /*batches=*/2,
-      /*input=*/{TensorType_FLOAT32, {2, 10}}, weight_shape, weight_data);
+      /*input=*/{TensorType_FLOAT32, {2, 10}}, weight, weight_data);
   m.SetBias({1, 2, 3});
 
   m.SetInput({
@@ -1215,13 +1219,17 @@ TEST_P(SparseFullyConnectedOpTest, SimpleTest) {
 }
 
 TEST_P(SparseFullyConnectedOpTest, SimpleTest2) {
-  std::initializer_list<int> weight_shape = {1, 2};
   std::initializer_list<float> weight_data = {
       2, 4  // u = 0
   };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {1, 2};
+  weight.traversal_order = {0, 1};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
   SparseFullyConnectedOpModel<float> m(
       GetRegistration(), /*units=*/1, /*batches=*/2,
-      /*input=*/{TensorType_FLOAT32, {2, 2}}, weight_shape, weight_data);
+      /*input=*/{TensorType_FLOAT32, {2, 2}}, weight, weight_data);
   m.SetBias({1});
 
   m.SetInput({
@@ -1235,6 +1243,35 @@ TEST_P(SparseFullyConnectedOpTest, SimpleTest2) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
 }
 
+TEST_P(SparseFullyConnectedOpTest, Simple1x4Test) {
+  std::initializer_list<float> weight_data = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 2
+  };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {3, 12};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {4};
+  SparseFullyConnectedOpModel<float> m(GetRegistration(),
+                                       /*units=*/3, /*batches=*/2,
+                                       /*input=*/{TensorType_FLOAT32, {2, 12}},
+                                       weight, weight_data);
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 11,  12,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291, 81, 82, 83));
+}
 // TODO(b/148391360): Add tests for unsupported sparsity format.
 // TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)
 

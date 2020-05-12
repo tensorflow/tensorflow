@@ -2308,10 +2308,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_jpeg_quality(x, 75)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[1.        , 1.        , 1.        ],
-          [0.9960785 , 0.9960785 , 0.9960785 ]],
-         [[0.98823535, 0.98823535, 0.98823535],
-          [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
+  array([[[1., 1., 1.],
+          [1., 1., 1.]],
+         [[1., 1., 1.],
+          [1., 1., 1.]]], dtype=float32)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -2330,14 +2330,14 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     channels = image.shape.as_list()[-1]
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    image = convert_image_dtype(image, dtypes.uint8)
+    image = convert_image_dtype(image, dtypes.uint8, saturate=True)
     if not _is_tensor(jpeg_quality):
       # If jpeg_quality is a int (not tensor).
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
     image = gen_image_ops.decode_jpeg(image, channels=channels)
-    return convert_image_dtype(image, orig_dtype)
+    return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
 @tf_export('image.random_saturation')

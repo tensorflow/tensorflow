@@ -42,9 +42,7 @@ Status SnappyOutputBuffer::Append(StringPiece data) { return Write(data); }
 
 #if defined(PLATFORM_GOOGLE)
 Status SnappyOutputBuffer::Append(const absl::Cord& cord) {
-  absl::CordReader reader(cord);
-  absl::string_view fragment;
-  while (reader.ReadFragment(&fragment)) {
+  for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));
   }
   return Status::OK();

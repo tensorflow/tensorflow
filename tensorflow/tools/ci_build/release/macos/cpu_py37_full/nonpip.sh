@@ -41,9 +41,11 @@ tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-bench
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Run tests
+set +e
 bazel test --test_output=errors --config=opt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} \
   -//tensorflow/lite/...
+test_xml_summary_exit

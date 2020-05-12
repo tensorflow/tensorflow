@@ -119,7 +119,7 @@ std::vector<Flag> ExternalDelegateProvider::CreateFlags(
                               "The library path for the underlying external."),
       CreateFlag<std::string>(
           "external_delegate_options", params,
-          "Comma-seperated options to be passed to the external delegate")};
+          "Comma-separated options to be passed to the external delegate")};
   return flags;
 }
 

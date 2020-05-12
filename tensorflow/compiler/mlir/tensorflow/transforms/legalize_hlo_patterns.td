@@ -38,7 +38,6 @@ foreach fromToBinPair = [[HLO_AddOp, TF_AddV2Op],
                          [HLO_MinOp, TF_MinimumOp],
                          [HLO_MulOp, TF_MulOp],
                          [HLO_PowOp, TF_PowOp],
-                         [HLO_DivOp, TF_RealDivOp],
                          [HLO_SubOp, TF_SubOp],
                          [HLO_Atan2Op, TF_Atan2Op],
                          [HLO_RemOp, TF_ModOp]] in
@@ -68,6 +67,9 @@ def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
+
+def : Pat<(HLO_ConvertOp HLO_Tensor:$operand),
+          (TF_CastOp $operand, ConstBoolAttrFalse)>;
 
 foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_BitcastConvertOp, TF_BitcastOp],

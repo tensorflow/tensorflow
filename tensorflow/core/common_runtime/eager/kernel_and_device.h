@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -66,16 +67,16 @@ class EagerKernelArgs : public FunctionArgsInterface {
 
   ~EagerKernelArgs() override{};
 
-  bool HasRemoteInputs() const override { return false; };
+  bool HasRemoteOrPackedInputs() const override { return false; };
   TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
-  Status GetLocalArg(const int index, Tensor* val) const override;
+  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
 
   std::vector<Tensor> GetLocalTensors() const override;
 
-  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const override {
+  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const {
     return &tensor_args_;
-  };
+  }
 
  protected:
   gtl::InlinedVector<TensorValue, 4> tensor_args_;
@@ -123,6 +124,20 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
+
+  // Execute kernel asynchronously when applicable. Different from `Run` which
+  // blocks the caller thread and waits for the execution of the op/function,
+  // `RunAsync` could return before finishing the execution. The `done` callback
+  // will be triggered once the op/function execution finishes.
+  // Currently, calling RunAsync on ops might not honor the asynchronicity when
+  // it is called on an instance with only sync implementation, execute the
+  // kernel synchronously and then call the callback with the return status
+  // from sync execution.
+  virtual void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -187,6 +202,16 @@ class KernelAndDeviceOp final : public KernelAndDevice {
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
 
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override {
+    // Trivial async implementation on top of the sync version
+    done(Run(step_container, inputs, outputs, cancellation_manager,
+             remote_func_params));
+  }
+
   const OpKernel* kernel() const override { return kernel_.get(); }
 
   Device* InputDevice(int i) const override;
@@ -217,7 +242,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 // Represents a multi-device function. Functions can also be run using
 // various function-calling kernels including CallOp and PartitionedCallOp.
 // In such cases, KernelAndDeviceOp is used.
-class KernelAndDeviceFunc final : public KernelAndDevice {
+class KernelAndDeviceFunc : public KernelAndDevice {
  public:
   // `flr` can be nullptr.
   // `pflr` must not be nullptr.
@@ -225,6 +250,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      absl::flat_hash_map<string, const std::vector<string>*> composite_devices,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -237,6 +263,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
+        composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
@@ -265,6 +292,12 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
 
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override;
+
   const OpKernel* kernel() const override { return nullptr; }
 
   Device* InputDevice(int i) const override;
@@ -290,6 +323,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  // Maps from a CompositeDevice name to a list of physical device names.
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 

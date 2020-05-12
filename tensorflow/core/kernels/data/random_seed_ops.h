@@ -142,7 +142,8 @@ class AnonymousSeedGeneratorHandleOp
                         FunctionLibraryRuntime* lib,
                         SeedGeneratorManager** manager) override;
 
-  std::unique_ptr<RandomSeeds> seeds_ = nullptr;
+  mutex mu_;
+  std::unique_ptr<RandomSeeds> seeds_ TF_GUARDED_BY(mu_);
   bool reshuffle_;
 };
 

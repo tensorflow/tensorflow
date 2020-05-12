@@ -24,6 +24,7 @@ limitations under the License.
 #include <functional>
 
 #include "fixedpoint/fixedpoint.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -243,19 +244,19 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
   double step = (max - min) / (num - 1);
   double half_step = step / 2.0;
   for (int i = 0; i < num - 1; i++) {
-    double sample_val = std::round(func(min + i * step) * 32768.0);
+    double sample_val = TfLiteRound(func(min + i * step) * 32768.0);
     double midpoint_interp_val =
-        std::round((func(min + (i + 1) * step) * 32768.0 +
-                    std::round(func(min + i * step) * 32768.0)) /
-                   2.0);
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0 +
+                     TfLiteRound(func(min + i * step) * 32768.0)) /
+                    2.0);
     double midpoint_val =
-        std::round(func(min + i * step + half_step) * 32768.0);
+        TfLiteRound(func(min + i * step + half_step) * 32768.0);
     double midpoint_err = midpoint_interp_val - midpoint_val;
-    double bias = std::round(midpoint_err / 2.0);
+    double bias = TfLiteRound(midpoint_err / 2.0);
     table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
   }
   table[num - 1] =
-      std::min(std::max(std::round(func(max) * 32768.0), -32768.0), 32767.0);
+      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
 // int16 func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax

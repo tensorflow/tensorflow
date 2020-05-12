@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
@@ -168,6 +169,28 @@ AbstractTensorInterface* EagerContext::CreateTensor(
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
 }
 
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, const int64_t* dims, int num_dims, void* data, size_t len,
+    bool convert_string, MemoryReleaser memory_releaser,
+    void* memory_releaser_arg) {
+  TF_Tensor* tensor_wrapper =
+      TF_NewTensor(static_cast<TF_DataType>(dtype), dims, num_dims, data, len,
+                   memory_releaser, memory_releaser_arg);
+
+  if (convert_string) {
+    tensorflow::Tensor tensor;
+    Status status = TF_TensorToTensor(tensor_wrapper, &tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    if (!status.ok()) return nullptr;
+    return new TensorInterface(std::move(tensor));
+  } else {
+    AbstractTensorInterface* result = nullptr;
+    std::swap(result, tensor_wrapper->tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    return result;
+  }
+}
+
 std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
     const std::string& directory,
     const absl::optional<std::unordered_set<std::string>>& tags,
@@ -210,7 +233,9 @@ void EagerContext::InitPrioritizedDeviceTypeList() {
       ds.AddDevice(d);
     }
   }
-  prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
+  mutex_lock l(device_type_list_mu_);
+  prioritized_device_type_list_ =
+      std::make_shared<std::vector<DeviceType>>(ds.PrioritizedDeviceTypeList());
 }
 
 namespace {
@@ -276,8 +301,9 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   // Select the first matching registered device from the supported device
   // list. If nothing matches and soft placement is enabled, pick a suitable
   // device from the available ones.
+  const auto pflr_device_set = pflr()->device_set();
   const PrioritizedDeviceVector& existing =
-      pflr()->device_set()->prioritized_devices();
+      pflr_device_set->prioritized_devices();
   *out = SelectBestMatchingDevice(preferred, existing, supported);
   if (*out != nullptr) {
     return Status::OK();
@@ -397,9 +423,20 @@ bool EagerContext::LazyCopyFunctionRemoteInputs() const {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
+std::vector<string> EagerContext::GetRemoteContexts() {
+  tf_shared_lock l(remote_state_mu_);
+  return remote_contexts_;
+}
+
+bool EagerContext::IsRemoteContextsEmpty() {
+  tf_shared_lock l(remote_state_mu_);
+  return remote_contexts_.empty();
+}
+
 void EagerContext::CloseAndClearAllRemoteContexts() {
   uint64 context_id;
   uint64 context_view_id;
+  std::vector<string> remote_contexts_copy;
   {
     mutex_lock l(remote_state_mu_);
     if (!is_master_) return;
@@ -408,9 +445,13 @@ void EagerContext::CloseAndClearAllRemoteContexts() {
     context_id_ = kInvalidContextId;
     // Forget the current view id and reset to the starting value 0.
     context_view_id_ = 0;
+
+    // Make a copy of remote targets to avoid holding the lock when sending
+    // close context requests.
+    remote_contexts_copy = remote_contexts_;
+    remote_contexts_.clear();
   }
-  CloseRemoteContexts(remote_contexts_, context_id, context_view_id);
-  remote_contexts_.clear();
+  CloseRemoteContexts(remote_contexts_copy, context_id, context_view_id);
 }
 
 void EagerContext::CloseRemoteContexts(
@@ -428,7 +469,7 @@ void EagerContext::CloseRemoteContexts(
   int i = 0;
   for (const auto& worker : remote_contexts) {
     core::RefCountPtr<eager::EagerClient> client;
-    Status s = remote_eager_workers_->GetClient(worker, &client);
+    Status s = GetClient(worker, &client);
 
     client->CloseContextAsync(
         &request, &responses[i],
@@ -459,7 +500,7 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
   }
   keep_alive_thread_.reset();
 
-  if (!remote_contexts_.empty()) {
+  if (!IsRemoteContextsEmpty()) {
     CloseAndClearAllRemoteContexts();
   }
 
@@ -475,16 +516,16 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     for (const auto& it : executors_copy) {
       it.second->ShutDown().IgnoreError();
     }
-  }
 
-  // This shuts down the completion queue and joins the thread polling it.
-  // The thread exits only after the completion queue has been drained of all
-  // the events. These events' completion should invoke all remaining RPC
-  // callbacks.
-  // This also deletes all EagerClient instances. There should not be any
-  // references to EagerClients left after all RPCs and async ops have been
-  // finished.
-  remote_eager_workers_ = nullptr;
+    // This shuts down the completion queue and joins the thread polling it.
+    // The thread exits only after the completion queue has been drained of all
+    // the events. These events' completion should invoke all remaining RPC
+    // callbacks.
+    // This also deletes all EagerClient instances. There should not be any
+    // references to EagerClients left after all RPCs and async ops have been
+    // finished.
+    remote_eager_workers_ = nullptr;
+  }
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -492,6 +533,10 @@ EagerContext::~EagerContext() {
   // TODO(iga): Add a separate API method to shutdown EagerContext so that we
   // don't send RPCs and block in destructor.
   WaitForAndCloseRemoteContexts();
+
+  // Custom devices may have obtained references to various context components
+  // (executors, thread pool). It's safer to run their destructors early.
+  custom_devices_.clear();
 
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
@@ -605,9 +650,10 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
       *OpRegistry::Global(),
       register_function->mutable_function_def()->mutable_node_def());
 
-  for (const auto& target : remote_contexts_) {
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
     core::RefCountPtr<eager::EagerClient> eager_client;
-    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
@@ -633,8 +679,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   uint64 context_id = GetContextId();
   for (int i = 0; i < remote_workers.size(); i++) {
     core::RefCountPtr<eager::EagerClient> eager_client;
-    Status s =
-        remote_eager_workers_->GetClient(remote_workers[i], &eager_client);
+    Status s = GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
       continue;
     }
@@ -746,17 +791,18 @@ Status EagerContext::SyncExecutors() {
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
+  auto remote_contexts = GetRemoteContexts();
   // Synchronize executors on remote workers
   eager::EnqueueRequest request;
   request.set_context_id(GetContextId());
   request.add_queue()->mutable_sync_remote_executor_for_stream();
-  BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
-  std::vector<Status> statuses(remote_contexts_.size());
+  BlockingCounter counter(static_cast<int>(remote_contexts.size()));
+  std::vector<Status> statuses(remote_contexts.size());
 
-  for (int i = 0; i < remote_contexts_.size(); i++) {
-    const auto& target = remote_contexts_[i];
+  for (int i = 0; i < remote_contexts.size(); i++) {
+    const auto& target = remote_contexts[i];
     core::RefCountPtr<eager::EagerClient> eager_client;
-    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
@@ -830,6 +876,18 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
+Status EagerContext::FindCompositeDeviceFromName(
+    const char* device_name, CompositeDevice** device) const {
+  tf_shared_lock l(composite_devices_mu_);
+  for (const auto& d : composite_devices_) {
+    if (d.second->name() == device_name) {
+      *device = d.second.get();
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("Unknown composite device: ", device_name);
+}
+
 Status EagerContext::FindCustomDeviceFromName(const string& device_name,
                                               CustomDevice** dev) const {
   auto dev_it = custom_devices_.find(device_name);
@@ -861,6 +919,28 @@ Status EagerContext::RegisterCustomDevice(
     return errors::AlreadyExists(device_name,
                                  " already registered as a custom device.");
   }
+  return Status::OK();
+}
+
+Status EagerContext::FindOrCreateCompositeDevice(
+    const std::vector<string>& underlying_devices,
+    CompositeDevice** composite_device) {
+  const uint64 hash_key = Fingerprint64(absl::StrJoin(underlying_devices, ","));
+
+  mutex_lock l(composite_devices_mu_);
+  auto iter = composite_devices_.find(hash_key);
+  if (iter != composite_devices_.end()) {
+    *composite_device = iter->second.get();
+    return Status::OK();
+  }
+
+  Status s;
+  auto device = CompositeDevice::MakeDevice(underlying_devices,
+                                            composite_devices_.size(), &s);
+  TF_RETURN_IF_ERROR(s);
+  *composite_device = device.get();
+  pflr_->AddCompositeDevice(*composite_device);
+  composite_devices_.emplace(hash_key, std::move(device));
   return Status::OK();
 }
 
@@ -901,10 +981,6 @@ Status EagerContext::GetClient(Device* device,
 
 Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
                                core::RefCountPtr<eager::EagerClient>* client) {
-  if (remote_eager_workers_ == nullptr) {
-    return errors::Internal(
-        "Haven't set up remote eager worker in this eager context yet.");
-  }
   string device_task_name;
   if (!DeviceNameUtils::GetTaskName(device_name, &device_task_name)) {
     return errors::InvalidArgument(
@@ -912,19 +988,25 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
         DeviceNameUtils::ParsedNameToString(device_name));
   }
 
-  TF_RETURN_IF_ERROR(
-      remote_eager_workers_->GetClient(device_task_name, client));
+  {
+    tf_shared_lock l(remote_state_mu_);
+    if (remote_eager_workers_ == nullptr) {
+      return errors::Internal(
+          "Haven't set up remote eager worker in this eager context yet.");
+    }
+    TF_RETURN_IF_ERROR(
+        remote_eager_workers_->GetClient(device_task_name, client));
 
-  if (*client == nullptr) {
-    return errors::InvalidArgument(
-        "Unable to find eager client corresponding to device ",
-        DeviceNameUtils::ParsedNameToString(device_name));
-  }
-
-  if (std::find(remote_contexts_.begin(), remote_contexts_.end(),
-                device_task_name) == remote_contexts_.end()) {
-    return errors::Internal("Unable to find a context for handle on task: ",
-                            device_task_name, ". This should not be possible");
+    if (*client == nullptr) {
+      return errors::InvalidArgument(
+          "Unable to find eager client corresponding to device ",
+          DeviceNameUtils::ParsedNameToString(device_name));
+    }
+    if (std::find(remote_contexts_.begin(), remote_contexts_.end(),
+                  device_task_name) == remote_contexts_.end()) {
+      return errors::Internal("Unable to find a context for handle on task: ",
+                              device_task_name, ". This should not happen.");
+    }
   }
 
   return Status::OK();
@@ -932,11 +1014,14 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
 
 Status EagerContext::GetClient(const string& remote_task,
                                core::RefCountPtr<eager::EagerClient>* client) {
-  if (remote_eager_workers_ == nullptr) {
-    return errors::Internal(
-        "Haven't set up remote eager worker in this eager context yet.");
+  {
+    tf_shared_lock l(remote_state_mu_);
+    if (remote_eager_workers_ == nullptr) {
+      return errors::Internal(
+          "Haven't set up remote eager worker in this eager context yet.");
+    }
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(remote_task, client));
   }
-  TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(remote_task, client));
 
   if (*client == nullptr) {
     return errors::InvalidArgument(
@@ -1098,10 +1183,13 @@ Status EagerContext::InitializeRemoteMaster(
         "context id");
   }
 
-  if (!remote_contexts_.empty()) {
+  if (!IsRemoteContextsEmpty()) {
     CloseAndClearAllRemoteContexts();
   }
-  remote_contexts_ = remote_contexts;
+  {
+    mutex_lock l(remote_state_mu_);
+    remote_contexts_ = remote_contexts;
+  }
 
   return SetMasterContextState(
       std::move(server), worker_env, std::move(worker_session),
@@ -1132,6 +1220,7 @@ Status EagerContext::UpdateRemoteMaster(
     // since the newly created context on the remote worker will be holding
     // a larger view id and ignores this request.
     CloseRemoteContexts(remove_remote_contexts, context_id, GetContextViewId());
+    mutex_lock l(remote_state_mu_);
     for (const string& remote_context : remove_remote_contexts) {
       remote_contexts_.erase(
           std::remove(remote_contexts_.begin(), remote_contexts_.end(),
@@ -1140,6 +1229,7 @@ Status EagerContext::UpdateRemoteMaster(
     }
   }
   if (!add_remote_contexts.empty()) {
+    mutex_lock l(remote_state_mu_);
     remote_contexts_.insert(std::end(remote_contexts_),
                             std::begin(add_remote_contexts),
                             std::end(add_remote_contexts));
