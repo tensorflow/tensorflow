@@ -645,9 +645,6 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
                          conv->batch_group_count(), conv->metadata());
   }
 
-  if (conv->batch_group_count() > 1) {
-    conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
-  }
   // If all else fails, try a forward convolution.
   if (CanImplementAsGpuForwardConv(conv)) {
     if (primitive_util::IsIntegralType(
@@ -688,6 +685,11 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
       TF_RETURN_IF_ERROR(
           conv->parent()->RemoveInstructionAndUnusedOperands(kernel_convert));
     }
+
+    if (conv->batch_group_count() > 1) {
+      conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
+    }
+    
     return CreateGpuConv(kCudnnConvForwardCallTarget, conv->shape(),
                          conv->mutable_operand(0), conv->mutable_operand(1),
                          conv->window(), conv->convolution_dimension_numbers(),
