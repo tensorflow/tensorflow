@@ -363,8 +363,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR:
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       if (op_sig.options.resize.half_pixel_centers) {
+        return 3;
+      } else if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
+      if (op_sig.options.resize.half_pixel_centers ||
+          op_sig.options.resize.align_corners) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -612,6 +619,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       if (resize_bilinear_option) {
         op_sig.options.resize.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
+        op_sig.options.resize.align_corners =
+            resize_bilinear_option->align_corners();
       }
     } break;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
@@ -620,6 +629,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       if (resize_nn_option) {
         op_sig.options.resize.half_pixel_centers =
             resize_nn_option->half_pixel_centers();
+        op_sig.options.resize.align_corners = resize_nn_option->align_corners();
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
