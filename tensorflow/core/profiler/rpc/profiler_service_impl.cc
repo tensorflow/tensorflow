@@ -15,21 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
+#include <memory>
+
 #include "grpcpp/support/status.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
@@ -65,7 +66,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
     }
 
     Env* env = Env::Default();
-    for (size_t i = 0; i < req->duration_ms(); ++i) {
+    for (uint64 i = 0; i < req->duration_ms(); ++i) {
       env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;

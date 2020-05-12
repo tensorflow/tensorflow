@@ -12,7 +12,9 @@ cc_library(
     deps = [
         ":save_profile",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),

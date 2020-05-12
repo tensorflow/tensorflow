@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {

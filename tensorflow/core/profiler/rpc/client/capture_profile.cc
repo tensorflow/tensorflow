@@ -14,18 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_analysis.pb.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace profiler {
