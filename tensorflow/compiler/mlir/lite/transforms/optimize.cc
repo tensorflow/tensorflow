@@ -206,8 +206,7 @@ DenseElementsAttr GetShape(Value output_val) {
       llvm::makeArrayRef(shape));
 }
 
-static Type getShapeStrippedType(TypeAttr type_attr)
-{
+static Type GetShapeStrippedType(TypeAttr type_attr) {
   auto type = type_attr.getValue();
   auto shaped_type = type.dyn_cast<ShapedType>();
   if (shaped_type) {
@@ -220,13 +219,13 @@ static Type getShapeStrippedType(TypeAttr type_attr)
 bool NotFromQuantOpDifferentQuant(Value val, TypeAttr qtype_attr) {
   auto val_defn_op = val.getDefiningOp();
   TFL::QuantizeOp q_op = llvm::dyn_cast_or_null<TFL::QuantizeOp>(val_defn_op);
-  if( !q_op)
+  if (!q_op)
     return true;
 
   // Ignore shape details - weŕe really only trying to
   // check if quantization is the same.
-  auto stripped_src_qtype = getShapeStrippedType(q_op.qtypeAttr());
-  auto stripped_qtype = getShapeStrippedType(qtype_attr);
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_qtype = GetShapeStrippedType(qtype_attr);
   return stripped_src_qtype == stripped_qtype;
 }
 

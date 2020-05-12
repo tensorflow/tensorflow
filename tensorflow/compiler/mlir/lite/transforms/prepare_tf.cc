@@ -88,10 +88,9 @@ struct FetchConstantMinMaxInputs {
   using AttrType = DenseFPElementsAttr;
   bool operator () (TFFakeQuantOp tf_op, AttrType &min_value, AttrType &max_value) const {
     Value min = tf_op.min(), max = tf_op.max();
-    ;
-    // TODO This is likely redundant (Identity elimination rule are in
-    // prepare_patterns.td.  If not, its certainly, incomplete as neither
-    // IdentityN ops Nor chains of Identiy* (not sooo rare) are handled
+
+    // TODO: incomplete  neither IdentityN ops 
+    // nor chains of Identity* (not rare) are handled
     if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
       min = id1.input();
     if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
@@ -229,25 +228,19 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 //
 // Three instances of the rule to cover the three different types of
 // TF::FakeQuant operators
-// 
-using PreparePerTensorFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp, 
-                                        false,
-                                        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>
-                                       >;
+//
+using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
+    TF::FakeQuantWithMinMaxVarsOp, false,
+    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
 
-using PreparePerChannelFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsPerChannelOp,
-                                        true,
-                                        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>
-                                       >;
+using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
+    TF::FakeQuantWithMinMaxVarsPerChannelOp, true,
+    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
 
 using PreparePerTensorFakeQuantWithMinMaxArgs =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxArgsOp,
-                                        false,
-                                        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>
-                                       >;
-
+    InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxArgsOp, false,
+        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
@@ -692,8 +685,8 @@ void PrepareTFPass::runOnFunction() {
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant, PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
-
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant,
+                  PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
 
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be

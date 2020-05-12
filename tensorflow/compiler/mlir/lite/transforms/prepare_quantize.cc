@@ -255,7 +255,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
     }
     auto dq_arg = dq_op.getOperand();
 
-    if (!dq_arg.hasOneUse()  ) {
+    if (!dq_arg.hasOneUse()) {
       // The initial quanization is used sompleace else ... so it might be
       // reasonable for it to requantized for another purpose.
       // TODO: ideally would want to still check whether requanization narrows 
@@ -265,13 +265,12 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
 
     // Invariant: 
     // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
-    // getdq_arg.getType() != q_op.getResult().getType() 
+    // getdq_arg.getType() != q_op.getResult().getType()
     //
     // as otherwise qdq pair would have been optimized away.
-
     auto qd_arg_def_q_op = 
       dyn_cast_or_null<quant::QuantizeCastOp>(dq_arg.getDefiningOp());
-    if(!qd_arg_def_q_op) {
+    if (!qd_arg_def_q_op) {
       return;
     }
 
