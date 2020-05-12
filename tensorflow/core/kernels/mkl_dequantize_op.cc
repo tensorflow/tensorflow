@@ -155,7 +155,8 @@ class MklDequantizeOp : public OpKernel {
       // Also it does not define round_nearest (enum).
       attr.set_int_output_round_mode(mkldnn::round_mode::round_nearest);
 #endif  // !ENABLE_MKLDNN_V1
-      stream reorder_stream = CPU_STREAM(cpu_engine);
+      std::shared_ptr<stream> reorder_stream;
+      reorder_stream.reset(CreateStream(ctx, cpu_engine));
       std::vector<primitive> net;
 
       // Create reorder primitive and then execute.
@@ -169,11 +170,10 @@ class MklDequantizeOp : public OpKernel {
       reorder_net_args.push_back({{MKLDNN_ARG_FROM, *src.GetUsrMem()},
                                   { MKLDNN_ARG_TO,
                                     *dst.GetUsrMem() }});
-      execute_primitives(net, std::make_shared<stream>(reorder_stream),
-                         reorder_net_args);
+      execute_primitives(net, reorder_stream, reorder_net_args);
 #else
       net.push_back(reorder(reorder_pd, *src.GetUsrMem(), *dst.GetUsrMem()));
-      reorder_stream.submit(net);
+      reorder_stream->submit(net);
 #endif  // ENABLE_MKLDNN_V1
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
