@@ -182,7 +182,12 @@ typedef struct TempFileWithPath {
     temp_file = temp_file_;
   }
   ~TempFileWithPath() {
-    if (temp_file != nullptr) std::filesystem::remove(temp_path);
+    std::error_code error;
+    if(temp_file != nullptr) {
+      temp_file->close();
+    }
+    if(std::filesystem::exists(temp_path)) std::filesystem::remove(temp_path, error);
+    if(error) std::cerr << error.value() << ": " << error.message() << "\n";
     plugin_memory_free(temp_path);
     // temp_file destructors will be called by shared_ptr
   }
