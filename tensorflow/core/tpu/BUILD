@@ -51,3 +51,11 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
+
+cc_library(
+    name = "tpu_config_c_api",
+    hdrs = ["tpu_config_c_api.h"],
+    deps = [
+        "//tensorflow/c:tf_status",
+    ],
+)
