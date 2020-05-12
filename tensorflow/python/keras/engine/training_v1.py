@@ -62,6 +62,7 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -3143,7 +3144,7 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if ops.is_dense_tensor_like(expected_input):
+    if isinstance(expected_input, core.Tensor):
       if ops.executing_eagerly_outside_functions():
         # In TF2 we do not silently densify sparse matrices.
         raise ValueError('A SciPy sparse matrix was passed to a model '
