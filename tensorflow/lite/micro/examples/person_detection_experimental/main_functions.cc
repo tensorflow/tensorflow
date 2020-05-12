@@ -42,9 +42,7 @@ TfLiteTensor* input = nullptr;
 
 // An area of memory to use for input, output, and intermediate arrays.
 constexpr int kTensorArenaSize = 125 * 1024;
-#pragma Bss(".tensor_arena")
 static uint8_t tensor_arena[kTensorArenaSize];
-#pragma Bss()
 }  // namespace
 
 // The name of this function is important for Arduino compatibility.
