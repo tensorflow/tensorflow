@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -42,7 +41,7 @@ KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
       kernel_name_(kernel_name),
       unroll_factor_(unroll_factor) {}
 
-Status KernelThunk::Initialize(const GpuExecutable& executable,
+Status KernelThunk::Initialize(const GpuTargetBinary& target_binary,
                                se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -55,8 +54,10 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   if (kernel_cache_.end() == it) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
-        CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor));
+        CreateKernel(kernel_name_, args_.size(), target_binary.text,
+                     target_binary.binary, executor));
+    CHECK(!target_binary.binary.empty());
+    CHECK(kernel);
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }

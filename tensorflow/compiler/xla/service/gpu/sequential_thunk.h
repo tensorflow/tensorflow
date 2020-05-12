@@ -40,7 +40,7 @@ class SequentialThunk : public Thunk {
   const std::vector<std::unique_ptr<Thunk>>& thunks() const { return thunks_; }
 
   void ComputeAnnotations() override;
-  Status Initialize(const GpuExecutable& executable,
+  Status Initialize(const GpuTargetBinary& target_binary,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
