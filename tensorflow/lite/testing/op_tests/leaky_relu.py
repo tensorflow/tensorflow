@@ -32,6 +32,20 @@ def make_leaky_relu_tests(options):
       {
           "input_shape": [[], [1], [5], [1, 10, 10, 3], [3, 3, 3, 3]],
           "alpha": [0.1, 1.0, 2.0, -0.1, -1.0, -2.0],
+          "fully_quantize": [False],
+          "quantize_mode_16x8": [False]
+      },
+      {
+          "input_shape": [[1, 10, 10, 3]],
+          "alpha": [0.1],
+          "fully_quantize": [True],
+          "quantize_mode_16x8": [False]
+      },
+      {
+          "input_shape": [[1, 10, 10, 3]],
+          "alpha": [0.1],
+          "fully_quantize": [True],
+          "quantize_mode_16x8": [True]
       },
   ]
 

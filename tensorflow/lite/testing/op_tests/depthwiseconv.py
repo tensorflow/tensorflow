@@ -40,7 +40,8 @@ def make_depthwiseconv_tests(options):
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],
           "constant_filter": [True, False],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "quantize_mode_16x8": [False]
       },
       {
           "input_shape": [[1, 3, 4, 3]],
@@ -52,7 +53,8 @@ def make_depthwiseconv_tests(options):
           "padding": ["SAME"],
           "data_format": ["NHWC"],
           "constant_filter": [True, False],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "quantize_mode_16x8": [False]
       },
       {
           "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
@@ -64,7 +66,21 @@ def make_depthwiseconv_tests(options):
           "padding": ["SAME", "VALID"],
           "data_format": ["NHWC"],
           "constant_filter": [True],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "quantize_mode_16x8": [False]
+      },
+      {
+          "input_shape": [[1, 3, 4, 3]],
+          "filter_size": [[1, 2]],
+          "strides": [[1, 3, 3, 1]],
+          "dilations": [[1, 3, 2, 1]],
+          "channel_multiplier": [1],
+          "rate": [[1, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "fully_quantize": [True],
+          "quantize_mode_16x8": [True]
       },
   ]
 

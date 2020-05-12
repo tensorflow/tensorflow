@@ -55,6 +55,7 @@ def make_pool_tests(pool_op_in, allow_fully_quantize=False):
             "padding": ["SAME", "VALID"],
             "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
             "fully_quantize": [False],
+            "quantize_mode_16x8": [False]
         },
         {
             "ksize": [[2, 1, 1, 2], [1, 1, 1, 1], [1, 1, 2, 1], [1, 10, 11, 1]],
@@ -65,6 +66,16 @@ def make_pool_tests(pool_op_in, allow_fully_quantize=False):
             "padding": ["SAME", "VALID"],
             "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
             "fully_quantize": [True],
+            "quantize_mode_16x8": [False]
+        },
+        {
+            "ksize": [[1, 1, 1, 1]],
+            "strides": [[1, 1, 1, 1]],
+            "input_shape": [[1, 1, 1, 1]],
+            "padding": ["SAME", "VALID"],
+            "data_format": ["NHWC"],
+            "fully_quantize": [True],
+            "quantize_mode_16x8": [True]
         }
     ]
     # test_parameters include fully_quantize option only when

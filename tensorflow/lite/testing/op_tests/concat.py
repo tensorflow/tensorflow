@@ -32,14 +32,24 @@ def make_concat_tests(options):
       "num_tensors": [1, 2, 3, 4, 5, 6],
       "axis": [0, 1, 2, 3, -3, -2, -1],
       "type": [tf.float32, tf.uint8, tf.int32, tf.int64],
-      "fully_quantize": [False]
+      "fully_quantize": [False],
+      "quantize_mode_16x8": [False]
   }, {
       "base_shape": [[1, 3, 4, 3], [3, 4], [2, 3, 4, 3]],
       "num_tensors": [1, 2, 3, 4, 5, 6],
       "axis": [1, 2, 3, -3, -2, -1],
       "type": [tf.float32],
-      "fully_quantize": [True]
-  }]
+      "fully_quantize": [True],
+      "quantize_mode_16x8": [False]
+  }, {
+      "base_shape": [[1, 3, 4, 3], [3, 4], [2, 3, 4, 3]],
+      "num_tensors": [1, 2, 3, 4, 5, 6],
+      "axis": [1, 2, 3, -3, -2, -1],
+      "type": [tf.float32],
+      "fully_quantize": [True],
+      "quantize_mode_16x8": [True]
+  }
+  ]
 
   def get_shape(parameters, delta):
     """Return a tweaked version of 'base_shape'."""
