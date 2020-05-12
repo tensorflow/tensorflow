@@ -621,7 +621,7 @@ cc_library(
         ":stringpiece",
         ":stringprintf",
         ":types",
-        "//tensorflow/core:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
     ],
 )
