@@ -657,6 +657,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "upb",
+        sha256 = "91fa3fc98538f643904b86660298a26f38259e6a51d79eb6924f8be8bdc9975e",
+        strip_prefix = "upb-a1c2caeb25b21644700b9423da573b1ccddc35a7",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/upb/archive/a1c2caeb25b21644700b9423da573b1ccddc35a7.tar.gz",
+            "https://github.com/protocolbuffers/upb/archive/a1c2caeb25b21644700b9423da573b1ccddc35a7.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "com_github_nanopb_nanopb",
         sha256 = "18234d9f01b57248472a9bfa65c3379352b5d66c15b0ef1c2b4feece4b5670fe",
         build_file = "@com_github_grpc_grpc//third_party:nanopb.BUILD",
