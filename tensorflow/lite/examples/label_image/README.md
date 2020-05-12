@@ -138,7 +138,7 @@ average time:10.348 ms
 
 To run a model with the Hexagon Delegate, assuming we have followed the
 [Hexagon Delegate Guide](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
-and installed Hexagon libraries in `/data/local/tmp`. Run it
+and installed Hexagon libraries in `/data/local/tmp`. Run it wth (`-j 1`)
 ```
 adb shell \
   "/data/local/tmp/label_image \
@@ -184,6 +184,31 @@ average time: 17.33 ms
 0.0073376: 466 bulletproof vest
 0.00592857: 458 bow tie
 0.00414093: 514 cornet
+```
+
+With `-h` or any other unsupported flags, `label_image` will list 
+supported options
+```
+sargo:/data/local/tmp $ ./label_image  -h                                                                                          
+./label_image: invalid option -- h
+label_image
+--accelerated, -a: [0|1], use Android NNAPI or not
+--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not
+--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not
+--count, -c: loop interpreter->Invoke() for certain times
+--gl_backend, -g: [0|1]: use GL GPU Delegate on Android
+--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android
+--input_mean, -b: input mean
+--input_std, -s: input standard deviation
+--image, -i: image_name.bmp
+--labels, -l: labels for the model
+--tflite_model, -m: model_name.tflite
+--profiling, -p: [0|1], profiling or not
+--num_results, -r: number of results to show
+--threads, -t: number of threads
+--verbose, -v: [0|1] print more information
+--warmup_runs, -w: number of warmup runs
+--xnnpack_delegate, -x [0:1]: xnnpack delegate
 ```
 
 See the `label_image.cc` source code for other command line options.
