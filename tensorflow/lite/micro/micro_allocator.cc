@@ -34,11 +34,11 @@ namespace {
 // Used to hold information used during allocation calculations.
 struct AllocationInfo {
   size_t bytes;
+  void** output_ptr;
   int first_created;
   int last_used;
-  bool needs_allocating;
-  void** output_ptr;
   int32_t offline_offset;
+  bool needs_allocating;
 };
 
 // We align tensor buffers to 16-byte boundaries, since this is a common
