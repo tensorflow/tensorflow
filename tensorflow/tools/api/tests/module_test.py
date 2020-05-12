@@ -83,7 +83,7 @@ class ModuleTest(test.TestCase):
     # pylint: disable=g-import-not-at-top
     from tensorflow.python.keras import layers
     normalization_parent = layers.Normalization.__module__.split('.')[-1]
-    if tf._major_api_version == 2:
+    if (tf.__version__).split('.')[0] == 2:
       self.assertEqual('normalization', normalization_parent)
       self.assertTrue(layers.BatchNormalization._USE_V2_BEHAVIOR)
     else:
