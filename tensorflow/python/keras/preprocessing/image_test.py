@@ -25,6 +25,9 @@ import tempfile
 import numpy as np
 
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import layers
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
 
@@ -52,7 +55,7 @@ def _generate_test_images():
   return [rgb_images, gray_images]
 
 
-class TestImage(test.TestCase):
+class TestImage(keras_parameterized.TestCase):
 
   @test_util.run_v2_only
   def test_smart_resize(self):
@@ -319,14 +322,21 @@ class TestImage(test.TestCase):
     self.assertEqual(
         len(set(train_iterator.filenames) & set(filenames)), num_training)
 
+    model = sequential.Sequential([layers.Flatten(), layers.Dense(2)])
+    model.compile(optimizer='sgd', loss='mse')
+    model.fit(train_iterator, epochs=1)
+
     shutil.rmtree(tmp_folder)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_25_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.25)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_40_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.40)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_50_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.50)
 
