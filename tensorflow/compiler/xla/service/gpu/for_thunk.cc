@@ -39,9 +39,9 @@ void ForThunk::ComputeAnnotations() {
   body_thunk_sequence_->ComputeAnnotations();
 }
 
-Status ForThunk::Initialize(const GpuTargetBinary& target_binary,
+Status ForThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(target_binary, executor));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
   return Status::OK();
 }
 

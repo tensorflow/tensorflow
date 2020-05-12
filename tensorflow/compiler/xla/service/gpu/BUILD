@@ -17,14 +17,14 @@ load(
     "tf_cuda_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_is_configured",
-)
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
@@ -86,7 +86,6 @@ cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
     deps = [
-        "//tensorflow/compiler/xla:types",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -406,7 +405,6 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":gpu_executable_run_options",
-        ":gpu_types",
         ":hlo_execution_profiler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:hlo",

@@ -45,11 +45,11 @@ void WhileThunk::ComputeAnnotations() {
   body_thunk_sequence_->ComputeAnnotations();
 }
 
-Status WhileThunk::Initialize(const GpuTargetBinary& target_binary,
+Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {
   TF_RETURN_IF_ERROR(
-      condition_thunk_sequence_->Initialize(target_binary, executor));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(target_binary, executor));
+      condition_thunk_sequence_->Initialize(executable, executor));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
   return Status::OK();
 }
 

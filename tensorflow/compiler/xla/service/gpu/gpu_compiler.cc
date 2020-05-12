@@ -565,7 +565,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
 
-  TF_ASSIGN_OR_RETURN(GpuTargetBinary backend_result,
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
                       CompileTargetBinary(module.get(), &llvm_module,
                                           gpu_version, stream_exec));
 
@@ -575,11 +576,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
-  }
-
-  std::vector<Thunk*> thunks;
-  for (Thunk* thunk : thunk_schedule->TotalOrder()) {
-    thunks.push_back(thunk);
   }
 
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
@@ -601,19 +597,14 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   auto* gpu_executable = new GpuExecutable(
-      std::move(backend_result), gpu_version, std::move(thunk_schedule),
-      std::move(module), std::move(buffer_assignment),
-      std::move(profile_printer), std::move(profile_index_map));
+      backend_result.first, backend_result.second, gpu_version,
+      std::move(thunk_schedule), std::move(module),
+      std::move(buffer_assignment), std::move(profile_printer),
+      std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
-
-  for (Thunk* thunk : thunks) {
-    TF_RETURN_IF_ERROR(
-        thunk->Initialize(gpu_executable->target_binary(), stream_exec));
-  }
-
   return std::unique_ptr<Executable>(gpu_executable);
 }
 

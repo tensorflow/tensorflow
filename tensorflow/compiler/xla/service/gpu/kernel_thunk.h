@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+class GpuExecutable;
+
 // This class stores everything that StreamExecutor needs for launching a
 // kernel. It implements the ExecuteOnStream interface for GpuExecutable to
 // invoke the corresponding kernel.
@@ -56,7 +58,7 @@ class KernelThunk : public Thunk {
   int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
-  Status Initialize(const GpuTargetBinary& target_binary,
+  Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 

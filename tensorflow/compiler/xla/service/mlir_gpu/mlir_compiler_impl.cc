@@ -549,11 +549,10 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   }
 
   // TODO(b/137624192): Add profiling support.
-
   return {absl::make_unique<GpuExecutable>(
-      xla::gpu::GpuTargetBinary{ptx, cubin}, GetGpuVersion(stream_exec),
-      std::move(thunk_schedule), emission_context.releaseHloModule(),
-      std::move(buffer_assignment), nullptr, nullptr)};
+      ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
+      emission_context.releaseHloModule(), std::move(buffer_assignment),
+      nullptr, nullptr)};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

@@ -16,11 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 
-#include <string>
-#include <vector>
-
 #include "absl/types/variant.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
@@ -29,19 +25,6 @@ namespace gpu {
 // it comprises a pair of integers denoting major and minor version.
 // On ROCm platform, it comprises one integer for AMD GCN ISA version.
 using GpuVersion = absl::variant<std::pair<int, int>, int>;
-
-// A struct to carry around compiled results by the GPU assembler.
-struct GpuTargetBinary {
-  GpuTargetBinary(const GpuTargetBinary& other) = delete;
-  GpuTargetBinary(GpuTargetBinary&& other) = default;
-
-  // The text format of the compiled result, e.g. PTX.
-  std::string text;
-
-  // The actual compiled binary.
-  std::vector<tensorflow::uint8> binary;
-};
-
 }  // namespace gpu
 }  // namespace xla
 

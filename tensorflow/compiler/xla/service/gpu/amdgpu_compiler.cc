@@ -104,9 +104,11 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return isa_version;
 }
 
-StatusOr<GpuTargetBinary> AMDGPUCompiler::CompileTargetBinary(
-    const HloModule* module, llvm::Module* llvm_module, GpuVersion gpu_version,
-    se::StreamExecutor* stream_exec) {
+StatusOr<std::pair<std::string, std::vector<uint8>>>
+AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
+                                    llvm::Module* llvm_module,
+                                    GpuVersion gpu_version,
+                                    se::StreamExecutor* stream_exec) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module->config());
@@ -127,7 +129,7 @@ StatusOr<GpuTargetBinary> AMDGPUCompiler::CompileTargetBinary(
     user_post_optimization_hook_(*llvm_module);
   }
 
-  return GpuTargetBinary{"", std::move(hsaco)};
+  return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));
 }
 
 }  // namespace gpu

@@ -50,7 +50,7 @@ void ConditionalThunk::ComputeAnnotations() {
   }
 }
 
-Status ConditionalThunk::Initialize(const GpuTargetBinary& target_binary,
+Status ConditionalThunk::Initialize(const GpuExecutable& executable,
                                     se::StreamExecutor* executor) {
   if (branch_index_is_bool_) {
     TF_RET_CHECK(branch_thunks_.size() == 2);
@@ -58,7 +58,7 @@ Status ConditionalThunk::Initialize(const GpuTargetBinary& target_binary,
     TF_RET_CHECK(!branch_thunks_.empty());
   }
   for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Initialize(target_binary, executor));
+    TF_RETURN_IF_ERROR(branch_thunk->Initialize(executable, executor));
   }
   return Status::OK();
 }

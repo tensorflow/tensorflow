@@ -34,10 +34,10 @@ void SequentialThunk::ComputeAnnotations() {
   }
 }
 
-Status SequentialThunk::Initialize(const GpuTargetBinary& target_binary,
+Status SequentialThunk::Initialize(const GpuExecutable& executable,
                                    se::StreamExecutor* executor) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(target_binary, executor));
+    TF_RETURN_IF_ERROR(thunk->Initialize(executable, executor));
   }
   return Status::OK();
 }

@@ -52,15 +52,16 @@ using ::tensorflow::profiler::ScopedAnnotation;
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    GpuTargetBinary target_binary, GpuVersion gpu_version,
-    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    const string& text, const std::vector<uint8>& binary,
+    GpuVersion gpu_version, std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      target_binary_(std::move(target_binary)),
+      text_(text),
+      binary_(binary),
       gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
@@ -175,6 +176,7 @@ Status GpuExecutable::ExecuteThunks(
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =
@@ -467,7 +469,7 @@ const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
 int64 GpuExecutable::SizeOfGeneratedCodeInBytes() {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
-  if (binary().empty() && !text().empty()) {
+  if (binary().empty() && !text_.empty()) {
     return -1;
   }
   return binary().size();
