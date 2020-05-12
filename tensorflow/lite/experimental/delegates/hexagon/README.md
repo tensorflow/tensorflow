@@ -80,6 +80,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)
 * MaxPool2D (without any activation) (b/129276536)
+* Mean
 * MirrorPad
 * Mul (without any activation) (b/129276536)
 * Neg
