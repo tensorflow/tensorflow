@@ -121,6 +121,9 @@ message TfliteInferenceParams {
   // This helps benchmark cases where extensive pre-processing might not be
   // required for every input.
   optional int32 invocations_per_run = 4 [default = 1];
+
+  // allow_fp16
+  optional bool allow_fp16 = 5 [default = false];
 }
 
 // Metrics specific to TFLite inference.

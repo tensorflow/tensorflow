@@ -95,6 +95,7 @@ TfLiteStatus TfliteInferenceStage::Init(
     return kTfLiteError;
   }
   interpreter_->SetNumThreads(params.num_threads());
+  interpreter_->SetAllowFp16PrecisionForFp32(params.allow_fp16());
 
   if (!delegate_providers) {
     std::string error_message;

@@ -65,6 +65,7 @@ class CocoObjectDetection : public TaskExecutor {
   bool debug_mode_;
   std::string delegate_;
   int num_interpreter_threads_;
+  bool allow_fp16_;
   DelegateProviders delegate_providers_;
 };
 
@@ -104,6 +105,9 @@ CocoObjectDetection::CocoObjectDetection(int* argc, char* argv[])
           kDelegateFlag, &delegate_,
           "Delegate to use for inference, if available. "
           "Must be one of {'nnapi', 'gpu', 'xnnpack', 'hexagon'}"),
+      tflite::Flag::CreateFlag(
+          "allow_fp16", &allow_fp16_,
+          "allow fp16"),
   };
   tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   DelegateProviders delegate_providers;
@@ -132,6 +136,7 @@ absl::optional<EvaluationStageMetrics> CocoObjectDetection::Run() {
   inference_params->set_model_file_path(model_file_path_);
   inference_params->set_num_threads(num_interpreter_threads_);
   inference_params->set_delegate(ParseStringToDelegateType(delegate_));
+  inference_params->set_allow_fp16(allow_fp16_);
 
   // Get ground truth data.
   absl::flat_hash_map<std::string, ObjectDetectionResult> ground_truth_map;

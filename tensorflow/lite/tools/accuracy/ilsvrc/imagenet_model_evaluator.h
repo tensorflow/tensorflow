@@ -78,6 +78,9 @@ class ImagenetModelEvaluator {
 
     // Number of interpreter threads.
     int num_interpreter_threads = 1;
+
+    // allow fp16
+    bool allow_fp16 = false;
   };
 
   // An evaluation observer.
