@@ -79,7 +79,8 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic) {
+  if (t->allocation_type == kTfLiteDynamic ||
+      t->allocation_type == kTfLitePersistentRo) {
     free(t->data.raw);
   }
   t->data.raw = NULL;
@@ -172,7 +173,8 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
-  if (tensor->allocation_type != kTfLiteDynamic) {
+  if (tensor->allocation_type != kTfLiteDynamic &&
+      tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
   // TODO(b/145340303): Tensor data should be aligned.
