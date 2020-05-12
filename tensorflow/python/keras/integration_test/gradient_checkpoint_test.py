@@ -127,7 +127,8 @@ def _train_with_recompute(n_steps):
   model2_re = tf.recompute_grad(model2)
   model3_re = tf.recompute_grad(model3)
   optimizer = optimizers.SGD()
-  tr_vars = model1.trainable_variables + model2.trainable_variables + model3.trainable_variables
+  tr_vars = (model1.trainable_variables + model2.trainable_variables +
+             model3.trainable_variables)
   losses = []
   for _ in range(n_steps):
     with tf.GradientTape() as tape:

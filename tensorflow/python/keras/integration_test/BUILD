@@ -2,6 +2,7 @@
 #   Contains Keras integration tests that verify with other TF high level APIs.
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = [
@@ -71,7 +72,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "gradient_checkpoint_test",
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",

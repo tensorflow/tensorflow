@@ -177,7 +177,8 @@ def _test_gradients(testcase,
                     order,
                     delta=1e-3,
                     rtol=1e-2,
-                    atol=1e-6):
+                    atol=1e-6,
+                    recompute=False):
   """Tests forward/backward jacobians of `f`'s [0, `order`)-order gradients."""
   if order < 1:
     raise ValueError(
@@ -190,14 +191,20 @@ def _test_gradients(testcase,
         order=order - 1,
         delta=delta,
         rtol=rtol,
-        atol=atol)
+        atol=atol,
+        recompute=recompute)
   sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
       f, primals, delta=delta)
   testcase.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
-  sym_jac_fwd = _jacfwd(f, primals)
-  testcase.assertAllClose(num_jac, sym_jac_fwd, rtol=rtol, atol=atol)
-  # And the symbolic computations should be much closer.
-  testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
+  if not recompute:
+    sym_jac_fwd = _jacfwd(f, primals)
+    testcase.assertAllClose(num_jac, sym_jac_fwd, rtol=rtol, atol=atol)
+    # And the symbolic computations should be much closer.
+    testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
+  else:
+    with testcase.assertRaisesRegexp(ValueError,
+                                     "recompute_grad tried to transpose"):
+      sym_jac_fwd = _jacfwd(f, primals)
 
 
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
@@ -357,7 +364,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     def f(x):
       return math_ops.reduce_prod(math_ops.tanh(x)**2)
 
-    _test_gradients(self, f, [constant_op.constant([1.])], order=3)
+    _test_gradients(self,
+                    f, [constant_op.constant([1.])],
+                    order=3,
+                    recompute=True)
 
   def testExceptionInCustomGradientNotSwallowed(self):
 

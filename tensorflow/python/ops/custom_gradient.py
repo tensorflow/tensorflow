@@ -482,27 +482,42 @@ def recompute_grad(f):
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
-
     with tape_lib.stop_recording():
       result = f(*args, **kwargs)
-
+    @custom_gradient
     def grad(*dresult, **grad_kwargs):
-      """Gradient function calculation for inner function."""
-      variables = grad_kwargs.get("variables")
-      with backprop.GradientTape() as t:
-        id_args = [gen_array_ops.identity(x) for x in args]
-        t.watch(id_args)
+      """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
+
+      def grad_eval():
+        """Gradient function calculation for reverse mode autodiff."""
+        variables = grad_kwargs.get("variables")
+        with backprop.GradientTape() as t:
+          id_args = [gen_array_ops.identity(x) for x in args]
+          t.watch(id_args)
+          if variables is not None:
+            t.watch(variables)
+          with ops.control_dependencies(dresult):
+            with variable_scope.variable_scope(current_var_scope):
+              result = f(*id_args, **kwargs)
+        kw_vars = []
         if variables is not None:
-          t.watch(variables)
-        with ops.control_dependencies(dresult):
-          with variable_scope.variable_scope(current_var_scope):
-            result = f(*id_args, **kwargs)
-      kw_vars = []
-      if variables is not None:
-        kw_vars = list(variables)
-      grads = t.gradient(
-          result, list(id_args) + kw_vars, output_gradients=dresult)
-      return grads[:len(id_args)], grads[len(id_args):]
+          kw_vars = list(variables)
+        grads = t.gradient(result,
+                           list(id_args) + kw_vars,
+                           output_gradients=dresult)
+        if len(grads) == 1 and None in grads:
+          return 0
+        return grads[:len(id_args)], grads[len(id_args):]
+
+      def transpose(*t_args, **t_kwargs):
+        """Gradient function calculation for forward mode autodiff."""
+        # Just throw an error since gradients / activations are not stored on tape for recompute.
+        raise ValueError(
+            "recompute_grad tried to transpose {}."
+            "Consider not using recompute_grad in forward mode autodiff".format(
+                f.__name__))
+
+      return grad_eval(), transpose
 
     return result, grad
 
