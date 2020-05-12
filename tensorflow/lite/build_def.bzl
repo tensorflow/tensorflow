@@ -326,6 +326,7 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "resize_nearest_neighbor",
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
@@ -701,6 +702,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
+            timeout = "long",
         )
 
 def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):

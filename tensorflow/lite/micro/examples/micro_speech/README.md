@@ -545,4 +545,4 @@ with the model and sample inputs.
 
 So far you have used an existing trained model to run inference on
 microcontrollers. If you wish to train your own model, follow the instructions
-in [train/README.md](train/README.md).
+given in the [train/](train/) directory.

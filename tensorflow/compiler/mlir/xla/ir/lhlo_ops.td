@@ -92,9 +92,19 @@ def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential">, BASE_HLO_ExpOp;
 
+def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
 def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
 
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"negate">, BASE_HLO_NegOp;
+
+def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
 
@@ -102,28 +112,9 @@ def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
+def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine">, BASE_HLO_SinOp;
+
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
-
-//===----------------------------------------------------------------------===//
-// XLA complex unary elementwise op definitions.
-//===----------------------------------------------------------------------===//
-// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
-
-def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
-def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
-def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
@@ -141,6 +132,12 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add", []>, BASE_HLO_AddOp;
+
+def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide", []>, BASE_HLO_DivOp;
 

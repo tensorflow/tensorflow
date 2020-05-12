@@ -236,6 +236,40 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
+  auto ag = Cast<HloAllGatherInstruction>(hlo);
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag));
+  TF_RET_CHECK(ag->all_gather_dimension() >= 0);
+  TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
+  TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
+  if (ag->use_global_device_ids() && ag->replica_groups().empty()) {
+    return InternalError(
+        "Replica group must be specified when use_global_device_ids is true");
+  }
+
+  int64 shard_count = CeilOfRatio(
+      ag->shape().dimensions(ag->all_gather_dimension()),
+      ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
+  if (ag->channel_id().has_value()) {
+    if (ag->use_global_device_ids()) {
+      TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
+    } else {
+      if (ag->replica_groups().empty() ||
+          ag->replica_groups()[0].replica_ids_size() != 1) {
+        return InternalError(
+            "Replica group size must be 1 when use_global_device_ids is "
+            "false if the all-gather is also cross-partition");
+      }
+    }
+  } else if (!ag->replica_groups().empty()) {
+    // Cross-replica all-gather: shard count is subgroup size.
+    TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
+  }
+  return CheckShape(ag, ShapeInference::InferAllGatherShape(
+                            ag->operand(0)->shape(), ag->all_gather_dimension(),
+                            shard_count));
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(crs));
 
@@ -628,9 +662,11 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
           shape_size_function_(bitcast->operand(0)->shape())) {
     return InternalError(
         "Bitcast cannot have different shape sizes of output (%d) and operand "
-        "(%d)",
+        "(%d) (%s) (%s)",
         shape_size_function_(bitcast->shape()),
-        shape_size_function_(bitcast->operand(0)->shape()));
+        shape_size_function_(bitcast->operand(0)->shape()),
+        bitcast->shape().ToString(true),
+        bitcast->operand(0)->shape().ToString(true));
   }
   return Status::OK();
 }
@@ -697,11 +733,7 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
   for (HloInstruction* fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
-    // Since fusion buffers aren't materialized, fusion parameters will not have
-    // the same memory space as the fusion operand.
-    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape(),
-                    /*minor_to_major_only=*/false,
-                    /*ignore_memory_space=*/true)) {
+    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
       return InternalError(
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",

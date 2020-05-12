@@ -1432,6 +1432,7 @@ def huber(y_true, y_pred, delta=1.0):
   """
   y_pred = math_ops.cast(y_pred, dtype=K.floatx())
   y_true = math_ops.cast(y_true, dtype=K.floatx())
+  delta = math_ops.cast(delta, dtype=K.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
   quadratic = math_ops.minimum(abs_error, delta)

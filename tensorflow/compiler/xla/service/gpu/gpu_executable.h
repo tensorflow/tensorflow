@@ -52,8 +52,7 @@ class GpuExecutable : public Executable {
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
-  GpuExecutable(const string& text, const std::vector<uint8>& binary,
-                GpuVersion gpu_version,
+  GpuExecutable(GpuTargetBinary target_binary, GpuVersion gpu_version,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::shared_ptr<HloModule> hlo_module,
                 std::shared_ptr<const BufferAssignment> assignment,
@@ -73,12 +72,14 @@ class GpuExecutable : public Executable {
 
   // Returns the compiled code for the computation. The compiled code is PTX in
   // Cuda and unused empty string in ROCm.
-  const string& text() const { return text_; }
+  const string& text() const { return target_binary_.text; }
 
   // Returns the binary stored in this GpuExecutable. The binary is cubin in
   // Cuda, and HSA code object in ROCm. It may be empty, in which case
   // compilation is left up to the GPU driver.
-  const std::vector<uint8>& binary() const { return binary_; }
+  const std::vector<uint8>& binary() const { return target_binary_.binary; }
+
+  const GpuTargetBinary& target_binary() const { return target_binary_; }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
@@ -131,14 +132,7 @@ class GpuExecutable : public Executable {
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
 
-  // The compiled code for the computation.
-  const string text_;
-
-  // The GPU machine code for the computation, targeting GPUs at
-  // compute_capability_.
-  //
-  // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> binary_;
+  const GpuTargetBinary target_binary_;
 
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;

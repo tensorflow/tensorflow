@@ -536,6 +536,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params =
               op->builtin_options_as_ResizeNearestNeighborOptions()) {
         params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
+      } else {
+        params->align_corners = false;
+        params->half_pixel_centers = false;
       }
       *builtin_data = params.release();
       return kTfLiteOk;

@@ -274,6 +274,13 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
             (CastElementsToI64Elements $group_assignment))>;
 
 //===----------------------------------------------------------------------===//
+// All2All op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment), I64Attr:$concat_dimension, $split_dimension, $split_count),
+          (HLO_AllToAllOp $input, $split_dimension, $concat_dimension, $split_count, (CastElementsToI64Elements $group_assignment))>;
+
+//===----------------------------------------------------------------------===//
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -514,6 +521,16 @@ foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
 }
 
 //===----------------------------------------------------------------------===//
+// Reverse op patterns.
+//===----------------------------------------------------------------------===//
+
+// Handles axis conversion for TF reverse.
+def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, $1, &$_builder)">;
+
+def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
+    (HLO_ReverseOp $values, (ConvertAxisAttr $values, $axis))>;
+
+//===----------------------------------------------------------------------===//
 // Ternary op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -543,7 +560,6 @@ foreach Mapping = [
                    [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
-                   [TF_RoundOp, HLO_RoundOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],

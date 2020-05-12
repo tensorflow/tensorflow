@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -57,6 +58,42 @@ inline void FullyConnectedSparseWeight(
       }
     }
   }
+
+  for (int b = 0; b < batches; ++b) {
+    for (int i = 0; i < output_depth; ++i) {
+      float total = output_data[b * output_depth + i];
+      float bias_value = bias_data[i];
+      output_data[b * output_depth + i] = ActivationFunctionWithMinMax(
+          total + bias_value, output_activation_min, output_activation_max);
+    }
+  }
+}
+
+inline void FullyConnectedSparseWeight1x4(
+    const TfLiteSparsity& sparsity, const FullyConnectedParams& params,
+    const RuntimeShape& input_shape, const float* input_data,
+    const RuntimeShape& weights_shape, const float* weights_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data) {
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+
+  const int output_elements = output_shape.FlatSize();
+  const int output_dims_count = output_shape.DimensionsCount();
+  const int weights_dims_count = weights_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dims_count - 1);
+  const int output_depth = MatchingDim(weights_shape, weights_dims_count - 2,
+                                       output_shape, output_dims_count - 1);
+  const int* w1_segments = sparsity.dim_metadata[1].array_segments->data;
+  const int* w1_indices = sparsity.dim_metadata[1].array_indices->data;
+
+  for (int i = 0; i < output_elements; ++i) {
+    output_data[i] = 0.f;
+  }
+
+  tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate1x4(
+      weights_data, w1_segments, w1_indices, weights_shape.Dims(0),
+      weights_shape.Dims(1), input_data, batches, output_data);
 
   for (int b = 0; b < batches; ++b) {
     for (int i = 0; i < output_depth; ++i) {

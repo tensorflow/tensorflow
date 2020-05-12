@@ -164,6 +164,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   h2->Unref();
   h3->Unref();
 
+  EXPECT_EQ(packed_handle->NumPackedHandles(), 4);
   EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
   EXPECT_EQ(packed_handle->dtype, dtype);
   TensorShape packed_shape;
@@ -185,7 +186,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   const std::vector<TensorHandle::HandleType> expected_handle_types = {
       TensorHandle::LOCAL, TensorHandle::LOCAL, TensorHandle::REMOTE,
       TensorHandle::REMOTE};
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
     TensorHandle* h = nullptr;
     TF_ASSERT_OK(packed_handle->ExtractPackedHandle(i, &h));
     EXPECT_EQ(absl::get<Device*>(h->device()), ListDevices().at(i));

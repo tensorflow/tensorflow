@@ -10,6 +10,10 @@ import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 service ProfilerService {
   // Starts a profiling session, blocks until it completes, and returns data.
   rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  // Signal to terminate the Profile rpc for a on-going profiling session,
+  // The Profile rpc will return successfully and prematurely without timeout.
+  // This is used by programmatic mode to end the session in workers.
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
 }
@@ -80,6 +84,13 @@ message ProfileResponse {
   reserved 1, 2, 3, 4, 5;
   // next-field: 8
 }
+
+message TerminateRequest {
+  // Which session id to terminate.
+  string session_id = 1;
+}
+
+message TerminateResponse {}
 
 message MonitorRequest {
   // Duration for which to profile between each update.

@@ -133,6 +133,57 @@ TFE_TensorHandle* TestMatrixTensorHandle3X2(TFE_Context* ctx) {
   return th;
 }
 
+TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
+                               const tensorflow::string& device_name) {
+  TF_Status* status = TF_NewStatus();
+  // Create the variable handle.
+  TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpSetAttrShape(op, "shape", {}, 0, status);
+  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "shared_name", "", 0);
+  if (!device_name.empty()) {
+    TFE_OpSetDevice(op, device_name.c_str(), status);
+  }
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_TensorHandle* var_handle = nullptr;
+  int num_retvals = 1;
+  TFE_Execute(op, &var_handle, &num_retvals, status);
+  TFE_DeleteOp(op);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  CHECK_EQ(1, num_retvals);
+
+  // Assign 'value' to it.
+  op = TFE_NewOp(ctx, "AssignVariableOp", status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpAddInput(op, var_handle, status);
+
+  // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
+      TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)), TF_DeleteTensor);
+  memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
+
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
+      value_handle(TFE_NewTensorHandle(t.get(), status),
+                   TFE_DeleteTensorHandle);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  TFE_OpAddInput(op, value_handle.get(), status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  num_retvals = 0;
+  TFE_Execute(op, nullptr, &num_retvals, status);
+  TFE_DeleteOp(op);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  CHECK_EQ(0, num_retvals);
+
+  TF_DeleteStatus(status);
+
+  return var_handle;
+}
+
 TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   TF_Status* status = TF_NewStatus();
 

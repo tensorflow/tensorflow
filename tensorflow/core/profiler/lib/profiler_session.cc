@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
@@ -44,7 +44,7 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     const ProfileOptions& options) {
-  return WrapUnique(new ProfilerSession(options));
+  return absl::WrapUnique(new ProfilerSession(options));
 }
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {

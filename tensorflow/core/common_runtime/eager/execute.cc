@@ -367,6 +367,7 @@ Status GetOrCreateKernelAndDevice(
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
 
   std::vector<Device*> input_dev_ptrs;
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   // We can eliminate some overhead by running simple functions using regular
@@ -410,6 +411,13 @@ Status GetOrCreateKernelAndDevice(
       Device* input_device;
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
       input_dev_ptrs.push_back(input_device);
+      CompositeDevice* composite_device = nullptr;
+      if (ctx.FindCompositeDeviceFromName(input_device->name().c_str(),
+                                          &composite_device)
+              .ok()) {
+        composite_devices[input_device->name()] =
+            composite_device->underlying_devices();
+      }
       cache_key =
           FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
 
@@ -520,6 +528,7 @@ Status GetOrCreateKernelAndDevice(
 #endif  // IS_MOBILE_PLATFORM
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_dev_ptrs),
+          std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },

@@ -52,7 +52,7 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
   void ComputeAnnotations() override;
-  Status Initialize(const GpuExecutable& executable,
+  Status Initialize(const GpuTargetBinary& target_binary,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 

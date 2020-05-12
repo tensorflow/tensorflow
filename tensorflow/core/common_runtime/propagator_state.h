@@ -45,12 +45,15 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // adding them to a `TaggedNodeSeq`.
 class PropagatorState {
  public:
-  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id);
+  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id,
+                  bool vlog);
   ~PropagatorState();
 
  private:
-  // Forward declaration so that `TaggedNode` can include a `FrameState*`.
+  // Forward declaration so that `TaggedNode` can include a `FrameState*` and an
+  // `IterationState*`.
   struct FrameState;
+  struct IterationState;
 
  public:
   // A `TaggedNode` corresponds to a single invocation of a node's kernel,
@@ -59,12 +62,12 @@ class PropagatorState {
   struct TaggedNode {
     const NodeItem* node_item;
     FrameState* input_frame;
-    int64 input_iter;
+    IterationState* input_iter;
     bool is_dead;
 
     TaggedNode() = default;
-    TaggedNode(const NodeItem* node_item, FrameState* in_frame, int64 in_iter,
-               bool dead)
+    TaggedNode(const NodeItem* node_item, FrameState* in_frame,
+               IterationState* in_iter, bool dead)
         : node_item(node_item),
           input_frame(in_frame),
           input_iter(in_iter),
@@ -73,7 +76,7 @@ class PropagatorState {
     const NodeItem& get_node_item() const { return *node_item; }
 
     bool get_is_dead() const { return is_dead; }
-    int64 get_iter_num() const { return input_iter; }
+    int64 get_iter_num() const;
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -116,16 +119,18 @@ class PropagatorState {
   typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
 
  private:
+  // The state of an iteration in a particular frame.
   struct IterationState {
-    explicit IterationState(const PendingCounts* pending_counts,
+    explicit IterationState(int64 iter_num, const PendingCounts* pending_counts,
                             int total_input_tensors)
-        : input_tensors(new Entry[total_input_tensors]),
+        : iter_num(iter_num),
+          input_tensors(new Entry[total_input_tensors]),
           outstanding_ops(0),
           outstanding_frame_count(0),
           counts(*pending_counts) {  // Initialize with copy of *pending_counts
     }
 
-    // The state of an iteration.
+    const int64 iter_num;  // The index of this iteration in the enclosing loop.
 
     // One copy per iteration. For iteration k, i-th node's j-th input is in
     // input_tensors[k][immutable_state_.nodes[i].input_start + j]. An entry is
@@ -221,10 +226,10 @@ class PropagatorState {
     // frame_name.
     uint64 frame_id;
 
-    // The iteration id of its parent frame when this frame is created.
-    // -1 if there is no parent frame. The frame_name/parent_iter pair
+    // The iteration state of its parent frame when this frame is created.
+    // nullptr if there is no parent frame. The frame_name/parent_iter pair
     // uniquely identifies this FrameState.
-    int64 parent_iter = -1;
+    IterationState* parent_iter = nullptr;
 
     // The FrameState of its parent frame.
     FrameState* parent_frame = nullptr;
@@ -275,7 +280,7 @@ class PropagatorState {
     // during structured traversal: parent_frame->mu < mu.
     mutex mu;
 
-    void InitializeFrameInfo(const string& enter_name);
+    void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
     inline IterationState* GetIteration(int64 iter)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
@@ -291,28 +296,33 @@ class PropagatorState {
 
     // Decrement the outstanding op count and clean up the iterations in the
     // frame. Return true iff the execution of the frame is done.
-    bool DecrementOutstandingOps(int64 iter, TaggedNodeSeq* ready);
+    bool DecrementOutstandingOps(IterationState* iter_state,
+                                 TaggedNodeSeq* ready);
 
     // Decrement the outstanding op count and clean up the iterations in the
     // frame. Return true iff the execution of the frame is done.
-    bool DecrementOutstandingOpsLocked(int64 iter, TaggedNodeSeq* ready);
+    bool DecrementOutstandingOpsLocked(IterationState* iter_state,
+                                       TaggedNodeSeq* ready);
 
     // Returns true if the computation in the frame is completed.
     bool IsFrameDone();
 
     // Returns true if the iteration of the frame is completed.
-    bool IsIterationDone(int64 iter) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    bool IsIterationDone(IterationState* iter_state)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Increments the iteration id. If this is a new iteration, initialize it.
-    void IncrementIteration(TaggedNodeSeq* ready)
+    //
+    // Returns a pointer to the new iteration.
+    IterationState* IncrementIteration(TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate all the deferred NextIteration nodes in a new iteration.
-    void ActivateNexts(int64 iter, TaggedNodeSeq* ready)
+    void ActivateNexts(IterationState* iter_state, TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate all the current loop invariants in a new iteration.
-    void ActivateLoopInvs(int64 iter, TaggedNodeSeq* ready)
+    void ActivateLoopInvs(IterationState* iter_state, TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Add a new loop invariant and make it available to all active
@@ -322,12 +332,12 @@ class PropagatorState {
 
     // Activate the successors of a node. Contents of *outputs are left in an
     // indeterminate state after returning from this method.
-    void ActivateNodes(const NodeItem* item, const bool is_dead, int64 iter,
-                       EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    void ActivateNodes(const NodeItem* item, const bool is_dead,
+                       IterationState* iter_state, EntryVector* outputs,
+                       TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
-    // Cleanup iterations of this frame starting from iteration iter.
-    bool CleanupIterations(int64 iter, TaggedNodeSeq* ready)
+    // Cleanup iterations of this frame starting from the given iteration.
+    bool CleanupIterations(IterationState* iter_state, TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     void DumpIterationState(PropagatorState* parent) {
@@ -350,12 +360,12 @@ class PropagatorState {
    private:
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
     void ActivateNodesFastPath(const NodeItem* item, const bool is_dead,
-                               int64 iter, EntryVector* outputs,
+                               IterationState* iter_state, EntryVector* outputs,
                                TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     void ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
-                               int64 iter, EntryVector* outputs,
+                               IterationState* iter_state, EntryVector* outputs,
                                TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
   };
@@ -379,13 +389,13 @@ class PropagatorState {
   // same address while the iteration is live.
   Entry* GetInputTensors(const TaggedNode& tagged_node) const
       TF_NO_THREAD_SAFETY_ANALYSIS {
-    return tagged_node.input_frame->GetIteration(tagged_node.input_iter)
-               ->input_tensors +
+    return tagged_node.input_iter->input_tensors +
            tagged_node.node_item->input_start;
   }
 
   FrameAndIter GetFrameAndIter(const TaggedNode& tagged_node) const {
-    return {tagged_node.input_frame->frame_id, tagged_node.input_iter};
+    return {tagged_node.input_frame->frame_id,
+            tagged_node.input_iter->iter_num};
   }
 
   // Provide debugging output of the state of the executor.
@@ -397,9 +407,8 @@ class PropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(tagged_node.input_frame->mu);
-      tagged_node.input_frame->GetIteration(tagged_node.input_iter)
-          ->mark_started(
-              immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
+      tagged_node.input_iter->mark_started(
+          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
     }
   }
 
@@ -408,16 +417,15 @@ class PropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(tagged_node.input_frame->mu);
-      tagged_node.input_frame->GetIteration(tagged_node.input_iter)
-          ->mark_completed(
-              immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
+      tagged_node.input_iter->mark_completed(
+          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
     }
   }
 
  private:
   // Find an existing or create a new child frame in the frame 'frame' at
   // iteration 'iter'.
-  void FindOrCreateChildFrame(FrameState* frame, int64 iter,
+  void FindOrCreateChildFrame(FrameState* frame, IterationState* iter_state,
                               const NodeItem& node_item, FrameState** child);
 
   // Delete a frame. Called when the frame is done.
@@ -425,7 +433,7 @@ class PropagatorState {
 
   // Cleanup frames and iterations starting from frame/iter. Called when
   // a child frame is done.
-  void CleanupFramesIterations(FrameState* frame, int64 iter,
+  void CleanupFramesIterations(FrameState* frame, IterationState* iter_state,
                                TaggedNodeSeq* ready);
 
   // Provide debugging output about an outstanding iteration in the executor.
@@ -440,15 +448,20 @@ class PropagatorState {
   // The root frame in which the execution of this step is started.
   FrameState* root_frame_;
 
-  // Mapping from frame name to outstanding frames. A new frame is created
+  // Mapping from frame ID to outstanding frames. A new frame is created
   // at some iteration of an active frame. So the unique key for the new
-  // child frame is composed of the name of the parent frame, the iteration
+  // child frame is a hash composed of the ID of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  gtl::FlatMap<string, FrameState*> outstanding_frames_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<uint64, FrameState*> outstanding_frames_
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PropagatorState);
 };
+
+inline int64 PropagatorState::TaggedNode::get_iter_num() const {
+  return input_iter->iter_num;
+}
 
 }  // namespace tensorflow
 

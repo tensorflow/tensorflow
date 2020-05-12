@@ -40,6 +40,7 @@ class MicroOpResolver : public OpResolver {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == op) &&
           (registration.version == MicroOpResolverAnyVersion() ||
+           version == MicroOpResolverAnyVersion() ||
            registration.version == version)) {
         return &registration;
       }
@@ -53,6 +54,7 @@ class MicroOpResolver : public OpResolver {
       if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
           (strcmp(registration.custom_name, op) == 0) &&
           (registration.version == MicroOpResolverAnyVersion() ||
+           version == MicroOpResolverAnyVersion() ||
            registration.version == version)) {
         return &registration;
       }

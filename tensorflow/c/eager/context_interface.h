@@ -59,6 +59,20 @@ class AbstractContextInterface {
   virtual AbstractTensorInterface* CreateTensor(
       DataType dtype, absl::Span<const int64> dim_sizes) = 0;
 
+  typedef void (*MemoryReleaser)(void* data, size_t len, void* arg);
+
+  // Create a tensor instance from the given data buffer and description.
+  // `memory_releaser` will be called on destruction, and it's responsible for
+  // cleaning up the underlying buffer. `convert_string` indicates whether it
+  // has to handle tstring conversion. Expected to be removed once tstring
+  // migration is done.
+  virtual AbstractTensorInterface* CreateTensor(DataType dtype,
+                                                const int64_t* dims,
+                                                int num_dims, void* data,
+                                                size_t len, bool convert_string,
+                                                MemoryReleaser memory_releaser,
+                                                void* memory_releaser_arg) = 0;
+
   // Create a handle to wrap and manage a Tensor
   virtual AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) = 0;

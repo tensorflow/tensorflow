@@ -1,10 +1,10 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-sharding-identification | FileCheck %s --dump-input=fail
 
-// Tests empty launch func. Empty input/output sharding configuration
+// Tests empty cluster func. Empty input/output sharding configuration
 // attributes must be added.
-// CHECK-LABEL: func @check_sharding_attrs_exists_for_empty_launch_func
-func @check_sharding_attrs_exists_for_empty_launch_func() {
-  "tf_device.launch_func"() {device = "", func = @empty_func, step_marker_location = ""} : () -> ()
+// CHECK-LABEL: func @check_sharding_attrs_exists_for_empty_cluster_func
+func @check_sharding_attrs_exists_for_empty_cluster_func() {
+  "tf_device.cluster_func"() {func = @empty_func, step_marker_location = ""} : () -> ()
   // CHECK: input_sharding_configuration = []
   // CHECK: output_sharding_configuration = []
   return
@@ -21,7 +21,7 @@ func @empty_func() {
 // gets default maximal(0) sharding configuration.
 // CHECK-LABEL: func @check_default_sharding_for_block_arg_inputs_outputs
 func @check_default_sharding_for_block_arg_inputs_outputs(%arg0: tensor<*xi32>) {
-  "tf_device.launch_func"(%arg0) {device = "", func = @func_without_sharding, step_marker_location = ""} : (tensor<*xi32>) -> ()
+  "tf_device.cluster_func"(%arg0) {func = @func_without_sharding, step_marker_location = ""} : (tensor<*xi32>) -> ()
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\08\01\1A\01\01\22\01\00"]
   // CHECK: output_sharding_configuration
@@ -42,7 +42,7 @@ func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 // default maximal(0) sharding configuration.
 // CHECK-LABEL: func @check_default_sharding_for_inputs_outputs
 func @check_default_sharding_for_inputs_outputs(%arg0: tensor<*xi32>) {
-  "tf_device.launch_func"(%arg0) {device = "", func = @func_without_sharding, step_marker_location = ""} : (tensor<*xi32>) -> ()
+  "tf_device.cluster_func"(%arg0) {func = @func_without_sharding, step_marker_location = ""} : (tensor<*xi32>) -> ()
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\08\01\1A\01\01\22\01\00"]
   // CHECK: output_sharding_configuration
@@ -63,7 +63,7 @@ func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 // Tests with a input arg connected to XlaSharding op.
 // CHECK-LABEL: func @check_sharding_for_input_correctly_identified
 func @check_sharding_for_input_correctly_identified(%arg0: tensor<*xi32>) {
-  "tf_device.launch_func"(%arg0) {device = "", func = @inputs_with_sharding_func, step_marker_location = ""} : (tensor<*xi32>) -> ()
+  "tf_device.cluster_func"(%arg0) {func = @inputs_with_sharding_func, step_marker_location = ""} : (tensor<*xi32>) -> ()
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03"]
   // CHECK: output_sharding_configuration
@@ -85,7 +85,7 @@ func @inputs_with_sharding_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 // Tests with sharding is correctly parsed for multiple inputs/outputs.
 // CHECK-LABEL: func @check_sharding_for_multiple_inputs_outputs
 func @check_sharding_for_multiple_inputs_outputs(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
-  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_sharding, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  "tf_device.cluster_func"(%arg0, %arg1) {func = @func_with_sharding, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03", "\04\05\06"]
   // CHECK: output_sharding_configuration
@@ -110,7 +110,7 @@ func @func_with_sharding(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*
 // Tests with input sharding following an identity op.
 // CHECK-LABEL: func @check_sharding_after_identity
 func @check_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
-  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_sharding_after_identity, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  "tf_device.cluster_func"(%arg0, %arg1) {func = @func_with_sharding_after_identity, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03", "\04\05\06"]
   // CHECK: output_sharding_configuration
@@ -136,7 +136,7 @@ func @func_with_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1
 // Tests with input sharding following a ReadVariable op.
 // CHECK-LABEL: func @check_sharding_after_read_variable
 func @check_sharding_after_read_variable(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
-  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_sharding_after_read_variable, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  "tf_device.cluster_func"(%arg0, %arg1) {func = @func_with_sharding_after_read_variable, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03", "\04\05\06"]
   // CHECK: output_sharding_configuration
@@ -164,7 +164,7 @@ func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf.resource<tensor
 // Tests with input sharding following an identity op and cast op.
 // CHECK-LABEL: func @check_sharding_after_cast_op
 func @check_sharding_after_cast_op(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
-  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_sharding_after_cast, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  "tf_device.cluster_func"(%arg0, %arg1) {func = @func_with_sharding_after_cast, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03", "\04\05\06"]
   // CHECK: output_sharding_configuration
@@ -191,7 +191,7 @@ func @func_with_sharding_after_cast(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -
 // Tests that input sharding inside a functional op is parsed correctly.
 // CHECK-LABEL: func @check_sharding_inside_functional_op
 func @check_sharding_inside_functional_op(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
-  "tf_device.launch_func"(%arg0, %arg1) {device = "", func = @func_with_device_training_loop, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
+  "tf_device.cluster_func"(%arg0, %arg1) {func = @func_with_device_training_loop, step_marker_location = ""} : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   // CHECK: input_sharding_configuration
   // CHECK-SAME: ["\01\02\03", "\04\05\06"]
   // CHECK: output_sharding_configuration

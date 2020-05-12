@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -2589,6 +2590,21 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
   }
 };
 
+ElementsAttr ConvertAxisAttr(Value val, ElementsAttr attr, Builder *builder) {
+  auto int_attr = attr.cast<DenseIntElementsAttr>();
+  auto type = val.getType().cast<ShapedType>();
+
+  SmallVector<int64_t, 6> axis;
+  axis.reserve(int_attr.getNumElements());
+
+  int64_t rank = type.getRank();
+  for (auto val : int_attr.getValues<APInt>()) {
+    axis.push_back((val.getSExtValue() + rank) % rank);
+  }
+
+  return builder->getI64TensorAttr(axis);
+}
+
 /// Converts the LinSpace tensorflow op to a xla_hlo.iota op with a scaling
 /// and offset applied to generate the linspace values. The output tensor needs
 /// to have a static shape.  The implementation is defined in C++ because there
@@ -4181,6 +4197,68 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
   }
 };
 
+// Converts a TF InplaceUpdate op to DynamicUpdateSlice HLO.
+class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::InplaceUpdateOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.x();
+    auto indices = op.i();
+    auto updates = op.v();
+
+    // Slice each row of `i` and `v` to perform a separate dynamic-update-slice
+    // on the contents of `x`.
+    auto input_type = input.getType().cast<ShapedType>();
+    auto updates_type = updates.getType().cast<ShapedType>();
+    auto indices_type = indices.getType().cast<ShapedType>();
+    if (!indices_type.hasStaticShape()) return failure();
+
+    if (indices_type.getRank() != 1) return failure();
+
+    SmallVector<Type, 4> unpacked_indices_type(
+        indices_type.getDimSize(0),
+        RankedTensorType::get({}, indices_type.getElementType()));
+    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(64), 0);
+    auto unpacked_indices = rewriter.create<TF::UnpackOp>(
+        op.getLoc(), unpacked_indices_type, indices, zero_attr);
+
+    SmallVector<int64_t, 4> split_updates_shape;
+    split_updates_shape.append(updates_type.getShape().begin(),
+                               updates_type.getShape().end());
+    split_updates_shape.front() = 1;
+    SmallVector<Type, 4> split_updates_type;
+    split_updates_type.resize(
+        updates_type.getShape().front(),
+        RankedTensorType::get(split_updates_shape,
+                              updates_type.getElementType()));
+
+    auto cst =
+        rewriter.create<xla_hlo::ConstOp>(op.getLoc(), zero_attr).getResult();
+    auto split_updates = rewriter.create<TF::SplitOp>(
+        op.getLoc(), split_updates_type, cst, updates);
+
+    SmallVector<Value, 6> input_indices;
+    input_indices.resize(input_type.getRank(), cst);
+
+    SmallVector<int64_t, 6> starts(updates_type.getRank(), 0);
+    SmallVector<int64_t, 6> strides(updates_type.getRank(), 1);
+    SmallVector<int64_t, 6> limits(updates_type.getShape().begin(),
+                                   updates_type.getShape().end());
+
+    for (auto pair :
+         llvm::zip(unpacked_indices.output(), split_updates.output())) {
+      input_indices.front() = std::get<0>(pair);
+      input = rewriter.create<xla_hlo::DynamicUpdateSliceOp>(
+          op.getLoc(), op.getType(), input, std::get<1>(pair), input_indices);
+    }
+
+    rewriter.replaceOp(op, input);
+    return success();
+  }
+};
+
 // Converts a TF XlaDynamicUpdateSlice op to DynamicUpdateSlice HLO.
 class ConvertXlaDynamicUpdateSliceOp
     : public OpRewritePattern<TF::XlaDynamicUpdateSliceOp> {
@@ -4785,6 +4863,62 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Emits debug information which includes the number of ops of each type which
+// failed to legalize.
+void EmitLegalizationErrors(Operation *op,
+                            const DenseSet<Operation *> &nonlegalized_ops) {
+  // Track the legalization failures by mapping op name to information about
+  // that failure: the number of unlegalized occurances of the op, and one
+  // example operation that failed.
+  std::map<StringRef, std::pair<int, Operation *>> op_name_to_error_info;
+  DenseSet<Operation *> error_ops;
+  for (Operation *nonlegalized_op : nonlegalized_ops) {
+    // Increment count of this legalization failure.
+    StringRef op_name = nonlegalized_op->getName().getStringRef();
+    // If this emplace is successful, it's the first time we've encountered
+    // this op type. Initialize count to 0 so that after increment, it is 1.
+    auto insertion_result = op_name_to_error_info.emplace(
+        op_name, std::make_pair(0, nonlegalized_op));
+    ++insertion_result.first->second.first;
+  }
+  std::vector<std::string> error_messages;
+  error_messages.reserve(op_name_to_error_info.size());
+  for (const auto &op_info : op_name_to_error_info) {
+    error_messages.push_back(
+        llvm::formatv("{0} (count: {1})", op_info.first, op_info.second.first));
+  }
+  Location loc = op->getLoc();
+  emitError(loc) << "The following operations cannot be legalized: "
+                 << llvm::join(error_messages, "; ")
+                 << ". These legalization failure(s) may be due to missing TF "
+                    "to HLO lowerings and/or unsupported attributes, etc.";
+  // Emit more information about the missing ops. This error message
+  // contains useful details beyond the op name (input and output shapes,
+  // attributes, etc.).
+  if (!VLOG_IS_ON(1) && nonlegalized_ops.size() != 1) {
+    emitError(loc)
+        << "Emitting more detail about one op that failed to legalize...";
+  } else if (VLOG_IS_ON(1)) {
+    emitError(loc) << "Emitting more detail about one of each type of op "
+                      "that failed to legalize...";
+  }
+  for (const auto &op_info : op_name_to_error_info) {
+    op_info.second.second->emitOpError() << "is not legalizable";
+    if (!VLOG_IS_ON(1)) break;
+  }
+}
+
+// Performs the lowering to XLA dialect.
+void LegalizeTF::runOnFunction() {
+  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
+    signalPassFailure();
+}
+
+static PassRegistration<LegalizeTF> pass(
+    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
+
+}  // end namespace
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -4806,12 +4940,13 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv3DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
       ConvertEinsumOp, ConvertFusedBatchNormGradOp,
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPoolOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
@@ -4830,22 +4965,20 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
     target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
-    return applyFullConversion(op, target, patterns);
+    DenseSet<Operation *> nonlegalized_ops;
+    LogicalResult result = applyPartialConversion(
+        op, target, patterns, /*converter=*/nullptr, &nonlegalized_ops);
+    // In order to enforce that the conversion result is fully converted,
+    // fail if there are any nonlegalized ops in the set.
+    if (failed(result) || !nonlegalized_ops.empty()) {
+      EmitLegalizationErrors(op, nonlegalized_ops);
+      return failure();
+    }
+    return result;
   }
 
   return applyPartialConversion(op, target, patterns);
 }
-
-/// Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_)))
-    signalPassFailure();
-}
-
-static PassRegistration<LegalizeTF> pass(
-    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
-
-}  // end namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {

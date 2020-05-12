@@ -95,6 +95,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // XLA unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
+
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
       Type TensorType>: HLO_Op<mnemonic,
         !listconcat(traits, [InferShapedTypeOpInterface])> {
@@ -103,8 +104,7 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     let extraClassDeclaration = [{
       static  LogicalResult inferReturnTypeComponents(
           MLIRContext* context, Optional<Location> location,
-          ValueRange operands, ArrayRef<NamedAttribute> attributes,
-          RegionRange regions,
+          ValueRange operands, DictionaryAttr attributes, RegionRange regions,
           SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
         return failure();
       }
@@ -161,6 +161,16 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
+def HLO_ImagOp: HLO_Op<
+    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
+  let builders = [OpBuilder<
+    "OpBuilder &, OperationState &tblgen_state, Value val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
+}
+
 def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
     [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
     BASE_HLO_IsFiniteOp {
@@ -188,6 +198,16 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_PopulationCountOp;
 
+def HLO_RealOp: HLO_Op<
+    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
+  let builders = [OpBuilder<
+    "OpBuilder &, OperationState &tblgen_state, Value val">];
+
+  let arguments = (ins HLO_ComplexTensor);
+  let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
+}
+
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
 
@@ -209,50 +229,14 @@ def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     BASE_HLO_SqrtOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType],
+    [NoSideEffect, SameOperandsAndResultType],
     HLO_FpOrComplexTensor>, BASE_HLO_TanhOp;
-
-//===----------------------------------------------------------------------===//
-// XLA complex unary elementwise op definitions.
-//===----------------------------------------------------------------------===//
-// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
-
-def HLO_ComplexOp: HLO_Op<"complex",
-    [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
-    BASE_HLO_ComplexOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value lhs, Value rhs">];
-
-  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
-  let results = (outs HLO_ComplexTensor);
-  let hasFolder = 1;
-}
-
-def HLO_ImagOp: HLO_Op<
-    "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
-  let results = (outs HLO_FpTensor);
-  let hasFolder = 1;
-}
-
-def HLO_RealOp: HLO_Op<
-    "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value val">];
-
-  let arguments = (ins HLO_ComplexTensor);
-  let results = (outs HLO_FpTensor);
-  let hasFolder = 1;
-}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
-
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
+
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface])> {
   let arguments = (ins
@@ -269,7 +253,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
   let extraClassDeclaration = [{
     static  LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location, ValueRange operands,
-        ArrayRef<NamedAttribute> attributes, RegionRange regions,
+        DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
       return failure();
     }
@@ -292,6 +276,17 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
+
+def HLO_ComplexOp: HLO_Op<"complex",
+    [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
+    BASE_HLO_ComplexOp {
+  let builders = [OpBuilder<
+    "OpBuilder &, OperationState &tblgen_state, Value lhs, Value rhs">];
+
+  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let results = (outs HLO_ComplexTensor);
+  let hasFolder = 1;
+}
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp {

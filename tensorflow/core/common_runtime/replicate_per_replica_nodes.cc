@@ -195,6 +195,9 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
   for (Node* n : graph->op_nodes()) {
     if (composite_device_names.find(n->assigned_device_name()) !=
         composite_device_names.end()) {
+      // TODO(b/145922293): Validate that an _Arg node assigned to a
+      // CompositeDevice should have an attribute indicating that the _Arg node
+      // represents a packed input.
       composite_device_to_cluster_nodes[n->assigned_device_name()].push_back(n);
     }
   }

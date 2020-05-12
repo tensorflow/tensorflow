@@ -150,15 +150,6 @@ class BASE_HLO_ClzOp {
   }];
 }
 
-class BASE_HLO_ComplexOp {
-  string summary = "Complex operator";
-
-  string description = [{
-    Performs element-wise conversion of a pair of real and imaginary values to
-    a complex value.
-  }];
-}
-
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -397,6 +388,15 @@ class BASE_HLO_AddOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
   }];
 }
 

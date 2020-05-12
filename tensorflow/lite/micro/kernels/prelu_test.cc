@@ -154,14 +154,14 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(FloatPreluActivationsOpTest) {
   const int output_dims_count = 12;
   float output_data[output_dims_count];
-  tflite::testing::TestPreluFloat({4, 1, 2, 2, 3},  // input shape
+  tflite::testing::TestPreluFloat({1, 2, 2, 3},  // input shape
                                   {
                                       0.0f, 0.0f, 0.0f,     // Row 1, Column 1
                                       1.0f, 1.0f, 1.0f,     // Row 1, Column 2
                                       -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
                                       -2.0f, -2.0f, -2.0f,  // Row 1, Column 2
                                   },
-                                  {3, 1, 1, 3},        // alpha shape
+                                  {1, 1, 1, 3},        // alpha shape
                                   {0.0f, 1.0f, 2.0f},  // alpha values
                                   {
                                       0.0f, 0.0f, 0.0f,    // Row 1, Column 1
@@ -169,7 +169,7 @@ TF_LITE_MICRO_TEST(FloatPreluActivationsOpTest) {
                                       0.0f, -1.0f, -2.0f,  // Row 2, Column 1
                                       0.0f, -2.0f, -4.0f,  // Row 1, Column 2
                                   },
-                                  {4, 1, 2, 2, 3},  // output shape
+                                  {1, 2, 2, 3},  // output shape
                                   output_data);
 }
 
@@ -182,13 +182,13 @@ TF_LITE_MICRO_TEST(QuantizedPreluActivationsOpTest) {
   const int output_dims_count = 12;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(
-      {4, 1, 2, 2, 3},  // input shape
+      {1, 2, 2, 3},  // input shape
       {F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax),
        F2Q(0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax),
        F2Q(-1.0f, kMin, kMax), F2Q(-1.0f, kMin, kMax), F2Q(-1.0f, kMin, kMax),
        F2Q(-0.25f, kMin, kMax), F2Q(-0.25f, kMin, kMax),
        F2Q(-0.25f, kMin, kMax)},
-      kMin, kMax, {3, 1, 1, 3},  // alpha shape
+      kMin, kMax, {1, 1, 1, 3},  // alpha shape
       {F2Q(0.0f, kMin, kMax), F2Q(0.5f, kMin, kMax), F2Q(-0.5f, kMin, kMax)},
       kMin, kMax,
       {F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax),
@@ -196,7 +196,7 @@ TF_LITE_MICRO_TEST(QuantizedPreluActivationsOpTest) {
        F2Q(0.0f, kMin, kMax), F2Q(-0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax),
        F2Q(0.0f, kMin, kMax), F2Q(-0.125f, kMin, kMax),
        F2Q(0.125f, kMin, kMax)},
-      {4, 1, 2, 2, 3},  // output shape
+      {1, 2, 2, 3},  // output shape
       kMin, kMax, output_data);
 }
 

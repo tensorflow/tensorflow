@@ -728,7 +728,9 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
@@ -773,7 +775,9 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));

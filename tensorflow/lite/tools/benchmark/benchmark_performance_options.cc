@@ -334,7 +334,7 @@ void BenchmarkPerformanceOptions::Run() {
   // profiling listener etc. in each Run() invoke because such listeners may be
   // reset and become invalid in the next Run(). As a result, we record the
   // number of externally-added listeners here to prevent they're cleared later.
-  const int num_external_listners = single_option_run_->NumListeners();
+  const int num_external_listeners = single_option_run_->NumListeners();
 
   // Now perform all runs, each with different performance-affecting parameters.
   for (const auto& run_params : all_run_params_) {
@@ -349,7 +349,7 @@ void BenchmarkPerformanceOptions::Run() {
 
     // Clear internally created listeners before each run but keep externally
     // created ones.
-    single_option_run_->RemoveListeners(num_external_listners);
+    single_option_run_->RemoveListeners(num_external_listeners);
 
     all_run_stats_->MarkBenchmarkStart(*single_option_run_params_);
     single_option_run_->Run();

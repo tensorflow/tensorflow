@@ -541,6 +541,14 @@ TF_CAPI_EXPORT extern TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx,
 TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
     TFE_Context* ctx, TF_Tensor* t, TF_Status* status);
 
+// Create a packed TensorHandle with the given list of TensorHandles.
+// If `handles` are on the same device, assign the same device to the packed
+// handle; if `handles` are on different deivces, assign a CompositeDevice to
+// it.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_CreatePackedTensorHandle(
+    TFE_Context* ctx, TFE_TensorHandle** handles, int* num_handles,
+    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
 
-#include "absl/strings/str_split.h"
+#include <string>
+
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"

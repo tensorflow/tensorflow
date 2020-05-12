@@ -81,6 +81,8 @@ struct NodeItem {
                                                      // of any output edge is a
                                                      // merge or control trigger
                                                      // node.
+  bool is_any_input_ref_typed : 1;  // True iff any IsRefType(dt) for dt in this
+                                    // node's input types.
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;

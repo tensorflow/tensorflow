@@ -295,11 +295,9 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return std::make_pair(cc_major, cc_minor);
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::CompileTargetBinary(const HloModule* module,
-                                   llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec) {
+StatusOr<GpuTargetBinary> NVPTXCompiler::CompileTargetBinary(
+    const HloModule* module, llvm::Module* llvm_module, GpuVersion gpu_version,
+    se::StreamExecutor* stream_exec) {
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
 
@@ -340,8 +338,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
       stream_exec, ptx, compute_capability.first, compute_capability.second,
       module->config());
 
-  return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
-                                                    std::move(cubin));
+  return GpuTargetBinary{std::move(ptx), std::move(cubin)};
 }
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
@@ -402,10 +399,25 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                   "using $PATH.",
                   hlo_module_config);
             }
+            CHECK(hlo_module_config.debug_options()
+                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found())
+                << "There was an error when trying to compile ptx into sass "
+                   "code. If you want to try falling back to the GPU driver to "
+                   "jit compile ptx, you can use the flag "
+                   "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found."
+                   " Use at your own risk though, it has known drawbacks like "
+                   "increased memory consumption.";
           } else {
             LOG(ERROR) << "Error during compilation of ptx to sass: "
-                       << maybe_cubin.status()
-                       << ". Falling back to the GPU driver.";
+                       << maybe_cubin.status();
+            CHECK(hlo_module_config.debug_options()
+                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_error())
+                << "There was an error when trying to compile ptx into sass "
+                   "code. If you want to try falling back to the GPU driver to "
+                   "jit compile ptx, you can use the flag "
+                   "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_error."
+                   " Use at your own risk though, it has known drawbacks like "
+                   "increased memory consumption.";
           }
 
           // We're going to use the driver to JIT our PTX->SASS, so warn if

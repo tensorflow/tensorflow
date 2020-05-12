@@ -173,6 +173,11 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   AbstractTensorInterface* CreateTensor(
       DataType dtype, absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
+                                        int num_dims, void* data, size_t len,
+                                        bool convert_string,
+                                        MemoryReleaser memory_releaser,
+                                        void* memory_releaser_arg) override;
 
   AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) override;
@@ -482,6 +487,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   std::vector<const FunctionDef*> ListRegisteredFunctions();
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
+
+  Status FindCompositeDeviceFromName(const char* device_name,
+                                     CompositeDevice** device) const;
 
   Status FindCustomDeviceFromName(const string& device_name,
                                   CustomDevice** dev) const;

@@ -594,7 +594,7 @@ inline void LstmStepHybrid(
       num_row_sums += use_cifg ? 3 : 4;
     }
     if (projection_weights_ptr != nullptr) {
-      num_row_sums += ceil(n_output / n_cell);
+      num_row_sums += ceil(static_cast<float>(n_output) / n_cell);
     }
     TF_LITE_ASSERT(row_sums_size == num_row_sums);
     input_to_input_row_sums = row_sums;
@@ -744,7 +744,6 @@ inline void LstmStepHybrid(
         forget_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
         accum_scratch_ptr, aux_input_to_forget_row_sums, compute_row_sums,
         context);
-    row_sums += n_cell;
 
     for (int b = 0; b < n_batch; ++b) {
       product_scaling_factors[b] =

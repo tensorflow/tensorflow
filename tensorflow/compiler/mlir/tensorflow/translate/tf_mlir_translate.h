@@ -64,7 +64,8 @@ mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
 // given MLIR `context`.
 mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context);
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
 
 }  // namespace tensorflow
 

@@ -517,6 +517,7 @@ package_group(
         "//perftools/accelerators/xprof/api/...",
         "//third_party/py/autograph/...",
         "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",

@@ -99,7 +99,8 @@ LEGACY_RANDOM_OPS = [
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
     "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
     "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-    "EnqueueTPUEmbeddingSparseTensorBatch"
+    "EnqueueTPUEmbeddingSparseTensorBatch",
+    "EnqueueTPUEmbeddingRaggedTensorBatch"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 

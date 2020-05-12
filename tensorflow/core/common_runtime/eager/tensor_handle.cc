@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -123,6 +124,10 @@ string TensorHandle::PackedTensorHandleData::DebugString() const {
   return debug_str;
 }
 
+int TensorHandle::PackedTensorHandleData::NumPackedHandles() const {
+  return handles_.size();
+}
+
 Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
     const int index, TensorHandle** handle) const {
   if (index < 0 || index >= handles_.size()) {
@@ -182,6 +187,13 @@ Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
     *result = resource_handle_info_.allowed_devices;
   };
   return GetResourceHandleInfoImpl(get_resource_info);
+}
+
+int TensorHandle::NumPackedHandles() const {
+  if (Type() != PACKED) {
+    return 0;
+  }
+  return absl::get<PackedTensorHandleData>(data_).NumPackedHandles();
 }
 
 Status TensorHandle::ExtractPackedHandle(const int index,
@@ -314,8 +326,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
       return errors::InvalidArgument(
           "CustomDevice is not supported for packing.");
     } else {
-      devices.push_back(
-          absl::get<Device*>(handle->DeviceOrHostCPU(*ctx))->name());
+      devices.push_back(handle->op_device() ? handle->op_device()->name()
+                                            : ctx->HostCPU()->name());
     }
   }
 
@@ -660,8 +672,8 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::RemoteAddress(const Device* d, int64* op_id,
-                                   int32* output_num) const {
+Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
+                                             int32* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -669,9 +681,7 @@ Status TensorHandle::RemoteAddress(const Device* d, int64* op_id,
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      *op_id = mirror->second.op_id();
-      *output_num = mirror->second.output_num();
-      return Status::OK();
+      return mirror->second.OpIdAndOutputNumUntilReady(op_id, output_num);
     }
 
     return errors::FailedPrecondition(
@@ -683,10 +693,7 @@ Status TensorHandle::RemoteAddress(const Device* d, int64* op_id,
   }
 
   auto& data = absl::get<RemoteTensorHandleData>(data_);
-  *op_id = data.op_id();
-  *output_num = data.output_num();
-
-  return Status::OK();
+  return data.OpIdAndOutputNumUntilReady(op_id, output_num);
 }
 
 bool TensorHandle::HasRemoteMirror(const Device* d,
@@ -735,7 +742,7 @@ Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
   mutex_lock l(mu_);
   auto remote_mirror = remote_mirrors_.find(d->name());
   if (remote_mirror != remote_mirrors_.end()) {
-    if (remote_mirror->second.context_view_id() == ctx->GetContextId()) {
+    if (remote_mirror->second.context_view_id() >= ctx->GetContextId()) {
       return errors::Internal("Attempted to duplicate a remote mirror.");
     }
     // Remove stale mirror
@@ -777,16 +784,24 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
            << " " << d->name();
 
   if (VariantDeviceIsCustom(device_) || d != absl::get<Device*>(device_)) {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     auto remote_mirror = remote_mirrors_.find(d->name());
-    if (remote_mirror != remote_mirrors_.end()) {
-      auto& mirror = remote_mirror->second;
-      if (mirror.context_view_id() == context_view_id) {
-        return mirror.SetShape(shape);
-      }
-      remote_mirrors_.erase(remote_mirror);
+    if (remote_mirror == remote_mirrors_.end()) {
+      return Status::OK();
     }
-
+    auto& mirror = remote_mirror->second;
+    if (mirror.context_view_id() == context_view_id) {
+      return mirror.SetShape(shape);
+    } else if (mirror.context_view_id() < context_view_id) {
+      return errors::Internal(
+          absl::Substitute("Unexpected context_view_id ($0) which should not "
+                           "be newer than the "
+                           "one ($1) associated to the remote mirror.",
+                           context_view_id, mirror.context_view_id()));
+    } else {
+      LOG(WARNING) << "SetRemoteShape is ignored for a remote mirror that is "
+                      "accociated with a newer context_view_id.";
+    }
     return Status::OK();
   }
 

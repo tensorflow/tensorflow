@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -29,8 +30,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-class GpuExecutable;
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -97,7 +96,7 @@ class Thunk {
   // This may be called multiple times.  Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
-  virtual Status Initialize(const GpuExecutable& /*executable*/,
+  virtual Status Initialize(const GpuTargetBinary& /*target_binary*/,
                             se::StreamExecutor* /*executor*/) {
     return Status::OK();
   }

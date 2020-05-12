@@ -501,40 +501,49 @@ LogicalResult FoldOperandsPermutation(
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Utility methods that returns Identity value to use for selected ops.
-
-APFloat GetIdentity(AddV2Op op) { return APFloat(0.0f); }
-APFloat GetIdentity(SubOp op) { return APFloat(0.0f); }
-APFloat GetIdentity(MulOp op) { return APFloat(1.0f); }
-APFloat GetIdentity(DivOp op) { return APFloat(1.0f); }
-
 // Folder that returns LHS of an Arithmetic Op if the RHS is a constant
 // known to be Identity (e.g X+0)
-template <typename OP>
-OpFoldResult TrivialArithmeticOpFolder(OP arithmetic_op) {
-  DenseFPElementsAttr rhs_value;
-  auto constant_val = arithmetic_op.y();
-  if (!matchPattern(constant_val, m_Constant(&rhs_value))) {
-    return {};
-  }
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, AddV2Op, SubOp, MulOp, DivOp>::value>::type * = nullptr>
+OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
+                                        ArrayRef<Attribute> operands) {
   auto result_op_type = arithmetic_op.getResult().getType();
-  auto lhs_type = arithmetic_op.x().getType();
-  if (!result_op_type.template isa<ShapedType>() ||
-      !lhs_type.template isa<ShapedType>() ||
-      !result_op_type.template cast<ShapedType>().hasStaticShape()) {
-    return {};
-  }
+  auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
+  if (!result_op_type.template cast<ShapedType>().hasStaticShape()) return {};
+
   // We only handle non-broadcastable case.
   if (result_op_type != lhs_type) {
     return {};
   }
-  auto identity_val = GetIdentity(arithmetic_op);
-  for (auto it = rhs_value.float_value_begin();
-       it != rhs_value.float_value_end(); ++it) {
-    if (*it != identity_val) return {};
+
+  // Mul and Div ops have identity value one while AddV2 and SubOp have identity
+  // value zero.
+  int identity =
+      (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value);
+
+  Type element_ty = lhs_type.getElementType();
+  Attribute identity_attr;
+  if (auto ty = element_ty.template dyn_cast<FloatType>()) {
+    identity_attr = FloatAttr::get(ty, static_cast<double>(identity));
+  } else if (auto ty = element_ty.template dyn_cast<IntegerType>()) {
+    identity_attr = IntegerAttr::get(ty, static_cast<int64_t>(identity));
+  } else {
+    return {};
   }
 
-  return arithmetic_op.x();
+  if (auto attr = operands[1].dyn_cast_or_null<DenseElementsAttr>()) {
+    if (attr.isSplat() && attr.getSplatValue() == identity_attr)
+      return arithmetic_op.x();
+  }
+
+  bool is_symmetric =
+      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+  if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
+    if (is_symmetric && attr.isSplat() && attr.getSplatValue() == identity_attr)
+      return arithmetic_op.y();
+  }
+  return {};
 }
 }  // namespace
 
@@ -570,7 +579,7 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
-  return TrivialArithmeticOpFolder<AddV2Op>(*this);
+  return IdentityArithmeticOpFolder<AddV2Op>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -975,20 +984,17 @@ void ConstOp::build(OpBuilder &builder, OperationState &result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  for (NamedAttribute named_attr : attributes) {
-    if (named_attr.first.strref() != "value") continue;
-    auto value = named_attr.second;
-    if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
-      inferredReturnTypes.assign({elem_attr.getType()});
-      return success();
-    }
-    return emitOptionalError(location,
-                             "attribute 'value' failed to satisfy constraint: "
-                             "constant vector/tensor");
+  auto value = attributes.get("value");
+  if (!value) return emitOptionalError(location, "missing attribute 'value'");
+  if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
+    inferredReturnTypes.assign({elem_attr.getType()});
+    return success();
   }
-  return emitOptionalError(location, "missing attribute 'value'");
+  return emitOptionalError(location,
+                           "attribute 'value' failed to satisfy constraint: "
+                           "constant vector/tensor");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1320,7 +1326,7 @@ void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
-  return TrivialArithmeticOpFolder<DivOp>(*this);
+  return IdentityArithmeticOpFolder<DivOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1452,15 +1458,19 @@ OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
   auto type = getResult().getType().cast<ShapedType>();
   auto etype = type.getElementType();
 
+  // We can not fold if the result is not static.
+  if (!type.hasStaticShape()) return {};
+
   if (auto float_type = etype.dyn_cast<FloatType>()) {
     auto out_type = RankedTensorType::get(out_shape, float_type);
     return DenseElementsAttr::get(out_type,
                                   {APFloat(float_type.getFloatSemantics())});
   }
 
-  if (etype.isa<IntegerType>()) {
+  if (auto int_type = etype.dyn_cast<IntegerType>()) {
     auto out_type = RankedTensorType::get(out_shape, etype);
-    return DenseElementsAttr::get<int64_t>(out_type, 0);
+    APInt val(int_type.getWidth(), 0, int_type.getSignedness());
+    return DenseElementsAttr::get(out_type, val);
   }
 
   return {};
@@ -2026,7 +2036,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
-  return TrivialArithmeticOpFolder<MulOp>(*this);
+  return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2998,7 +3008,7 @@ void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
-  return TrivialArithmeticOpFolder<SubOp>(*this);
+  return IdentityArithmeticOpFolder<SubOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//

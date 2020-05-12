@@ -655,15 +655,15 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )
@@ -996,6 +996,8 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -8047,14 +8049,14 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )
