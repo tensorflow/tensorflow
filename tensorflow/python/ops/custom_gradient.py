@@ -512,8 +512,8 @@ def recompute_grad(f):
       def transpose(*t_args, **t_kwargs):
         """Gradient function calculation for forward mode autodiff."""
         # Just throw an error since gradients / activations are not stored on tape for recompute.
-        raise ValueError(
-            "recompute_grad tried to transpose {}."
+        raise NotImplementedError(
+            "recompute_grad tried to transpose grad of {}. "
             "Consider not using recompute_grad in forward mode autodiff".format(
                 f.__name__))
 
