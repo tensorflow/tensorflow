@@ -25,7 +25,7 @@ from __future__ import print_function
 import os
 
 
-_force_enable = None
+_force_enable = True
 
 
 def enable():
