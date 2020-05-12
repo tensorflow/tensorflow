@@ -985,6 +985,7 @@ LogicalResult ConvertToHloModule::Lower(
   if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
     return LowerFunctionCall(&call_op, builder, &value_map);
   }
+
   if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
     Value operand = op.getOperand();
     auto ty = operand.getType().dyn_cast<ShapedType>();

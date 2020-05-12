@@ -1301,7 +1301,6 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     int64 feature_group_count, int64 batch_group_count,
     const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_RETURN_IF_ERROR(
@@ -1314,28 +1313,43 @@ XlaOp XlaBuilder::ConvGeneralDilated(
       window_dimensions[i] =
           rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
     }
-    TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
+
+    TF_ASSIGN_OR_RETURN(Window window,
                         ShapeInference::InferWindowFromDimensions(
                             window_dimensions, window_strides, padding,
                             lhs_dilation, rhs_dilation));
-
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferConvolveShape(
-                         *lhs_shape, *rhs_shape, feature_group_count,
-                         batch_group_count, instr.window(), dimension_numbers));
-    *instr.mutable_shape() = shape.ToProto();
-
-    *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
-    instr.set_feature_group_count(feature_group_count);
-    instr.set_batch_group_count(batch_group_count);
-
-    if (precision_config != nullptr) {
-      *instr.mutable_precision_config() = *precision_config;
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kConvolution,
-                          {lhs, rhs});
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferConvolveShape(
+                            *lhs_shape, *rhs_shape, feature_group_count,
+                            batch_group_count, window, dimension_numbers));
+    return ConvGeneralDilatedInternal(shape, lhs, rhs, window, window_strides,
+                                      padding, lhs_dilation, rhs_dilation,
+                                      dimension_numbers, feature_group_count,
+                                      batch_group_count, precision_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ConvGeneralDilatedInternal(
+    const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+
+  *instr.mutable_window() = window;
+  *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+  instr.set_feature_group_count(feature_group_count);
+  instr.set_batch_group_count(batch_group_count);
+
+  if (precision_config != nullptr) {
+    *instr.mutable_precision_config() = *precision_config;
+  }
+
+  return AddInstruction(std::move(instr), HloOpcode::kConvolution, {lhs, rhs});
 }
 
 XlaOp XlaBuilder::Fft(XlaOp operand, const FftType fft_type,

@@ -165,6 +165,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::TruncateModOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::XdivyOp>(),
+    TypeID::get<TF::XlaConvOp>(),
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
