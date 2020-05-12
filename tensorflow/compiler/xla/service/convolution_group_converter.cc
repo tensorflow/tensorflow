@@ -411,6 +411,10 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 }
 
 Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
+  if (is_cost_viable_(convolution)) {
+    return Status::OK();
+  }
+  
   if (convert_batch_groups_only_) {
     return HandleBatchGroupCount(convolution);
   }

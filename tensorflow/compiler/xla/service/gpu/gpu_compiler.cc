@@ -152,17 +152,12 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<Convolution4DExpander>();
 
-    auto cost_model = [](HloInstruction* conv) {
-      auto operand = conv->operand(0);
-      return operand->shape().dimensions(conv->convolution_dimension_numbers()
-                                             .input_batch_dimension()) ==
-             conv->batch_group_count();
-    };
+    auto cost_model = [](HloInstruction* conv) { return true; };
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
 
     // We use the ConvolutionGroupConverter to convert backprops of filter
     // grouped convolutions into non-grouped equivalents.
-    auto batch_group_cost_model = [](HloInstruction*) { return false; };
+    auto batch_group_cost_model = [](HloInstruction*) { return true; };
 
     pipeline.AddPass<ConvolutionGroupConverter>(
         batch_group_cost_model,

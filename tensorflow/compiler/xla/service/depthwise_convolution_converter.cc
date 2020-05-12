@@ -190,6 +190,9 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(
 }
 
 Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
+  if (is_cost_viable_(convolution)) {
+    return Status::OK();
+  }
   return HandleBackwardFilterBatchGroupConvolution(convolution);
 }
 
