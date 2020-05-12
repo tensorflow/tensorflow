@@ -164,7 +164,7 @@ after if
 #### Python values modified in TensorFlow control flow become Tensors
 
 If a symbol is modified in a TensorFlow control flow statement, then it becomes
-a `tf.Tensor`, even if it started off as a Python promitive value.
+a `tf.Tensor`, even if it started off as a Python primitive value.
 
 For example, the conditional below will run as a `tf.cond` (its condition is a
 `tf.Tensor`), which in turn will cause `i` to become a `tf.Tensor`.
