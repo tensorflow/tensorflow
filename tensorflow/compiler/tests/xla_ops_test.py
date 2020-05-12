@@ -80,7 +80,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
 
-  @test_util.disable_mlir_bridge('Dynamic result types not supported')
+  @test_util.disable_mlir_bridge(
+      'TODO(b/156174708): Dynamic result types not supported')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -92,7 +93,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
-  @test_util.disable_mlir_bridge('Dynamic result types not supported')
+  @test_util.disable_mlir_bridge(
+      'TODO(b/156174708): Dynamic result types not supported')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -194,8 +196,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.array([1, 2, 3], dtype=dtype),),
           expected=np.array([-1, -2, -3], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      'Requires XlaPad op shape inference to have static result types')
   def testPad(self):
     for dtype in self.numeric_types:
 
