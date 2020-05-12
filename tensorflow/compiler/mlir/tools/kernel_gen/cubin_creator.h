@@ -30,11 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace kernel_gen {
-xla::StatusOr<std::vector<uint8>> GenerateCubinForTfCode(
-    llvm::StringRef tf_code, std::pair<int, int> compute_capability = {7, 5},
-    llvm::ArrayRef<unsigned> tile_sizes = {16, 64},
-    llvm::ArrayRef<unsigned> same_shape = {},
-    llvm::ArrayRef<unsigned> unroll_factors = {});
+xla::StatusOr<std::vector<uint8_t>> GenerateCubinForTfCode(
+    llvm::StringRef tf_code,
+    std::pair<int32_t, int32_t> compute_capability = {7, 5},
+    llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
+    llvm::ArrayRef<uint32_t> same_shape = {},
+    llvm::ArrayRef<uint32_t> unroll_factors = {});
 }  // namespace kernel_gen
 }  // namespace tensorflow
 

@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::vector<uint8> cubin_data = cubin.ConsumeValueOrDie();
+  std::vector<uint8_t> cubin_data = cubin.ConsumeValueOrDie();
 
   auto status = tensorflow::WriteStringToFile(
       tensorflow::Env::Default(), output_file,
