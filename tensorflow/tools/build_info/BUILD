@@ -14,6 +14,7 @@ py_binary(
     srcs_version = "PY2AND3",
     tags = ["no-remote-exec"],
     deps = [
+        "//third_party/gpus:find_cuda_config",
         "@six_archive//:six",
     ],
 )
