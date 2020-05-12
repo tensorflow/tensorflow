@@ -1919,9 +1919,9 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   See also `tf.unstack`.
 
-  If `num_or_size_splits` is an integer, then `value` is split along the
-  dimension `axis` into `num_split` smaller tensors. This requires that
-  `value.shape[axis]` is divisible by `num_split`.
+  If `num_or_size_splits` is an integer,  we call it num_split and
+  `value` is split along the dimension `axis` into `num_split` smaller
+  tensors. This requires that `value.shape[axis]` is divisible by `num_split`.
 
   If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
   and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
