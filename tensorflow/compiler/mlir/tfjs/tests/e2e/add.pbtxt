@@ -1,0 +1,78 @@
+# RUN: tf_tfjs_translate %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Mul -o - | FileCheck %s --dump-input-on-failure
+# Add two tensor<4xi32> inputs and return the result
+
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Mul"
+  op: "Mul"
+  input: "Add"
+  input: "Add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK: "name": "input0"
+# CHECK-NEXT: "op": "Placeholder"
+# CHECK: "type": "DT_INT32"
+# CHECK: "name": "input1",
+# CHECK-NEXT: "op": "Placeholder"
+# CHECK: "type": "DT_INT32"
+# CHECK: "name": "Add"
+# CHECK-NEXT: "op": "AddV2"
+# CHECK-NEXT: "input":
+# CHECK-NEXT: "input0"
+# CHECK-NEXT: "input1"
+# CHECK: "type": "DT_INT32"
+# CHECK: "name": "Mul1"
+# CHECK-NEXT: "op": "Mul"
+# CHECK-NEXT: "input":
+# CHECK-NEXT: "Add"
+# CHECK-NEXT: "Add"
+# CHECK: "type": "DT_INT32"
+# CHECK: "name": "Mul"
+# CHECK-NEXT: "op": "_Retval"
+# CHECK-NEXT: "input":
+# CHECK-NEXT: "Mul1"
+# CHECK: "type": "DT_INT32"
+# CHECK: "library"
+# CHECK: "versions"
+# CHECK: "producer": 27
+
