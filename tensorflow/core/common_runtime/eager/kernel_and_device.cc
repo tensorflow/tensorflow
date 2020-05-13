@@ -35,10 +35,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -283,8 +281,6 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
-    port::ScopedFlushDenormal flush;
-    port::ScopedSetRound round(FE_TONEAREST);
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
