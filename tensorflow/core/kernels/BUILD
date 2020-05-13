@@ -7096,7 +7096,7 @@ cc_library(
 
 build_test(
     name = "android_tensorflow_kernels_build_test",
-    targets = [":android_tensorflow_kernels"],
+    targets = [":portable_tensorflow_kernels"],
 )
 
 cc_library(
@@ -7109,7 +7109,7 @@ cc_library(
         "//tensorflow/core:android_gif_internal",
         "//tensorflow/core:android_jpeg_internal",
         "//tensorflow/core:android_png_internal",
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )
@@ -7126,7 +7126,7 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )

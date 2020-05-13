@@ -230,6 +230,7 @@ py_library(
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
         "//tensorflow/python/tpu:tpu_noestimator",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )
@@ -264,7 +265,6 @@ py_library(
     deps = [
         ":_pywrap_util_port",
         ":lib",
-        ":platform_build_info",
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -317,24 +317,6 @@ tf_py_test(
     srcs = ["platform/resource_loader_test.py"],
     data = [
         "platform/resource_loader.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        ":platform",
-        ":platform_test",
-    ],
-)
-
-tf_py_test(
-    name = "sysconfig_test",
-    size = "small",
-    srcs = ["platform/sysconfig_test.py"],
-    data = [
-        "platform/sysconfig.py",
     ],
     python_version = "PY3",
     tags = [
@@ -674,15 +656,15 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )
@@ -8068,14 +8050,14 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )

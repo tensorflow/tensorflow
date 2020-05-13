@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,8 +43,6 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-from tensorflow.python.platform import build_info
-
 DOCLINES = __doc__.split('\n')
 
 # This version string is semver compatible, but incompatible with pip.
@@ -85,22 +82,6 @@ REQUIRED_PACKAGES = [
     'scipy == 1.2.2;python_version<"3"',
 ]
 
-# Generate a footer describing the CUDA technology this release was built
-# against.
-GPU_DESCRIPTION = ''
-if build_info.build_info['is_cuda_build']:
-  gpu_header = ('\nTensorFlow {} for NVIDIA GPUs was built with these '
-                'platform and library versions:\n\n  - ').format(_VERSION)
-  bi = build_info.build_info
-  trt_ver = bi['tensorrt_version']
-  nccl_ver = bi['nccl_version']
-  GPU_DESCRIPTION = gpu_header + '\n  - '.join([
-      'NVIDIA CUDA ' + bi['cuda_version'],
-      'NVIDIA cuDNN ' + bi['cudnn_version'],
-      'NVIDIA NCCL ' + 'not enabled' if not nccl_ver else nccl_ver,
-      'NVIDIA TensorRT ' + 'not enabled' if not trt_ver else trt_ver,
-  ])
-
 if sys.byteorder == 'little':
   # grpcio does not build correctly on big-endian machines due to lack of
   # BoringSSL support.
@@ -136,8 +117,7 @@ CONSOLE_SCRIPTS = [
     # even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
-    'estimator_ckpt_converter = '
-    'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
+    'estimator_ckpt_converter = tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
 # pylint: enable=line-too-long
 
@@ -181,10 +161,11 @@ class InstallHeaders(Command):
   """
   description = 'install C/C++ header files'
 
-  user_options = [
-      ('install-dir=', 'd', 'directory to install header files to'),
-      ('force', 'f', 'force installation (overwrite existing files)'),
-  ]
+  user_options = [('install-dir=', 'd',
+                   'directory to install header files to'),
+                  ('force', 'f',
+                   'force installation (overwrite existing files)'),
+                 ]
 
   boolean_options = ['force']
 
@@ -194,7 +175,8 @@ class InstallHeaders(Command):
     self.outfiles = []
 
   def finalize_options(self):
-    self.set_undefined_options('install', ('install_headers', 'install_dir'),
+    self.set_undefined_options('install',
+                               ('install_headers', 'install_dir'),
                                ('force', 'force'))
 
   def mkdir_and_copy_file(self, header):
@@ -254,7 +236,9 @@ so_lib_paths = [
 
 matches = []
 for path in so_lib_paths:
-  matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
+  matches.extend(
+      ['../' + x for x in find_files('*', path) if '.py' not in x]
+  )
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
@@ -274,16 +258,17 @@ headers = (
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
-    list(find_files('*', 'third_party/eigen3')) +
-    list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'third_party/eigen3')) + list(
+        find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
+    list(
+        find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
-    long_description='\n'.join(DOCLINES[2:]) + GPU_DESCRIPTION,
+    long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -304,11 +289,6 @@ setup(
         ] + matches,
     },
     zip_safe=False,
-    # Accessible with importlib.metadata.metadata('tf-pkg-name').items()
-    platforms=[
-        '{}:{}'.format(key, value)
-        for key, value in build_info.build_info.items()
-    ],
     distclass=BinaryDistribution,
     cmdclass={
         'install_headers': InstallHeaders,

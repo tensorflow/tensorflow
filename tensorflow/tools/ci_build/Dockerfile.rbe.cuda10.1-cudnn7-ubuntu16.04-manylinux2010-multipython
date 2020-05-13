@@ -59,11 +59,12 @@ RUN /install/install_deb_packages.sh
 # - dependencies to build Python from source
 # - patchelf, as it is required by auditwheel
 RUN apt-get update && apt-get install -y \
-    libncurses5-dev \
+    libbz2-dev \
+    libffi-dev \
     libgdbm-dev \
+    libncurses5-dev \
     libnss3-dev \
     libreadline-dev \
-    libffi-dev \
     patchelf \
       && \
     rm -rf /var/lib/apt/lists/*

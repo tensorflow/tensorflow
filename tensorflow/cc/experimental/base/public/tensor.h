@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/cc/experimental/base/public/status.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // Tensor represents an n-dimensional array of values.
@@ -168,6 +169,7 @@ inline Tensor Tensor::FromBuffer(TF_DataType dtype,
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_PUBLIC_TENSOR_H_

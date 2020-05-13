@@ -33,8 +33,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
-from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.utils import layer_utils
@@ -89,7 +89,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
       self.assertEqual(len(layer.updates), 3)
 
-      network = network_lib.Network(x2, y2)
+      network = functional.Functional(x2, y2)
       self.assertEqual(len(network.updates), 3)
 
       x3 = input_layer_lib.Input(shape=(1,))
@@ -120,7 +120,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     dense_a = layers.Dense(4, name='dense_a')
     dense_b = layers.Dense(2, name='dense_b')
     y = dense_b(dense_a(x))
-    network = network_lib.Network(x, y, name='dense_network')
+    network = functional.Functional(x, y, name='dense_network')
 
     # test various get_layer by index
     self.assertEqual(network.get_layer(index=1), dense_a)
@@ -251,7 +251,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       x = input_layer_lib.Input(shape=(32,))
       dense = layers.Dense(2)
       y = dense(x)
-      network = network_lib.Network(x, y, name='dense_network')
+      network = functional.Functional(x, y, name='dense_network')
 
       # test basic attributes
       self.assertEqual(network.name, 'dense_network')
@@ -740,7 +740,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     else:
       x = input_layer_lib.Input(shape=(32,))
       y = MaskedLayer()(x)  # pylint: disable=not-callable
-      network = network_lib.Network(x, y)
+      network = functional.Functional(x, y)
 
       # test callability on Input
       x_2 = input_layer_lib.Input(shape=(32,))
@@ -1102,7 +1102,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   def test_subclassed_error_if_init_not_called(self):
 
-    class MyNetwork(network_lib.Network):
+    class MyNetwork(training_lib.Model):
 
       def __init__(self):
         self._foo = [layers.Dense(10), layers.Dense(10)]
@@ -1124,10 +1124,12 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     inputs = input_layer_lib.Input(shape=(32,))
     outputs = layers.Dense(4)(inputs)
 
-    with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
+    with self.assertRaisesRegexp(TypeError,
+                                 'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dtype='int64')
-    with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
+    with self.assertRaisesRegexp(TypeError,
+                                 'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dynamic=False)
 
@@ -1136,8 +1138,10 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertFalse(model.trainable)
     self.assertFalse(model.dynamic)
 
+    class SubclassModel(training_lib.Model):
+      pass
     # Subclassed model
-    model = training_lib.Model(
+    model = SubclassModel(
         name='subclassed', trainable=True, dtype='int64', dynamic=True)
     self.assertEqual('subclassed', model.name)
     self.assertTrue(model.dynamic)
@@ -1150,9 +1154,9 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     input_tensor2 = input_layer_lib.Input(shape=[10], name='b')
     output_tensor1 = layers.Dense(units=10)(input_tensor1)
 
-    net = network_lib.Network(
+    net = functional.Functional(
         inputs=[input_tensor1, input_tensor2], outputs=[output_tensor1])
-    net2 = network_lib.Network.from_config(net.get_config())
+    net2 = functional.Functional.from_config(net.get_config())
     self.assertLen(net2.inputs, 2)
     self.assertEqual('a', net2.layers[0].name)
     self.assertEqual('b', net2.layers[1].name)
@@ -1180,8 +1184,8 @@ class DeferredModeTest(keras_parameterized.TestCase):
       self.assertEqual(x.shape.as_list(), [None, 2])
 
     outputs = layers.Dense(4)(x)
-    network = network_lib.Network(inputs, outputs)
-    self.assertIsInstance(network, network_lib.Network)
+    network = functional.Functional(inputs, outputs)
+    self.assertIsInstance(network, functional.Functional)
 
     if context.executing_eagerly():
       # It should be possible to call such a network on EagerTensors.
@@ -1204,7 +1208,7 @@ class DeferredModeTest(keras_parameterized.TestCase):
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable
     c = layers.Dense(2)(c)
 
-    network = network_lib.Network([input_a, input_b], [a, c])
+    network = functional.Functional([input_a, input_b], [a, c])
     if context.executing_eagerly():
       a_val = constant_op.constant(
           np.random.random((10, 32)).astype('float32'))
@@ -1484,9 +1488,9 @@ class NestedNetworkTest(keras_parameterized.TestCase):
         'x2': input_layer_lib.Input(shape=(1,))
     }
     outputs = layers.Add()([inputs['x1'], inputs['x2']])
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
-    network = network_lib.Network.from_config(network.get_config())
+    network = functional.Functional.from_config(network.get_config())
 
     result_tensor = network({
         'x': array_ops.ones((1, 1), 'float32'),
@@ -1509,9 +1513,9 @@ class NestedNetworkTest(keras_parameterized.TestCase):
         'x*x': layers.Multiply()([inputs, inputs])
     }
 
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
-    network = network_lib.Network.from_config(network.get_config())
+    network = functional.Functional.from_config(network.get_config())
 
     result_tensor = network(array_ops.ones((1, 1), 'float32'))
     result = self.evaluate(result_tensor)
@@ -1531,7 +1535,8 @@ class NestedNetworkTest(keras_parameterized.TestCase):
         'x1+x2': layers.Add()([inner_inputs['x1'], inner_inputs['x2']]),
         'x1*x2': layers.Multiply()([inner_inputs['x1'], inner_inputs['x2']])
     }
-    inner_network = network_lib.Network(inner_inputs, inner_outputs)
+    inner_network = functional.Functional(
+        inner_inputs, inner_outputs)
 
     inputs = [
         input_layer_lib.Input(shape=(1,)),
@@ -1539,9 +1544,9 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     ]
     middle = inner_network({'x1': inputs[0], 'x2': inputs[1]})
     outputs = layers.Add()([middle['x1+x2'], middle['x1*x2']])
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
-    network = network_lib.Network.from_config(network.get_config())
+    network = functional.Functional.from_config(network.get_config())
 
     # Computes: `(x1+x2) + (x1*x2)`
     result_tensor = network(
@@ -1735,13 +1740,13 @@ class DTypeTest(keras_parameterized.TestCase):
   def test_graph_network_dtype(self):
     inputs = input_layer_lib.Input((10,))
     outputs = layers.Dense(10)(inputs)
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
     self.assertEqual(network.dtype, 'float32')
 
   @testing_utils.enable_v2_dtype_behavior
   def test_subclassed_network_dtype(self):
 
-    class IdentityNetwork(network_lib.Network):
+    class IdentityNetwork(training_lib.Model):
 
       def call(self, inputs):
         return inputs
@@ -1785,11 +1790,11 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
   def layer_and_network_test(self):
     # Top level layer
-    network = network_lib.Network()
+    network = functional.Functional()
 
     layer_0 = AttrTrackingLayer()
 
-    sub_network = network_lib.Network()
+    sub_network = functional.Functional()
     layer_1 = AttrTrackingLayer(dynamic=True)
     layer_2 = AttrTrackingLayer()
     sub_network.sub_layers = [layer_1, layer_2]
@@ -1887,7 +1892,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     x = input_layer_lib.Input(shape=(None, 32))
     dense = layers.Dense(2)
     y = dense(x)
-    network = network_lib.Network(x, y, name='dense_network')
+    network = functional.Functional(x, y, name='dense_network')
 
     for i in range(999, 1024):
       self.assertEqual(network.compute_output_shape((1, i, 32)), (1, i, 2))
@@ -1895,7 +1900,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
   def test_2d_inputs_squeezed_to_1d(self):
     input_1d = input_layer_lib.Input(shape=())
     outputs = input_1d * 2.
-    net = network_lib.Network(input_1d, outputs)
+    net = functional.Functional(input_1d, outputs)
 
     x = np.ones((10, 1))
     y = net(x)
@@ -1904,7 +1909,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
   def test_1d_inputs_expanded_to_2d(self):
     input_1d = input_layer_lib.Input(shape=(1,))
     outputs = input_1d * 2.
-    net = network_lib.Network(input_1d, outputs)
+    net = functional.Functional(input_1d, outputs)
 
     x = np.ones((10,))
     y = net(x)
@@ -1927,14 +1932,14 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=True)
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
     # Hard-coded value passed during construction is respected.
     self.assertAllEqual(network(x, training=False), x)
 
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=False)
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
     network(x, training=True)
     # Hard-coded value passed during construction is respected.
@@ -1942,7 +1947,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=None)
-    network = network_lib.Network(inputs, outputs)
+    network = functional.Functional(inputs, outputs)
 
     # `None` value passed during construction is overridden.
     self.assertAllEqual(network(x, training=True), x)

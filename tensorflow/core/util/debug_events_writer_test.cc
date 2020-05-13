@@ -263,7 +263,7 @@ TEST_F(DebugEventsWriterTest, WriteSourceFile) {
   source_file_1->add_lines("");
   source_file_1->add_lines("print(tf.constant([42.0]))");
   source_file_1->add_lines("");
-  writer->WriteSourceFile(source_file_1);
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file_1));
 
   SourceFile* source_file_2 = new SourceFile();
   source_file_2->set_file_path("/home/tf_programs/train.py");
@@ -271,7 +271,7 @@ TEST_F(DebugEventsWriterTest, WriteSourceFile) {
   source_file_2->add_lines("import tensorflow.keras as keras");
   source_file_2->add_lines("");
   source_file_2->add_lines("model = keras.Sequential()");
-  writer->WriteSourceFile(source_file_2);
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file_2));
 
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
@@ -336,8 +336,8 @@ TEST_F(DebugEventsWriterTest, WriteStackFramesFile) {
   file_line_col->set_func("my_func");
   file_line_col->set_code("  x = x ** 2.0");
 
-  writer->WriteStackFrameWithId(stack_frame_1);
-  writer->WriteStackFrameWithId(stack_frame_2);
+  TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame_1));
+  TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame_2));
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
 
@@ -382,12 +382,12 @@ TEST_F(DebugEventsWriterTest, WriteGraphOpCreationAndDebuggedGraph) {
   GraphOpCreation* graph_op_creation = new GraphOpCreation();
   graph_op_creation->set_op_type("MatMul");
   graph_op_creation->set_op_name("Dense_1/MatMul");
-  writer->WriteGraphOpCreation(graph_op_creation);
+  TF_ASSERT_OK(writer->WriteGraphOpCreation(graph_op_creation));
 
   DebuggedGraph* debugged_graph = new DebuggedGraph();
   debugged_graph->set_graph_id("deadbeaf");
   debugged_graph->set_graph_name("my_func_graph");
-  writer->WriteDebuggedGraph(debugged_graph);
+  TF_ASSERT_OK(writer->WriteDebuggedGraph(debugged_graph));
 
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
@@ -428,7 +428,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
     source_file->set_host_name("localhost.localdomain");
-    writer->WriteSourceFile(source_file);
+    TF_ASSERT_OK(writer->WriteSourceFile(source_file));
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     thread_pool->Schedule(fn);
@@ -469,7 +469,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
     source_file->set_host_name("localhost.localdomain");
-    writer->WriteSourceFile(source_file);
+    TF_ASSERT_OK(writer->WriteSourceFile(source_file));
     TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
@@ -512,16 +512,16 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
       source_file->set_file_path(
           strings::Printf("/home/tf_programs/program_%.2d.py", index));
       source_file->set_host_name("localhost.localdomain");
-      writer->WriteSourceFile(source_file);
+      TF_ASSERT_OK(writer->WriteSourceFile(source_file));
     } else if (index % 3 == 1) {
       StackFrameWithId* stack_frame = new StackFrameWithId();
       stack_frame->set_id(strings::Printf("e%.2d", index));
-      writer->WriteStackFrameWithId(stack_frame);
+      TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame));
     } else {
       GraphOpCreation* op_creation = new GraphOpCreation();
       op_creation->set_op_type("Log");
       op_creation->set_op_name(strings::Printf("Log_%.2d", index));
-      writer->WriteGraphOpCreation(op_creation);
+      TF_ASSERT_OK(writer->WriteGraphOpCreation(op_creation));
     }
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
@@ -586,7 +586,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
 
   std::vector<DebugEvent> actuals;
@@ -611,7 +611,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
 
   TF_ASSERT_OK(writer->FlushExecutionFiles());
@@ -637,7 +637,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Abs");
     execution->add_input_tensor_ids(counter.fetch_add(1));
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   };
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     thread_pool->Schedule(fn);
@@ -682,7 +682,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
   std::vector<DebugEvent> actuals;
@@ -690,6 +690,31 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
                        &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
+}
+
+TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithoutPreviousInitCall) {
+  const size_t kCyclicBufferSize = -1;
+  DebugEventsWriter* writer =
+      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  // NOTE(cais): `writer->Init()` is not called here before
+  // WriteGraphExecutionTrace() is called. This test checks that this is okay
+  // and the `GraphExecutionTrace` gets written correctly even without `Init()`
+  // being called first. This scenario can happen when a TF Graph with tfdbg
+  // debug ops are executed on a remote TF server.
+
+  GraphExecutionTrace* trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id(strings::Printf("graph_0"));
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->FlushExecutionFiles());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
+                       &actuals);
+  EXPECT_EQ(actuals.size(), 1);
+  EXPECT_EQ(actuals[0].graph_execution_trace().tfdbg_context_id(), "graph_0");
 
   // Close the writer so the files can be safely deleted.
   TF_ASSERT_OK(writer->Close());
@@ -706,7 +731,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
   TF_ASSERT_OK(writer->FlushExecutionFiles());
@@ -731,7 +756,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(
         strings::Printf("new_graph_%.2ld", counter.fetch_add(1)));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   };
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     thread_pool->Schedule(fn);
@@ -818,7 +843,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 
@@ -834,7 +859,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   for (size_t i = 0; i < kNumEvents; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 

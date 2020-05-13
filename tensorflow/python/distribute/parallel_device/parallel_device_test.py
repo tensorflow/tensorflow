@@ -119,6 +119,12 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_device_id(self):
+    device_ids = self.device.unpack(self.device.device_ids)
+    self.assertAllClose([0, 1], device_ids)
+    self.assertIn(self.device.components[0], device_ids[0].backing_device)
+    self.assertIn(self.device.components[1], device_ids[1].backing_device)
+
   def test_collective_reduce(self):
     with ops.device(self.device.name):
       x = self.device.pack(

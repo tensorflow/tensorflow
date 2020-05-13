@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
+#include <new>
+#include <utility>
+
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env_time.h"

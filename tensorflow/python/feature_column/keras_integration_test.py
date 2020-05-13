@@ -23,12 +23,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.feature_column import dense_features_v2
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column import dense_features_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.premade import linear
 from tensorflow.python.keras.premade import wide_deep

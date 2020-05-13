@@ -321,15 +321,23 @@ typedef union TfLitePtrUnion {
   void* data;
 } TfLitePtrUnion;
 
-// Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
-// data (or data externally allocated). kTfLiteArenaRw is arena allocated
-// data. kTfLiteDynamic is for tensors that are allocated during evaluation.
+// Memory allocation strategies.
+//  * kTfLiteMmapRo: Read-only memory-mapped data, or data externally allocated.
+//  * kTfLiteArenaRw: Arena allocated with no guarantees about persistence,
+//        and available during eval.
+//  * kTfLiteArenaRwPersistent: Arena allocated but persistent across eval, and
+//        only available during eval.
+//  * kTfLiteDynamic: Allocated during eval, or for string tensors.
+//  * kTfLitePersistentRo: Allocated and populated during prepare. This is
+//        useful for tensors that can be computed during prepare and treated
+//        as constant inputs for downstream ops (also in prepare).
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
   kTfLiteArenaRw,
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
+  kTfLitePersistentRo,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.

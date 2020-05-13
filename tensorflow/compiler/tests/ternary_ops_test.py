@@ -48,7 +48,8 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       {'start': 1, 'end': 2, 'num': 1},
       {'start': 1, 'end': 4, 'num': 3},
       {'start': 0, 'end': 41, 'num': 42})
-  @test_util.disable_mlir_bridge('Requires dynamic shape handling')
+  @test_util.disable_mlir_bridge(
+      'TODO(b/156174708): Dynamic result types not supported')
   def testLinspace(self, start, end, num):
     expected = np.linspace(start, end, num, dtype=np.float32)
     result = self._testTernary(

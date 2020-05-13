@@ -1044,3 +1044,16 @@ func @main(%arg0: tensor<4xui8>) -> (tensor<4xui8>) {
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = u8[4] parameter(0)
 //  ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+  %0 = "xla_hlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  return %1 : tensor<*xi32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = s32[4] parameter(0)
+//  ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])
