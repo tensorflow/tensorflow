@@ -371,7 +371,9 @@ void GenEagerPythonOp::HandleGraphMode(
     const string& function_setup, const std::vector<string>& output_sizes) {
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
   strings::StrAppend(&result_, function_setup);
-  strings::StrAppend(&result_, "  try:\n  ");
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "  try:\n  ");
+  }
   strings::StrAppend(
       &result_, "  _, _, _op, _outputs = _op_def_library._apply_op_helper(\n");
   AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
@@ -688,7 +690,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
-  strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  }
 
   AddExport();
   AddDefLine(function_name_, parameters);
@@ -951,6 +955,8 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
 }
 
 void GenEagerPythonOp::AddDispatch(const string& prefix) {
+  if (api_def_.visibility() != ApiDef::VISIBLE) return;
+
   strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
   strings::StrAppend(&result_, prefix, "  result = _dispatch.dispatch(\n");
   AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_, ", "));
