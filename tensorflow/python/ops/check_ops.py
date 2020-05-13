@@ -1845,7 +1845,12 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
                 'Specified by tensor %s dimension %d' %
                 (tensor_name(specified_by_y), specified_at_dim))
 
-          actual_size = sizes.actual_sizes[tensor_dim]
+          # This is extremely subtle. If actual_sizes is dynamic, we must
+          # make sure a control dependency is inserted here so that this slice
+          # can not execute until the rank is asserted to be enough for the
+          # slice to not fail.
+          with ops.control_dependencies(rank_assertions):
+            actual_size = sizes.actual_sizes[tensor_dim]
           if _has_known_value(actual_size) and _has_known_value(specified_size):
             if int(actual_size) != int(specified_size):
               raise ValueError(
@@ -1871,12 +1876,17 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
           size_assertions.append(
               control_flow_ops.Assert(condition, data_, summarize=summarize))
         else:
-          size = sizes.actual_sizes[tensor_dim]
+          # Not sure if actual_sizes is a constant, but for safety, guard
+          # on rank. See explanation above about actual_sizes need for safety.
+          with ops.control_dependencies(rank_assertions):
+            size = sizes.actual_sizes[tensor_dim]
           size_specifications[size_symbol] = (size, sizes.x, tensor_dim)
 
-    with ops.control_dependencies(rank_assertions):
-      shapes_assertion = control_flow_ops.group(size_assertions)
-    return shapes_assertion
+  # Ensure both assertions actually occur.
+  with ops.control_dependencies(rank_assertions):
+    shapes_assertion = control_flow_ops.group(size_assertions)
+
+  return shapes_assertion
 
 
 # pylint: disable=line-too-long

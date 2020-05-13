@@ -108,18 +108,21 @@ class ConverterError(Exception):
   pass
 
 
-def mlir_quantize(input_data_str):
+def mlir_quantize(input_data_str, disable_per_channel=False):
   """Quantize `input_data_str` with calibration results.
 
   Args:
     input_data_str: Input data in serialized form (e.g. a TFLITE model with
                     calibration results).
+    disable_per_channel: Bool indicating whether to do per-channel or
+                         per-tensor quantization
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str)
+  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
+                                                      disable_per_channel)
 
 
 def mlir_sparsify(input_data_str):

@@ -115,15 +115,6 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
         name="parallel_control_flow",
         apply_default_optimizations=True)
 
-  def benchmark_execution_overhead(self):
-    dataset = dataset_ops.Dataset.range(100000)
-    dataset = dataset_ops.MapDataset(
-        dataset, lambda x: x + 1, use_inter_op_parallelism=False)
-    self.run_and_report_benchmark(
-        dataset,
-        num_elements=100000,
-        name="execution_overhead")
-
 
 if __name__ == "__main__":
   benchmark_base.test.main()

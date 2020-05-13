@@ -1,35 +1,26 @@
-# Hello World example
+# Hello World Example
 
 This example is designed to demonstrate the absolute basics of using [TensorFlow
 Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers).
 It includes the full end-to-end workflow of training a model, converting it for
-use with TensorFlow Lite, and running inference on a microcontroller.
+use with TensorFlow Lite for Microcontrollers for running inference on a
+microcontroller.
 
-The sample is built around a model trained to replicate a `sine` function. It
-contains implementations for several platforms. In each case, the model is used
-to generate a pattern of data that is used to either blink LEDs or control an
-animation.
+The model is trained to replicate a `sine` function and generates a pattern of
+data to either blink LEDs or control an animation, depending on the capabilities
+of the device.
 
-![Animation of example running on STM32F746](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/STM32F746.gif)
+![Animation on STM32F746](images/animation_on_STM32F746.gif)
 
 ## Table of contents
 
--   [Understand the model](#understand-the-model)
 -   [Deploy to ARC EM SDP](#deploy-to-arc-em-sdp)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
-
-## Understand the model
-
-The sample comes with a pre-trained model. The code used to train and convert
-the model is available as a tutorial in [create_sine_model.ipynb](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/create_sine_model.ipynb).
-
-Walk through this tutorial to understand what the model does,
-how it works, and how it was converted for use with TensorFlow Lite for
-Microcontrollers.
+-   [Train your own model](#train-your-own-model)
 
 ## Deploy to ARC EM SDP
 
@@ -80,7 +71,7 @@ In both cases (step 5 and 6) you will see the application output in the serial t
 The following instructions will help you build and deploy this sample
 to [Arduino](https://www.arduino.cc/) devices.
 
-![Animation of example running on Arduino MKRZERO](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/arduino_mkrzero.gif)
+![Animation on Arduino MKRZERO](images/animation_on_arduino_mkrzero.gif)
 
 The sample has been tested with the following devices:
 
@@ -177,7 +168,7 @@ idf.py --port /dev/ttyUSB0 flash monitor
 The following instructions will help you build and deploy this sample on the
 [SparkFun Edge development board](https://sparkfun.com/products/15170).
 
-![Animation of example running on SparkFun Edge](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/sparkfun_edge.gif)
+![Animation on SparkFun Edge](images/animation_on_sparkfun_edge.gif)
 
 If you're new to using this board, we recommend walking through the
 [AI on a microcontroller with TensorFlow Lite and SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow)
@@ -317,7 +308,7 @@ The following instructions will help you build and deploy the sample to the
 [STM32F7 discovery kit](https://os.mbed.com/platforms/ST-Discovery-F746NG/)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
-![Animation of example running on STM32F746](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/STM32F746.gif)
+![Animation on STM32F746](images/animation_on_STM32F746.gif)
 
 Before we begin, you'll need the following:
 
@@ -445,7 +436,14 @@ the trained TensorFlow model, runs some example inputs through it, and got the
 expected outputs.
 
 To understand how TensorFlow Lite does this, you can look at the source in
-[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc).
+[hello_world_test.cc](hello_world_test.cc).
 It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
+
+### Train your own model
+
+So far you have used an existing trained model to run inference on
+microcontrollers. If you wish to train your own model, follow the instructions
+given in the [train/](train/) directory.
+

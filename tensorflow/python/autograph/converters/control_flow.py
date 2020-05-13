@@ -24,9 +24,15 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
+from tensorflow.python.autograph.pyct.static_analysis import liveness
+from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.autograph.utils import compat_util
 
 
@@ -65,18 +71,33 @@ class ControlFlowTransformer(converter.Base):
       return_stmt = templates.replace(template, retvals=returns)
 
     if aliased_orig_names:
+      alias_declarations = []
+      for new_name, old_name in zip(aliased_new_names, aliased_orig_names):
+        template = """
+          try:
+            aliased_new_name = aliased_orig_name
+          except NameError:
+            aliased_new_name = ag__.Undefined(symbol_name)
+        """
+
+        alias_declarations.extend(
+            templates.replace(
+                template,
+                aliased_new_name=new_name,
+                aliased_orig_name=old_name,
+                symbol_name=gast.Constant(str(old_name), kind=None)))
+
       template = """
         def body_name():
-          aliased_new_names, = aliased_orig_names,
+          alias_declarations
           body
           return_stmt
       """
       return templates.replace(
           template,
+          alias_declarations=alias_declarations,
           body_name=body_name,
           body=body,
-          aliased_orig_names=aliased_orig_names,
-          aliased_new_names=aliased_new_names,
           return_stmt=return_stmt)
     else:
       template = """
@@ -127,13 +148,8 @@ class ControlFlowTransformer(converter.Base):
       return 'no variables'
     return ', '.join(map(str, symbol_set))
 
-  def _determine_aliased_symbols(self, scope, node_defined_in, block):
-    if block:
-      block_live_in = set(anno.getanno(block[0], anno.Static.LIVE_VARS_IN))
-    else:
-      block_live_in = set()
-
-    modified_live = scope.modified & node_defined_in & block_live_in
+  def _determine_aliased_symbols(self, scope, node_defined_in):
+    modified_live = scope.modified & node_defined_in
     # Composite symbols are handled elsewhere, see _create_state_functions
     return {
         s for s in modified_live
@@ -216,9 +232,9 @@ class ControlFlowTransformer(converter.Base):
     # that happens in the call to generic_visit below, because the conversion
     # generates nodes that lack static analysis annotations.
     need_alias_in_body = self._determine_aliased_symbols(
-        body_scope, defined_in, node.body)
+        body_scope, defined_in)
     need_alias_in_orelse = self._determine_aliased_symbols(
-        orelse_scope, defined_in, node.orelse)
+        orelse_scope, defined_in)
 
     node = self.generic_visit(node)
 
@@ -528,9 +544,23 @@ class ControlFlowTransformer(converter.Base):
         undefined_assigns=undefined_assigns)
 
 
+class AnnotatedDef(reaching_definitions.Definition):
+
+  def __init__(self):
+    super(AnnotatedDef, self).__init__()
+    self.directives = {}
+
+
 def transform(node, ctx):
-  transformer = ControlFlowTransformer(ctx)
-  return transformer.visit(node)
+  graphs = cfg.build(node)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
+  node = reaching_definitions.resolve(node, ctx, graphs)
+  node = reaching_fndefs.resolve(node, ctx, graphs)
+  node = liveness.resolve(node, ctx, graphs)
+
+  node = ControlFlowTransformer(ctx).visit(node)
+  return node
 
 
 compat_util.deprecated_py2_support(__name__)

@@ -29,7 +29,7 @@ using tensorflow::string;
 namespace tensorflow {
 namespace {
 
-TEST(UnifedCAPI, TestBasicEager) {
+TEST(UnifiedCAPI, TestBasicEager) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -81,7 +81,7 @@ TEST(UnifedCAPI, TestBasicEager) {
   TF_DeleteExecutionContext(ctx);
 }
 
-TEST(UnifedCAPI, TestBasicGraph) {
+TEST(UnifiedCAPI, TestBasicGraph) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
@@ -131,6 +131,7 @@ TEST(UnifedCAPI, TestBasicGraph) {
   string fn_name = "double";
   TF_AbstractFunction* func = TF_ExecutionContextToFunction(
       graph_ctx, fn_name.c_str(), 1, placeholder_t, 1, output_t, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TF_DeleteAbstractTensor(placeholder_t);
   TF_DeleteAbstractTensor(output_t);
 
@@ -184,7 +185,7 @@ TEST(UnifedCAPI, TestBasicGraph) {
   TF_DeleteExecutionContext(eager_execution_ctx);
 }
 
-TEST(UnifedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
+TEST(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -200,7 +201,7 @@ TEST(UnifedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   TF_DeleteExecutionContext(ctx);
 }
 
-TEST(UnifedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
+TEST(UnifiedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
@@ -221,7 +222,7 @@ TEST(UnifedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
+TEST(UnifiedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
@@ -242,7 +243,7 @@ TEST(UnifedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifedCAPI, TestExecutingEagerOpInGraphModeRaises) {
+TEST(UnifiedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   // Build an Eager context.
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -288,7 +289,7 @@ TEST(UnifedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifedCAPI, TestExecutingGraphOpInEagerModeRaises) {
+TEST(UnifiedCAPI, TestExecutingGraphOpInEagerModeRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());

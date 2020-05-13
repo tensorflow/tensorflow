@@ -849,7 +849,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-       "EnqueueTPUEmbeddingSparseTensorBatch"});
+       "EnqueueTPUEmbeddingSparseTensorBatch",
+       "EnqueueTPUEmbeddingRaggedTensorBatch"});
   return exemption->contains(op);
 }
 

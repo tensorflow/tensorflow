@@ -795,6 +795,13 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  } else if (device.IsAdreno()) {
+    conv_params.block_size = int3(2, 2, 1);
+    conv_params.work_group_size = int3(8, 2, 1);
+    conv_params.work_group_launch_order = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
+    conv_params.src_depth_loop_size = 1;
+    conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);

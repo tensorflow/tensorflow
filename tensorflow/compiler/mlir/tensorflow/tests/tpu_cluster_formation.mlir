@@ -2,7 +2,7 @@
 
 
 // Test ops in cluster only have `_tpu_replicate` and `device` attributes
-// removed when moved to a launch.
+// removed when moved to a `tf_device.cluster`.
 // CHECK-LABEL: func @cluster_ops_removed_attrs
 func @cluster_ops_removed_attrs() {
   %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
@@ -18,9 +18,9 @@ func @cluster_ops_removed_attrs() {
 
 
 // Test TPUReplicateMetadata ops `name` and `num_replicas` attributes are not
-// copied over to launch.
-// CHECK-LABEL: func @launch_removed_metadata_attrs
-func @launch_removed_metadata_attrs() {
+// copied over to `tf_device.cluster`.
+// CHECK-LABEL: func @removed_metadata_attrs
+func @removed_metadata_attrs() {
   %0 = "tf.opA"() {_tpu_replicate = "replicate"} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", name = "name", num_replicas = 1, topology = "topology"} : () -> ()
   return
@@ -42,7 +42,7 @@ func @metadata_op_removed() {
 
 
 // Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a launch.
+// under a `tf_device.cluster`.
 // CHECK-LABEL: func @simple_island
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @simple_island(%arg0 : tensor<i1>) -> tensor<i1> {
@@ -60,19 +60,19 @@ func @simple_island(%arg0 : tensor<i1>) -> tensor<i1> {
 }
 
 // CHECK:          "tf.opB"
-// CHECK:          %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[LAUNCH]]
+// CHECK:          tf_executor.yield %[[CLUSTER]]
 
 
 // Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a launch, even when the associated TPUReplicateMetadata op is in a
-// different island.
+// under a `tf_device.cluster`, even when the associated TPUReplicateMetadata op
+// is in a different island.
 // CHECK-LABEL: func @simple_island_separate_metadata
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @simple_island_separate_metadata(%arg0 : tensor<i1>) -> tensor<i1> {
@@ -92,18 +92,18 @@ func @simple_island_separate_metadata(%arg0 : tensor<i1>) -> tensor<i1> {
 }
 
 // CHECK:          "tf.opB"
-// CHECK:          %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[LAUNCH]]
+// CHECK:          tf_executor.yield %[[CLUSTER]]
 
 
 // Test ops in multiple islands with the same `_tpu_replicate` attribute are
-// merged under launch ops only within their respective island.
+// merged under `tf_device.cluster` ops only within their respective island.
 // CHECK-LABEL: func @multiple_islands_separate_metadata
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
@@ -130,28 +130,28 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
 
 // CHECK:        %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island {
 // CHECK:          "tf.opB"
-// CHECK:          %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:          %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:       tf_device.return %[[OP_C]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[LAUNCH_0]]
+// CHECK:          tf_executor.yield %[[CLUSTER_0]]
 // CHECK:        tf_executor.island {
 // CHECK:          "tf.opE"
-// CHECK:          %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:          %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]])
 // CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
 // CHECK-NEXT:       tf_device.return %[[OP_F]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
 // CHECK-SAME:     device = "device"
 // CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[LAUNCH_1]]
+// CHECK:          tf_executor.yield %[[CLUSTER_1]]
 
 
 // Test ops in a function body with the same `_tpu_replicate` attribute are
-// merged under a launch op.
+// merged under a `tf_device.cluster` op.
 // CHECK-LABEL: func @ops_in_func_body
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>) {
@@ -167,7 +167,7 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 
 // CHECK:      "tf.opB"
 // CHECK:      "tf.opE"
-// CHECK:      %[[LAUNCH:[0-9]*]]:3 = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:3 = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_C]])
@@ -176,11 +176,11 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      return %[[LAUNCH]]#0, %[[LAUNCH]]#1, %[[LAUNCH]]#2
+// CHECK:      return %[[CLUSTER]]#0, %[[CLUSTER]]#1, %[[CLUSTER]]#2
 
 
-// Test a nested user of an op in a cluster has its operand be updated to launch
-// result.
+// Test a nested user of an op in a cluster has its operand be updated to
+// `tf_device.cluster` result.
 // CHECK-LABEL: func @nested_cluster_op_user
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
@@ -193,7 +193,7 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
   return %2 : tensor<i1>
 }
 
-// CHECK:      %[[LAUNCH:[0-9]*]]:2 = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]], %[[OP_B]]
@@ -201,8 +201,8 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
 // CHECK:      tf_executor.graph {
-// CHECK-NEXT:   tf_executor.fetch %[[LAUNCH]]#0
-// CHECK:      return %[[LAUNCH]]#1
+// CHECK-NEXT:   tf_executor.fetch %[[CLUSTER]]#0
+// CHECK:      return %[[CLUSTER]]#1
 
 
 // Test nested op of a cluster with an operand from an op of the same cluster
@@ -218,7 +218,7 @@ func @nested_cluster_op(%arg0 : tensor<i1>) -> (tensor<i1>) {
   return %1 : tensor<i1>
 }
 
-// CHECK:      %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"() ( {
 // CHECK-NEXT:     "tf.opC"(%[[OP_A]])
@@ -226,7 +226,7 @@ func @nested_cluster_op(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      return %[[LAUNCH]]
+// CHECK:      return %[[CLUSTER]]
 
 
 // Test multiple clusters interleaved.
@@ -242,21 +242,21 @@ func @interleaved_clusters(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
   return %2, %3 : tensor<i1>, tensor<i1>
 }
 
-// CHECK:      %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:   tf_device.return %[[OP_C]]
 // CHECK-NEXT: _tpu_replicate = "replicate_0"
 // CHECK-SAME: device = "device_0"
 // CHECK-SAME: topology = "topology_0"
-// CHECK:      %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_B]])
 // CHECK-NEXT:   tf_device.return %[[OP_D]]
 // CHECK-NEXT: _tpu_replicate = "replicate_1"
 // CHECK-SAME: device = "device_1"
 // CHECK-SAME: topology = "topology_1"
-// CHECK:      return %[[LAUNCH_0]], %[[LAUNCH_1]]
+// CHECK:      return %[[CLUSTER_0]], %[[CLUSTER_1]]
 
 
 // Test operands and results of ops of a cluster that are interleaved between
@@ -276,14 +276,14 @@ func @interleaved_cluster_operands_results() {
 
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
 // CHECK:      %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_C]])
-// CHECK:      %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"
 // CHECK-NEXT:   "tf.opF"(%[[OP_E]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"(%[[LAUNCH]])
+// CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"(%[[CLUSTER]])
 // CHECK:      "tf.opD"(%[[OP_B]])
 
 
@@ -306,24 +306,24 @@ func @one_replica(%arg0: tensor<i1>) -> tensor<i1> {
 
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
 // CHECK:      %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_C]])
-// CHECK:      %[[LAUNCH:[0-9]*]]:2 = "tf_device.launch"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_F:[0-9]*]] = "tf.opF"(%[[OP_E]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]], %[[OP_F]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"(%[[LAUNCH]]#0)
+// CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"(%[[CLUSTER]]#0)
 // CHECK:      "tf.opD"(%[[OP_B]])
-// CHECK:      return %[[LAUNCH]]#1
+// CHECK:      return %[[CLUSTER]]#1
 // CHECK-NOT:  "tf.TPUReplicatedInput"
 // CHECK-NOT:  "tf.TPUReplicatedOutput"
 
 
 // Test replication with replicated operands and replicated results. The cluster
-// will be wrapped in a launch first and then by a replicate. TPUReplicatedInput
-// and TPUReplicatedOutput nodes will be replaced by the replicate operands and
-// results.
+// will be wrapped in a `tf_device.cluster` first and then by a replicate.
+// TPUReplicatedInput and TPUReplicatedOutput nodes will be replaced by the
+// replicate operands and results.
 // CHECK-LABEL: func @replication
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>, %[[ARG_1:[a-z0-9]*]]: tensor<i32>, %[[ARG_2:[a-z0-9]*]]: tensor<f32>)
 func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
@@ -347,18 +347,18 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // CHECK-DAG:  [%[[ARG_0]], %[[OP_A]]] as %[[RI_0:[a-z0-9]*]]: tensor<i1>
 // CHECK-DAG:  [%[[OP_B]], %[[ARG_1]]] as %[[RI_1:[a-z0-9]*]]: tensor<i32>
 // CHECK-SAME: n = 2 : i32
-// CHECK-NEXT:   %[[LAUNCH:[0-9]*]]:2 = "tf_device.launch"() ( {
+// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
 // CHECK:          %[[OP_D:[0-9]*]] = "tf.opD"(%[[RI_0]], %[[RI_1]], %[[ARG_2]], %[[OP_C]])
 // CHECK:          %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]], %[[RI_0]], %[[RI_1]], %[[ARG_2]], %[[OP_C]])
 // CHECK:          tf_device.return %[[OP_D]], %[[OP_E]]
 // CHECK-NEXT:   _tpu_replicate = "replicate"
 // CHECK-SAME:   device = "device"
 // CHECK-SAME:   topology = "topology"
-// CHECK:        tf_device.return %[[LAUNCH]]#0, %[[LAUNCH]]#1
+// CHECK:        tf_device.return %[[CLUSTER]]#0, %[[CLUSTER]]#1
 // CHECK:      return %[[REPLICATE]]#0, %[[REPLICATE]]#3
 
 
-// Test `tf.TPUReplicatedInput` ops are sorted by their `index` attribute.
+// Test TPUReplicatedInput ops are sorted by their `index` attribute.
 // Non-negative `index` should precede `index` of -1, and ordering of ops with
 // `index` of -1 does not matter.
 // CHECK-LABEL: func @sort_replicated_input
@@ -452,7 +452,7 @@ func @mismatched_replicated_output() {
 // Test cluster that should be replicated where its outputs do not lead to a
 // TPUReplicatedOutput.
 func @missing_replicated_output() {
-  // expected-error@+1 {{requires output of tf_device.launch to lead to a 'tf.TPUReplicatedOutput' op}}
+  // expected-error@+1 {{requires output of tf_device.cluster to lead to a 'tf.TPUReplicatedOutput' op}}
   %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
   %1 = "tf.opB"(%0) : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
@@ -520,7 +520,9 @@ func @input_index_gaps(%arg0: tensor<i1>) {
   return
 }
 
+
 // -----
+
 
 // Test that the `is_mirrored_variable` attribute is preserved in the
 // tf_device.replicate op.
@@ -537,4 +539,3 @@ func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: ten
 // CHECK:      tf_device.replicate
 // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %{{[a-z0-9]*}}
 // CHECK-SAME: _mirrored_variable_indices = [1]
-

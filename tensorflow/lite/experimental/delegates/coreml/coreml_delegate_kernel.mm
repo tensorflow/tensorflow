@@ -60,7 +60,7 @@ void TransposeToHWC(const float* chw, float* hwc, const TfLiteIntArray* hwc_dims
 
 TfLiteStatus CoreMlDelegateKernel::Init(TfLiteContext* context,
                                         const TfLiteDelegateParams* delegate_params) {
-  if (@available(iOS 11.0, *)) {
+  if (@available(iOS 12.0, *)) {
     executor_ = [[::CoreMlExecutor alloc] init];
     TF_LITE_ENSURE_STATUS(BuildModel(context, delegate_params));
     // Serialize the model protocol buffer and compile it.
@@ -76,7 +76,7 @@ TfLiteStatus CoreMlDelegateKernel::Init(TfLiteContext* context,
     }
     return kTfLiteOk;
   } else {
-    TF_LITE_KERNEL_LOG(context, "Minimum required iOS version is 11.0.");
+    TF_LITE_KERNEL_LOG(context, "Minimum required iOS version is 12.0.");
     return kTfLiteError;
   }
 }
@@ -104,6 +104,9 @@ void CoreMlDelegateKernel::AddOutputTensors(const TfLiteIntArray* output_tensors
     int batch_size, height_size, width_size, depth_size;
     GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
     multi_array->set_datatype(CoreML::Specification::ArrayFeatureType::FLOAT32);
+    if (coreml_version_ >= 3) {
+      multi_array->mutable_shape()->Add(batch_size);
+    }
     multi_array->mutable_shape()->Add(depth_size);
     multi_array->mutable_shape()->Add(height_size);
     multi_array->mutable_shape()->Add(width_size);
@@ -114,7 +117,7 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
                                               const TfLiteDelegateParams* delegate_params) {
   TfLiteNode* node;
   TfLiteRegistration* reg;
-  builder_.reset(new delegates::coreml::GraphBuilder());
+  builder_.reset(new delegates::coreml::GraphBuilder(coreml_version_));
   // Add Inputs
   AddInputTensors(delegate_params->input_tensors, context);
   // Build all ops.
@@ -144,8 +147,6 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
     return kTfLiteError;
   }
   AddOutputTensors(delegate_params->output_tensors, context);
-  // TODO(karimnosseir): Set correct version ?
-  model_->set_specificationversion(1);
   auto* model_description = model_->mutable_description();
   for (int i = 0; i < delegate_params->input_tensors->size; ++i) {
     const int tensor_id = delegate_params->input_tensors->data[i];
@@ -158,6 +159,9 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
       int batch_size, height_size, width_size, depth_size;
       GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
       multi_array->set_datatype(CoreML::Specification::ArrayFeatureType::FLOAT32);
+      if (coreml_version_ >= 3) {
+        multi_array->mutable_shape()->Add(batch_size);
+      }
       multi_array->mutable_shape()->Add(depth_size);
       multi_array->mutable_shape()->Add(height_size);
       multi_array->mutable_shape()->Add(width_size);
@@ -181,9 +185,12 @@ TfLiteStatus CoreMlDelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* n
     int batch_size, height_size, width_size, depth_size;
     GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor->dims);
 
-    inputs_.push_back({std::vector<float>(input_size),
-                       builder_->GetTensorName(tensor_index),
-                       {depth_size, height_size, width_size}});
+    std::vector<int> input_shape = {depth_size, height_size, width_size};
+    if (coreml_version_ >= 3) {
+      input_shape.insert(input_shape.begin(), batch_size);
+    }
+    inputs_.push_back(
+        {std::vector<float>(input_size), builder_->GetTensorName(tensor_index), input_shape});
   }
 
   outputs_.reserve(node->outputs->size);
@@ -222,9 +229,7 @@ TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* no
   }
 }
 
-CoreMlDelegateKernel::~CoreMlDelegateKernel() {
-  [executor_ cleanup];
-}
+CoreMlDelegateKernel::~CoreMlDelegateKernel() { [executor_ cleanup]; }
 
 }  // namespace coreml
 }  // namespace delegates

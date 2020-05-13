@@ -1006,13 +1006,23 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """Whether the layer is dynamic (eager-only); set in the constructor."""
     # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
     #                    then this cache logic must be updated.
-    return self._dynamic
+    return self._dynamic or any(layer.dynamic
+                                for layer in self._unique_sublayers())
+
+  def _unique_sublayers(self):
+    # Model.layers will use this as implementation, but we can't expose this
+    # one as the public property since it might conflict with subclass layers
+    # which also have user defined layers property.
+    self._maybe_create_attribute('_layers', [])
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(self._layers))
 
   @property
   @doc_controls.do_not_doc_inheritable
   @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return self._stateful
+    return self._stateful or any(
+        getattr(layer, 'stateful', False) for layer in self._unique_sublayers())
 
   @stateful.setter
   @trackable_layer_utils.invalidate_recursive_cache('stateful')

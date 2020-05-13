@@ -142,7 +142,31 @@ class Node {
         metrics_(name_),
         output_(args.output.get()) {}
 
-  virtual ~Node() { FlushMetrics(); }
+  virtual ~Node() {
+    // Clear the sub-nodes instead of relying on implicit shared pointer
+    // destructor to avoid potential stack overflow when the tree is deep.
+    std::deque<std::shared_ptr<Node>> queue;
+    {
+      mutex_lock l(mu_);
+      while (inputs_.size() > 0) {
+        queue.push_back(inputs_.front());
+        inputs_.pop_front();
+      }
+    }
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+      {
+        mutex_lock l(node->mu_);
+        while (node->inputs_.size() > 0) {
+          queue.push_back(node->inputs_.front());
+          node->inputs_.pop_front();
+        }
+      }
+    }
+
+    FlushMetrics();
+  }
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_) {

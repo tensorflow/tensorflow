@@ -23,12 +23,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.feature_column import dense_features_v2
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column import dense_features_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.premade import linear
 from tensorflow.python.keras.premade import wide_deep
@@ -315,14 +315,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     else:
       self.assertIsInstance(revived, fc.DenseFeatures)
       self.assertNotIsInstance(revived, dense_features_v2.DenseFeatures)
-
-  def test_serialization_sequence_features(self):
-    rating = fc.sequence_numeric_column('rating')
-    sequence_feature = fc.SequenceFeatures([rating])
-    config = keras.layers.serialize(sequence_feature)
-
-    revived = keras.layers.deserialize(config)
-    self.assertIsInstance(revived, fc.SequenceFeatures)
 
   # This test is an example for a regression on categorical inputs, i.e.,
   # the output is 0.4, 0.6, 0.9 when input is 'alpha', 'beta', 'gamma'

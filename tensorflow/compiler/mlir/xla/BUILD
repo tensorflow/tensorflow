@@ -23,7 +23,6 @@ package_group(
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
-        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
@@ -187,6 +186,7 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
@@ -240,8 +240,8 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
@@ -278,8 +278,8 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
@@ -398,9 +398,8 @@ cc_library(
 
 cc_library(
     name = "xla_hlo_to_lhlo_with_xla",
-    srcs = [
-        "transforms/xla_hlo_to_lhlo_with_xla.cc",
-    ],
+    srcs = ["transforms/xla_hlo_to_lhlo_with_xla.cc"],
+    hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
     deps = [
         ":hlo",
         ":hlo_utils",
@@ -589,6 +588,7 @@ cc_library(
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:shape_inference",
@@ -718,6 +718,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",

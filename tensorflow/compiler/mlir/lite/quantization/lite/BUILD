@@ -72,5 +72,6 @@ tf_cc_binary(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )

@@ -104,26 +104,24 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  std::unordered_set<std::string> tags = absl::StrSplit(saved_model_tags, ',');
+  std::vector<std::string> exported_names_vector =
+      absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+  absl::Span<std::string> exported_names(exported_names_vector);
+
   if (import_saved_model_object_graph) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-    std::vector<std::string> exported_names =
-        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     mlir::MLIRContext context;
 
     auto module = tensorflow::SavedModelObjectGraphToMlirImport(
-        input_filename, tags, absl::Span<std::string>(exported_names),
-        &context);
+        input_filename, tags, exported_names, &context);
     if (!module) return 1;
 
     module->print(output->os());
   } else if (import_saved_model_signature_defs) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
     mlir::MLIRContext context;
 
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, &context);
+        input_filename, tags, exported_names, &context);
     if (!module) return 1;
 
     module->print(output->os());

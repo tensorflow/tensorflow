@@ -120,7 +120,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "iterating.*not allowed in Graph"):
       next(iter(t))
     with self.assertRaisesRegexp(
-        TypeError, "iterating.*AutoGraph did not convert"):
+        TypeError, "iterating.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
     with self.assertRaisesRegexp(
@@ -136,7 +136,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         TypeError, "using.*as a.*bool.*not allowed in Graph"):
       bool(t)
     with self.assertRaisesRegexp(
-        TypeError, "using.*as a.*bool.*AutoGraph did not convert"):
+        TypeError, "using.*as a.*bool.*AutoGraph did convert"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
     with self.assertRaisesRegexp(
@@ -3266,56 +3266,6 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(NotImplementedError, self._error()):
         test_ops.old()
-
-
-class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
-
-  @test_util.disable_tfrt("Graph is not supported yet.")
-  def testSuccess(self):
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
-    t = op.outputs[0]
-    self.assertTrue(ops.is_dense_tensor_like(t))
-
-    v = variables.Variable([17])
-    self.assertTrue(ops.is_dense_tensor_like(v))
-
-  class BadClassNoName(object):
-    pass
-
-  class BadClassBadName(object):
-
-    def name(self):
-      pass
-
-  class BadClassNoDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-  class BadClassBadDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-    def dtype(self):
-      pass
-
-  def testBadClass(self):
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoName)
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadName)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoDtype)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
 class NameScopeTest(test_util.TensorFlowTestCase):

@@ -398,7 +398,7 @@ class Subgraph {
     return kTfLiteOk;
   }
 
-  static TfLiteStatus CheckTransposedConvolutionParams(
+  static TfLiteStatus CheckMediaPipeTransposedConvolutionParams(
       TfLiteContext* context, const TfLiteTransposeConvParams* params,
       int node_index) {
     if (params->stride_width <= 0) {
@@ -414,6 +414,85 @@ class Subgraph {
                            params->stride_height, node_index);
       }
       return kTfLiteError;
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckMediaPipePoolParams(TfLiteContext* context,
+                                               const TfLitePoolParams* params,
+                                               int node_index) {
+    if (params->stride_width <= 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                               params->stride_width, node_index);
+      return kTfLiteError;
+    }
+    if (params->stride_height <= 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                               params->stride_height, node_index);
+      return kTfLiteError;
+    }
+    if (params->filter_width <= 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid filter width %d in node #%d",
+                               params->filter_width, node_index);
+      return kTfLiteError;
+    }
+    if (params->filter_height <= 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid filter height %d in node #%d",
+                               params->filter_height, node_index);
+      return kTfLiteError;
+    }
+    if (params->filter_width != params->stride_width) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "filter width %d does not match stride width %d in node #%d",
+          params->filter_width, params->stride_width, node_index);
+      return kTfLiteError;
+    }
+    if (params->filter_height != params->stride_height) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "filter height %d does not match stride height %d in node #%d",
+          params->filter_height, params->stride_height, node_index);
+      return kTfLiteError;
+    }
+    switch (params->activation) {
+      case kTfLiteActNone:
+        break;
+      case kTfLiteActRelu:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Relu) in node #%d",
+            node_index);
+        return kTfLiteOk;
+      case kTfLiteActRelu1:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (ReluMinus1To1) in node #%d",
+            node_index);
+        return kTfLiteOk;
+      case kTfLiteActRelu6:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Relu6) in node #%d",
+            node_index);
+        return kTfLiteOk;
+      case kTfLiteActTanh:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Tanh) in node #%d",
+            node_index);
+        return kTfLiteError;
+      case kTfLiteActSignBit:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Sign) in node #%d",
+            node_index);
+        return kTfLiteError;
+      case kTfLiteActSigmoid:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Sigmoid) in node #%d",
+            node_index);
+        return kTfLiteError;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "invalid fused activation (%d) in node #%d",
+            static_cast<int>(params->activation), node_index);
+        return kTfLiteError;
     }
 
     return kTfLiteOk;
@@ -697,12 +776,30 @@ class Subgraph {
       case kTfLiteBuiltinCustom: {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
             0) {
-          const TfLiteTransposeConvParams* deconv_params =
-              static_cast<const TfLiteTransposeConvParams*>(
-                  node->custom_initial_data);
+          TfLiteTransposeConvParams deconv_params = {kTfLitePaddingUnknown};
+          std::memcpy(&deconv_params, node->custom_initial_data,
+                      node->custom_initial_data_size);
+
           return VisitMediaPipeDeconvolutionNode(
               subgraph, context, node_index, node, context->tensors,
-              deconv_params, xnnpack_tensors);
+              &deconv_params, xnnpack_tensors);
+        } else if (strcmp(registration->custom_name,
+                          "MaxPoolingWithArgmax2D") == 0) {
+          TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
+          std::memcpy(&pool_params, node->custom_initial_data,
+                      node->custom_initial_data_size);
+
+          return VisitMediaPipeMaxPoolingNode(subgraph, context, node_index,
+                                              node, context->tensors,
+                                              &pool_params, xnnpack_tensors);
+        } else if (strcmp(registration->custom_name, "MaxUnpooling2D") == 0) {
+          TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
+          std::memcpy(&pool_params, node->custom_initial_data,
+                      node->custom_initial_data_size);
+
+          return VisitMediaPipeUnpoolingNode(subgraph, context, node_index,
+                                             node, context->tensors,
+                                             &pool_params, xnnpack_tensors);
         }
         return kTfLiteError;
       }
@@ -1315,7 +1412,7 @@ class Subgraph {
     const int kernel_width = filter_tensor.dims->data[2];
     const int input_channels = filter_tensor.dims->data[3];
 
-    TF_LITE_ENSURE_STATUS(CheckTransposedConvolutionParams(
+    TF_LITE_ENSURE_STATUS(CheckMediaPipeTransposedConvolutionParams(
         logging_context, deconv_params, node_index));
 
     uint32_t flags = 0;
@@ -1350,6 +1447,138 @@ class Subgraph {
             logging_context,
             "failed to delegate Convolution2DTransposeBias node #%d",
             node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitMediaPipeMaxPoolingNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLitePoolParams* pool_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 2, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                           node->inputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_value_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloatType(logging_context, output_value_tensor,
+                             node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_value_tensor,
+                                           4, node->outputs->data[0]));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorNonDynamicAllocation(logging_context, output_value_tensor,
+                                        node->outputs->data[0], node_index));
+
+    const TfLiteTensor& output_index_tensor = tensors[node->outputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_index_tensor,
+                                           4, node->outputs->data[1]));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorNonDynamicAllocation(logging_context, output_index_tensor,
+                                        node->outputs->data[1], node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckMediaPipePoolParams(logging_context, pool_params, node_index));
+
+    uint32_t flags = 0;
+    TF_LITE_ENSURE_STATUS(CalculatePadding(
+        logging_context, pool_params->padding, &flags, node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_argmax_pooling_2d(
+          subgraph,
+          /*input_padding_top=*/0,
+          /*input_padding_right=*/0,
+          /*input_padding_bottom=*/0,
+          /*input_padding_left=*/0,
+          static_cast<uint32_t>(pool_params->filter_height),
+          static_cast<uint32_t>(pool_params->filter_width),
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_value_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*output_index_id=*/xnnpack_tensors[node->outputs->data[1]], flags);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(
+            logging_context,
+            "failed to delegate CUSTOM(MaxPoolingWithArgmax2D) node #%d",
+            node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitMediaPipeUnpoolingNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLitePoolParams* pool_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
+
+    const TfLiteTensor& input_value_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloatType(logging_context, input_value_tensor,
+                             node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_value_tensor,
+                                           4, node->inputs->data[0]));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorNonDynamicAllocation(logging_context, input_value_tensor,
+                                        node->inputs->data[0], node_index));
+
+    const TfLiteTensor& input_index_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_index_tensor,
+                                           4, node->inputs->data[1]));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorNonDynamicAllocation(logging_context, input_index_tensor,
+                                        node->inputs->data[1], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
+                                           node->outputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckMediaPipePoolParams(logging_context, pool_params, node_index));
+
+    uint32_t flags = 0;
+    TF_LITE_ENSURE_STATUS(CalculatePadding(
+        logging_context, pool_params->padding, &flags, node_index));
+    if (flags != 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "invalid padding mode (%d) in node #%d",
+          static_cast<int>(pool_params->padding), node_index);
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_unpooling_2d(
+          subgraph,
+          /*padding_top=*/0,
+          /*padding_right=*/0,
+          /*padding_bottom=*/0,
+          /*padding_left=*/0, static_cast<uint32_t>(pool_params->filter_height),
+          static_cast<uint32_t>(pool_params->filter_width),
+          /*input_value_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*input_index_id=*/xnnpack_tensors[node->inputs->data[1]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CUSTOM(MaxUnpooling2D) node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }

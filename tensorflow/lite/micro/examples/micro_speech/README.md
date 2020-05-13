@@ -7,7 +7,7 @@ The application listens to its surroundings with a microphone and indicates
 when it has detected a word by lighting an LED or displaying data on a
 screen, depending on the capabilities of the device.
 
-![Animation on Arduino](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/animation_on_arduino.gif)
+![Animation on Arduino](images/animation_on_arduino.gif)
 
 The code has a small footprint (for example, around 22 kilobytes on a Cortex
 M3) and only uses about 10 kilobytes of RAM for working memory, so it's able to
@@ -146,9 +146,9 @@ The sample has been tested on ESP-IDF version 4.0 with the following devices: -
 ESP-EYE is a board which has a built-in microphone which can be used to run this
 example , if you want to use other esp boards you will have to connect
 microphone externally and write your own
-[audio_provider.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/esp/audio_provider.cc).
+[audio_provider.cc](esp/audio_provider.cc).
 You can also edit the
-[command_responder.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
+[command_responder.cc](command_responder.cc)
 to define your own actions after detecting command.
 
 ### Install the ESP IDF
@@ -587,7 +587,7 @@ the trained TensorFlow model, runs some example inputs through it, and got the
 expected outputs.
 
 To understand how TensorFlow Lite does this, you can look at the source in
-[micro_speech_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
+[micro_speech_test.cc](micro_speech_test.cc).
 It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
@@ -596,4 +596,4 @@ with the model and sample inputs.
 
 So far you have used an existing trained model to run inference on
 microcontrollers. If you wish to train your own model, follow the instructions
-in [train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/train/README.md).
+given in the [train/](train/) directory.

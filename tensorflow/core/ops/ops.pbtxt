@@ -8555,29 +8555,6 @@ op {
   }
 }
 op {
-  name: "CreateJob"
-  input_arg {
-    name: "dataset_id"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "protocol"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "processing_mode"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "job_token"
-    type: DT_VARIANT
-  }
-}
-op {
   name: "CreateSummaryDbWriter"
   input_arg {
     name: "writer"
@@ -10501,6 +10478,14 @@ op {
 op {
   name: "DataServiceDataset"
   input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  input_arg {
     name: "address"
     type: DT_STRING
   }
@@ -10509,8 +10494,16 @@ op {
     type: DT_STRING
   }
   input_arg {
+    name: "job_name"
+    type: DT_STRING
+  }
+  input_arg {
     name: "max_outstanding_requests"
     type: DT_INT64
+  }
+  input_arg {
+    name: "iteration_counter"
+    type: DT_RESOURCE
   }
   output_arg {
     name: "handle"
@@ -11480,6 +11473,119 @@ op {
     type: DT_STRING
   }
   is_stateful: true
+}
+op {
+  name: "DenseBincount"
+  input_arg {
+    name: "input"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "size"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "weights"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "DenseCountSparseOutput"
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
+      }
+    }
+  }
 }
 op {
   name: "DenseToCSRSparseMatrix"
@@ -12504,6 +12610,14 @@ op {
       }
     }
   }
+}
+op {
+  name: "DummyIterationCounter"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
 }
 op {
   name: "DummyMemoryCache"
@@ -21640,22 +21754,6 @@ op {
   }
 }
 op {
-  name: "MakeDataServiceIterator"
-  input_arg {
-    name: "dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "job_token"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  is_stateful: true
-}
-op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
@@ -24235,6 +24333,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -33058,6 +33157,127 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RaggedBincount"
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "size"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "weights"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "RaggedCountSparseOutput"
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
       }
     }
   }
@@ -44449,6 +44669,62 @@ op {
   }
 }
 op {
+  name: "SparseBincount"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "size"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "weights"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "SparseConcat"
   input_arg {
     name: "indices"
@@ -44556,6 +44832,79 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "SparseCountSparseOutput"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "output_type"
+  }
+  output_arg {
+    name: "output_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "minlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "maxlength"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "binary_count"
+    type: "bool"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_FLOAT
+      }
+    }
+  }
 }
 op {
   name: "SparseCross"

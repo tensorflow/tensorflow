@@ -393,6 +393,9 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
+@deprecated('2020-10-11',
+            'Simply pass a True/False value to the `training` argument '
+            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.

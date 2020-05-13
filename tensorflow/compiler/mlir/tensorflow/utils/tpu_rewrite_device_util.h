@@ -30,29 +30,40 @@ limitations under the License.
 namespace tensorflow {
 using stream_executor::port::StatusOr;
 
-// TPU devices to be used for execution (e.g. devices for TPUExecute ops). They
-// are ordered by `num_replicas` followed by `num_cores_per_replica`.
-using ExecutionDevices =
-    llvm::SmallVector<llvm::SmallVector<std::string, 8>, 8>;
+// A TPU device for execution alongside its associated host CPU device.
+struct TPUDeviceAndHost {
+  TPUDeviceAndHost() {}
+  TPUDeviceAndHost(llvm::StringRef device, llvm::StringRef host)
+      : device(device), host(host) {}
 
-// TPU compilation device, execution devices, and optionally execution device
-// IDs. Execution device IDs are populated if `topology` and `device_assignment`
-// are provided.
+  std::string device;
+  std::string host;
+};
+
+// TPU devices to be used for execution (e.g. devices for TPUExecute ops) and
+// their associated host CPU devices (for outside compilation). They are ordered
+// by `num_replicas` followed by `num_cores_per_replica`.
+using TPUDevicesAndHosts =
+    llvm::SmallVector<llvm::SmallVector<TPUDeviceAndHost, 8>, 8>;
+
+// TPU compilation device, execution and associated host devices, and optionally
+// execution device IDs. Execution device IDs are populated if `topology` and
+// `device_assignment` are provided.
 struct TPUDeviceAssignment {
   TPUDeviceAssignment(llvm::StringRef compilation_device,
-                      ExecutionDevices&& execution_devices)
+                      TPUDevicesAndHosts&& tpu_devices)
       : compilation_device(compilation_device),
-        execution_devices(std::move(execution_devices)) {}
+        tpu_devices(std::move(tpu_devices)) {}
 
   TPUDeviceAssignment(llvm::StringRef compilation_device,
-                      ExecutionDevices&& execution_devices,
+                      TPUDevicesAndHosts&& tpu_devices,
                       xla::DeviceAssignmentProto&& xla_device_assignment)
       : compilation_device(compilation_device),
-        execution_devices(std::move(execution_devices)),
+        tpu_devices(std::move(tpu_devices)),
         xla_device_assignment(std::move(xla_device_assignment)) {}
 
   std::string compilation_device;
-  ExecutionDevices execution_devices;
+  TPUDevicesAndHosts tpu_devices;
   llvm::Optional<xla::DeviceAssignmentProto> xla_device_assignment;
 };
 

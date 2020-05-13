@@ -163,6 +163,8 @@ build:cuda_clang --action_env TF_CUDA_CLANG=1
 build:dbg --config=opt -c dbg
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
+# AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
+build:dbg --copt -DDEBUG_BUILD
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
@@ -356,9 +358,10 @@ build:rbe_linux --linkopt=-lm
 build:rbe_cpu_linux --config=rbe_linux
 build:rbe_cpu_linux --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
 build:rbe_cpu_linux --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
-build:rbe_cpu_linux --extra_execution_platforms"=@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
-build:rbe_cpu_linux --host_platform="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
-build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
+build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
+build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
+build:rbe_cpu_linux --host_platform="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
+build:rbe_cpu_linux --platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
 
 build:rbe_linux_cuda_base --config=rbe_linux
 build:rbe_linux_cuda_base --repo_env=TF_NEED_TENSORRT=1

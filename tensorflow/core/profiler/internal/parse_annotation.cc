@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 
 #include <stack>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"

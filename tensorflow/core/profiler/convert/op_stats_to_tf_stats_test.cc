@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
-#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -75,8 +79,8 @@ TEST(OpStatsToTfStats, GpuTfStats) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  const OpStats& op_stats = ConvertXSpaceToOpStats(space);
-  const TfStatsDatabase& tf_stats = ConvertOpStatsToTfStats(op_stats);
+  const OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   // TfOp1, TfOp2, Idle
   EXPECT_EQ(3, tf_stats.with_idle().tf_stats_record_size());

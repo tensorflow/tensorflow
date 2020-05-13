@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

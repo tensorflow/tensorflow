@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
@@ -166,6 +167,28 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 AbstractTensorInterface* EagerContext::CreateTensor(
     DataType dtype, absl::Span<const int64> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
+}
+
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, const int64_t* dims, int num_dims, void* data, size_t len,
+    bool convert_string, MemoryReleaser memory_releaser,
+    void* memory_releaser_arg) {
+  TF_Tensor* tensor_wrapper =
+      TF_NewTensor(static_cast<TF_DataType>(dtype), dims, num_dims, data, len,
+                   memory_releaser, memory_releaser_arg);
+
+  if (convert_string) {
+    tensorflow::Tensor tensor;
+    Status status = TF_TensorToTensor(tensor_wrapper, &tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    if (!status.ok()) return nullptr;
+    return new TensorInterface(std::move(tensor));
+  } else {
+    AbstractTensorInterface* result = nullptr;
+    std::swap(result, tensor_wrapper->tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    return result;
+  }
 }
 
 std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
@@ -511,6 +534,10 @@ EagerContext::~EagerContext() {
   // don't send RPCs and block in destructor.
   WaitForAndCloseRemoteContexts();
 
+  // Custom devices may have obtained references to various context components
+  // (executors, thread pool). It's safer to run their destructors early.
+  custom_devices_.clear();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
@@ -849,6 +876,18 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
+Status EagerContext::FindCompositeDeviceFromName(
+    const char* device_name, CompositeDevice** device) const {
+  tf_shared_lock l(composite_devices_mu_);
+  for (const auto& d : composite_devices_) {
+    if (d.second->name() == device_name) {
+      *device = d.second.get();
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("Unknown composite device: ", device_name);
+}
+
 Status EagerContext::FindCustomDeviceFromName(const string& device_name,
                                               CustomDevice** dev) const {
   auto dev_it = custom_devices_.find(device_name);
@@ -900,8 +939,7 @@ Status EagerContext::FindOrCreateCompositeDevice(
                                             composite_devices_.size(), &s);
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
-  // TODO(b/145922293): Add the composite device to the device set of pflr in
-  // order to make placer recognize it.
+  pflr_->AddCompositeDevice(*composite_device);
   composite_devices_.emplace(hash_key, std::move(device));
   return Status::OK();
 }

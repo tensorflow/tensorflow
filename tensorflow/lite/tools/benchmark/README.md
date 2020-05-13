@@ -87,6 +87,7 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
+*   `coreml_version`: `int` (default=0)
 
 #### External delegate
 *   `external_delegate_path`: `string` (default="")

@@ -39,7 +39,6 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,6 +47,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column.dense_features import DenseFeatures
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import generic_utils

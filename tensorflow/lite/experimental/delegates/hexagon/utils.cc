@@ -80,6 +80,8 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
     case kTfLiteBuiltinMaxPool2d:
+    case kTfLiteBuiltinMean:
+    case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinQuantize:
@@ -153,11 +155,26 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return IsActivationReluOrNone(sub_params->activation);
     }
     case kTfLiteBuiltinSum:
-    case kTfLiteBuiltinMean: {
       // TODO(b/139277813): Enable these when they pass unit tests. These seem
       // to recompute the output min/max instead of taking them as inputs, which
       // causes an unexpected shift in dequantized values.
       return false;
+    case kTfLiteBuiltinMean: {
+      return InputsWithCorrectTypes(
+                 node, context,
+                 {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) &&
+             IsConstantTensor(GetInput(context, node, 1));
+    }
+    case kTfLiteBuiltinMirrorPad: {
+      if (!InputsWithCorrectTypes(
+              node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) ||
+          !IsConstantTensor(GetInput(context, node, 1)))
+        return false;
+      const TfLiteMirrorPaddingParams* params =
+          reinterpret_cast<const TfLiteMirrorPaddingParams*>(
+              node->builtin_data);
+      return params->mode == kTfLiteMirrorPaddingReflect ||
+             params->mode == kTfLiteMirrorPaddingSymmetric;
     }
     case kTfLiteBuiltinPad: {
       // TODO(b/139277813): Currently we only support padding with the default

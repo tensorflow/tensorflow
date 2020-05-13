@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
@@ -40,16 +41,15 @@ class FunctionArgsInterface {
  public:
   virtual ~FunctionArgsInterface() {}
 
-  virtual bool HasRemoteInputs() const = 0;
+  virtual bool HasRemoteOrPackedInputs() const = 0;
 
-  virtual Status GetLocalArg(const int index, Tensor* val) const = 0;
+  virtual Status GetLocalArg(const FunctionArgIndex& index,
+                             Tensor* val) const = 0;
 
   virtual std::vector<Tensor> GetLocalTensors() const = 0;
 
-  virtual const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const = 0;
-
 #if !defined(IS_MOBILE_PLATFORM)
-  virtual Status GetRemoteArg(const int index,
+  virtual Status GetRemoteArg(const FunctionArgIndex& index,
                               eager::RemoteTensorHandle* val) const {
     return errors::Unimplemented(
         "Serializing a remote argument is not implemented.");
@@ -217,6 +217,12 @@ class ProcessFunctionLibraryRuntime {
     return lib_def_;
   }
 
+  // Add a CompositeDevice to `device_set_`
+  void AddCompositeDevice(CompositeDevice* d) TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    device_set_->AddDevice(d);
+  }
+
  protected:
   friend class FunctionLibraryRuntimeImpl;
 
@@ -232,21 +238,21 @@ class ProcessFunctionLibraryRuntime {
   // piece of a multi-device function) fits into the multi-device function.
   struct ComponentFunctionData {
     // The handle for the instantiated component function.
-    FunctionLibraryRuntime::Handle handle_;
-    // arg_indices_.size() is the number of arguments to the component function.
+    FunctionLibraryRuntime::Handle handle;
+    // arg_indices.size() is the number of arguments to the component function.
     // The i-th argument of the component function comes from the
-    // `arg_indices_[i]`-th argument of the multi-device function.
-    std::vector<int> arg_indices_;
-    // ret_indices_.size() is the number of return values of the component
+    // `arg_indices[i]`-th argument of the multi-device function.
+    std::vector<FunctionArgIndex> arg_indices;
+    // ret_indices.size() is the number of return values of the component
     // function.  The i-th return value of the component function goes to the
-    // `ret_indices_[i]`-th return value of the multi-device function.
-    std::vector<int> ret_indices_;
-    // arg_alloc_attrs_[i] are the allocator attributes of the i-th argument to
+    // `ret_indices[i]`-th return value of the multi-device function.
+    std::vector<int> ret_indices;
+    // arg_alloc_attrs[i] are the allocator attributes of the i-th argument to
     // the component function.
-    std::vector<AllocatorAttributes> arg_alloc_attrs_;
-    // ret_alloc_attrs_[i] are the allocator attributes of the i-th return value
+    std::vector<AllocatorAttributes> arg_alloc_attrs;
+    // ret_alloc_attrs[i] are the allocator attributes of the i-th return value
     // of the component function.
-    std::vector<AllocatorAttributes> ret_alloc_attrs_;
+    std::vector<AllocatorAttributes> ret_alloc_attrs;
   };
 
   // Data structure holding information for a single instantiated multi-device
@@ -303,6 +309,9 @@ class ProcessFunctionLibraryRuntime {
       std::function<Status(const ComponentFunctionData& comp_data,
                            InternalArgs* args)>
           get_component_args) const;
+
+  Status CreateRendezvous(const FunctionLibraryRuntime::Options& opts,
+                          Rendezvous** created_rendezvous) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,

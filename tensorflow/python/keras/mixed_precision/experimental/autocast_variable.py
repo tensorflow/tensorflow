@@ -23,9 +23,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.types import core
 
 
-class AutoCastVariable(variables.Variable):
+class AutoCastVariable(variables.Variable, core.Tensor):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
   This class wraps a floating-point `tf.Variable`. It emulates the variable
@@ -417,7 +418,6 @@ class AutoCastVariable(variables.Variable):
 
 ops.register_tensor_conversion_function(AutoCastVariable,
                                         AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
-ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
 def create_autocast_variable(variable):

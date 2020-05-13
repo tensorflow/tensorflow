@@ -122,4 +122,7 @@ message MemoryProfile {
   // Ids for profiled memory allocators, used to populate memory selection list
   // at front end.
   repeated string memory_ids = 3;
+  // Map of original random int64 step id to the count of memory activity events
+  // assigned with it.
+  map<int64 /*orig_step_id*/, int64 /*count*/> step_count = 4;
 }

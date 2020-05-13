@@ -22,13 +22,6 @@ genrule(
     """,
 )
 
-TFL_LIBRARY_HDRS = [
-    "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-    "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
-    "//tensorflow/lite/c:c_api.h",
-    "//tensorflow/lite/c:common.h",
-]
-
 TFL_FRAMEWORK_HDRS = [
     "//tensorflow/lite/delegates/gpu:metal_delegate.h",
     ":coreml_delegate.h",
@@ -42,19 +35,6 @@ ios_static_framework(
     hdrs = TFL_FRAMEWORK_HDRS,
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    deps = [
-        ":TensorFlowLiteC",
-    ],
-)
-
-objc_library(
-    name = "TensorFlowLiteC",
-    hdrs = TFL_LIBRARY_HDRS,
-    module_name = "TensorFlowLiteC",
-    weak_sdk_frameworks = [
-        "Metal",
-        "CoreML",
-    ],
     deps = [
         ":tensorflow_lite_c",
     ],
@@ -78,20 +58,22 @@ ios_static_framework(
     ],
 )
 
-# Using this intermediate target is a workaround for a bug in bazel build rules
-# involving mixed objc_library & cc_library deps mentioned in (b/74809458).
-# When these dependencies are declared directly under the "TensorFlowLiteC"
-# target above, the resulting static library incorrectly contains duplicate
-# symbols from some ObjC code in the transitive dependencies.
-#
-# When a new dependency should be added to the TensorFlowLiteC framework, the
-# dependency should be added under this target instead.
-# When a new header file needs to be exposed, the header should be added to the
-# TFL_LIBRARY_HDRS list above.
 cc_library(
     name = "tensorflow_lite_c",
-    hdrs = TFL_LIBRARY_HDRS,
-    tags = ["nobuilder"],
+    hdrs = [
+        "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
+    ],
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
+    tags = [
+        "nobuilder",
+        "swift_module=TensorFlowLiteC",
+    ],
     deps = [
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/gpu:metal_delegate",

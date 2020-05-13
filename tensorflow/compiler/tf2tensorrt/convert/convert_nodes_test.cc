@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -66,6 +67,8 @@ namespace convert {
 using absl::StrCat;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::FloatNear;
+using ::testing::Matcher;
 using ::testing::NanSensitiveFloatNear;
 
 // TensorRT modes for testing. We define the following three modes:
@@ -213,6 +216,21 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
   EXPECT_TRUE(TrtDimsEqualsArray(lhs, rhs))
       << "expected: " << DebugString(GetTestDims(lhs)) << "\n"
       << "  actual: " << DebugString(rhs);
+}
+
+Matcher<std::vector<float>> ArrayFloatNear(const std::vector<float>& values,
+                                           float max_abs_error = 1e-5,
+                                           bool nan_sensitive = false) {
+  std::vector<Matcher<float>> matchers;
+  matchers.reserve(values.size());
+  for (const float& v : values) {
+    if (nan_sensitive) {
+      matchers.emplace_back(NanSensitiveFloatNear(v, max_abs_error));
+    } else {
+      matchers.emplace_back(FloatNear(v, max_abs_error));
+    }
+  }
+  return ElementsAreArray(matchers);
 }
 
 template <typename T>
@@ -1355,10 +1373,8 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // TODO(laigd): test fp16 and int8 support for more converters.
   void BuildAndRun(const DataVec& input_data, DataVec* output_data,
                    const int batch_size = 1) {
-    // TODO(tamas) the precision_mode arg is not used anymore, remove it
     // Mark the output tensor as TRT engine output.
     std::vector<Converter::EngineOutputInfo> output_info;
     for (const auto& data : *output_data) {
@@ -1467,7 +1483,7 @@ class OpConverterTest : public ::testing::Test {
   // partial input shape.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims,
-      nvinfer1::DataType trt_dtype, TrtTestMode trt_mode, bool* skip_test,
+      nvinfer1::DataType trt_dtype, TrtTestMode trt_mode,
       const std::vector<int32>* partial_input_shape_dims = nullptr) {
     std::vector<int32> partial_shape;
     if (partial_input_shape_dims && !partial_input_shape_dims->empty()) {
@@ -1481,19 +1497,14 @@ class OpConverterTest : public ::testing::Test {
         partial_shape = dims;
       }
     }
-    *skip_test = false;
-    if (!HasStaticShape(partial_shape) &&
-        trt_mode != TrtTestMode::kDynamicShape) {
-      VLOG(2) << "Skipping dynamic input for static input shape test";
-      *skip_test = true;
-    }
     AddTestTensorWithExplicitBatchDim(name, partial_shape, trt_dtype);
   }
 
   // Adds ITensor for both validation and conversion. The difference compared to
   // AddTestTensorWithExplicitBatchDim is in the meaning of the dims parameter.
   // To define a tensor with NCHW shape, here we set dims = {C,H,W} and
-  // batch_size = N.
+  // batch_size = N. TODO(tfeher) remove this function once all test are updated
+  // to use the other version of AddTestTensor which has the trt_mode arg.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
@@ -1670,22 +1681,42 @@ std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
   return os;
 }
 
-// Parameterized version of OpConverterTest. Parameters are:
-// 1. TrtTestMode (implicit batch / explicit batch / dynamic shape)
-// 2. DataType of the input TF tensors
-// 3. TrtPrecisionMode argument for the Converter (FP32, FP16, INT8)
+// Parameterized version of OpConverterTest. This class will be instantiated
+// to test all the TrtTestModes but only in FP32 precision. This means that we
+// will use the following combinations of test parameters:
+// 1. TrtTestMode: implicit batch, explicit batch, dynamic shape modes
+// 2. DataType of the input TF tensors: DT_FLOAT
+// 3. TrtPrecisionMode argument for the Converter: FP32
 class ParameterizedOpConverterTest
     : public OpConverterTest,
       public ::testing::WithParamInterface<
           std::tuple<TrtTestMode, DataType, TrtPrecisionMode>> {};
 
-// Build and the converted network. Check output tensor shape. Check if the
-// output values agree with the output_vec argument.
+// Instantiate parameter combinations to test. For debugging purposes it might
+// make sense to run over all possible combinations, but normally a subset of
+// them would be sufficient:
+// - All valid options to TrtTestMode (implicit, explicit, dynamic shape)
+// - DataType: is the TF data type of the input tensors. This usually only
+//   influences the data type added by Converter::AddInputTensor. We test the
+//   valid combinations of input data types in AddAndGetInputs, therefore
+//   for most of the OpConverterTest its is sufficient to test for DT_FLOAT.
+// - TrtPrecisionMode: valid options are FP32, FP16 and INT8. This influences
+//   how TRT handles the precision inside the TRT network, but should not matter
+//   for the TF -> TRT conversion. Therefore it should be sufficient to test
+//   for FP32.
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, ParameterizedOpConverterTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+// Builds and runs the converted network. Checks output tensor shape. Tests
+// output values using a matcher.
 template <DataType dtype>
 void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
                                  const TestParamBase& p,
                                  const std::vector<float>& input_vec,
-                                 const std::vector<float>& output_vec) {
+                                 const Matcher<std::vector<float>>& matcher) {
   if (!p.status.ok()) {
     // conversion was not successful, we cannot run the network
     return;
@@ -1706,15 +1737,31 @@ void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
   const DataVec input_data{
       {"input", test->AsTensor<T>(CastTestVector<float, T>(input_vec), shape)}};
   DataVec output_data{{name, test->ConstructTensor<T>(6)}};
-  // we have to set the datatype arg correctly
   test->BuildAndRun(input_data, &output_data);
   // Check the shape of the actual output tensor
   TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.expected_output_dims, &shape));
   EXPECT_TRUE(output_data[0].tensor.shape() == shape)
       << "Expected shape: " << shape.DebugString() << ", actual shape"
       << output_data[0].tensor.shape().DebugString();
-  EXPECT_THAT(GetSpanForData<T>(output_data[0]),
-              ElementsAreArray(CastTestVector<float, T>(output_vec)));
+  // Cast the output to float and compare to expected output
+  auto out_span = GetSpanForData<T>(output_data[0]);
+  std::vector<float> casted_output(out_span.begin(), out_span.end());
+  EXPECT_THAT(casted_output, matcher);
+}
+
+void InstantiateBuildAndRun(DataType tf_dtype, const string& name,
+                            OpConverterTest* test, const TestParamBase& p,
+                            const std::vector<float>& input_vec,
+                            const Matcher<std::vector<float>>& matcher) {
+  if (tf_dtype == DT_FLOAT) {
+    BuildAndRunConvertedNetwork<DT_FLOAT>(name, test, p, input_vec, matcher);
+  } else if (tf_dtype == DT_HALF) {
+    BuildAndRunConvertedNetwork<DT_HALF>(name, test, p, input_vec, matcher);
+  } else if (tf_dtype == DT_INT32) {
+    BuildAndRunConvertedNetwork<DT_INT32>(name, test, p, input_vec, matcher);
+  } else {
+    FAIL() << "Test not supported for " << tf_dtype;
+  }
 }
 
 template <typename T>
@@ -1854,56 +1901,72 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
-TEST_F(OpConverterTest, ConvertTranspose) {
+TEST_P(ParameterizedOpConverterTest, ConvertTranspose) {
+  const auto& spec = GetParam();
+  const TrtTestMode trt_mode = std::get<0>(spec);
+  // Data type of TF input tensors
+  const DataType tf_dtype = std::get<1>(spec);
+  // Precision mode used for  TensorRT engine
+  TrtPrecisionMode converter_precision = std::get<2>(spec);
+
   // Get the NodeDef for Transpose.
   Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_dtype);
   auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
   auto transpose = ops::Transpose(s.WithOpName("my_transpose"), input, weights);
   const NodeDef& node_def = transpose.operation.node()->def();
 
-  {
-    // Permutation is a tensor, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestTensor("weights", {3});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"perm\" for Transpose must be a constant, at my_transpose");
+  std::vector<TestParamBase> test_params = {
+      // For the first test we leave param empty. This signals to use a
+      // input as weight which will be invalid
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {},
+                    Status(error::UNIMPLEMENTED,
+                           "The input \"perm\" for Transpose must be a "
+                           "constant, at my_transpose")},
+      TestParamBase{{1, 1, 2, 3},
+                    {},
+                    {},
+                    {0, 1, 2},
+                    Status(error::INVALID_ARGUMENT,
+                           "Rank of perm for transpose does not match with "
+                           "that of the input.")},
+      // Transpose batch dim
+      TestParamBase{
+          {1, 1, 2, 3},
+          {},
+          {3, 2, 1, 1},
+          {3, 2, 1, 0},
+          (trt_mode == TrtTestMode::kImplicitBatch)
+              ? Status(error::UNIMPLEMENTED,
+                       "Transpose at batch dimension is not supported")
+              : Status::OK()},
+      TestParamBase{{1, 1, 2, 3}, {}, {1, 3, 1, 2}, {0, 3, 1, 2}},
+  };
+  if (trt_mode == TrtTestMode::kDynamicShape) {
+    // Dynamic shape tests where some shapes are known
+    test_params.push_back(TestParamBase{
+        {1, 1, 2, 3}, {-1, 1, 2, -1}, {1, 3, 1, 2}, {0, 3, 1, 2}});
   }
-  {
-    // Transpose at batch dimension, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", {4}, {1, 0, 2, 3});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Transpose at batch dimension is not supported");
-  }
-  {
-    // Permutation rank doesn't match, should fail.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", {3}, {0, 1, 2});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Rank of perm for transpose does not match with that of the input.");
-  }
-  {
-    // Ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", {4}, {0, 3, 1, 2});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_transpose", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({3, 1, 2}, output.tensor()->getDimensions());
-
-    const DataVec input_data{{"input", AsTensor<float>({1, 2, 3, 4, 5, 6})}};
-    DataVec output_data{{"my_transpose", ConstructTensor<float>(6)}};
-    BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(1, 4, 2, 5, 3, 6));
+  std::vector<float> expected_values{1, 4, 2, 5, 3, 6};
+  for (auto p : test_params) {
+    SCOPED_TRACE(p);
+    Reset(converter_precision, trt_mode);
+    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode,
+                  &p.partial_input_dims);
+    if (p.param.empty()) {
+      AddTestTensor("weights", {3});
+    } else {
+      AddTestWeights<int32>("weights", {static_cast<int>(p.param.size())},
+                            p.param);
+    }
+    RunValidationAndConversion(node_def, p.status, "my_transpose",
+                               p.expected_output_dims);
+    InstantiateBuildAndRun(tf_dtype, "my_transpose", this, p,
+                           {1, 2, 3, 4, 5, 6},
+                           ElementsAreArray(expected_values));
   }
 }
 
@@ -3055,9 +3118,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   }
 }
 
-class ParameterizedSqueezeTest : public ParameterizedOpConverterTest {};
-
-TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
+TEST_P(ParameterizedOpConverterTest, ConvertSqueeze) {
   const auto& spec = GetParam();
   const TrtTestMode trt_mode = std::get<0>(spec);
   const bool use_implicit_batch = (trt_mode == TrtTestMode::kImplicitBatch);
@@ -3085,11 +3146,13 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
       TestParamBase{
           {1, 2, 1, 3},  // input dims
           {},            // input partial dims
-          {2, 1, 3},     // expected output dims
+          {2, 3},        // expected output dims
           {},            // axis
-          Status{
-              error::UNIMPLEMENTED,
-              "Squeeze is only implemented for explicit dims, at my_squeeze"}},
+          trt_mode == TrtTestMode::kExplicitBatch
+              ? Status::OK()
+              : Status{error::UNIMPLEMENTED,
+                       "Squeeze is not implemented for empty squeeze_dims, at "
+                       "my_squeeze"}},
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
@@ -3124,15 +3187,6 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
           Status{error::INVALID_ARGUMENT,
                  "Axis value of -5 is out of bounds, must be in range [-4, 4), "
                  "at my_squeeze"}},
-      TestParamBase{
-          {1, 1, 2, 3},
-          {},
-          {},
-          {2},
-          Status{
-              error::INVALID_ARGUMENT,
-              "Dimension 2 with size 2 cannot be squeezed because it must be "
-              "size 1, at my_squeeze"}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {1}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {-3}},
       TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {3}},
@@ -3143,59 +3197,40 @@ TEST_P(ParameterizedSqueezeTest, ConvertSqueeze) {
       TestParamBase{{1, 1, 2, 1, 3, 1}, {}, {1, 2, 3}, {1, -3, 5}},
       TestParamBase{{1, 1, 6}, {}, {1, 6}, {1}},
       TestParamBase{{1, 6, 1}, {}, {1, 6}, {2}},
-      // Dynamic shape tests with partially known input shape
-      TestParamBase{{2, 1, 3}, {2, -1, 3}, {2, 3}, {1}},
-      TestParamBase{{2, 1, 3}, {2, 1, -1}, {2, 3}, {1}},
   };
+  auto squeeze_non_singleton = TestParamBase{
+      {1, 1, 2, 3},
+      {},
+      {},
+      {2},
+      Status{error::INVALID_ARGUMENT,
+             "Dimension 2 with size 2 cannot be squeezed because it must be "
+             "size 1, at my_squeeze"}};
+
+  if (trt_mode == TrtTestMode::kDynamicShape) {
+    // In this test we try to squeeze axis=2 which has size > 1. In dynamic
+    // shape mode the converter sees only -1, so it cannot catch this error.
+    squeeze_non_singleton.status = Status::OK();  // conversion status
+    squeeze_non_singleton.runtime_status =
+        errors::InvalidArgument("Negative number of dimensions -1");
+    // Dynamic shape tests with partially known input shape
+    test_params.push_back(TestParamBase{{2, 1, 3}, {2, -1, 3}, {2, 3}, {1}});
+    test_params.push_back(TestParamBase{{2, 1, 3}, {2, 1, -1}, {2, 3}, {1}});
+  }
+  test_params.push_back(squeeze_non_singleton);
+
   for (TestParamBase p : test_params) {
     SCOPED_TRACE(p);
     Reset(converter_precision, trt_mode);
     NodeDef node_def = get_squeeze_nodedef(p.param);
-    bool skip_test;
     AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode,
-                  &skip_test, &p.partial_input_dims);
-    if (skip_test) {
-      continue;
-    }
-    if (trt_mode == TrtTestMode::kDynamicShape &&
-        p.status.code() == error::INVALID_ARGUMENT && p.param.at(0) == 2) {
-      // This is the test where we try to squeeze axis=2 where which has
-      // size > 1. In dynamic shape mode the converter sees only -1, so it
-      // cannot catch this error.
-      p.status = Status::OK();  // conversion status
-      p.runtime_status =
-          errors::InvalidArgument("Negative number of dimensions -1");
-    }
+                  &p.partial_input_dims);
     RunValidationAndConversion(node_def, p.status, "my_squeeze",
                                p.expected_output_dims);
-
-    // This should return the output, so that we can check it specifically for
-    // the concrete op
-    std::vector<int> values;
-    if (tf_dtype == DT_FLOAT) {
-      BuildAndRunConvertedNetwork<DT_FLOAT>(
-          "my_squeeze", this, p, {1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6});
-    } else if (tf_dtype == DT_FLOAT) {
-      // Note: we do not do arithmetics, therefore this test can be probably
-      // omitted.
-      BuildAndRunConvertedNetwork<DT_HALF>(
-          "my_squeeze", this, p, {1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6});
-    }
+    InstantiateBuildAndRun(tf_dtype, "my_squeeze", this, p, {1, 2, 3, 4, 5, 6},
+                           ElementsAreArray({1, 2, 3, 4, 5, 6}));
   }
 }
-
-#if 0  // TODO(bixia): enable the test.
-INSTANTIATE_TEST_CASE_P(
-    ConvertSqueezeInstantiation, ParameterizedSqueezeTest,
-    ::testing::Combine(::testing::Values(TrtTestMode::kImplicitBatch,
-                                         TrtTestMode::kExplicitBatch,
-                                         TrtTestMode::kDynamicShape),
-                       ::testing::Values(DT_FLOAT, DT_HALF),
-                       ::testing::Values(TrtPrecisionMode::FP32,
-                                         TrtPrecisionMode::FP16)));
-#endif
-// TODO(tfeher): clarify which combination of precision mode / input type
-// test make sense.
 
 TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Get nodedef for StridedSlice layer.
@@ -5096,135 +5131,54 @@ TEST_F(OpConverterTest, ConvertGather) {
   TestConvertGather<DT_INT32>(this);
 }
 
-TEST_F(OpConverterTest, ConvertUnary) {
+template <typename T>
+NodeDef CreateUnaryOp() {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  return T(s.WithOpName("my_unary"), input).operation.node()->def();
+}
+
+TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
+  const auto& spec = GetParam();
+  const TrtTestMode trt_mode = std::get<0>(spec);
+  const DataType tf_dtype = std::get<1>(spec);
+  TrtPrecisionMode converter_precision = std::get<2>(spec);
   {
     // Input is weights, should fail.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto neg = ops::Neg(s.WithOpName("my_unary"), input);
-    const NodeDef& node_def = neg.operation.node()->def();
+    Reset(converter_precision, trt_mode);
+    const NodeDef node_def = CreateUnaryOp<ops::Neg>();
     AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"x\" for Neg must be a tensor, at my_unary");
   }
-
-  // Get nodedef for unary layer.
-  auto get_unary_nodedef = [](string op_name) -> NodeDef {
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    if (op_name == "Abs") {
-      auto unary = ops::Abs(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Acos") {
-      auto unary = ops::Acos(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Acosh") {
-      auto unary = ops::Acosh(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Asin") {
-      auto unary = ops::Asin(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Asinh") {
-      auto unary = ops::Asinh(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Atan") {
-      auto unary = ops::Atan(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Atanh") {
-      auto unary = ops::Atanh(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Ceil") {
-      auto unary = ops::Ceil(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Cos") {
-      auto unary = ops::Cos(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Cosh") {
-      auto unary = ops::Cosh(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Exp") {
-      auto unary = ops::Exp(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Floor") {
-      auto unary = ops::Floor(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Log") {
-      auto unary = ops::Log(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Neg") {
-      auto unary = ops::Neg(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Reciprocal") {
-      auto unary = ops::Reciprocal(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Rsqrt") {
-      auto unary = ops::Rsqrt(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Sin") {
-      auto unary = ops::Sin(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Sinh") {
-      auto unary = ops::Sinh(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Sqrt") {
-      auto unary = ops::Sqrt(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    } else if (op_name == "Tan") {
-      auto unary = ops::Tan(s.WithOpName("my_unary"), input);
-      return unary.operation.node()->def();
-    }
-    EXPECT_TRUE(false);
-    return NodeDef();
-  };
-  // Get expected output for unary layer.
-  auto get_unary_output = [](string op_name, float input) -> float {
-    if (op_name == "Abs") {
-      return std::abs(input);
-    } else if (op_name == "Acos") {
-      return std::acos(input);
-    } else if (op_name == "Acosh") {
-      return std::acosh(input);
-    } else if (op_name == "Asin") {
-      return std::asin(input);
-    } else if (op_name == "Asinh") {
-      return std::asinh(input);
-    } else if (op_name == "Atan") {
-      return std::atan(input);
-    } else if (op_name == "Atanh") {
-      return std::atanh(input);
-    } else if (op_name == "Ceil") {
-      return std::ceil(input);
-    } else if (op_name == "Cos") {
-      return std::cos(input);
-    } else if (op_name == "Cosh") {
-      return std::cosh(input);
-    } else if (op_name == "Exp") {
-      return std::exp(input);
-    } else if (op_name == "Floor") {
-      return std::floor(input);
-    } else if (op_name == "Log") {
-      return std::log(input);
-    } else if (op_name == "Neg") {
-      return -input;
-    } else if (op_name == "Reciprocal") {
-      return 1.0 / input;
-    } else if (op_name == "Rsqrt") {
-      return 1.0 / std::sqrt(input);
-    } else if (op_name == "Sin") {
-      return std::sin(input);
-    } else if (op_name == "Sinh") {
-      return std::sinh(input);
-    } else if (op_name == "Sqrt") {
-      return std::sqrt(input);
-    } else if (op_name == "Tan") {
-      return std::tan(input);
-    }
-    EXPECT_TRUE(false);
-    return 0;
-  };
-
+  using OpFunc = std::function<NodeDef(void)>;
+  using ValFunc = float (*)(float);
+  std::map<std::string, std::pair<OpFunc, ValFunc>> op_map;
+#define ADD_OP(name, op, compute) \
+  op_map[name] =                  \
+      std::make_pair(CreateUnaryOp<op>, static_cast<ValFunc>(compute))
+  ADD_OP("Abs", ops::Abs, std::abs);
+  ADD_OP("Acos", ops::Acos, std::acos);
+  ADD_OP("Acosh", ops::Acosh, std::acosh);
+  ADD_OP("Asin", ops::Asin, std::asin);
+  ADD_OP("Asinh", ops::Asinh, std::asinh);
+  ADD_OP("Atan", ops::Atan, std::atan);
+  ADD_OP("Atanh", ops::Atanh, std::atanh);
+  ADD_OP("Ceil", ops::Ceil, std::ceil);
+  ADD_OP("Cos", ops::Cos, std::cos);
+  ADD_OP("Cosh", ops::Cosh, std::cosh);
+  ADD_OP("Exp", ops::Exp, std::exp);
+  ADD_OP("Floor", ops::Floor, std::floor);
+  ADD_OP("Log", ops::Log, std::log);
+  ADD_OP("Neg", ops::Neg, [](float x) { return -x; });
+  ADD_OP("Reciprocal", ops::Reciprocal, [](float x) { return 1.0f / x; });
+  ADD_OP("Rsqrt", ops::Rsqrt, [](float x) { return 1.0f / std::sqrt(x); });
+  ADD_OP("Sin", ops::Sin, std::sin);
+  ADD_OP("Sinh", ops::Sinh, std::sinh);
+  ADD_OP("Sqrt", ops::Sqrt, std::sqrt);
+  ADD_OP("Tan", ops::Tan, std::tan);
+#undef ADD_OP
   // Get list of ops to test.
   std::vector<string> ops_to_test;
   // Add all ops supported by ConvertUnary.
@@ -5235,26 +5189,30 @@ TEST_F(OpConverterTest, ConvertUnary) {
   }
   // Add other unary ops to test.
   ops_to_test.push_back("Rsqrt");
-  // Ok.
+  // Prepare test parameters
+  auto p = TestParamBase{
+      {1, 1, 2, 3},  // input dims
+      {},            // input partial dims
+      {1, 1, 2, 3},  // expected output dims
+  };
   for (const string& op_name : ops_to_test) {
-    Reset();
-    NodeDef node_def = get_unary_nodedef(op_name);
-    AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
-
-    const std::vector<float> input = {-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
-    const DataVec input_data{{"input", AsTensor<float>(input)}};
-    DataVec output_data{{"my_unary", ConstructTensor<float>(6)}};
-    BuildAndRun(input_data, &output_data);
-    for (int i = 0; i < input.size(); ++i) {
-      const float expected_output = get_unary_output(op_name, input[i]);
-      EXPECT_THAT(GetSpanForData<float>(output_data[0])[i],
-                  NanSensitiveFloatNear(expected_output, 0.0001));
+    SCOPED_TRACE(op_name);
+    Reset(converter_precision, trt_mode);
+    if (!op_map.count(op_name)) {
+      FAIL() << "Unary op test map does not contain op " << op_name;
     }
+    NodeDef node_def = op_map[op_name].first();
+
+    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode);
+    RunValidationAndConversion(node_def, Status::OK(), "my_unary",
+                               p.expected_output_dims);
+
+    std::vector<float> input_values{-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
+    std::vector<float> output;
+    std::transform(input_values.begin(), input_values.end(),
+                   std::back_inserter(output), op_map[op_name].second);
+    InstantiateBuildAndRun(tf_dtype, "my_unary", this, p, input_values,
+                           ArrayFloatNear(output, 0.0001, true));
   }
 }
 

@@ -86,7 +86,7 @@ patch_kissfft() {
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
   xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
-  sed -i "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
 }
 
 build_embarc_mli() {

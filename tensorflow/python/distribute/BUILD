@@ -452,6 +452,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -856,7 +857,6 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -935,8 +935,6 @@ cuda_py_test(
     srcs = ["cross_device_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/151025792): enable after this is fixed.
-        "notap",  # TODO(b/151025792): enable after this is fixed.
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1101,7 +1099,6 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # Target too big to run serially reliably.
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1191,6 +1188,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
+        "noguitar",  # TODO(b/140755528): enable after this is fixed.
         "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
@@ -1493,11 +1491,9 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 20,
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
-        "noguitar",  # b/140755528
     ],
     deps = [
         ":combinations",
@@ -1649,6 +1645,28 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "strategy_common_test",
+    srcs = ["strategy_common_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+        # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
+        # runner can run on guitar.
+        "noguitar",
+    ],
+    xla_enable_strict_auto_jit = True,
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )

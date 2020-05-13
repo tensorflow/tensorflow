@@ -307,14 +307,20 @@ class CallbackList(object):
       end_hook_name = hook_name
       begin_hook_name = 'on_{mode}_batch_begin'.format(mode=mode)
 
-      threshold_time = 0.5 * batch_time
+      threshold_time = 1.5 * batch_time
       warning_msg = ('Callbacks method `{hook}` is slow compared to '
-                     'the batch time. Check your callbacks.')
+                     'the batch time (batch time: {batch_time:.4f}s vs '
+                     '`{hook}` time: {cbk_time:.4f}s). Check your callbacks.')
       if self._timing[begin_hook_name] > threshold_time:
-        logging.warning(warning_msg.format(hook=begin_hook_name))
+        logging.warning(warning_msg.format(
+            hook=begin_hook_name,
+            batch_time=batch_time,
+            cbk_time=self._timing[begin_hook_name]))
       if self._timing[end_hook_name] > threshold_time:
-        logging.warning(warning_msg.format(hook=end_hook_name))
-
+        logging.warning(warning_msg.format(
+            hook=end_hook_name,
+            batch_time=batch_time,
+            cbk_time=self._timing[end_hook_name]))
       self._check_timing = False
       self._batch_start_time = None
 

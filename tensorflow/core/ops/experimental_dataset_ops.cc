@@ -221,11 +221,6 @@ REGISTER_OP("DatasetCardinality")
     .Output("cardinality: int64")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("DatasetCardinalityV2")
-    .Input("input_dataset: variant")
-    .Output("cardinality: float64")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("ExperimentalDatasetCardinality")
     .Input("input_dataset: variant")
     .Output("cardinality: int64")
@@ -1042,12 +1037,21 @@ REGISTER_OP("ExperimentalUniqueDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("DummyIterationCounter")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("DataServiceDataset")
     .Input("dataset_id: int64")
     .Input("processing_mode: string")
     .Input("address: string")
     .Input("protocol: string")
+    .Input("job_name: string")
     .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
     .Output("handle: variant")
     .Attr("task_refresh_interval_hint_ms: int = -1")
     .Attr("output_types: list(type) >= 1")

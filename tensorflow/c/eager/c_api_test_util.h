@@ -42,6 +42,11 @@ TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2(TFE_Context* ctx);
 // Return a tensor handle containing a 3x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle3X2(TFE_Context* ctx);
 
+// Return a variable handle referring to a variable with the given initial value
+// on the given device.
+TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
+                               const tensorflow::string& device_name = "");
+
 // Return an add op multiplying `a` by `b`.
 TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
 

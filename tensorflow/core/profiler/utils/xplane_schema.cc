@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -102,6 +105,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},

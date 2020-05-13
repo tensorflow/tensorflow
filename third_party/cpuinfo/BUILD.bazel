@@ -97,6 +97,8 @@ cc_library(
     name = "cpuinfo_impl",
     srcs = select({
         ":linux_x86_64": COMMON_SRCS + X86_SRCS + LINUX_SRCS + LINUX_X86_SRCS,
+        ":linux_arm": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
+        ":linux_armhf": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
         ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
@@ -163,6 +165,16 @@ cc_library(
 config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
+)
+
+config_setting(
+    name = "linux_arm",
+    values = {"cpu": "arm"},
+)
+
+config_setting(
+    name = "linux_armhf",
+    values = {"cpu": "armhf"},
 )
 
 config_setting(

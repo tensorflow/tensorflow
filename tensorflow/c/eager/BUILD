@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -247,6 +246,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
@@ -346,11 +346,10 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_remote_test.cc",
     ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = [
-        "noasan",  # TODO(b/155406516): flaky
-        "notsan",  # TODO(b/155406516): flaky
-    ],
+    tags = ["noasan"],  # leaks gRPC server instances
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -364,6 +363,34 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_cluster_test",
+    size = "small",
+    srcs = [
+        "c_api_cluster_test.cc",
+    ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    tags = ["noasan"],  # leaks gRPC server instances
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -581,7 +608,6 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
-            "*c_api_tfrt*",
             "*test*",
             "*dlpack*",
         ],

@@ -62,6 +62,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
@@ -213,53 +214,11 @@ def _as_graph_element(obj):
   return None
 
 
-_TENSOR_LIKE_TYPES = tuple()
-
-
+# Deprecated - do not use.
+# This API to avoid breaking estimator and tensorflow-mesh which depend on this
+# internal API. The stub should be safe to use after TF 2.3 is released.
 def is_dense_tensor_like(t):
-  """EXPERIMENTAL: Returns true if `t` implements the tensor interface.
-
-  See `register_dense_tensor_like_type()` for the current definition of a
-  "tensor-like type".
-
-  Args:
-    t: An object.
-
-  Returns:
-    True iff `t` is an instance of one of the registered "tensor-like" types.
-  """
-  return isinstance(t, _TENSOR_LIKE_TYPES)
-
-
-def register_dense_tensor_like_type(tensor_type):
-  """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
-
-  A "tensor-like type" can represent a single dense tensor, and implements
-  the `name`, `dtype` and `shape` properties.
-
-  Args:
-    tensor_type: A type implementing the tensor interface.
-
-  Raises:
-    TypeError: If `tensor_type` does not implement the tensor interface.
-  """
-  if not (hasattr(tensor_type, "name") and
-          isinstance(tensor_type.name, property)):
-    raise TypeError("Type %s does not define a `name` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "dtype") and
-          isinstance(tensor_type.dtype, property)):
-    raise TypeError("Type %s does not define a `dtype` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "shape") and
-          isinstance(tensor_type.shape, property)):
-    raise TypeError("Type %s does not define a `shape` property" %
-                    tensor_type.__name__)
-  # We expect this list to be small, so choose quadratic complexity
-  # for registration, so that we have a tuple that can be used for
-  # more efficient `isinstance` checks later.
-  global _TENSOR_LIKE_TYPES
-  _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
+  return isinstance(t, core_tf_types.Tensor)
 
 
 def uid():
@@ -304,7 +263,7 @@ def disable_tensor_equality():
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(internal.NativeObject):
+class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -519,8 +478,8 @@ class Tensor(internal.NativeObject):
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did not convert this function. Try"
-        " decorating it directly with @tf.function.".format(task))
+        "{} is not allowed: AutoGraph did convert this function. This might"
+        " indicate you are trying to use an unsupported feature.".format(task))
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -1067,15 +1026,17 @@ class _EagerTensorBase(Tensor):
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
 
+  def __array__(self):
+    return self._numpy()
+
   def _numpy_internal(self):
     raise NotImplementedError()
 
   def _numpy(self):
-    # pylint: disable=protected-access
     try:
       return self._numpy_internal()
-    except core._NotOkStatusException as e:
-      six.raise_from(core._status_to_exception(e.code, e.message), None)
+    except core._NotOkStatusException as e:  # pylint: disable=protected-access
+      six.raise_from(core._status_to_exception(e.code, e.message), None)  # pylint: disable=protected-access
 
   @property
   def dtype(self):
@@ -1301,9 +1262,6 @@ class _EagerTensorBase(Tensor):
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
 EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
-
-
-register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
@@ -6259,10 +6217,12 @@ def add_to_collection(name, value):
   Args:
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
-    value: The value to add to the collection.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -6277,10 +6237,12 @@ def add_to_collections(names, value):
   Args:
     names: The key for the collections. The `GraphKeys` class contains many
       standard names for collections.
-    value: The value to add to the collections.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
