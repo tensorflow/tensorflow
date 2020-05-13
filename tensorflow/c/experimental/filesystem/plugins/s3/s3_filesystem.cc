@@ -12,36 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
-
-#include <aws/core/utils/FileSystemUtils.h>
+#include <aws/core/Aws.h>
 #include <aws/core/utils/StringUtils.h>
+#include <aws/s3/model/CopyObjectRequest.h>
+#include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
-#include <aws/s3/model/DeleteObjectRequest.h>
-#include <aws/s3/model/CopyObjectRequest.h>
 
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <memory>
-#include <string>
-#include <cmath>
-#include <vector>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <memory>
 
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_shared.h"
-#include "tensorflow/c/experimental/filesystem/plugins/s3/s3_helper.h"
-#include "tensorflow/c/experimental/filesystem/plugins/s3/s3_copy.h"
 #include "tensorflow/c/tf_status.h"
 
-#include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
-#include <aws/core/Aws.h>
-#include <aws/core/config/AWSProfileConfigLoader.h>
-#include <aws/s3/S3Client.h>
-#include <aws/transfer/TransferManager.h>
-#include <aws/core/utils/threading/Executor.h>
+#define TF_S3_RETURN_IF_ERROR(status)        \
+  do {                                       \
+    if (TF_GetCode(status) != TF_OK) return; \
+  } while (0)
+
+#define S3_ALLOCATION_TAG_TEMP_FILE "S3_TENSORFLOW_TEMP_FILE"
 
 // Implementation of a filesystem for S3 environments.
 // This filesystem will support `s3://` URI scheme.
@@ -49,60 +43,207 @@ limitations under the License.
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
+class FstreamWithName : public std::fstream {
+ public:
+  FstreamWithName() : name(CreateTempPath()) {
+    if (name == NULL) {
+      std::fstream::clear(std::ios::badbit);
+    }
+  };
+  ~FstreamWithName() {
+    if (name == NULL) return;
+    std::error_code errorCode;
+    if (std::fstream::is_open()) std::fstream::close();
+    if (std::filesystem::exists(name)) std::filesystem::remove(name, errorCode);
+    if (errorCode)
+      std::cout << errorCode.value() << ": " << errorCode.message();
+    plugin_memory_free(const_cast<char*>(name));
+  }
+  const char* getName() const { return name; }
+
+ private:
+  const char* name;
+  static const char* CreateTempPath();
+};
+
+const char* FstreamWithName::CreateTempPath() {
+  uint64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+  std::error_code errorCode;
+  auto path = std::filesystem::temp_directory_path(errorCode);
+  if (errorCode) {
+    std::cout << errorCode.value() << ": " << errorCode.message() << "\n";
+    return NULL;
+  }
+  path /= "tensorflow_tmp_" + std::to_string(now) + "_tmp_s3_filesystem";
+  std::string path_str = path.string();
+  auto temp_path_ =
+      static_cast<char*>(plugin_memory_allocate(path_str.length() + 1));
+  strcpy(temp_path_, path_str.c_str());
+  return temp_path_;
+}
+
+static void inline TF_SetStatusFromAWSError(
+    TF_Status* status, const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
+  switch (error.GetResponseCode()) {
+    case Aws::Http::HttpResponseCode::PRECONDITION_FAILED:
+      TF_SetStatus(status, TF_FAILED_PRECONDITION, error.GetMessage().c_str());
+      break;
+    case Aws::Http::HttpResponseCode::NOT_FOUND:
+      TF_SetStatus(status, TF_NOT_FOUND, error.GetMessage().c_str());
+      break;
+    case Aws::Http::HttpResponseCode::NOT_IMPLEMENTED:
+      TF_SetStatus(status, TF_UNIMPLEMENTED, error.GetMessage().c_str());
+      break;
+    case Aws::Http::HttpResponseCode::UNAUTHORIZED:
+      TF_SetStatus(status, TF_UNAUTHENTICATED, error.GetMessage().c_str());
+      break;
+    case Aws::Http::HttpResponseCode::FORBIDDEN:
+      TF_SetStatus(status, TF_PERMISSION_DENIED, error.GetMessage().c_str());
+      break;
+    default:
+      TF_SetStatus(
+          status, TF_UNKNOWN,
+          (error.GetExceptionName() + ": " + error.GetMessage()).c_str());
+      break;
+  }
+}
+
+static void ParseS3Path(const char* fname, bool object_empty_ok, char** bucket,
+                        char** object, TF_Status* status) {
+  std::string_view fname_view{fname};
+  size_t scheme_end = fname_view.find("://") + 2;
+  if (fname_view.substr(0, scheme_end + 1) != "s3://") {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "S3 path doesn't start with 's3://'.");
+    return;
+  }
+
+  size_t bucket_end = fname_view.find("/", scheme_end + 1);
+  if (bucket_end == std::string_view::npos) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "S3 path doesn't contain a bucket name.");
+    return;
+  }
+  std::string_view bucket_view =
+      fname_view.substr(scheme_end + 1, bucket_end - scheme_end - 1);
+  *bucket =
+      static_cast<char*>(plugin_memory_allocate(bucket_view.length() + 1));
+  memcpy(*bucket, bucket_view.data(), bucket_view.length());
+  (*bucket)[bucket_view.length()] = '\0';
+
+  std::string_view object_view = fname_view.substr(bucket_end + 1);
+  if (object_view == "") {
+    if (object_empty_ok) {
+      *object = nullptr;
+      return;
+    } else {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "S3 path doesn't contain an object name.");
+      return;
+    }
+  }
+  *object =
+      static_cast<char*>(plugin_memory_allocate(object_view.length() + 1));
+  // object_view.data() is a null-terminated string_view because fname is.
+  strcpy(*object, object_view.data());
+}
+
+static int64_t ReadObjectImpl(
+    const char* bucket, const char* object,
+    std::shared_ptr<FstreamWithName>* temp_file,
+    const std::shared_ptr<Aws::Transfer::TransferManager>& transfer_manager,
+    uint64_t offset, size_t n, char** buffer, bool read_to_buffer,
+    TF_Status* status) {
+  int64_t read = 0;
+  if (*temp_file == nullptr) {
+    *temp_file = Aws::MakeShared<FstreamWithName>(S3_ALLOCATION_TAG_TEMP_FILE);
+    if ((*temp_file)->fail()) return -1;
+    auto transfer_handle =
+        transfer_manager->DownloadFile(bucket, object, (*temp_file)->getName());
+    transfer_handle->WaitUntilFinished();
+    if (transfer_handle->GetStatus() !=
+        Aws::Transfer::TransferStatus::COMPLETED) {
+      TF_SetStatusFromAWSError(status, transfer_handle->GetLastError());
+      return -1;
+    }
+    (*temp_file)
+        ->open((*temp_file)->getName(),
+               std::ios::binary | std::ios::in | std::ios::out | std::ios::ate);
+  }
+  if (!(*temp_file)->is_open()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "Could not open downloaded temporary file.");
+    return -1;
+  }
+
+  std::error_code errorCode;
+  read =
+      std::filesystem::file_size((*temp_file)->getName(), errorCode) - offset;
+  if (errorCode) {
+    TF_SetStatus(
+        status, TF_UNKNOWN,
+        (std::to_string(errorCode.value()) + ": " + errorCode.message())
+            .c_str());
+    return -1;
+  }
+
+  if (read < n)
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested.");
+
+  if (!read_to_buffer || buffer == nullptr) return read;
+
+  if (!(*buffer)) *buffer = static_cast<char*>(plugin_memory_allocate(read));
+  if (*buffer == NULL) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Could not allocate buffer to save data from downloaded "
+                 "temporary file.");
+    return -1;
+  }
+  (*temp_file)->seekg(offset);
+  (*temp_file)->read(*buffer, read);
+  if ((*temp_file)->fail()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested.");
+    read = (*temp_file)->gcount();
+  }
+  return read;
+}
+
+static void SyncObjectImpl(
+    const char* bucket, const char* object, const char* temp_path,
+    const std::shared_ptr<Aws::Transfer::TransferManager>& transfer_manager,
+    TF_Status* status) {
+  auto transfer_handle = transfer_manager->UploadFile(
+      temp_path, bucket, object, "application/octet-stream",
+      Aws::Map<Aws::String, Aws::String>());
+  transfer_handle->WaitUntilFinished();
+  if (transfer_handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED)
+    TF_SetStatusFromAWSError(status, transfer_handle->GetLastError());
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
 
 typedef struct S3File {
-	const char* bucket;
-	const char* object;
-	const std::shared_ptr<Aws::S3::S3Client>& s3_client;
+  const char* bucket;
+  const char* object;
+  const std::shared_ptr<Aws::Transfer::TransferManager>& transfer_manager;
+  std::shared_ptr<FstreamWithName> temp_file;
 } S3File;
 
 static void Cleanup(TF_RandomAccessFile* file) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
-  // This would be safe to free using `free` directly as it is only opaque.
-  // However, it is better to be consistent everywhere.
-	// s3_client is not owned by S3File and therefore we do not free it here.
   plugin_memory_free(const_cast<char*>(s3_file->bucket));
-	plugin_memory_free(const_cast<char*>(s3_file->object));
+  plugin_memory_free(const_cast<char*>(s3_file->object));
   delete s3_file;
 }
 
 static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
                     char* buffer, TF_Status* status) {
-	auto s3_file = static_cast<S3File*>(file->plugin_file);
-	int64_t read = 0;
-
-	Aws::S3::Model::GetObjectRequest getObjectRequest;
-	getObjectRequest.WithBucket(s3_file->bucket).WithKey(s3_file->object);
-	std::string bytes = "bytes=" + std::to_string(offset) + "-" + std::to_string(offset + n - 1);
-	getObjectRequest.SetRange(bytes.c_str());
-	getObjectRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(tf_s3_filesystem::kS3FileSystemAllocationTag);
-  });
-
-	auto getObjectOutcome = s3_file->s3_client->GetObject(getObjectRequest);
-	if (!getObjectOutcome.IsSuccess()) {
-		auto error = getObjectOutcome.GetError();
-    if (error.GetResponseCode() ==
-      	Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE) {
-      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
-			return 0;
-    }
-		else {
-			tf_s3_filesystem::TF_SetStatusFromAWSError(status, error);
-			return -1;
-		}
-  }
-  read = getObjectOutcome.GetResult().GetContentLength();
-  if(read < n) {
-    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
-  }
-
-	getObjectOutcome.GetResult().GetBody().read(buffer, read);
-
-	return read;
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  return ReadObjectImpl(s3_file->bucket, s3_file->object, &s3_file->temp_file,
+                        s3_file->transfer_manager, offset, n, &buffer, true,
+                        status);
 }
 
 }  // namespace tf_random_access_file
@@ -111,96 +252,96 @@ static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 // ----------------------------------------------------------------------------
 namespace tf_writable_file {
 
-static void Sync(const TF_WritableFile* file, TF_Status* status);
-
 typedef struct S3File {
   const char* bucket;
   const char* object;
-	const std::shared_ptr<Aws::S3::S3Client>& s3_client;
-	const std::shared_ptr<Aws::Transfer::TransferManager>& transfer_manager;
-	bool sync_needed;
-  std::shared_ptr<Aws::Utils::TempFile> outfile;
+  const std::shared_ptr<Aws::Transfer::TransferManager>& transfer_manager;
+  std::shared_ptr<FstreamWithName> temp_file;
+  bool sync_need;
 } S3File;
 
 static void Cleanup(TF_WritableFile* file) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
-  // This would be safe to free using `free` directly as it is only opaque.
-  // However, it is better to be consistent everywhere.
-	// s3_client is not owned by S3File and therefore we do not free it here.
   plugin_memory_free(const_cast<char*>(s3_file->bucket));
-	plugin_memory_free(const_cast<char*>(s3_file->object));
+  plugin_memory_free(const_cast<char*>(s3_file->object));
   delete s3_file;
 }
 
 static void Append(const TF_WritableFile* file, const char* buffer, size_t n,
                    TF_Status* status) {
-	auto s3_file = static_cast<S3File*>(file->plugin_file);
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  if (s3_file->temp_file == nullptr) {
+    s3_file->temp_file =
+        Aws::MakeShared<FstreamWithName>(S3_ALLOCATION_TAG_TEMP_FILE);
+  }
 
-	if(!s3_file->outfile) {
-		TF_SetStatus(status, TF_FAILED_PRECONDITION, "The internal temporary file is not writable.");
-		return;
-	}
-	s3_file->sync_needed = true;
-	s3_file->outfile->write(buffer, n);
-	if(!s3_file->outfile->good()) {
-		TF_SetStatus(status, TF_INTERNAL, "Could not append to the internal temporary file.");
-		return;
-	}
+  if (!s3_file->temp_file->is_open()) {
+    s3_file->temp_file->open(
+        s3_file->temp_file->getName(),
+        std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+  }
+
+  if (!s3_file->temp_file->is_open()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "Could not open the internal temporary file.");
+  }
+
+  if (s3_file->temp_file->fail()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "The internal temporary file is not writable.");
+  }
+
+  s3_file->temp_file->seekp(0, std::ios::end);
+  s3_file->temp_file->write(buffer, n);
+  if (s3_file->temp_file->fail()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Could not append to temporary internal file.");
+  }
+
+  s3_file->sync_need = true;
+}
+
+static int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  if (s3_file->temp_file == nullptr) return 0;
+  int64_t position = int64_t(s3_file->temp_file->tellp());
+  if (position == -1) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Could not tellp on the internal temporary file");
+  }
+  return position;
 }
 
 static void Flush(const TF_WritableFile* file, TF_Status* status) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
-
-  Sync(file, status);
+  if (s3_file->sync_need) {
+    s3_file->temp_file->operator<<(std::flush);
+    SyncObjectImpl(s3_file->bucket, s3_file->object,
+                   s3_file->temp_file->getName(), s3_file->transfer_manager,
+                   status);
+  }
+  s3_file->sync_need = false;
 }
 
 static void Sync(const TF_WritableFile* file, TF_Status* status) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
-
-	if(!s3_file->outfile) {
-		TF_SetStatus(status, TF_FAILED_PRECONDITION, "The internal temporary file is not writable.");
-		return;
-	}
-	if(!s3_file->sync_needed) {
-		return;
-	}
-
-	long offset = s3_file->outfile->tellp();
-
-	std::shared_ptr<Aws::Transfer::TransferHandle> handle =
-        s3_file->transfer_manager->UploadFile(
-            s3_file->outfile, s3_file->bucket, s3_file->object,
-            "application/octet-stream", Aws::Map<Aws::String, Aws::String>());
-	handle->WaitUntilFinished();
-
-	int retries = 0;
-	while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
-      	 retries++ < tf_s3_filesystem::kUploadRetries) {
-  	// if multipart upload was used, only the failed parts will be re-sent
-    s3_file->transfer_manager->RetryUpload(s3_file->outfile, handle);
-    handle->WaitUntilFinished();
-  }
-
-	if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
-    auto error = handle->GetLastError();
-    tf_s3_filesystem::TF_SetStatusFromAWSError(status, error);
-		return;
-  }
-
-	s3_file->outfile->clear();
-  s3_file->outfile->seekp(offset);
-  s3_file->sync_needed = false;
+  Append(file, "", 0, status);
+  Flush(file, status);
+  s3_file->sync_need = false;
 }
 
 static void Close(const TF_WritableFile* file, TF_Status* status) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
-
-  if(s3_file->outfile) {
-		Sync(file, status);
-		if(TF_GetCode(status) == TF_OK) {
-			s3_file->outfile.reset();
-		}
-	}
+  if (s3_file->sync_need) {
+    Flush(file, status);
+    TF_S3_RETURN_IF_ERROR(status);
+  }
+  if (s3_file->temp_file != nullptr) {
+    if (s3_file->temp_file->is_open()) s3_file->temp_file->close();
+    if (s3_file->temp_file->fail()) {
+      TF_SetStatus(status, TF_INTERNAL, "Could not close temporary file.");
+    }
+  }
 }
 
 }  // namespace tf_writable_file
@@ -236,30 +377,6 @@ static uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
 // ----------------------------------------------------------------------------
 namespace tf_s3_filesystem {
 
-static void Init(TF_Filesystem* filesystem, TF_Status* status);
-
-static void NewRandomAccessFile(const TF_Filesystem* filesystem,
-                                const char* path, TF_RandomAccessFile* file,
-                                TF_Status* status);
-
-static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
-                            TF_WritableFile* file, TF_Status* status);
-
-static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
-                              TF_WritableFile* file, TF_Status* status);
-
-static void Stat(const TF_Filesystem* filesystem, const char* path,
-                 TF_FileStatistics* stats, TF_Status* status);
-
-static void CopyFile(const TF_Filesystem* filesystem, const char* src,
-                     const char* dst, TF_Status* status);
-
-static void PathExists(const TF_Filesystem* filesystem, const char* path,
-                       TF_Status* status);
-                      
-static int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
-                           TF_Status* status);
-
 static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   filesystem->plugin_filesystem = plugin_memory_allocate(sizeof(S3Shared));
   TF_SetStatus(status, TF_OK, "");
@@ -270,878 +387,247 @@ static void Cleanup(TF_Filesystem* filesystem) {}
 static void NewRandomAccessFile(const TF_Filesystem* filesystem,
                                 const char* path, TF_RandomAccessFile* file,
                                 TF_Status* status) {
-	char* bucket;
+  char* bucket;
   char* object;
-	ParseS3Test(path, false, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, path, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-  else if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-	file->plugin_file = new tf_random_access_file::S3File({bucket, object, s3_shared->s3_client});
-	TF_SetStatus(status, TF_OK, "");
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetTransferManager(s3_shared);
+  file->plugin_file = new tf_random_access_file::S3File(
+      {bucket, object, s3_shared->transfer_manager, nullptr});
+  TF_SetStatus(status, TF_OK, "");
 }
 
 static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                             TF_WritableFile* file, TF_Status* status) {
-	char* bucket;
+  char* bucket;
   char* object;
-	ParseS3Test(path, false, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  GetParentDir(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, path, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-
-	GetS3Client(s3_shared);
-	GetTransferManager(s3_shared);
-	file->plugin_file = new tf_writable_file::S3File({bucket, object, s3_shared->s3_client, 
-																										s3_shared->transfer_manager, true,
-																										Aws::MakeShared<Aws::Utils::TempFile>(
-																											kS3FileSystemAllocationTag, kS3SuffixFileSystem,
-																											std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
-																											std::ios_base::out)
-																										});
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetTransferManager(s3_shared);
+  file->plugin_file = new tf_writable_file::S3File(
+      {bucket, object, s3_shared->transfer_manager, nullptr, false});
 
   TF_SetStatus(status, TF_OK, "");
-  tf_writable_file::Sync(file, status);
 }
 
 static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
                               TF_WritableFile* file, TF_Status* status) {
-  
   char* bucket;
   char* object;
-	ParseS3Test(path, false, &bucket, &object, status);
-  if(TF_GetCode(status) != TF_OK) return;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
   auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-	GetTransferManager(s3_shared);
+  GetTransferManager(s3_shared);
+  std::shared_ptr<FstreamWithName> fstream_with_name = nullptr;
 
-	TF_RandomAccessFile reader;
-  bool have_reader = false;
-	NewRandomAccessFile(filesystem, path, &reader, status);
-	if(TF_GetCode(status) == TF_NOT_FOUND) {
-    have_reader = false;
-  }
-  else if(TF_GetCode(status) == TF_OK) {
-    have_reader = true;
-  }
-  else {
+  int64_t read =
+      ReadObjectImpl(bucket, object, &fstream_with_name,
+                     s3_shared->transfer_manager, 0, 0, nullptr, false, status);
+  if (read < 0 && TF_GetCode(status) != TF_NOT_FOUND) {
     return;
   }
-
-
-	std::unique_ptr<char[]> buffer(new char[kS3ReadAppendableFileBufferSize]);
-	uint64_t offset = 0;
-
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentDir(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-	file->plugin_file = new tf_writable_file::S3File({bucket, object, s3_shared->s3_client,
-																										s3_shared->transfer_manager, true,
-																										Aws::MakeShared<Aws::Utils::TempFile>(
-																											kS3FileSystemAllocationTag, kS3SuffixFileSystem,
-																											std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
-																											std::ios_base::out)
-																										});
-
-	while(have_reader) {
-		int64_t  read = tf_random_access_file::Read(&reader, offset, kS3ReadAppendableFileBufferSize, buffer.get(), status);
-		if(TF_GetCode(status) == TF_OK) {
-			tf_writable_file::Append(file, buffer.get(), read, status);
-			offset += kS3ReadAppendableFileBufferSize;
-		}
-		else if(TF_GetCode(status) == TF_OUT_OF_RANGE) {
-			tf_writable_file::Append(file, buffer.get(), read, status);
-			break;
-		}
-		else {
-			delete file->plugin_file;
-			return;
-		}
-	}
-  if(have_reader) tf_random_access_file::Cleanup(&reader);
-
+  file->plugin_file = new tf_writable_file::S3File(
+      {bucket, object, s3_shared->transfer_manager, fstream_with_name, false});
   TF_SetStatus(status, TF_OK, "");
-  tf_writable_file::Sync(file, status);
 }
 
 static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                                             const char* path,
                                             TF_ReadOnlyMemoryRegion* region,
                                             TF_Status* status) {
-  int64_t size = GetFileSize(filesystem, path, status);
-  if(size == 0) {
+  char* bucket;
+  char* object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
+
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetTransferManager(s3_shared);
+  std::shared_ptr<FstreamWithName> fstream_with_name = nullptr;
+  char* buffer = nullptr;
+  int64_t read =
+      ReadObjectImpl(bucket, object, &fstream_with_name,
+                     s3_shared->transfer_manager, 0, 0, &buffer, true, status);
+  if (read > 0 && buffer) {
+    region->plugin_memory_region =
+        new tf_read_only_memory_region::S3MemoryRegion(
+            {buffer, static_cast<uint64_t>(read)});
+    return;
+  }
+  if (read == 0) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
     return;
   }
-	if(TF_GetCode(status) != TF_OK) return;
-  char* buffer = (char*) malloc(size);
-
-	TF_RandomAccessFile reader;
-	NewRandomAccessFile(filesystem, path, &reader, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-	int64_t read = tf_random_access_file::Read(&reader, 0, size, buffer, status);
-	if(read == -1) return;
-
-	region->plugin_memory_region = new tf_read_only_memory_region::S3MemoryRegion({buffer, static_cast<uint64_t>(read)});
-  tf_random_access_file::Cleanup(&reader);
-	TF_SetStatus(status, TF_OK, "");
 }
 
 static void CreateDir(const TF_Filesystem* filesystem, const char* path,
                       TF_Status* status) {
-	char* bucket;
-  char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  char* bucket;
+  char* object_temporary;
+  ParseS3Path(path, false, &bucket, &object_temporary, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
+  char* object = nullptr;
+  if (object_temporary[strlen(object_temporary) - 1] != '/') {
+    object = static_cast<char*>(
+        plugin_memory_allocate(strlen(object_temporary) + 2));
+    strcpy(object, object_temporary);
+    object[strlen(object_temporary)] = '/';
+    object[strlen(object_temporary) + 1] = '\0';
+    free(object_temporary);
+  } else {
+    object = object_temporary;
   }
 
-  stats.is_directory = false;
-  GetParentDir(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_shared);
 
-  stats.is_directory = false;
-  Stat(filesystem, path, &stats, status);
-  if(TF_GetCode(status) != TF_NOT_FOUND) {
-    TF_SetStatus(status, TF_ALREADY_EXISTS, "Path already exists");
-    return;
-  }
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-	if(!object) {
-    Aws::S3::Model::HeadBucketRequest headBucketRequest;
-    headBucketRequest.WithBucket(bucket);
-    auto headBucketOutcome = s3_shared->s3_client->HeadBucket(headBucketRequest);
-    if (!headBucketOutcome.IsSuccess()) {
-      if(headBucketOutcome.GetError().GetResponseCode() ==
-					Aws::Http::HttpResponseCode::FORBIDDEN) {
-				TF_SetStatus(status, TF_FAILED_PRECONDITION, "AWS Credentials have not been set properly.\nUnable to access the specified S3 location");
-			}
-			else {
-				TF_SetStatus(status, TF_NOT_FOUND, std::string("The bucket " + std::string(bucket) + " was not found.").c_str());
-			}
-    }
-	}
-
-	std::string filename = path;
-  if (filename.back() != '/') {
-    filename.push_back('/');
-	}
-  
-	PathExists(filesystem, filename.c_str(), status);
-  if(TF_GetCode(status) != TF_OK) {
-		TF_WritableFile file;
-		NewWritableFile(filesystem, filename.c_str(), &file, status);
-		if(TF_GetCode(status) != TF_OK) return;
-
-		tf_writable_file::Close(&file, status);
-		if(TF_GetCode(status) != TF_OK) return;
-	}
-	TF_SetStatus(status, TF_OK, "");
+  Aws::S3::Model::PutObjectRequest putObjectRequest;
+  putObjectRequest.WithBucket(bucket).WithKey(object);
+  auto outcome = s3_shared->s3_client->PutObject(putObjectRequest);
+  if (!outcome.IsSuccess())
+    TF_SetStatusFromAWSError(status, outcome.GetError());
 }
 
 static void DeleteFile(const TF_Filesystem* filesystem, const char* path,
                        TF_Status* status) {
-	char* bucket;
+  char* bucket;
   char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_shared);
 
-  stats.is_directory = false;
-  GetParentDir(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, path, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "Path is a directory");
-    return;
-  }
-  else if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-	Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
+  Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
   deleteObjectRequest.WithBucket(bucket).WithKey(object);
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-	auto deleteObjectOutcome =
-      s3_shared->s3_client->DeleteObject(deleteObjectRequest);
-  if (!deleteObjectOutcome.IsSuccess()) {
-    TF_SetStatusFromAWSError(status, deleteObjectOutcome.GetError());
-		return;
-  }
-	TF_SetStatus(status, TF_OK, "");
-}
-
-static void DeleteDirImpl(const TF_Filesystem* filesystem, const char* path,
-                       TF_Status* status) {
-	char* bucket;
-  char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-	Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
-  deleteObjectRequest.WithBucket(bucket).WithKey(object);
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-	auto deleteObjectOutcome =
-      s3_shared->s3_client->DeleteObject(deleteObjectRequest);
-  if (!deleteObjectOutcome.IsSuccess()) {
-    TF_SetStatusFromAWSError(status, deleteObjectOutcome.GetError());
-		return;
-  }
-	TF_SetStatus(status, TF_OK, "");
+  auto outcome = s3_shared->s3_client->DeleteObject(deleteObjectRequest);
+  if (!outcome.IsSuccess())
+    TF_SetStatusFromAWSError(status, outcome.GetError());
 }
 
 static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
                       TF_Status* status) {
-	char* bucket;
-  char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  char* bucket;
+  char* object_temporary;
+  ParseS3Path(path, false, &bucket, &object_temporary, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  GetParentDir(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = true;
-  Stat(filesystem, path, &stats, status);
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-  else if(!stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "Path is not a directory");
-    return;
-  }
-
-  std::string prefix = object;
-  if (prefix.back() != '/') {
-    prefix.push_back('/');
-  }
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-  listObjectsRequest.WithBucket(bucket)
-      .WithPrefix(prefix.c_str())
-      .WithMaxKeys(2);
-  listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome =
-      s3_shared->s3_client->ListObjects(listObjectsRequest);
-  if (listObjectsOutcome.IsSuccess()) {
-    auto contents = listObjectsOutcome.GetResult().GetContents();
-    if (contents.size() > 1 ||
-        (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
-      TF_SetStatus(status, TF_FAILED_PRECONDITION, "Cannot delete a non-empty directory.\nThis operation will be retried in case this\nis due to S3's eventual consistency.");
-      return;
-    }
-    if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
-      std::string filename = path;
-      if (filename.back() != '/') {
-        filename.push_back('/');
-      }
-      return DeleteDirImpl(filesystem, filename.c_str(), status);
-    }
+  char* object = nullptr;
+  if (object_temporary[strlen(object_temporary) - 1] != '/') {
+    object = static_cast<char*>(
+        plugin_memory_allocate(strlen(object_temporary) + 2));
+    strcpy(object, object_temporary);
+    object[strlen(object_temporary)] = '/';
+    object[strlen(object_temporary) + 1] = '\0';
+    free(object_temporary);
   } else {
-		if(listObjectsOutcome.GetError().GetResponseCode() ==
-				Aws::Http::HttpResponseCode::FORBIDDEN) {
-			TF_SetStatus(status, TF_FAILED_PRECONDITION, "AWS Credentials have not been set properly.\nUnable to access the specified S3 location");
-			return;
-		}
-  }
-  TF_SetStatus(status, TF_OK, "");
-}
-
-static void RenameFileImpl(const TF_Filesystem* filesystem, const char* src,
-                     const char* dst, TF_Status* status) {
-	char* src_bucket;
-  char* src_object;
-	ParseS3Test(src, false, &src_bucket, &src_object, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-	char* dst_bucket;
-  char* dst_object;
-	ParseS3Test(dst, false, &dst_bucket, &dst_object, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-  int64_t file_length = GetFileSize(filesystem, src, status);
-  if(TF_GetCode(status) != TF_OK) return;
-
-  int num_parts;
-  if (file_length <= multi_part_copy_part_size_) {
-    num_parts = 1;
-  } else {
-    num_parts = ceil((float)file_length / multi_part_copy_part_size_);
+    object = object_temporary;
   }
 
   auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
+  GetS3Client(s3_shared);
 
-  if (num_parts == 1) {
-    // Source does not contain `s3://`
-    SimpleCopy(src + strlen("s3://"), dst_bucket, dst_object, s3_shared->s3_client, status);
-    return;
-  } else if (num_parts > 10000) {
-    std::string message = std::string(
-        "MultiPartCopy with number of parts more than 10000 is not supported.\n Your object" + \
-        std::string(src) + " required " + std::to_string(num_parts) + \
-        " as multi_part_copy_part_size is set to " + std::to_string(multi_part_copy_part_size_) + \
-        ". You can control this part size using the environment variable " + \
-        "S3_MULTI_PART_COPY_PART_SIZE to increase it.");
-    TF_SetStatus(status, TF_UNIMPLEMENTED, message.c_str());
-    return;
-  } else {
-    MultiPartCopy(src + strlen("s3://"), dst_bucket, dst_object, num_parts, file_length, s3_shared->s3_client, status);
-    return;
-  }
+  Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
+  deleteObjectRequest.WithBucket(bucket).WithKey(object);
+  auto outcome = s3_shared->s3_client->DeleteObject(deleteObjectRequest);
+  if (!outcome.IsSuccess())
+    TF_SetStatusFromAWSError(status, outcome.GetError());
 }
 
 static void RenameFile(const TF_Filesystem* filesystem, const char* src,
                        const char* dst, TF_Status* status) {
-	char* src_bucket;
-  char* src_object_char;
-	ParseS3Test(src, false, &src_bucket, &src_object_char, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  char* bucket_src;
+  char* object_src;
+  ParseS3Path(src, false, &bucket_src, &object_src, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(src, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
+  char* bucket_dst;
+  char* object_dst;
+  ParseS3Path(dst, false, &bucket_dst, &object_dst, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  stats.is_directory = false;
-  GetParentDir(src, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, src, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-  else if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats = {0, 0, false};
-  GetParentFile(dst, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  GetParentDir(dst, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, dst, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-
-	char* dst_bucket;
-  char* dst_object_char;
-	ParseS3Test(dst, false, &dst_bucket, &dst_object_char, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-  std::string src_object = src_object_char;
-  std::string target_object = dst_object_char;
-  if (src_object.back() == '/') {
-    if (target_object.back() != '/') {
-      target_object.push_back('/');
-    }
-  } else {
-    if (target_object.back() == '/') {
-      target_object.pop_back();
-    }
-  }
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_shared);
 
   Aws::S3::Model::CopyObjectRequest copyObjectRequest;
+  copyObjectRequest.WithCopySource(Aws::String(bucket_src) + "/" + object_src);
+  copyObjectRequest.WithBucket(bucket_dst).WithKey(object_dst);
+  auto copyObjectOutcome = s3_shared->s3_client->CopyObject(copyObjectRequest);
+  if (!copyObjectOutcome.IsSuccess()) {
+    TF_SetStatusFromAWSError(status, copyObjectOutcome.GetError());
+    return;
+  }
+
   Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
-
-	Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-  listObjectsRequest.WithBucket(src_bucket)
-      .WithPrefix(src_object_char)
-      .WithMaxKeys(kS3GetChildrenMaxKeys);
-  listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-  Aws::S3::Model::ListObjectsResult listObjectsResult;
-  do {
-    auto listObjectsOutcome =
-        s3_shared->s3_client->ListObjects(listObjectsRequest);
-    if (!listObjectsOutcome.IsSuccess()) {
-      TF_SetStatusFromAWSError(status, listObjectsOutcome.GetError());
-    }
-
-    listObjectsResult = listObjectsOutcome.GetResult();
-    for (const auto& object : listObjectsResult.GetContents()) {
-      Aws::String src_key = object.GetKey();
-      Aws::String target_key = src_key;
-      target_key.replace(0, src_object.length(), target_object.c_str());
-
-      RenameFileImpl(filesystem, src, dst, status);
-      if(TF_GetCode(status) != TF_OK) return;
-
-      deleteObjectRequest.SetBucket(src_bucket);
-      deleteObjectRequest.SetKey(src_key.c_str());
-
-      auto deleteObjectOutcome =
-          s3_shared->s3_client->DeleteObject(deleteObjectRequest);
-      if (!deleteObjectOutcome.IsSuccess()) {
-        TF_SetStatusFromAWSError(status, deleteObjectOutcome.GetError());
-        return;
-      }
-    }
-    listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
-  } while (listObjectsResult.GetIsTruncated());
-
-  TF_SetStatus(status, TF_OK, "");
+  deleteObjectRequest.WithBucket(bucket_src).WithKey(object_src);
+  auto deleteObjectOutcome =
+      s3_shared->s3_client->DeleteObject(deleteObjectRequest);
+  if (!deleteObjectOutcome.IsSuccess()) {
+    TF_SetStatusFromAWSError(status, deleteObjectOutcome.GetError());
+    return;
+  }
 }
 
 static void CopyFile(const TF_Filesystem* filesystem, const char* src,
                      const char* dst, TF_Status* status) {
-	char* src_bucket;
-  char* src_object;
-	ParseS3Test(src, false, &src_bucket, &src_object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  char* bucket_src;
+  char* object_src;
+  ParseS3Path(src, false, &bucket_src, &object_src, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(src, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  GetParentDir(src, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, src, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-  else if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-	char* dst_bucket;
-  char* dst_object;
-	ParseS3Test(dst, false, &dst_bucket, &dst_object, status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-  stats = {0, 0, false};
-  GetParentFile(dst, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-  GetParentDir(dst, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return;
-  }
-
-  stats.is_directory = false;
-  Stat(filesystem, dst, &stats, status);
-  if(stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
-    return;
-  }
-
-  int64_t file_length = GetFileSize(filesystem, src, status);
-  if(TF_GetCode(status) != TF_OK) return;
-
-  int num_parts;
-  if (file_length <= multi_part_copy_part_size_) {
-    num_parts = 1;
-  } else {
-    num_parts = ceil((float)file_length / multi_part_copy_part_size_);
-  }
+  char* bucket_dst;
+  char* object_dst;
+  ParseS3Path(dst, false, &bucket_dst, &object_dst, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
   auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
+  GetS3Client(s3_shared);
 
-  if (num_parts == 1) {
-    // Source does not contain `s3://`
-    SimpleCopy(src + strlen("s3://"), dst_bucket, dst_object, s3_shared->s3_client, status);
-    return;
-  } else if (num_parts > 10000) {
-    std::string message = std::string(
-        "MultiPartCopy with number of parts more than 10000 is not supported.\n Your object" + \
-        std::string(src) + " required " + std::to_string(num_parts) + \
-        " as multi_part_copy_part_size is set to " + std::to_string(multi_part_copy_part_size_) + \
-        ". You can control this part size using the environment variable " + \
-        "S3_MULTI_PART_COPY_PART_SIZE to increase it.");
-    TF_SetStatus(status, TF_UNIMPLEMENTED, message.c_str());
-    return;
-  } else {
-    MultiPartCopy(src + strlen("s3://"), dst_bucket, dst_object, num_parts, file_length, s3_shared->s3_client, status);
+  Aws::S3::Model::CopyObjectRequest copyObjectRequest;
+  copyObjectRequest.WithCopySource(Aws::String(bucket_src) + "/" + object_src);
+  copyObjectRequest.WithBucket(bucket_dst).WithKey(object_dst);
+  auto copyObjectOutcome = s3_shared->s3_client->CopyObject(copyObjectRequest);
+  if (!copyObjectOutcome.IsSuccess()) {
+    TF_SetStatusFromAWSError(status, copyObjectOutcome.GetError());
     return;
   }
-}
-
-static void PathExists(const TF_Filesystem* filesystem, const char* path,
-                       TF_Status* status) {
-
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return;
-  }
-
-  stats.is_directory = false;
-	Stat(filesystem, path, &stats, status);
-	if(TF_GetCode(status) != TF_OK) return;
-	TF_SetStatus(status, TF_OK, "");
 }
 
 static void Stat(const TF_Filesystem* filesystem, const char* path,
                  TF_FileStatistics* stats, TF_Status* status) {
-	char* bucket;
+  char* bucket;
   char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return;
+  ParseS3Path(path, false, &bucket, &object, status);
+  TF_S3_RETURN_IF_ERROR(status);
 
-	auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-
-  if (!object) {
-    Aws::S3::Model::HeadBucketRequest headBucketRequest;
-    headBucketRequest.WithBucket(bucket);
-    auto headBucketOutcome = s3_shared->s3_client->HeadBucket(headBucketRequest);
-    if (!headBucketOutcome.IsSuccess()) {
-      TF_SetStatusFromAWSError(status, headBucketOutcome.GetError());
-			return;
-    }
-    stats->length = 0;
-    stats->is_directory = 1;
-  }
-
-	bool found = false;
+  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_shared);
 
   Aws::S3::Model::HeadObjectRequest headObjectRequest;
   headObjectRequest.WithBucket(bucket).WithKey(object);
-  headObjectRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto headObjectOutcome = s3_shared->s3_client->HeadObject(headObjectRequest);
-  if (headObjectOutcome.IsSuccess()) {
-    stats->length = headObjectOutcome.GetResult().GetContentLength();
-    stats->is_directory = 0;
-    stats->mtime_nsec =
-        headObjectOutcome.GetResult().GetLastModified().Millis() * 1e6;
-    found = true;
-  } else {
-    if(headObjectOutcome.GetError().GetResponseCode() ==
-				Aws::Http::HttpResponseCode::FORBIDDEN) {
-			TF_SetStatus(status, TF_FAILED_PRECONDITION, "AWS Credentials have not been set properly.\nUnable to access the specified S3 location");
-			return;
-		}
+  auto outcome = s3_shared->s3_client->HeadObject(headObjectRequest);
+  if (!outcome.IsSuccess()) {
+    TF_SetStatusFromAWSError(status, outcome.GetError());
+    return;
   }
-
-  std::string prefix = object;
-  if (prefix.back() != '/') {
-    prefix.push_back('/');
-  }
-
-	Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-  listObjectsRequest.WithBucket(bucket)
-      .WithPrefix(prefix.c_str())
-      .WithMaxKeys(1);
-  listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome =
-      s3_shared->s3_client->ListObjects(listObjectsRequest);
-  if (listObjectsOutcome.IsSuccess()) {
-    auto listObjects = listObjectsOutcome.GetResult().GetContents();
-    if (listObjects.size() > 0) {
-      stats->length = 0;
-      stats->is_directory = 1;
-      stats->mtime_nsec = listObjects[0].GetLastModified().Millis() * 1e6;
-      found = true;
-    }
-  } else {
-    if(listObjectsOutcome.GetError().GetResponseCode() ==
-				Aws::Http::HttpResponseCode::FORBIDDEN) {
-			TF_SetStatus(status, TF_FAILED_PRECONDITION, "AWS Credentials have not been set properly.\nUnable to access the specified S3 location");
-			return;
-		}
-  }
-
-	if (!found) {
-    TF_SetStatus(status, TF_NOT_FOUND, std::string("Object " + std::string(path) + " does not exist").c_str());
-		return;
-  }
-	TF_SetStatus(status, TF_OK, "");
+  stats->is_directory = false;
+  stats->length = outcome.GetResult().GetContentLength();
+  stats->mtime_nsec = outcome.GetResult().GetLastModified().Millis();
 }
 
-static int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
-                           TF_Status* status) {
-
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return -1;
-  }
-
-  stats = {0, 0, false};
-	Stat(filesystem, path, &stats, status);
-	if(TF_GetCode(status) != TF_OK) return -1;
-  if(stats.is_directory){
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "Path is a directory");
-    return -1;
-  }
-	TF_SetStatus(status, TF_OK, "");
-	return stats.length;
-}
-
-static int GetChildren(const TF_Filesystem* filesystem, const char* path,
-                       char*** entries, TF_Status* status) {
-  std::vector<std::string> result;
-	char* bucket;
-  char* object;
-	ParseS3Test(path, true, &bucket, &object, status);
-	if(TF_GetCode(status) != TF_OK) return -1;
-
-  TF_FileStatistics stats = {0, 0, false};
-  char* parent;
-  GetParentFile(path, &parent);
-  Stat(filesystem, parent, &stats, status);
-  free(parent);
-  parent = NULL;
-  if(TF_GetCode(status) == TF_OK && !stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is invaild");
-    return -1;
-  }
-
-  stats.is_directory = true;
+static void PathExists(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  TF_FileStatistics stats;
   Stat(filesystem, path, &stats, status);
-  if(TF_GetCode(status) == TF_NOT_FOUND) {
-    return -1;
-  }
-  else if(!stats.is_directory) {
-    TF_SetStatus(status, TF_FAILED_PRECONDITION, "Path is not a directory");
-    return -1;
-  }
-
-  std::string prefix = object;
-
-  if (!prefix.empty() && prefix.back() != '/') {
-    prefix.push_back('/');
-  }
-
-  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-  listObjectsRequest.WithBucket(bucket)
-      .WithPrefix(prefix.c_str())
-      .WithMaxKeys(kS3GetChildrenMaxKeys)
-      .WithDelimiter("/");
-  listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-
-  Aws::S3::Model::ListObjectsResult listObjectsResult;
-  auto s3_shared = static_cast<S3Shared*>(filesystem->plugin_filesystem);
-	GetS3Client(s3_shared);
-  do {
-    auto listObjectsOutcome =
-        s3_shared->s3_client->ListObjects(listObjectsRequest);
-    if (!listObjectsOutcome.IsSuccess()) {
-      TF_SetStatusFromAWSError(status, listObjectsOutcome.GetError());
-			return -1;
-    }
-
-    listObjectsResult = listObjectsOutcome.GetResult();
-    for (const auto& object : listObjectsResult.GetCommonPrefixes()) {
-      Aws::String s = object.GetPrefix();
-      s.erase(s.length() - 1);
-      Aws::String entry = s.substr(strlen(prefix.c_str()));
-      if (entry.length() > 0) {
-        result.push_back(entry.c_str());
-      }
-    }
-    for (const auto& object : listObjectsResult.GetContents()) {
-      Aws::String s = object.GetKey();
-      Aws::String entry = s.substr(strlen(prefix.c_str()));
-      if (entry.length() > 0) {
-        result.push_back(entry.c_str());
-      }
-    }
-    listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
-  } while (listObjectsResult.GetIsTruncated());
-
-  *entries = static_cast<char**>(
-      plugin_memory_allocate(result.size() * sizeof((*entries)[0])));
-  // TODO(vnvo2409): Optimize
-  for(int i = 0; i < result.size(); ++i) {
-      (*entries)[i] = strdup(result.at(i).c_str());
-  }
-  return result.size();
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
-  char* name = (char*) malloc(strlen(uri) + 1);
+  char* name = static_cast<char*>(plugin_memory_allocate(strlen(uri) + 1));
   strcpy(name, uri);
   return name;
 }
@@ -1165,6 +651,7 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->writable_file_ops->flush = tf_writable_file::Flush;
   ops->writable_file_ops->sync = tf_writable_file::Sync;
   ops->writable_file_ops->close = tf_writable_file::Close;
+  ops->writable_file_ops->tell = tf_writable_file::Tell;
 
   ops->read_only_memory_region_ops = static_cast<TF_ReadOnlyMemoryRegionOps*>(
       plugin_memory_allocate(TF_READ_ONLY_MEMORY_REGION_OPS_SIZE));
@@ -1185,14 +672,12 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->new_read_only_memory_region_from_file =
       tf_s3_filesystem::NewReadOnlyMemoryRegionFromFile;
   ops->filesystem_ops->create_dir = tf_s3_filesystem::CreateDir;
+  ops->filesystem_ops->recursively_create_dir = tf_s3_filesystem::CreateDir;
   ops->filesystem_ops->delete_file = tf_s3_filesystem::DeleteFile;
-  ops->filesystem_ops->delete_dir = tf_s3_filesystem::DeleteDir;
   ops->filesystem_ops->rename_file = tf_s3_filesystem::RenameFile;
   ops->filesystem_ops->copy_file = tf_s3_filesystem::CopyFile;
   ops->filesystem_ops->path_exists = tf_s3_filesystem::PathExists;
   ops->filesystem_ops->stat = tf_s3_filesystem::Stat;
-  ops->filesystem_ops->get_file_size = tf_s3_filesystem::GetFileSize;
-  ops->filesystem_ops->get_children = tf_s3_filesystem::GetChildren;
   ops->filesystem_ops->translate_name = tf_s3_filesystem::TranslateName;
 }
 

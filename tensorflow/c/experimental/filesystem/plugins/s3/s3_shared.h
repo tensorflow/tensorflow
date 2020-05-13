@@ -15,21 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_SHARED_H_
 #define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_SHARED_H_
 
+#include <aws/core/utils/threading/Executor.h>
 #include <aws/s3/S3Client.h>
 #include <aws/transfer/TransferManager.h>
-#include <aws/core/utils/threading/Executor.h>
 
 #include <memory>
 
 namespace tf_s3_filesystem {
-  typedef struct S3Shared {
-    std::shared_ptr<Aws::S3::S3Client> s3_client;
-    std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
-    std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> thread_executor;
-  } S3Shared;
-  void GetS3Client(S3Shared* s3_shared);
-  void GetTransferManager(S3Shared* s3_shared);
-  void GetExecutor(S3Shared* s3_shared);
+typedef struct S3Shared {
+  std::shared_ptr<Aws::S3::S3Client> s3_client;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> thread_executor;
+} S3Shared;
+void GetS3Client(S3Shared* s3_shared);
+void GetTransferManager(S3Shared* s3_shared);
+void GetExecutor(S3Shared* s3_shared);
 }  // namespace tf_s3_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_SHARED_H_
