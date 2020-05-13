@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
-
 namespace tensorflow {
 using mkldnn::prop_kind;
 
@@ -38,11 +37,11 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   context_.alg_kind = fwdParams.alg_kind;
   context_.prop_kind = fwdParams.prop_kind;
 
-  // Create memory descriptor
-  // FIXME: Pooling doesn't expose to get the src_primitive_desc,
-  //        so src format is currently hard-coded.
-  //        A utility function is used to do this,
-  //        which may be broken with future CPU architectures
+// Create memory descriptor
+// FIXME: Pooling doesn't expose to get the src_primitive_desc,
+//        so src format is currently hard-coded.
+//        A utility function is used to do this,
+//        which may be broken with future CPU architectures
 #ifndef ENABLE_MKLDNN_V1
   bool is_2d = (fwdParams.src_dims.size() == 4);
   if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
@@ -126,7 +125,8 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 
 template <typename T>
 void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
-                                        void* ws_data) {
+                                        void* ws_data,
+                                        std::shared_ptr<stream> fwd_stream) {
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
@@ -138,10 +138,9 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   }
 
 #ifdef ENABLE_MKLDNN_V1
-  execute_primitives(context_.fwd_primitives, context_.fwd_stream,
-                     context_.net_args);
+  execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 #else
-  context_.fwd_stream->submit(context_.fwd_primitives);
+  fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
 
   // Set back data handle.
@@ -268,7 +267,8 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
-                                        T* diff_src_data, const void* ws_data) {
+                                        T* diff_src_data, const void* ws_data,
+                                        std::shared_ptr<stream> bwd_stream) {
   context_.diff_dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(diff_dst_data)));
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
@@ -278,10 +278,9 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
   }
 
 #ifdef ENABLE_MKLDNN_V1
-  execute_primitives(context_.bwd_primitives, context_.bwd_stream,
-                     context_.net_args);
+  execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
 #else
-  context_.bwd_stream->submit(context_.bwd_primitives);
+  bwd_stream->submit(context_.bwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
 
   // Set back data handle.
