@@ -1074,7 +1074,7 @@ tf_module {
   }
   member_method {
     name: "DenseBincount"
-    argspec: "args=[\'input\', \'size\', \'weights\', \'binary_count\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "DenseCountSparseOutput"
@@ -3070,7 +3070,7 @@ tf_module {
   }
   member_method {
     name: "RaggedBincount"
-    argspec: "args=[\'splits\', \'values\', \'size\', \'weights\', \'binary_count\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'splits\', \'values\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "RaggedCountSparseOutput"
@@ -4082,7 +4082,7 @@ tf_module {
   }
   member_method {
     name: "SparseBincount"
-    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'size\', \'weights\', \'binary_count\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SparseConcat"

@@ -40,7 +40,7 @@ The counts or summed weights for each value in the range [0, size).
 END
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     description: <<END
 bool; Whether the kernel should count the appearance or number of occurrences.
 END
