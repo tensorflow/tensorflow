@@ -64,9 +64,21 @@ ALL_V2_MODULES = (
     recurrent_v2,
     preprocessing_normalization
 )
+FEATURE_COLUMN_V1_OBJECTS = {}
+FEATURE_COLUMN_V2_OBJECTS = {}
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()
+
+
+def inject_feature_column_v1_objects(name, cls):
+  global FEATURE_COLUMN_V1_OBJECTS
+  FEATURE_COLUMN_V1_OBJECTS[name] = cls
+
+
+def inject_feature_column_v2_objects(name, cls):
+  global FEATURE_COLUMN_V2_OBJECTS
+  FEATURE_COLUMN_V2_OBJECTS[name] = cls
 
 
 def populate_deserializable_objects():
@@ -122,11 +134,9 @@ def populate_deserializable_objects():
   LOCAL.ALL_OBJECTS['WideDeepModel'] = WideDeepModel
 
   if tf2.enabled():
-    from tensorflow.python.keras.feature_column.dense_features_v2 import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V2_OBJECTS)
   else:
-    from tensorflow.python.keras.feature_column.dense_features import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V1_OBJECTS)
 
   # Merge layers, function versions.
   LOCAL.ALL_OBJECTS['add'] = merge.add

@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.DenseFeatures"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.feature_column.dense_features.DenseFeatures\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.dense_features.DenseFeatures\'>"
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2._BaseFeaturesLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

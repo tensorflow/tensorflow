@@ -55,6 +55,8 @@ py_library(
 py_library(
     name = "feature_column_v2",
     srcs = [
+        "dense_features.py",
+        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -124,6 +126,15 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "dense_features_test",
+    srcs = ["dense_features_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":feature_column_test_main_lib",
+    ],
+)
+
 py_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
@@ -164,6 +175,15 @@ tf_py_test(
         "no_windows",
     ],
     deps = [":feature_column_v2_test_main_lib"],
+)
+
+tf_py_test(
+    name = "dense_features_v2_test",
+    srcs = ["dense_features_v2_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":feature_column_v2_test_main_lib",
+    ],
 )
 
 py_library(
