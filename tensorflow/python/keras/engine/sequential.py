@@ -26,8 +26,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import input_layer
-from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -35,7 +35,6 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.deprecation import deprecated
@@ -48,7 +47,7 @@ SINGLE_LAYER_OUTPUT_ERROR_MSG = ('All layers in a Sequential model should have '
 
 
 @keras_export('keras.Sequential', 'keras.models.Sequential')
-class Sequential(training.Model):
+class Sequential(functional.Functional):
   """`Sequential` groups a linear stack of layers into a `tf.keras.Model`.
 
   `Sequential` provides training and inference features on this model.
@@ -113,7 +112,9 @@ class Sequential(training.Model):
       layers: Optional list of layers to add to the model.
       name: Optional name for the model.
     """
-    super(Sequential, self).__init__(name=name, autocast=False)
+    # Skip the init in FunctionalModel since model doesn't have input/output yet
+    super(functional.Functional, self).__init__(  # pylint: disable=bad-super-call
+        name=name, autocast=False)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
     self._auto_track_sub_layers = False
@@ -151,11 +152,6 @@ class Sequential(training.Model):
     if layers and isinstance(layers[0], input_layer.InputLayer):
       return layers[1:]
     return layers[:]
-
-  @property
-  @trackable_layer_utils.cache_recursive_attribute('dynamic')
-  def dynamic(self):
-    return any(layer.dynamic for layer in self.layers)
 
   @trackable.no_automatic_dependency_tracking
   def add(self, layer):
@@ -233,7 +229,7 @@ class Sequential(training.Model):
       self.built = True
 
     if set_inputs or self._graph_initialized:
-      self._init_graph_network(self.inputs, self.outputs, name=self.name)
+      self._init_graph_network(self.inputs, self.outputs)
       self._graph_initialized = True
     else:
       self._layers.append(layer)
@@ -267,7 +263,7 @@ class Sequential(training.Model):
     elif self._graph_initialized:
       self.layers[-1]._outbound_nodes = []
       self.outputs = [self.layers[-1].output]
-      self._init_graph_network(self.inputs, self.outputs, name=self.name)
+      self._init_graph_network(self.inputs, self.outputs)
       self.built = True
 
   @trackable.no_automatic_dependency_tracking
@@ -341,7 +337,7 @@ class Sequential(training.Model):
             # case, we fall back to the legacy deferred behavior.
             # TODO(fchollet): consider raising here, as we should not be
             # supporting such layers.
-            self._init_graph_network(inputs, outputs, name=self.name)
+            self._init_graph_network(inputs, outputs)
             self._graph_initialized = True
           except:  # pylint:disable=bare-except
             self._use_legacy_deferred_behavior = True
@@ -350,7 +346,7 @@ class Sequential(training.Model):
   @generic_utils.default
   def build(self, input_shape=None):
     if self._graph_initialized:
-      self._init_graph_network(self.inputs, self.outputs, name=self.name)
+      self._init_graph_network(self.inputs, self.outputs)
     else:
       if input_shape is None:
         raise ValueError('You must provide an `input_shape` argument.')
@@ -380,7 +376,7 @@ class Sequential(training.Model):
 
     if self._graph_initialized:
       if not self.built:
-        self._init_graph_network(self.inputs, self.outputs, name=self.name)
+        self._init_graph_network(self.inputs, self.outputs)
       return super(Sequential, self).call(inputs, training=training, mask=mask)
 
     outputs = inputs  # handle the corner case where self.layers is empty
@@ -518,6 +514,13 @@ class Sequential(training.Model):
       if layer.name == ref_layer.name and ref_layer is not layer:
         return False
     return True
+
+  def _assert_weights_created(self):
+    if self._graph_initialized:
+      return
+    # When the graph has not been initialized, use the Model's implementation to
+    # to check if the weights has been created.
+    super(functional.Functional, self)._assert_weights_created()  # pylint: disable=bad-super-call
 
 
 def _get_shape_tuple(t):

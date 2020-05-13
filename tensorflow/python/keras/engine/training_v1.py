@@ -43,7 +43,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.engine import network
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
@@ -181,8 +181,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return network.Network.get_weights(self)
-    return network.Network.get_weights(self)
+        return base_layer.Layer.get_weights(self)
+    return base_layer.Layer.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -232,7 +232,7 @@ class Model(training_lib.Model):
     """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
@@ -491,6 +491,11 @@ class Model(training_lib.Model):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics.
+        return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
     metrics.extend(_get_metrics_from_layers(self._layers))
@@ -504,6 +509,12 @@ class Model(training_lib.Model):
     # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics name
+        return super(Model, self).metrics_names
+
       # Add output loss metric names to the metric names list.
       if len(self._training_endpoints) > 1:
         metrics_names.extend([

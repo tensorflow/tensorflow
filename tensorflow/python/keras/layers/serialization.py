@@ -114,7 +114,7 @@ def populate_deserializable_objects():
 
   LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
   LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
-  LOCAL.ALL_OBJECTS['Network'] = models.Network
+  LOCAL.ALL_OBJECTS['Functional'] = models.Functional
   LOCAL.ALL_OBJECTS['Model'] = models.Model
   LOCAL.ALL_OBJECTS['SequenceFeatures'] = SequenceFeatures
   LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
