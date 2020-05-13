@@ -130,24 +130,17 @@ static int64_t ReadObjectImpl(const char* bucket, const char* object,
                               bool read_to_buffer, TF_Status* status) {
   int64_t read = 0;
   if (*temp_file == nullptr) {
-    google::cloud::Status gcs_status;
+    // We have to download and save the whole file from GCS,
+    // to make sure that we can read any range of this file later.
     *temp_file = std::make_shared<FstreamWithName>();
     if ((*temp_file)->fail()) return -1;
-    if (n == 0)
-      gcs_status =
-          gcs_client->DownloadToFile(bucket, object, (*temp_file)->getName());
-    else {
-      gcs_status = gcs_client->DownloadToFile(
-          bucket, object, (*temp_file)->getName(),
-          google::cloud::storage::ReadRange(offset, offset + n));
-      offset = 0;
-    }
+    auto gcs_status = gcs_client->DownloadToFile(bucket, object, (*temp_file)->getName());
     TF_SetStatusFromGCSStatus(gcs_status, status);
     if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE)
       return -1;
-    (*temp_file)
-        ->open((*temp_file)->getName(),
-               std::ios::binary | std::ios::in | std::ios::out | std::ios::ate);
+    (*temp_file)->open((*temp_file)->getName(),
+                        std::ios::binary | std::ios::in |
+                        std::ios::out | std::ios::ate);
   }
 
   if (!(*temp_file)->is_open()) {
