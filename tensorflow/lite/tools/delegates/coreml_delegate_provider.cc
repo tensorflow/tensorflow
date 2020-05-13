@@ -31,7 +31,7 @@ class CoreMlDelegateProvider : public DelegateProvider {
  public:
   CoreMlDelegateProvider() {
 #if defined(REAL_IPHONE_DEVICE)
-    default_params_.AddParam("use_coreml", ToolParam::Create<bool>(true));
+    default_params_.AddParam("use_coreml", ToolParam::Create<bool>(false));
     default_params_.AddParam("coreml_version", ToolParam::Create<int>(0));
 #endif
   }
