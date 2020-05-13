@@ -27,6 +27,7 @@ namespace xla {
 namespace spmd {
 namespace {
 
+using ::testing::_;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 
@@ -1992,6 +1993,29 @@ ENTRY entry {
                       op::Shape("f32[38,38,4,82]")),
                 op::Constant(), op::Constant(), op::Constant(), op::Reshape()),
             op::Shape("f32[38,38,4,41]")));
+}
+
+TEST_F(SpmdPartitioningTest, ReshapeMergeDimsWithHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[2,3,7,10] parameter(0), sharding={devices=[1,1,2,1]0,1}
+  ROOT %reshape = s32[3,2,1,14,5] reshape(%input),
+    sharding={devices=[1,1,1,2,1]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto reshape =
+      AllOf(op::Reshape(op::Parameter(0)), op::Shape("s32[3,2,1,8,5]"));
+  auto halo = op::CollectivePermute(op::Slice(reshape));
+  auto exchanged =
+      op::DynamicSlice(op::Concatenate(halo, reshape), _, _, _, _, _);
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(exchanged, op::Shape("s32[3,2,1,7,5]")));
 }
 
 // Produces an invalid module after transformation.

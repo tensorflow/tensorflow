@@ -1661,7 +1661,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     }
     TF_RET_CHECK(!reshard_output->dynamic_slice_index_on_output.has_value());
     CHECK_EQ(
-        reshard_output->sharded_input->shape().dimensions(input_sharded_dim),
+        reshard_output->sharded_input->shape().dimensions(output_sharded_dim),
         output_shard_shape.dimensions(output_sharded_dim));
     SetPartitionedHlo(hlo, [&] { return reshard_output->sharded_input; });
     return Status::OK();
