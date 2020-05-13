@@ -350,7 +350,7 @@ class NNAPIDelegateKernel {
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
                           const StatefulNnApiDelegate::Options& options,
-			  const TfLiteIntArray* input_tensors,
+                          const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);
 };
