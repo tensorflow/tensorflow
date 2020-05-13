@@ -353,6 +353,7 @@ filegroup(
 filegroup(
     name = "portable_gpu_tests",
     srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterTestHelper.java",
         "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
     ],
     visibility = ["//visibility:public"],
