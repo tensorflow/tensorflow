@@ -34,22 +34,7 @@ Note that ethousu_init() need to be called once during startup.
 
 # Example 1
 
-Clone driver repo from here (this will soon be available).
-
-```
-https://review.mlplatform.org/admin/repos/ml/ethos-u/ethos-u-core-driver
-```
-
-Copy it to the downloads folder like this. This step will be done automatically once
-https://review.mlplatform.org/admin/repos/ml/ethos-u/ethos-u-core-driver is up & running.
-It will be added to third_party downloads.inc.
-
-```
-cp -rp  /path/to/driver/* ./tensorflow/lite/micro/tools/make/downloads/ethosu
-
-```
-
-Then to compile a binary with Ethos-U kernel.
+Compile a binary with Ethos-U kernel.
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile network_tester_test TAGS="ethos-u" \

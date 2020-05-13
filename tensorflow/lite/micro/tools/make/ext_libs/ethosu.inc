@@ -6,6 +6,8 @@ ifneq ($(filter ethos-u,$(ALL_TAGS)),)
         $(error target architecture x86_64 not supported)
     endif
 
+    THIRD_PARTY_DOWNLOADS += \
+      $(eval $(call add_third_party_download,$(ETHOSU_URL),$(ETHOSU_MD5),ethosu,))
     ETHOSU_DRIVER_PATH = $(MAKEFILE_DIR)/downloads/ethosu
 
     # Currently there is a dependency to CMSIS-NN
