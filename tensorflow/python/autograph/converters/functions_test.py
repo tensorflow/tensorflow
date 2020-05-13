@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.converters import functions
+from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
@@ -74,7 +75,7 @@ class FunctionTransformer(converter_testing.TestCase):
       l += 1
       return l, inner_fn(l)
 
-    with self.converted(test_fn, functions, {},
+    with self.converted(test_fn, (functions, return_statements), {},
                         (ops.name_scope,)) as result:
       first, second = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', first.op.name)
@@ -119,6 +120,7 @@ class FunctionTransformer(converter_testing.TestCase):
     ns = {'TestClass': TestClass}
     node, ctx = self.prepare(TestClass, ns)
     node = functions.transform(node, ctx)
+    node = return_statements.transform(node, ctx)
 
     with self.compiled(node, {}, (ops.name_scope,)) as result:
       first, second = result.TestClass().test_fn(constant_op.constant(1))

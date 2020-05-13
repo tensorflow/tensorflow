@@ -36,6 +36,7 @@ from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.converters import slices
+from tensorflow.python.autograph.converters import variables
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
@@ -92,6 +93,7 @@ class AutoGraphTranspiler(transpiler.FunctionTranspiler):
     node = control_flow.transform(node, ctx)
     node = conditional_expressions.transform(node, ctx)
     node = logical_expressions.transform(node, ctx)
+    node = variables.transform(node, ctx)
     return node
 
 

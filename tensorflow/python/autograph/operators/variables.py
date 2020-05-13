@@ -19,6 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 
+def ld(v):
+  """Load variable operator."""
+  if isinstance(v, Undefined):
+    return v.read()
+  return v
+
+
 class Undefined(object):
   """Represents an undefined symbol in Python.
 
@@ -51,6 +58,10 @@ class Undefined(object):
   def __init__(self, symbol_name):
     self.symbol_name = symbol_name
 
+  def read(self):
+    raise UnboundLocalError("'{}' is used before assignment".format(
+        self.symbol_name))
+
   def __repr__(self):
     return self.symbol_name
 
@@ -66,34 +77,7 @@ class Undefined(object):
     return self
 
 
-def is_undefined(value):
-  """Checks whether Autograph has determined that a given value is undefined.
-
-  This only works in places where Autograph reifies undefined symbols. Note that
-  if this function is passed a truly undefined symbol the call-site will raise
-  NameError.
-
-  Args:
-    value: value to test for undefinedness
-  Returns:
-    Boolean, whether the input value is undefined.
-  """
-  return isinstance(value, Undefined)
-
-
 # TODO(mdan): Refactor as a RetVal object, aggregating the value and do_return.
 class UndefinedReturnValue(object):
-  """Represents a default return value from a function (None in Python)."""
+  """Represents a return value that is undefined."""
   pass
-
-
-def retval(value):
-  """Returns the actual value that a return statement should produce."""
-  if isinstance(value, UndefinedReturnValue):
-    return None
-  return value
-
-
-def is_undefined_return(value):
-  """Checks whether `value` is the default return value."""
-  return isinstance(value, UndefinedReturnValue)

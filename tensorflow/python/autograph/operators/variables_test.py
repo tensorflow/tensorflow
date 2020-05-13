@@ -18,28 +18,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables
 from tensorflow.python.platform import test
 
 
 class SpecialValuesTest(test.TestCase):
 
   def test_undefined(self):
-    undefined_symbol = special_values.Undefined('name')
-    self.assertEqual(undefined_symbol.symbol_name, 'name')
+    undefined_symbol = variables.Undefined('name')
+    undefined_symbol2 = variables.Undefined('name')
 
-    undefined_symbol2 = special_values.Undefined('name')
+    self.assertEqual(undefined_symbol.symbol_name, 'name')
+    self.assertEqual(undefined_symbol2.symbol_name, 'name')
     self.assertNotEqual(undefined_symbol, undefined_symbol2)
 
-    self.assertTrue(special_values.is_undefined(undefined_symbol))
-    self.assertTrue(special_values.is_undefined(undefined_symbol2))
-
   def test_undefined_operations(self):
-    undefined_symbol = special_values.Undefined('name')
+    undefined_symbol = variables.Undefined('name')
 
-    self.assertTrue(special_values.is_undefined(undefined_symbol.foo))
-    self.assertTrue(special_values.is_undefined(undefined_symbol[0]))
-    self.assertFalse(special_values.is_undefined(undefined_symbol.__class__))
+    self.assertIsInstance(undefined_symbol.foo, variables.Undefined)
+    self.assertIsInstance(undefined_symbol[0], variables.Undefined)
+    self.assertNotIsInstance(undefined_symbol.__class__, variables.Undefined)
+
+  def test_read(self):
+    self.assertEqual(variables.ld(1), 1)
+    o = object()
+    self.assertEqual(variables.ld(o), o)
+
+    self.assertIsNone(variables.ld(None))
+
+  def test_read_undefined(self):
+    with self.assertRaisesRegex(UnboundLocalError, 'used before assignment'):
+      variables.ld(variables.Undefined('a'))
+
 
 if __name__ == '__main__':
   test.main()
