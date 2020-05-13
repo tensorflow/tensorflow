@@ -70,8 +70,8 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + [":dnnl_config_h"]
-       + [":dnnl_version_h"],
+    ]) + [":dnnl_config_h",
+          ":dnnl_version_h"],
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",
