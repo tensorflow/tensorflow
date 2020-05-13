@@ -439,12 +439,29 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
-    if not (isinstance(x, ops.Tensor)  or isinstance(y, ops.Tensor)):
+    # tf.math.divide will compute python style division x / y. As python 2
+    # and python 3 have very much different semantics on `/` (__div__ vs.
+    # __truediv__), it would be natural to just use `x / y` as the operator
+    # '/' has already been registered for tensors, see
+    # _OverrideBinaryOperatorHelper for more details.
+    # However, in case both x and y are not tensors, the registered '/'
+    # _OverrideBinaryOperatorHelper will not take effect. In this case,
+    # python's default '/' operator will take effect which result in the return
+    # value of `tf.math.divide` as a non-Tensor.
+    # For that reason we excplicitly calls _truediv_python3/_div_python2
+    # in case both x and y are not tensors.
+    # Since _truediv_python3/_div_python2 operates on tensors and will convert
+    # to tensor if needed. This avoid the situation of the following if not
+    # explicitly calling _truediv_python3/_div_python2:
+    # >>> tf.divide(5, 2)
+    # 2.5 <= should be <tf.Tensor: shape=(), dtype=float64, numpy=2.5> instead.
+    if not (isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor)):
       if sys.version_info.major < 3:
-        return _truediv_python2(x, y)
+        return _div_python2(x, y)
       else:
         return _truediv_python3(x, y)
     return x / y
+
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
