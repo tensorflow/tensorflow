@@ -80,7 +80,7 @@ class ImagenetModelEvaluator {
     int num_interpreter_threads = 1;
 
     // allow fp16
-    bool allow_fp16 = false;
+    bool nnapi_allow_fp16 = false;
   };
 
   // An evaluation observer.

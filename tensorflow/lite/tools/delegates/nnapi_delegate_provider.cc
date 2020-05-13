@@ -33,6 +33,8 @@ class NnapiDelegateProvider : public DelegateProvider {
                              ToolParam::Create<std::string>(""));
     default_params_.AddParam("disable_nnapi_cpu",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_allow_fp16",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -56,7 +58,9 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
           "nnapi_accelerator_name", params,
           "the name of the nnapi accelerator to use (requires Android Q+)"),
       CreateFlag<bool>("disable_nnapi_cpu", params,
-                       "Disable the NNAPI CPU device")};
+                       "Disable the NNAPI CPU device"),
+      CreateFlag<bool>("nnapi_allow_fp16", params,
+                       "Allow fp32 computation to be run in fp16")};
 
   return flags;
 }
@@ -83,6 +87,10 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
       TFLITE_LOG(INFO) << "disable_nnapi_cpu: ["
                        << params.Get<bool>("disable_nnapi_cpu") << "]";
     }
+    if (params.Get<bool>("nnapi_allow_fp16")) {
+      TFLITE_LOG(INFO) << "nnapi_allow_fp16: ["
+                       << params.Get<bool>("nnapi_allow_fp16") << "]";
+    }
   }
 #endif
 }
@@ -99,6 +107,11 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
     } else if (params.Get<bool>("disable_nnapi_cpu")) {
       options.disallow_nnapi_cpu = true;
     }
+
+    if (params.Get<bool>("nnapi_allow_fp16")) {
+      options.allow_fp16 = true;
+    }
+
     std::string string_execution_preference =
         params.Get<std::string>("nnapi_execution_preference");
     // Only set execution preference if user explicitly passes one. Otherwise,

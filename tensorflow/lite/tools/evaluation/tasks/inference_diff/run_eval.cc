@@ -72,7 +72,8 @@ InferenceDiff::InferenceDiff(int* argc, char* argv[])
           kDelegateFlag, &delegate_,
           "Delegate to use for test inference, if available. "
           "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack'}"),
-      tflite::Flag::CreateFlag("allow_fp16", &allow_fp16_, "allow fp16")
+      tflite::Flag::CreateFlag("nnapi_allow_fp16", &allow_fp16_,
+                               "nnapi allow fp16")
   };
   tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   delegate_providers_.InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
@@ -90,7 +91,7 @@ absl::optional<EvaluationStageMetrics> InferenceDiff::Run() {
   // generating random data.
   inference_params->set_invocations_per_run(3);
   inference_params->set_delegate(ParseStringToDelegateType(delegate_));
-  inference_params->set_allow_fp16(allow_fp16_);
+  inference_params->set_nnapi_allow_fp16(allow_fp16_);
   if (!delegate_.empty() &&
       inference_params->delegate() == TfliteInferenceParams::NONE) {
     TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate_;

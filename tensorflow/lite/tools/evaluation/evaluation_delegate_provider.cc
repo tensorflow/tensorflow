@@ -132,8 +132,8 @@ tools::ToolParams DelegateProviders::GetAllParams(
     tool_params.Set<int32_t>("num_threads", params.num_threads());
   }
 
-  if (params.has_allow_fp16()) {
-    tool_params.Set<bool>("allow_fp16", params.allow_fp16());
+  if (params.has_nnapi_allow_fp16()) {
+    tool_params.Set<bool>("nnapi_allow_fp16", params.nnapi_allow_fp16());
   }
 
   const auto type = params.delegate();

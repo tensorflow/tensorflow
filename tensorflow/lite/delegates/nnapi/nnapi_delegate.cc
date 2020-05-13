@@ -3151,7 +3151,8 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                     "creating NNAPI model", nnapi_errno);
     nn_model_.reset(model);
 
-    TF_LITE_ENSURE_STATUS(BuildGraph(context, params->input_tensors,
+    TF_LITE_ENSURE_STATUS(BuildGraph(context, params->delegate,
+                                     params->input_tensors,
                                      params->output_tensors, nnapi_errno));
   }
 
@@ -3202,6 +3203,7 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
 
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
+
   ANeuralNetworksCompilation* compilation = nullptr;
   if (!nnapi_devices_.empty()) {
     // Compile for the selected accelerator.
@@ -3875,8 +3877,9 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
 }
 
 TfLiteStatus NNAPIDelegateKernel::BuildGraph(
-    TfLiteContext* context, const TfLiteIntArray* input_tensors,
-    const TfLiteIntArray* output_tensors, int* nnapi_errno) {
+    TfLiteContext* context, TfLiteDelegate* delegate,
+    const TfLiteIntArray* input_tensors, const TfLiteIntArray* output_tensors,
+    int* nnapi_errno) {
   // Build the ops and tensors.
   TF_LITE_ENSURE_STATUS(AddOpsAndTensors(context, nnapi_errno));
   // Map input and output tensor indices to ANN
@@ -3885,6 +3888,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
   std::vector<uint32_t> outputs;
   outputs.reserve(output_tensors->size);
 
+  const auto delegate_options = StatefulNnApiDelegate::GetOptions(delegate);
   size_t total_input_byte_size = 0;
   // Make the TensorFlow Lite inputs and outputs to ann_indices.
   for (int i : TfLiteIntArrayView(input_tensors)) {
@@ -3941,11 +3945,13 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
           outputs.data()),
       "identifying model inputs and outputs", nnapi_errno);
 
+  auto allow_fp16 =
+      context->allow_fp32_relax_to_fp16 | delegate_options.allow_fp16;
   if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
-            nn_model_.get(), context->allow_fp32_relax_to_fp16),
+            nn_model_.get(), allow_fp16),
         "set relaxed computation mode for fp32 if possible", nnapi_errno);
   }
 
@@ -4021,6 +4027,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
       options.max_number_delegated_partitions;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
+  delegate_data_.allow_fp16 = options.allow_fp16;
   Prepare = DoPrepare;
   CopyFromBufferHandle = DoCopyFromBufferHandle;
   CopyToBufferHandle = DoCopyToBufferHandle;
@@ -4048,6 +4055,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.disallow_nnapi_cpu = delegate_data->disallow_nnapi_cpu;
   options.max_number_delegated_partitions =
       delegate_data->max_number_delegated_partitions;
+  options.allow_fp16 = delegate_data->allow_fp16;
   return options;
 }
 

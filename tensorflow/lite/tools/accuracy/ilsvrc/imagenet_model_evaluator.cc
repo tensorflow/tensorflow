@@ -141,8 +141,8 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
       tflite::Flag::CreateFlag(kNumRanksFlag, &params.num_ranks,
                                "Generates the top-1 to top-k accuracy values"
                                "where k = num_ranks. Default: 10"),
-      tflite::Flag::CreateFlag("allow_fp16", &params.allow_fp16,
-                               "allow fp16"),
+      tflite::Flag::CreateFlag("nnapi_allow_fp16", &params.nnapi_allow_fp16,
+                               "allow fp16 in nnapi"),
   };
   tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
 
