@@ -44,7 +44,7 @@ implemented.
 
 *   Ops that require PartialTensorShape information cannot yet be implemented.
 
-*   Ops that require SparseTensor or IndexSlices (currently only in python)
+*   Ops that require SparseTensor or IndexedSlices (currently only in python)
     cannot yet be implemented.
 
 *   Maybe more.
