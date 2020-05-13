@@ -276,7 +276,7 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<
 
 // Tests main function with multiple blocks.
 
-// expected-error@+1 {{expects 'main' function to have 1 block, got 2}}
+// expected-error@+1 {{expects function 'main' to have 1 block, got 2}}
 func @main() {
   br ^bb1
 ^bb1:
@@ -287,7 +287,7 @@ func @main() {
 
 // Tests main function is terminated with a non MLIR ReturnOp.
 
-// expected-error@+1 {{expects 'main' function to have a MLIR ReturnOp}}
+// expected-error@+1 {{expects function 'main' to have a MLIR ReturnOp}}
 func @main() {
 ^bb0:
   tf_device.return
