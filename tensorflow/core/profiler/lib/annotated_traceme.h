@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 
+#include <utility>
+
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"

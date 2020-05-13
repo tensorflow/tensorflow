@@ -15,12 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -28,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #endif
 
