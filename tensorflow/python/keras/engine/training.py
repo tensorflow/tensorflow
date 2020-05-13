@@ -334,13 +334,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     super(Model, self).__setattr__(name, value)
 
-    # Keep track of metric instance created in subclassed model/layer.
-    # We do this so that we can maintain the correct order of metrics by adding
-    # the instance to the `metrics` list as soon as it is created.
-    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-    if isinstance(value, metrics_module.Metric):
-      self._metrics.append(value)
-
   @generic_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.

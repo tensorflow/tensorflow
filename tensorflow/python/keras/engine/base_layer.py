@@ -2585,6 +2585,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     except AttributeError:
       pass
 
+    # Keep track of metric instance created in subclassed layer.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    for val in nest.flatten(value):
+      if isinstance(val, metrics_module.Metric):
+        self._metrics.append(val)
+
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
