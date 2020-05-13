@@ -4332,6 +4332,41 @@ inline void Logistic(const LogisticParams& params,
     }
   }
 #endif
+#ifdef GEMMLOWP_SSE4
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 3>;
+
+    for (; c <= flat_size - 16; c += 16) {
+      F3 input0 = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+      F3 input1 = F3::FromRaw(gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+          reinterpret_cast<const __m128i*>(input_data_ptr + 8))));
+      F0 output0 = gemmlowp::logistic(input0);
+      F0 output1 = gemmlowp::logistic(input1);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                       output0.raw().v);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                       output1.raw().v);
+      input_data_ptr += 16;
+      output_data_ptr += 16;
+    }
+    for (; c <= flat_size - 8; c += 8) {
+      F3 input = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+      F0 output = gemmlowp::logistic(input);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                       output.raw().v);
+      input_data_ptr += 8;
+      output_data_ptr += 8;
+    }
+  }
+#endif
+
   {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
@@ -4438,6 +4473,72 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
     }
   }
 #endif
+#ifdef GEMMLOWP_SSE4
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 3>;
+
+    if (input_left_shift == 0) {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+        F3 input1 = F3::FromRaw(gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+            reinterpret_cast<const __m128i*>(input_data_ptr + 8))));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output0.raw().v);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                         output1.raw().v);
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+        F0 output = gemmlowp::tanh(input);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output.raw().v);
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    } else {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr)))));
+        F3 input1 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr + 8)))));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output0.raw().v);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                         output1.raw().v);
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr)))));
+        F0 output = gemmlowp::tanh(input);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output.raw().v);
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    }
+  }
+#endif
+
   {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
