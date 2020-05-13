@@ -1203,6 +1203,8 @@ void BM_ReadVariable(int iters) {
     CHECK_EQ(0, TFE_TensorHandleNumDims(h, status));
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     h = nullptr;
+    TFE_OpAddInput(op, var_handle, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteOp(op);

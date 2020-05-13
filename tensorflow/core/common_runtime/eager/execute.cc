@@ -874,6 +874,19 @@ bool IsPinnableOp(const string& op_type) {
          !absl::StartsWith(op_type, "XRT");
 }
 
+// Validate if the remote device with the given incarnation is valid in the
+// remote device manager of the current eager context.
+Status ValidateTensorHandleRemoteDevice(EagerContext* ctx,
+                                        int64 device_incarnation) {
+  if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      "Resource input tensor contains an invalid device. This might happen "
+      "when the client has connected to a different cluster, or some remote "
+      "workers have been restarted.");
+}
+
 // The Op device may be updated if:
 // - A resource touching input is specified: all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
@@ -935,6 +948,10 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];
     if (tensor_handle->dtype == DT_RESOURCE) {
+      if (tensor_handle->resource_remote_device_incarnation() != 0) {
+        TF_RETURN_IF_ERROR(ValidateTensorHandleRemoteDevice(
+            &ctx, tensor_handle->resource_remote_device_incarnation()));
+      }
       Device* resource_device = tensor_handle->resource_device();
       DVLOG(2) << "for op " << op->Name() << " input " << i << " "
                << DataTypeString(tensor_handle->dtype)

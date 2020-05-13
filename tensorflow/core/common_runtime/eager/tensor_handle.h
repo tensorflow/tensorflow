@@ -133,6 +133,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
+  int64 resource_remote_device_incarnation() const {
+    return resource_remote_device_incarnation_;
+  }
 
   VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
@@ -265,6 +268,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
   // backing the resource. Else resource_device_ is nullptr.
   tensorflow::Device* const resource_device_;
+  // Incarnation ID of the resource device if it locates on a remote device, or
+  // 0 if it locates on a local device.
+  const int64 resource_remote_device_incarnation_;
 
   mutable mutex mu_;
 
