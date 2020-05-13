@@ -13,15 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
-#define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
-
-// IWYU pragma: begin_exports
-#include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
-#include "tensorflow/c/experimental/saved_model/public/concrete_function_list.h"
-#include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
-#include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
-// IWYU pragma: end_exports
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
+#include <stddef.h>
+
+#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
+
+extern "C" {
+
+size_t TF_TensorHandleListSize(const TF_TensorHandleList* list) {
+  return tensorflow::unwrap(list)->size();
+}
+
+TFE_TensorHandle* TF_TensorHandleListGet(const TF_TensorHandleList* list,
+                                         int i) {
+  return tensorflow::wrap((*tensorflow::unwrap(list))[i]);
+}
+
+void TF_DeleteTensorHandleList(const TF_TensorHandleList* list) {
+  delete tensorflow::unwrap(list);
+}
+
+}  // end extern "C"
