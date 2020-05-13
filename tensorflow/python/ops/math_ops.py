@@ -72,6 +72,7 @@ from __future__ import print_function
 
 import numpy as np
 import six
+import sys
 from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -438,8 +439,12 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    if not (isinstance(x, ops.Tensor)  or isinstance(y, ops.Tensor)):
+      if sys.version_info.major < 3:
+        return _truediv_python2(x, y)
+      else:
+        return _truediv_python3(x, y)
     return x / y
-
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
