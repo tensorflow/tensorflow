@@ -2050,7 +2050,7 @@ tf_kernel_library(
         "dense_update_functor_gpu.cu.cc",
     ],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -5613,6 +5613,7 @@ cc_library(
         ":dense_update_ops",
         ":scatter_nd_op",
         ":scatter_op",
+        ":variable_ops",
     ],
 )
 
@@ -5704,7 +5705,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "variable_ops",
     prefix = "variable_ops",
-    deps = STATE_DEPS,
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_library(

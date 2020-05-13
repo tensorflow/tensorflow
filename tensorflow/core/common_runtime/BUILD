@@ -2178,6 +2178,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:single_threaded_executor",
     ] + if_cuda(["//tensorflow/core/common_runtime/gpu:cuda"]),
 )
@@ -2222,6 +2223,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 
@@ -2254,6 +2256,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
     ],
 )
