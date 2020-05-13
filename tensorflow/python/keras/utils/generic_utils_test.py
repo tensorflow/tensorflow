@@ -201,7 +201,7 @@ class SerializeKerasObjectTest(test.TestCase):
         config, custom_objects={'SerializableInt': SerializableInt})
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     self.assertEqual(new_layer.units.__class__, SerializableInt)
     self.assertEqual(new_layer.units, 3)
 
@@ -253,7 +253,7 @@ class SerializeKerasObjectTest(test.TestCase):
     self.assertEqual(new_layer.name, 'SerializableNestedInt')
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     self.assertEqual(new_layer.units.__class__, SerializableNestedInt)
     self.assertEqual(new_layer.units, 3)
     self.assertEqual(new_layer.units.int_obj.__class__, SerializableInt)
@@ -293,7 +293,7 @@ class SerializeKerasObjectTest(test.TestCase):
             'SerializableNestedInt': SerializableNestedInt
         })
     self.assertEqual(new_layer.activation, keras.activations.relu)
-    self.assertIsInstance(new_layer.bias_regularizer, keras.regularizers.L1L2)
+    self.assertIsInstance(new_layer.bias_regularizer, keras.regularizers.L2)
     self.assertIsInstance(new_layer.units, SerializableNestedInt)
     self.assertEqual(new_layer.units, 3)
     self.assertIs(new_layer.units.fn, serializable_fn)
