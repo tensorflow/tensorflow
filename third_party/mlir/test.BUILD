@@ -106,7 +106,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:StandardToStandard",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
