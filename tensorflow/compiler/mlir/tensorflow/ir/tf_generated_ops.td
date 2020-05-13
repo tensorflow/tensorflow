@@ -3625,31 +3625,6 @@ tf.imag(input) ==> [4.75, 5.75]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
-  let summary = [{
-    Create a copy of `x` with the updated specified rows 'i' with values 'v'.
-
-  }];
-
-  let description = [{
-    Creates a copy of tensor 'x' and updates the columns specified in tensor 'i'
-    with the values 'v'. Originally this function was mutative however for 
-    compilation we make this operation create / operate on a copy.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$x,
-    I32Tensor:$i,
-    TF_Tensor:$v
-  );
-
-  let results = (outs
-    TF_Tensor:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
