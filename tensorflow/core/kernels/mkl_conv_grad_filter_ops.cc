@@ -97,9 +97,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
  public:
   explicit MklConvBwdFilterPrimitive(
       const MklConvBwdFilterParams& convBwdFilterDims)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.bwd_filter_stream.reset(new CPU_STREAM(cpu_engine_));
-
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create convolution backward filter primitive.
     if (context_.conv_bwd_filter == nullptr) {
       Setup(convBwdFilterDims);
@@ -114,7 +112,8 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   //   diff_bias_data:   output data buffer for diff_bias
   //   diff_dst_data:    input data buffer for diff_dst
   void Execute(const T* src_data, const T* diff_filter_data,
-               const T* diff_bias_data, const T* diff_dst_data) {
+               const T* diff_bias_data, const T* diff_dst_data,
+               std::shared_ptr<stream> bwd_filter_stream) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.diff_filter_mem->set_data_handle(
@@ -127,11 +126,10 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.bwd_filter_primitives,
-                       context_.bwd_filter_stream,
+    execute_primitives(context_.bwd_filter_primitives, bwd_filter_stream,
                        context_.bwd_filter_primitives_args);
 #else
-    context_.bwd_filter_stream->submit(context_.bwd_filter_primitives);
+    bwd_filter_stream->submit(context_.bwd_filter_primitives);
 #endif
 
     context_.src_mem->set_data_handle(DummyData);
@@ -147,8 +145,10 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   //   diff_filter_data: output data buffer of diff_filter
   //   diff_dst_data:    input data buffer of diff_dst
   void Execute(const T* src_data, const T* diff_filter_data,
-               const T* diff_dst_data) {
-    Execute(src_data, diff_filter_data, nullptr, diff_dst_data);
+               const T* diff_dst_data,
+               std::shared_ptr<stream> bwd_filter_stream) {
+    Execute(src_data, diff_filter_data, nullptr, diff_dst_data,
+            bwd_filter_stream);
   }
 
 #ifndef ENABLE_MKLDNN_V1
@@ -223,8 +223,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           src_md(nullptr),
           diff_filter_md(nullptr),
           diff_bias_md(nullptr),
-          diff_dst_md(nullptr),
-          bwd_filter_stream(nullptr) {
+          diff_dst_md(nullptr) {
     }
   };
 
@@ -345,7 +344,6 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   }
 
   struct ConvBwdFilterContext context_;
-  engine cpu_engine_;
 };
 
 template <typename T>
@@ -600,8 +598,10 @@ class MklConvCustomBackpropFilterOp
       auto bwd_filter_pd = conv_bwd_filter->GetPrimitiveDesc();
       if (IS_SRC_REORDER_NEEDED(fwd_src_md, bwd_filter_pd, conv_bwd_filter)) {
         src.SetUsrMem(fwd_src_md, &src_tensor);
-        src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            bwd_filter_pd->PRIMITIVE_DESC_SRC, cpu_engine_));
+        src.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(bwd_filter_pd->PRIMITIVE_DESC_SRC,
+                                   cpu_engine_),
+            context);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
@@ -612,8 +612,10 @@ class MklConvCustomBackpropFilterOp
       if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bwd_filter_pd,
                                      conv_bwd_filter)) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
-        diff_dst.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            bwd_filter_pd->PRIMITIVE_DESC_DIFF_DST, cpu_engine_));
+        diff_dst.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(bwd_filter_pd->PRIMITIVE_DESC_DIFF_DST,
+                                   cpu_engine_),
+            context);
         diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
       } else {
         diff_dst_data =
@@ -646,26 +648,29 @@ class MklConvCustomBackpropFilterOp
       }
 
       // Execute convolution backward filter.
+      std::shared_ptr<stream> bwd_cpu_stream;
+      bwd_cpu_stream.reset(CreateStream(context, conv_bwd_filter->GetEngine()));
       if (bias_enabled) {
         T* diff_bias_data =
             static_cast<T*>(const_cast<T*>(diff_bias_tensor->flat<T>().data()));
         conv_bwd_filter->Execute(src_data, diff_filter_data, diff_bias_data,
-                                 diff_dst_data);
+                                 diff_dst_data, bwd_cpu_stream);
       } else {
-        conv_bwd_filter->Execute(src_data, diff_filter_data, diff_dst_data);
+        conv_bwd_filter->Execute(src_data, diff_filter_data, diff_dst_data,
+                                 bwd_cpu_stream);
       }
 
       // Reorder diff_filter back to Tensorflow layout if necessary.
       if (diff_filter_reorder_required) {
-        diff_filter.InsertReorderToUserMem();
+        diff_filter.InsertReorderToUserMem(context);
       }
 
       // Delete primitive since it is not cached.
       if (do_not_cache) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
