@@ -310,6 +310,25 @@ distribute_py_test(
     ],
 )
 
+distribute_py_test(
+    name = "categorical_crossing_distribution_test",
+    srcs = ["categorical_crossing_distribution_test.py"],
+    main = "categorical_crossing_distribution_test.py",
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
+    deps = [
+        ":categorical_crossing",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras",
+    ],
+)
+
 tf_py_test(
     name = "discretization_test",
     size = "small",
