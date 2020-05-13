@@ -18,7 +18,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
@@ -48,8 +48,7 @@ template <typename T>
 class MklSoftmaxPrimitive : public MklPrimitive {
  public:
   explicit MklSoftmaxPrimitive(const MklSoftmaxParams& fwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     Setup(fwdParams);
   }
 
@@ -58,16 +57,18 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   // Softmax forward execute
   //   src_data:  input data buffer of src
   //   dst_data:  output data buffer of dst
-  void Execute(const T* src_data, T* dst_data) {
+  void Execute(const T* src_data, T* dst_data,
+               std::shared_ptr<stream> fwd_cpu_stream) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
+    DCHECK_EQ(context_.fwd_primitives.size(), context_.fwd_net_args.size());
+    execute_primitives(context_.fwd_primitives, fwd_cpu_stream,
                        context_.fwd_net_args);
 #else
-    context_.fwd_stream->submit(context_.fwd_primitives);
+    fwd_cpu_stream->submit(context_.fwd_primitives);
 #endif
 
     // After execution, set data handle back.
@@ -95,7 +96,6 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::softmax_forward::primitive_desc> fwd_pd;
     std::shared_ptr<mkldnn::primitive> softmax_fwd;
 
-    std::shared_ptr<stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
     std::vector<MemoryArgsMap> fwd_net_args;
 
@@ -105,8 +105,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
           fwd_desc(nullptr),
           src_md(nullptr),
           fwd_pd(nullptr),
-          softmax_fwd(nullptr),
-          fwd_stream(nullptr) {}
+          softmax_fwd(nullptr) {}
   };
 
   // Softmax forward primitive setup
@@ -143,7 +142,6 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   }
 
   struct SoftmaxFwdContext context_;
-  engine cpu_engine_;
 };
 
 template <typename T>
@@ -303,13 +301,13 @@ class MklSoftmaxOp : public OpKernel {
 
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
-
-      // Execute softmax primitive.
-      softmax_fwd->Execute(src_data, dst_data);
+      std::shared_ptr<stream> fwd_cpu_stream;
+      fwd_cpu_stream.reset(CreateStream(context, softmax_fwd->GetEngine()));
+      softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
