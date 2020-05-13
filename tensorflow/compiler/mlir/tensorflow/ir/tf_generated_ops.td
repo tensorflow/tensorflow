@@ -2907,6 +2907,8 @@ fill([2, 3], 9) ==> [[9, 9, 9]
     return Verify(*this);
   }];
 
+  let hasFolder = 1;
+
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Value dims, Value value"
   >];

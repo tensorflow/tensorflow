@@ -1606,7 +1606,7 @@ static ShapedType InferFillOpType(Value dims, Value value) {
 
   llvm::SmallVector<int64_t, 4> shape;
   shape.reserve(dims_attr.getNumElements());
-  for (const APInt &dim : dims_attr.getValues<APInt>()) {
+  for (const APInt dim : dims_attr.getValues<APInt>()) {
     shape.push_back(dim.getSExtValue());
   }
   return RankedTensorType::get(shape, etype);
@@ -1615,6 +1615,29 @@ static ShapedType InferFillOpType(Value dims, Value value) {
 void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
                    Value value) {
   FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
+}
+
+OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "fill op has two operand");
+
+  auto value = operands[1].dyn_cast_or_null<ElementsAttr>();
+  if (!value) return {};
+
+  auto type = getType().cast<ShapedType>();
+  if (type.hasStaticShape())
+    return DenseElementsAttr::get(type, value.getValue({}));
+
+  auto dims = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!dims) return {};
+
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.reserve(dims.getNumElements());
+  for (const APInt dim : dims.getValues<APInt>()) {
+    shape.push_back(dim.getSExtValue());
+  }
+  type = RankedTensorType::get(shape, type.getElementType());
+
+  return DenseElementsAttr::get(type, value.getValue({}));
 }
 
 //===----------------------------------------------------------------------===//
