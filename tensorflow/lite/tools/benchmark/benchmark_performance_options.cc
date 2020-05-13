@@ -233,6 +233,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
   single_option_run_params_->Set<bool>("disable_nnapi_cpu", false);
   single_option_run_params_->Set<int>("max_delegated_partitions", 0);
+  single_option_run_params_->Set<bool>("nnapi_allow_fp16", false);
 #endif
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
@@ -302,6 +303,9 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
                         BenchmarkParam::Create<bool>(false));
         params.AddParam("max_delegated_partitions",
                         BenchmarkParam::Create<int>(0));
+        params.AddParam("max_delegated_partitions",
+        params.AddParam("nnapi_allow_fp16",
+                        BenchmarkParam::Create<bool>(false));
         all_run_params_.emplace_back(std::move(params));
       }
     }
