@@ -88,7 +88,7 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
                        << params.Get<bool>("disable_nnapi_cpu") << "]";
     }
     if (params.Get<bool>("nnapi_allow_fp16")) {
-      TFLITE_LOG(INFO) << "nnapi_allow_fp16: ["
+      TFLITE_LOG(INFO) << "Allow fp16 in NNAPI: ["
                        << params.Get<bool>("nnapi_allow_fp16") << "]";
     }
   }

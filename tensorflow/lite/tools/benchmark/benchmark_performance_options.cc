@@ -303,9 +303,6 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
                         BenchmarkParam::Create<bool>(false));
         params.AddParam("max_delegated_partitions",
                         BenchmarkParam::Create<int>(0));
-        params.AddParam("max_delegated_partitions",
-        params.AddParam("nnapi_allow_fp16",
-                        BenchmarkParam::Create<bool>(false));
         all_run_params_.emplace_back(std::move(params));
       }
     }

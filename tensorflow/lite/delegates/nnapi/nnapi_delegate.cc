@@ -3151,7 +3151,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                     "creating NNAPI model", nnapi_errno);
     nn_model_.reset(model);
 
-    TF_LITE_ENSURE_STATUS(BuildGraph(context, params->delegate,
+    TF_LITE_ENSURE_STATUS(BuildGraph(context, delegate_options,
                                      params->input_tensors,
                                      params->output_tensors, nnapi_errno));
   }
@@ -3203,7 +3203,6 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
 
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(node->delegate);
-
   ANeuralNetworksCompilation* compilation = nullptr;
   if (!nnapi_devices_.empty()) {
     // Compile for the selected accelerator.
@@ -3877,7 +3876,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
 }
 
 TfLiteStatus NNAPIDelegateKernel::BuildGraph(
-    TfLiteContext* context, TfLiteDelegate* delegate,
+    TfLiteContext* context,
+    const StatefulNnApiDelegate::Options& delegate_options,
     const TfLiteIntArray* input_tensors, const TfLiteIntArray* output_tensors,
     int* nnapi_errno) {
   // Build the ops and tensors.
@@ -3888,7 +3888,6 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
   std::vector<uint32_t> outputs;
   outputs.reserve(output_tensors->size);
 
-  const auto delegate_options = StatefulNnApiDelegate::GetOptions(delegate);
   size_t total_input_byte_size = 0;
   // Make the TensorFlow Lite inputs and outputs to ann_indices.
   for (int i : TfLiteIntArrayView(input_tensors)) {
@@ -4025,9 +4024,9 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;
+  delegate_data_.allow_fp16 = options.allow_fp16;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
-  delegate_data_.allow_fp16 = options.allow_fp16;
   Prepare = DoPrepare;
   CopyFromBufferHandle = DoCopyFromBufferHandle;
   CopyToBufferHandle = DoCopyToBufferHandle;

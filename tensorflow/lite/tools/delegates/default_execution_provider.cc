@@ -30,7 +30,6 @@ class DefaultExecutionProvider : public DelegateProvider {
                              ToolParam::Create<int32_t>(0));
     default_params_.AddParam("min_nodes_per_partition",
                              ToolParam::Create<int32_t>(0));
-    default_params_.AddParam("allow_fp16", ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -45,7 +44,6 @@ std::vector<Flag> DefaultExecutionProvider::CreateFlags(
   std::vector<Flag> flags = {
       CreateFlag<int32_t>("num_threads", params,
                           "number of threads used for inference on CPU."),
-      CreateFlag<bool>("allow_fp16", params, "allow_fp16"),
       CreateFlag<int32_t>("max_delegated_partitions", params,
                           "Max number of partitions to be delegated."),
       CreateFlag<int32_t>(
@@ -63,8 +61,6 @@ void DefaultExecutionProvider::LogParams(const ToolParams& params) const {
                    << params.Get<int32_t>("max_delegated_partitions") << "]";
   TFLITE_LOG(INFO) << "Min nodes per partition : ["
                    << params.Get<int32_t>("min_nodes_per_partition") << "]";
-  TFLITE_LOG(INFO) << "allow_fp16: ["
-                   << params.Get<bool>("allow_fp16") << "]";
 }
 
 TfLiteDelegatePtr DefaultExecutionProvider::CreateTfLiteDelegate(
