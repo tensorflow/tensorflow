@@ -76,11 +76,11 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
   if task_type not in ("chief", "worker", "evaluator", "ps"):
     raise ValueError(
-        "Unrecognized task_type: %r, valid task types are: \"chief\", "
-        "\"worker\", \"evaluator\" and \"ps\"." % task_type)
+        "Unrecognized task_type: {}, valid task types are: \"chief\", "
+        "\"worker\", \"evaluator\" and \"ps\".".format(task_type))
 
   if task_type and task_type not in cluster_spec and task_type != "evaluator":
-    raise ValueError("`task_type` %r not found in cluster_spec." % task_type)
+    raise ValueError("`task_type` {} not found in cluster_spec.".format(task_type))
 
   if len(cluster_spec.get("chief", [])) > 1:
     raise ValueError("There must be at most one 'chief' job.")
@@ -91,7 +91,7 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   # The `evaluator` job is allowed to be missing in `cluster_spec`.
   if task_type in cluster_spec and task_id >= len(cluster_spec[task_type]):
     raise ValueError(
-        "The `task_id` %d exceeds the maximum id of %s." % (task_id, task_type))
+        "The `task_id` {} exceeds the maximum id of {}.".format(task_id, task_type))
 
 
 def is_chief(cluster_spec=None, task_type=None, task_id=None):
@@ -175,7 +175,7 @@ def worker_count(cluster_spec, task_type):
 
   # Other jobs such as "ps" shouldn't call this function.
   if task_type not in ["chief", "worker", "evaluator"]:
-    raise ValueError("Unexpected `task_type` %r" % task_type)
+    raise ValueError("Unexpected `task_type` {}".format(task_type))
 
   if task_type == "evaluator":
     # The "evaluator" is in its own cluster or its own partition of a cluster.
@@ -224,7 +224,7 @@ def id_in_cluster(cluster_spec, task_type, task_id):
     return task_id
 
   # We currently don't assign ids to other tasks.
-  raise ValueError("There is no id for task_type %r" % task_type)
+  raise ValueError("There is no id for task_type {}".format(task_type))
 
 
 def should_save_checkpoint():
