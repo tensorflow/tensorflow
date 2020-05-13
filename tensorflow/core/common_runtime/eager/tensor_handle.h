@@ -92,6 +92,11 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // If handles are on different devices, assign the packed handle to a
   // CompositeDevice.
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                   const tensorflow::DataType dtype,
+                                   const tensorflow::TensorShape& shape,
+                                   EagerContext* ctx,
+                                   TensorHandle** packed_handle);
+  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    EagerContext* ctx,
                                    TensorHandle** packed_handle);
 

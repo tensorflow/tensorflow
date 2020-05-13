@@ -434,7 +434,7 @@ string AddVariablesFunction() {
   return def.SerializeAsString();
 }
 
-TEST(CAPI, TestFunctionWithPackedInput) {
+void TestFunctionWithPackedInput(const bool remote) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -502,6 +502,10 @@ TEST(CAPI, TestFunctionWithPackedInput) {
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
   TFE_OpAddInput(func, packed_handle, status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  if (remote) {
+    TFE_OpSetDevice(func, task1_name, status);
+    ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  }
 
   TFE_TensorHandle* retvals[1] = {nullptr};
   int num_retvals = 1;
@@ -535,6 +539,14 @@ TEST(CAPI, TestFunctionWithPackedInput) {
   // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server1.release();
   worker_server2.release();
+}
+
+TEST(CAPI, TestLocalFunctionWithPackedInput) {
+  TestFunctionWithPackedInput(/*remote=*/false);
+}
+
+TEST(CAPI, TestRemoteFunctionWithPackedInput) {
+  TestFunctionWithPackedInput(/*remote=*/true);
 }
 
 void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {

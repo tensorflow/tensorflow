@@ -318,17 +318,14 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 }
 
 Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                        const tensorflow::DataType dtype,
+                                        const tensorflow::TensorShape& shape,
                                         EagerContext* ctx,
                                         TensorHandle** packed_handle) {
   if (handles.empty()) {
     return errors::InvalidArgument("Handles should not be empty.");
   }
 
-  // Get the dtype and shape from the fisrt handle since all handles have the
-  // same dtype and shape.
-  tensorflow::DataType dtype = handles.at(0)->dtype;
-  tensorflow::TensorShape shape;
-  TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
   ResourceHandleInfo resource_handle_info;
   if (dtype == DT_RESOURCE) {
     TF_RETURN_IF_ERROR(
@@ -358,6 +355,22 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
       new TensorHandle(std::move(handles), device, dtype, shape, ctx);
   (*packed_handle)->SetResourceHandleInfo(std::move(resource_handle_info));
   return Status::OK();
+}
+
+Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                        EagerContext* ctx,
+                                        TensorHandle** packed_handle) {
+  if (handles.empty()) {
+    return errors::InvalidArgument("Handles should not be empty.");
+  }
+
+  // Get the dtype and shape from the fisrt handle since all handles have the
+  // same dtype and shape.
+  tensorflow::DataType dtype = handles.at(0)->dtype;
+  tensorflow::TensorShape shape;
+  TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
+  return CreatePackedHandle(std::move(handles), dtype, shape, ctx,
+                            packed_handle);
 }
 
 TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
