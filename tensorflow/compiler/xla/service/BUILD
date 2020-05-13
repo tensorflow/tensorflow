@@ -460,6 +460,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_sharding_util",
+    srcs = [
+        "hlo_sharding_util.cc",
+    ],
+    hdrs = [
+        "hlo_sharding_util.h",
+    ],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_sharding_util_test",
+    srcs = [
+        "hlo_sharding_util_test.cc",
+    ],
+    deps = [
+        ":hlo_sharding_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "dynamic_parameter_binding_test",
     srcs = ["dynamic_parameter_binding_test.cc"],
