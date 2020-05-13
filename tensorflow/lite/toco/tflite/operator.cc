@@ -1118,6 +1118,7 @@ class ResizeBilinear
         GetVersioningOpSig(builtin_op(), op_signature);
     op_sig.options.resize.half_pixel_centers =
         resize_bilinear_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_bilinear_op.align_corners;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1147,6 +1148,7 @@ class ResizeNearestNeighbor
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
     op_sig.options.resize.half_pixel_centers = resize_nn_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_nn_op.align_corners;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

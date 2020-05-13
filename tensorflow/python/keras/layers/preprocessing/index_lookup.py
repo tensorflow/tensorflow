@@ -24,17 +24,11 @@ import operator
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.ops import array_ops
+from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import string_ops
-from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
 
 # The string tokens in the extracted vocabulary
@@ -100,23 +94,29 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                reserve_zero=True,
                mask_zero=False,
                **kwargs):
-    allowed_dtypes = [dtypes.string, dtypes.int64]
+    invert = False
+    if invert:
+      allowed_dtypes = [dtypes.int32, dtypes.int64]
+    else:
+      allowed_dtypes = [dtypes.string, dtypes.int32, dtypes.int64]
+
     if "dtype" in kwargs and kwargs["dtype"] not in allowed_dtypes:
-      raise ValueError(
-          "TextVectorization may only have a dtype of string or int64.")
-    elif "dtype" not in kwargs:
-      kwargs["dtype"] = dtypes.string
+      raise ValueError("TextVectorization may only have a dtype in %s." %
+                       allowed_dtypes)
+
+    if "dtype" not in kwargs:
+      kwargs["dtype"] = dtypes.int64 if invert else dtypes.string
 
     # If max_tokens is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_tokens is not None and max_tokens <= 1:
-      raise ValueError("max_tokens must be greater than 1.")
+      raise ValueError("If set, max_tokens must be greater than 1.")
 
-    # For now, limit the num_oov_tokens to one.
     if num_oov_tokens < 0:
       raise ValueError("num_oov_tokens must be greater than 0. You passed %s" %
                        num_oov_tokens)
 
+    self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_tokens = num_oov_tokens
     self.reserve_zero = reserve_zero
@@ -167,90 +167,23 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # counting code in the Model object doesn't throw an attribute error.
     tracked_table.shape = tensor_shape.TensorShape((0,))
 
-    self._inverse_table = None
+    if self.num_oov_tokens <= 1:
+      oov_tokens = None
+    else:
+      oov_start = 1 if reserve_zero else 0
+      oov_tokens = list(range(oov_start, self._reserved_values))
+
+    self._table_handler = table_utils.TableHandler(
+        table=self._table,
+        oov_tokens=oov_tokens,
+        use_v1_apis=self._use_v1_apis())
 
     if vocabulary is not None:
       if isinstance(vocabulary, str):
-        vocabulary = self._get_vocabulary_from_file(vocabulary)
+        vocabulary = table_utils.get_vocabulary_from_file(vocabulary)
+      table_utils.validate_vocabulary_is_unique(vocabulary)
 
-      vocabulary_set = set(vocabulary)
-      if len(vocabulary) != len(vocabulary_set):
-        repeated_items = [
-            item for item, count in collections.Counter(vocabulary).items()
-            if count > 1
-        ]
-        raise ValueError("The passed vocabulary has at least one repeated "
-                         "term. Please uniquify your dataset before passing "
-                         "it to IndexLookup(). The repeated terms are %s" %
-                         repeated_items)
       self.set_vocabulary(vocabulary)
-
-  def _get_vocabulary_from_file(self, vocabulary_path):
-    vocab = []
-    with gfile.GFile(vocabulary_path, "r") as reader:
-      while True:
-        # Get the next line, and break if it is None.
-        text = reader.readline()
-        if not text:
-          break
-
-        # Convert the raw text into UTF8 and strip whitespace.
-        if isinstance(text, str):
-          token = text
-        elif isinstance(text, bytes):
-          token = text.decode("utf-8", "ignore")
-        token = token.strip()
-        vocab.append(token)
-    return vocab
-
-  def _get_table_data(self):
-    keys, values = self._table.export()
-    return (keys.numpy(), values.numpy())
-
-  def vocab_size(self):
-    return self._table.size().numpy()
-
-  def _clear_table(self):
-    keys, _ = self._table.export()
-    self._table.remove(keys)
-    if self._inverse_table:
-      keys, _ = self._inverse_table.export()
-      self._inverse_table.remove(keys)
-
-  def _insert_table_data(self, keys, values):
-    if len(values) != len(keys):
-      raise RuntimeError("Size mismatch between values and key arrays. "
-                         "Keys had size %s, values had size %s." %
-                         (len(keys), len(values)))
-    self._table.insert(keys, values)
-    if self._inverse_table:
-      self._inverse_table.insert(values, keys)
-
-  def _initialize_inverse_table(self):
-    keys, values = self._table.export()
-    self._inverse_table.insert(values, keys)
-
-  def _to_numpy(self, preprocessed_data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(preprocessed_data, np.ndarray):
-      return preprocessed_data
-    return np.array(preprocessed_data.to_list())
-  # End of V1/V2 shim points.
-
-  def _assert_same_type(self, expected_type, values, value_name):
-    if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
-      raise RuntimeError("Expected %s type %s, got %s" %
-                         (value_name, expected_type, values.dtype))
-
-  def _convert_to_ndarray(self, x, dtype=None):
-    array = np.array(x) if isinstance(x, (list, tuple)) else x
-    if dtype not in (None, dtypes.string):
-      # If the dtype is an integer, we do permissive casting. This allows
-      # users to examine int32 data if the dtype is int64 without trouble.
-      np_dtype = dtypes.as_dtype(dtype).as_numpy_dtype
-      if np.can_cast(array.dtype, np_dtype):
-        array = array.astype(np_dtype, casting="safe")
-    return array
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -281,16 +214,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).adapt(data, reset_state)
 
   def get_vocabulary(self):
-    if self.vocab_size() == 0:
+    if self._table_handler.vocab_size() == 0:
       return []
 
-    keys, values = self._get_table_data()
+    keys, values = self._table_handler.data()
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
     if self.dtype == dtypes.string:
       return [x.decode("utf-8") for _, x in sorted(zip(values, keys))]
     else:
       return [x for _, x in sorted(zip(values, keys))]
+
+  def vocab_size(self):
+    return self._table_handler.vocab_size()
 
   def get_config(self):
     config = {
@@ -329,7 +265,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
     """
-    current_table_size = self.vocab_size()
+    current_table_size = self._table_handler.vocab_size()
     total_vocab_size = len(vocab) + (current_table_size if append else 0)
     if self.max_tokens is not None and total_vocab_size > self._max_elements:
       raise ValueError(
@@ -338,93 +274,28 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           "token(s) are automatically added to the number of tokens." %
           (total_vocab_size, self.max_tokens))
 
-    start_index = self._reserved_values + (self.vocab_size() if append else 0)
+    start_index = self._reserved_values + (current_table_size if append else 0)
     values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-    vocab = self._convert_to_ndarray(vocab, self.dtype)
-    self._assert_same_type(self.dtype, vocab, "vocab")
+    vocab = table_utils.convert_to_ndarray(vocab, self.dtype)
+    table_utils.assert_same_type(self.dtype, vocab, "vocab")
 
-    values = self._convert_to_ndarray(values, self._output_dtype)
-    self._assert_same_type(self._output_dtype, values, "values")
+    values = table_utils.convert_to_ndarray(values, self._output_dtype)
+    table_utils.assert_same_type(self._output_dtype, values, "values")
 
-    if not append and self.vocab_size() > 0:
-      self._clear_table()
-    self._insert_table_data(vocab, values)
+    if not append and current_table_size > 0:
+      self._table_handler.clear()
+    self._table_handler.insert(vocab, values)
 
   def _set_state_variables(self, updates):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
     self.set_vocabulary(updates[_VOCAB_NAME])
 
-  def __call__(self, inputs, invert=False, **kwargs):
-    if invert and not self._inverse_table:
-      # If the user wants to perform an inverse lookup, we need to build an
-      # inverse lookup table and initialize it to have the inverse of the
-      # forward table's vocabulary.
-      self._inverse_table = lookup_ops.MutableHashTable(
-          key_dtype=self._output_dtype,
-          value_dtype=self.dtype,
-          default_value="",
-          name=(self._name + "_inverse_index_table"))
+  def call(self, inputs):
+    return self._table_handler.lookup(inputs)
 
-      tracked_inverse_table = self._add_trackable(
-          self._inverse_table, trainable=False)
-      # This is a workaround for summary() on this layer. Because the table is
-      # not mutable during training, the effective number of parameters (and so
-      # the weight shape) is 0; we add this as an attr so that the parameter
-      # counting code in the Model object doesn't throw an attribute error.
-      tracked_inverse_table.shape = tensor_shape.TensorShape((0,))
-
-      # This is a workaround for saving not working yet for MutableHashTables.
-      # By replacing the existing function call by an explicit failure, we
-      # can provide a more user-friendly error message.
-      def fail(_):
-        raise NotImplementedError(
-            "Saving is not yet supported for IndexLookup layers.")
-
-      self._inverse_table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
-      self._initialize_inverse_table()
-
-    return super(IndexLookup, self).__call__(inputs, invert=invert, **kwargs)
-
-  def replace_oov_buckets(self, inputs, lookups):
-    if self.num_oov_tokens <= 1:
-      return lookups
-
-    if inputs.dtype.is_integer:
-      inputs = string_ops.as_string(inputs)
-    hashed_inputs = string_ops.string_to_hash_bucket_fast(
-        inputs, num_buckets=self.num_oov_tokens)
-    if self.reserve_zero:
-      hashed_inputs = math_ops.add(hashed_inputs, 1)
-    return array_ops.where(math_ops.equal(lookups, -1), hashed_inputs, lookups)
-
-  def call(self, inputs, invert=False):
-    table = self._inverse_table if invert else self._table
-    # The table lookup ops don't natively support ragged tensors, so if we have
-    # a RT we need to use map_flat_values to look up every element.
-    if ragged_tensor.is_ragged(inputs):
-      indexed_data = ragged_functional_ops.map_flat_values(table.lookup, inputs)
-      if not invert:
-        indexed_data = ragged_functional_ops.map_flat_values(
-            self.replace_oov_buckets, inputs, indexed_data)
-    elif isinstance(
-        inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-      if not invert:
-        values = self.replace_oov_buckets(inputs.values,
-                                          table.lookup(inputs.values))
-      indexed_data = sparse_tensor.SparseTensor(inputs.indices, values,
-                                                inputs.dense_shape)
-    else:
-      indexed_data = table.lookup(inputs)
-      if not invert:
-        indexed_data = self.replace_oov_buckets(inputs, indexed_data)
-      # (b/149446477): output does not preserve input shape.
-      indexed_data.set_shape(inputs.shape)
-
-    # Composite tensors can pass tensor values through, which will cause
-    # errors if this is the only layer in the model. To fix this, pass
-    # the output through an identity op.
-    return array_ops.identity(indexed_data)
+  def _use_v1_apis(self):
+    return False
 
 
 class _IndexLookupAccumulator(

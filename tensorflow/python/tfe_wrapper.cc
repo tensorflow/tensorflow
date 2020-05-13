@@ -488,6 +488,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
+  m.def("TFE_ContextSetLogDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
 
   // TFE_Executor logic
   m.def(

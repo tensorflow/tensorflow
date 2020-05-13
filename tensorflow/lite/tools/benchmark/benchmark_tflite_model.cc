@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -596,17 +597,20 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
   return kTfLiteOk;
 }
 
-TfLiteStatus BenchmarkTfLiteModel::Init() {
-  TF_LITE_ENSURE_STATUS(LoadModel());
-
+TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
-
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
   if (!interpreter_) {
-    TFLITE_LOG(ERROR) << "Failed to construct interpreter";
+    TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::Init() {
+  TF_LITE_ENSURE_STATUS(LoadModel());
+  TF_LITE_ENSURE_STATUS(InitInterpreter());
 
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the

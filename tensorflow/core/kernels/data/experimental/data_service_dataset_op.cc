@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -178,7 +179,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params, int64 iterator_index)
-        : DatasetIterator<Dataset>(params), iterator_index_(iterator_index) {}
+        : DatasetIterator<Dataset>(params),
+          iterator_index_(iterator_index),
+          max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
+    }
 
     ~Iterator() override {
       mutex_lock l(mu_);
@@ -390,21 +394,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // TODO(aaudibert): add backoff and max retries.
         int64 deadline_micros =
             Env::Default()->NowMicros() + kRetryTimeoutMicros;
-        Status s = FetchElement(task_thread, deadline_micros);
+        Status s = GetElement(task_thread, deadline_micros);
         if (!s.ok()) {
-          LOG(WARNING) << "Failed to fetch element from worker at "
+          LOG(WARNING) << "Failed to get element from worker at "
                        << task_thread->address << ": " << s;
         }
       }
     }
 
-    // Fetches an element from a task and adds the element to `results_`.
+    // Gets an element from a task and adds the element to `results_`.
     //
     // If the task reaches end_of_sequence or is cancelled (e.g. due to a
-    // worker dying), FetchElement returns Status::OK() without adding to
+    // worker dying), GetElement returns Status::OK() without adding to
     // `results_`.
-    Status FetchElement(TaskThread* task_thread, int64 deadline_micros) {
-      VLOG(3) << "Fetching an element for task id " << task_thread->task_id;
+    Status GetElement(TaskThread* task_thread, int64 deadline_micros) {
+      VLOG(3) << "Getting an element for task id " << task_thread->task_id;
+      tensorflow::profiler::TraceMe activity(
+          "GetElement", tensorflow::profiler::TraceMeLevel::kInfo);
       CompressedElement compressed;
       bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {
@@ -453,7 +459,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       results_.push(std::move(element));
       cv_.notify_all();
-      VLOG(3) << "Fetched an element for task id " << task_thread->task_id;
+      VLOG(3) << "Got an element for task id " << task_thread->task_id;
       return Status::OK();
     }
 

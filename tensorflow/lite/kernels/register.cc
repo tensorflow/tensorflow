@@ -39,10 +39,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version = */ 1,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_TANH, Register_TANH(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D(),
              /* min_version */ 1,
              /* max_version */ 3);

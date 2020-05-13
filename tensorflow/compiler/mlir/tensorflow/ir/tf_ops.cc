@@ -110,47 +110,6 @@ static inline bool HasRankAtMost(Value value, int64_t rank) {
   return !type || type.getRank() <= rank;
 }
 
-// Returns true if the given pair of TensorFlow types can be cast to one
-// another. In other words, a single run-time value is legal for both the types.
-// For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
-static bool AreCastCompatible(Type a, Type b) {
-  if (TensorCastOp::areCastCompatible(a, b)) return true;
-
-  // Resource types may optionally contain subtypes information that does not
-  // match. Check subtypes compatibility when possible, otherwise treat them as
-  // compatible.
-  auto a_or_element_type = getElementTypeOrSelf(a);
-  auto b_or_element_type = getElementTypeOrSelf(b);
-
-  auto a_kind = a_or_element_type.getKind();
-  auto b_kind = b_or_element_type.getKind();
-
-  if (a_kind == TensorFlowTypes::RESOURCE &&
-      b_kind == TensorFlowTypes::RESOURCE) {
-    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
-    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
-    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
-    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
-
-    if (!a_has_subtype || !b_has_subtype) return true;
-
-    assert(a_resource_type.getSubtypes().size() <= 1 &&
-           "Resource type must have at most one subtype");
-    assert(b_resource_type.getSubtypes().size() <= 1 &&
-           "Resource type must have at most one subtype");
-
-    return TensorCastOp::areCastCompatible(
-        a_resource_type.getSubtypes().front(),
-        b_resource_type.getSubtypes().front());
-  }
-
-  // Variant types may optionally contain subtypes information that need not
-  // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them. So, accept all
-  // pairs of variant types.
-  return a_kind == TensorFlowTypes::VARIANT &&
-         b_kind == TensorFlowTypes::VARIANT;
-}
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
@@ -984,20 +943,17 @@ void ConstOp::build(OpBuilder &builder, OperationState &result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  for (NamedAttribute named_attr : attributes) {
-    if (named_attr.first.strref() != "value") continue;
-    auto value = named_attr.second;
-    if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
-      inferredReturnTypes.assign({elem_attr.getType()});
-      return success();
-    }
-    return emitOptionalError(location,
-                             "attribute 'value' failed to satisfy constraint: "
-                             "constant vector/tensor");
+  auto value = attributes.get("value");
+  if (!value) return emitOptionalError(location, "missing attribute 'value'");
+  if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
+    inferredReturnTypes.assign({elem_attr.getType()});
+    return success();
   }
-  return emitOptionalError(location, "missing attribute 'value'");
+  return emitOptionalError(location,
+                           "attribute 'value' failed to satisfy constraint: "
+                           "constant vector/tensor");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1416,7 +1372,7 @@ static LogicalResult Verify(DynamicStitchOp op) {
       auto expected_out_ty =
           RankedTensorType::get(expected_shape, out_ty.getElementType());
 
-      if (!AreCastCompatible(out_ty, expected_out_ty)) {
+      if (!AreCastCompatible({out_ty, expected_out_ty})) {
         return op.emitOpError() << "has invalid output type; should be "
                                    "compatible with inferred type "
                                 << expected_out_ty;
@@ -1817,14 +1773,14 @@ static LogicalResult Verify(IfOp op) {
   for (unsigned i = 0; i < expectedNumInputs; ++i) {
     auto operandType = op.getOperand(i + 1).getType().cast<TensorType>();
     auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible(operandType, thenInputType))
+    if (!AreCastCompatible({operandType, thenInputType}))
       return op.emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
                         thenInputType, operandType, i));
 
     auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible(operandType, elseInputType))
+    if (!AreCastCompatible({operandType, elseInputType}))
       return op.emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
@@ -1832,7 +1788,7 @@ static LogicalResult Verify(IfOp op) {
 
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
-    if (!AreCastCompatible(thenInputType, elseInputType))
+    if (!AreCastCompatible({thenInputType, elseInputType}))
       return op.emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
           thenInputType, elseInputType, i));
@@ -1848,14 +1804,14 @@ static LogicalResult Verify(IfOp op) {
   for (unsigned i = 0; i < expectedNumResults; ++i) {
     auto resultType = op.getResult(i).getType().cast<TensorType>();
     auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible(thenResultType, resultType))
+    if (!AreCastCompatible({thenResultType, resultType}))
       return op.emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
                         thenResultType, resultType, i));
 
     auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible(elseResultType, resultType))
+    if (!AreCastCompatible({elseResultType, resultType}))
       return op.emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
@@ -3792,7 +3748,7 @@ static LogicalResult Verify(WhileOp op) {
         auto aType = a.second[idx];
         auto bType = b.second[idx];
 
-        if (!AreCastCompatible(aType, bType))
+        if (!AreCastCompatible({aType, bType}))
           return op.emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
               a.first, aType, b.first, bType, idx));

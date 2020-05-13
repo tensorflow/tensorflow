@@ -190,10 +190,6 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
 
 TEST_P(ResizeBilinearOpTest,
        TwoDimensionalResizeWithTwoBatches_HalfPixelCenters) {
-  // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   ResizeBilinearOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
                           GetParam(), /**half_pixel_centers**/ true);
   m.SetInput<float>({
@@ -253,10 +249,6 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
 
 TEST_P(ResizeBilinearOpTest,
        TwoDimensionalResizeWithTwoBatchesUInt8_HalfPixelCenters) {
-  // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   ResizeBilinearOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {3, 3}, GetParam(),
                           /**half_pixel_centers**/ true);
   m.SetInput<uint8>({

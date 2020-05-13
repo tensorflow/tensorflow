@@ -12,8 +12,85 @@ exports_files(["LICENSE"])
 
 py_library(
     name = "feature_column",
+    srcs = ["__init__.py"],
     deps = [
+        ":dense_features",
+        ":dense_features_v2",
         ":sequence_feature_column",
+    ],
+)
+
+py_library(
+    name = "dense_features",
+    srcs = [
+        "dense_features.py",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:util",
+        "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
+py_library(
+    name = "dense_features_v2",
+    srcs = [
+        "dense_features_v2.py",
+    ],
+    deps = [
+        ":dense_features",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/feature_column:feature_column_v2",
+    ],
+)
+
+tf_py_test(
+    name = "dense_features_test",
+    srcs = ["dense_features_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":dense_features",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/feature_column:feature_column_v2",
+    ],
+)
+
+tf_py_test(
+    name = "dense_features_v2_test",
+    srcs = ["dense_features_v2_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":dense_features_v2",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/feature_column:feature_column_v2",
     ],
 )
 
@@ -59,6 +136,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
+        ":dense_features",
         ":sequence_feature_column",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",

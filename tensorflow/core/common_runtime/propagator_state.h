@@ -45,7 +45,8 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // adding them to a `TaggedNodeSeq`.
 class PropagatorState {
  public:
-  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id);
+  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id,
+                  bool vlog);
   ~PropagatorState();
 
  private:
@@ -279,7 +280,7 @@ class PropagatorState {
     // during structured traversal: parent_frame->mu < mu.
     mutex mu;
 
-    void InitializeFrameInfo(const string& enter_name);
+    void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
     inline IterationState* GetIteration(int64 iter)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
@@ -447,12 +448,13 @@ class PropagatorState {
   // The root frame in which the execution of this step is started.
   FrameState* root_frame_;
 
-  // Mapping from frame name to outstanding frames. A new frame is created
+  // Mapping from frame ID to outstanding frames. A new frame is created
   // at some iteration of an active frame. So the unique key for the new
-  // child frame is composed of the name of the parent frame, the iteration
+  // child frame is a hash composed of the ID of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  gtl::FlatMap<string, FrameState*> outstanding_frames_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<uint64, FrameState*> outstanding_frames_
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PropagatorState);
 };

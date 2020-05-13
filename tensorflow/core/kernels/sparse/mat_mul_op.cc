@@ -728,12 +728,14 @@ namespace {
 template <typename T>
 struct GPUDataType;
 
+// GPUDataType templates are currently not instantiated in the ROCm flow
+// So leaving out the #elif TENSORFLOW_USE_ROCM blocks for now
+// hipblas library is not (yet) being pulled in via rocm_configure.bzl
+// so cannot reference tyeps from hipblas headers here
 template <>
 struct GPUDataType<Eigen::half> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_16F;
-#elif TENSORFLOW_USE_ROCM
-  static constexpr hipblasDataType_t type = HIPBLAS_R_16F;
 #endif
 };
 
@@ -741,8 +743,6 @@ template <>
 struct GPUDataType<float> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_32F;
-#elif TENSORFLOW_USE_ROCM
-  static constexpr hipblasDataType_t type = HIPBLAS_R_32F;
 #endif
 };
 
@@ -750,8 +750,6 @@ template <>
 struct GPUDataType<std::complex<float>> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_C_32F;
-#elif TENSORFLOW_USE_ROCM
-  static constexpr hipblasDataType_t type = HIPBLAS_C_32F;
 #endif
 };
 
@@ -759,8 +757,6 @@ template <>
 struct GPUDataType<double> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_R_64F;
-#elif TENSORFLOW_USE_ROCM
-  static constexpr hipblasDataType_t type = HIPBLAS_R_64F;
 #endif
 };
 
@@ -768,8 +764,6 @@ template <>
 struct GPUDataType<std::complex<double>> {
 #if GOOGLE_CUDA
   static constexpr cudaDataType_t type = CUDA_C_64F;
-#elif TENSORFLOW_USE_ROCM
-  static constexpr hipblasDataType_t type = HIPBLAS_C_64F;
 #endif
 };
 
@@ -957,7 +951,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const int n = a.dense_shape_host(1);
       const int nnz = a.values.size();
       DCHECK_EQ(nnz, a.col_ind.size());
-#if CUDA_VERSION >= 10020
+#if GOOGLE_CUDA && (CUDA_VERSION >= 10020)
       TF_RETURN_IF_ERROR(cuda_sparse.Csrmv(transA_, m, n, nnz, &alpha,
                                            a.values.data(), a.row_ptr.data(),
                                            a.col_ind.data(), x, &beta, y));

@@ -343,6 +343,8 @@ tensorflow/tools/ci_build/release/ubuntu_16/gpu_py37_full/pip_v1.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/pip.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/cpu/build.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/gpu/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh
 tensorflow/tools/ci_build/release/windows/cpu_libtensorflow/nightly.bat

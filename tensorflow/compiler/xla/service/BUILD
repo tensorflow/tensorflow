@@ -2398,6 +2398,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_gather_decomposer",
+    srcs = ["all_gather_decomposer.cc"],
+    hdrs = ["all_gather_decomposer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "all_gather_decomposer_test",
+    srcs = ["all_gather_decomposer_test.cc"],
+    deps = [
+        ":all_gather_decomposer",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
     hdrs = ["tuple_simplifier.h"],
@@ -3235,6 +3271,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "memory_space_propagation",
+    srcs = ["memory_space_propagation.cc"],
+    hdrs = ["memory_space_propagation.h"],
+    deps = [
+        ":hlo",
+        ":hlo_dataflow_analysis",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "memory_space_propagation_test",
+    srcs = ["memory_space_propagation_test.cc"],
+    deps = [
+        ":hlo_parser",
+        ":memory_space_propagation",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_dce",
     srcs = ["hlo_dce.cc"],
     hdrs = ["hlo_dce.h"],
@@ -3787,6 +3846,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:transform_utils",
     ],

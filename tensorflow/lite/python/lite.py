@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
+import shutil
+import tempfile
 import warnings
 
 from absl import logging
@@ -384,8 +386,13 @@ class TFLiteConverterBase(object):
         return True
     return False
 
-  def _parse_saved_model_args(self):
-    """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+  def _parse_saved_model_args(self, always_enable_saved_model_import=False):
+    """Parses SavedModel arguments from the given Keras/RNN SavedModel.
+
+    Args:
+      always_enable_saved_model_import: Bool. When the value is true, it enables
+        MLIR saved model import path regardless of checking the conditions.
+    """
     if not self.experimental_new_converter:
       self.saved_model_dir = None
       return
@@ -398,21 +405,23 @@ class TFLiteConverterBase(object):
         # frozen graph def path.
         self.saved_model_dir = None
         return
-      if not self._contains_function_with_implements_attr(saved_model_proto):
+      if (not always_enable_saved_model_import and
+          not self._contains_function_with_implements_attr(saved_model_proto)):
         self.saved_model_dir = None
-      else:
+        return
+
+      if not self._saved_model_exported_names:
         self._saved_model_exported_names = []
-        self._saved_model_version = saved_model_proto.saved_model_schema_version
-        if self._saved_model_version not in [1, 2]:
-          raise ValueError(
-              "SavedModel file format({0}) is not supported".format(
-                  self._saved_model_version))
+      self._saved_model_version = saved_model_proto.saved_model_schema_version
+      if self._saved_model_version not in [1, 2]:
+        raise ValueError("SavedModel file format({0}) is not supported".format(
+            self._saved_model_version))
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
   """Converter subclass to share functionality between V2 converters."""
 
-  def _convert(self, graph_def, input_tensors, output_tensors):
+  def convert(self, graph_def, input_tensors, output_tensors):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Args:
@@ -539,7 +548,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_tags = saved_model_tags
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
-    self._parse_saved_model_args()
+    self._parse_saved_model_args(always_enable_saved_model_import=True)
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -569,7 +578,115 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
         graph.get_tensor_by_name(signature_def.outputs[key].name)
         for key in signature_def.outputs
     ]
-    return self._convert(meta_graph.graph_def, input_tensors, output_tensors)
+    return super(TFLiteSavedModelConverterV2,
+                 self).convert(meta_graph.graph_def, input_tensors,
+                               output_tensors)
+
+
+class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
+  """Converts the given Keras model into TensorFlow Lite model."""
+
+  def __init__(self, keras_model, trackable_obj=None):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      keras_model: tf.Keras.Model.
+      trackable_obj: tf.AutoTrackable object associated with `funcs`. A
+        reference to this object needs to be maintained so that Variables do not
+        get garbage collected since functions have a weak reference to
+        Variables. This is only required when the tf.AutoTrackable object is not
+        maintained by the user (e.g. `from_saved_model`).
+    """
+    super(TFLiteKerasModelConverterV2, self).__init__()
+    self._keras_model = keras_model
+    self._trackable_obj = trackable_obj
+
+  def convert(self):
+    """Converts a keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    temp_dir = tempfile.mkdtemp()
+    try:
+      self._keras_model.save(temp_dir, save_format="tf")
+      self.saved_model_dir = temp_dir
+      self._saved_model_tags = set([_tag_constants.SERVING])
+      self._saved_model_exported_names = [
+          _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+      ]
+      self._parse_saved_model_args()
+      if self.saved_model_dir:
+        graph = _ops.Graph()
+        saved_model = _loader_impl.SavedModelLoader(self.saved_model_dir)
+        saved_model.load_graph(graph, tags=self._saved_model_tags)
+        meta_graph = saved_model.get_meta_graph_def_from_tags(
+            self._saved_model_tags)
+        signature_def = meta_graph.signature_def[
+            _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+        input_tensors = [
+            graph.get_tensor_by_name(signature_def.inputs[key].name)
+            for key in signature_def.inputs
+        ]
+        output_tensors = [
+            graph.get_tensor_by_name(signature_def.outputs[key].name)
+            for key in signature_def.outputs
+        ]
+        self._trackable_obj = _load(self.saved_model_dir,
+                                    self._saved_model_tags)
+        return super(TFLiteKerasModelConverterV2,
+                     self).convert(meta_graph.graph_def, input_tensors,
+                                   output_tensors)
+    finally:
+      shutil.rmtree(temp_dir, True)
+
+    input_signature = None
+    # If the model's call is not a `tf.function`, then we need to first get its
+    # input signature from `model_input_signature` method. We can't directly
+    # call `trace_model_call` because otherwise the batch dimension is set
+    # to None.
+    # Once we have better support for dynamic shapes, we can remove this.
+    if not isinstance(self._keras_model.call, _def_function.Function):
+      # Pass `keep_original_batch_size=True` will ensure that we get an input
+      # signature including the batch dimension specified by the user.
+      input_signature = _saving_utils.model_input_signature(
+          self._keras_model, keep_original_batch_size=True)
+
+    func = _saving_utils.trace_model_call(self._keras_model, input_signature)
+    concrete_func = func.get_concrete_function()
+    self._funcs = [concrete_func]
+
+    frozen_func, graph_def = (
+        _convert_to_constants.convert_variables_to_constants_v2_as_graph(
+            self._funcs[0], lower_control_flow=False))
+
+    input_tensors = [
+        tensor for tensor in frozen_func.inputs
+        if tensor.dtype != _dtypes.resource
+    ]
+    output_tensors = frozen_func.outputs
+
+    # Run a Grappler pass.
+    grappler_config = self._grappler_config()
+    # Skip running grappler when there are no optimizers to run. If not,
+    # grappler will run with the default optimizer set and it will lead to
+    # causing an unexpected behavior.
+    if grappler_config.graph_options.rewrite_options.optimizers:
+      graph_def = _run_graph_optimizations(
+          graph_def,
+          input_tensors,
+          output_tensors,
+          config=grappler_config,
+          graph=frozen_func.graph)
+
+    return super(TFLiteKerasModelConverterV2,
+                 self).convert(graph_def, input_tensors, output_tensors)
 
 
 class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
@@ -637,7 +754,8 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
           config=grappler_config,
           graph=frozen_func.graph)
 
-    return self._convert(graph_def, input_tensors, output_tensors)
+    return super(TFLiteFrozenGraphConverterV2,
+                 self).convert(graph_def, input_tensors, output_tensors)
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -761,6 +879,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       signature_keys = saved_model.signatures
 
+    if len(signature_keys) != 1:
+      raise ValueError("Only support a single signature key.")
+
     funcs = []
     for key in signature_keys:
       if key not in saved_model.signatures:
@@ -786,21 +907,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Returns:
       TFLiteConverter object.
     """
-    input_signature = None
-    # If the model's call is not a `tf.function`, then we need to first get its
-    # input signature from `model_input_signature` method. We can't directly
-    # call `trace_model_call` because otherwise the batch dimension is set
-    # to None.
-    # Once we have better support for dynamic shapes, we can remove this.
-    if not isinstance(model.call, _def_function.Function):
-      # Pass `keep_original_batch_size=True` will ensure that we get an input
-      # signature including the batch dimension specified by the user.
-      input_signature = _saving_utils.model_input_signature(
-          model, keep_original_batch_size=True)
-
-    func = _saving_utils.trace_model_call(model, input_signature)
-    concrete_func = func.get_concrete_function()
-    return cls([concrete_func])
+    return TFLiteKerasModelConverterV2(model)
 
   # pylint: disable=useless-super-delegation
   def convert(self):
@@ -960,7 +1067,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       raise ValueError("std_dev and mean must be defined when inference_type "
                        "or inference_input_type is QUANTIZED_UINT8 or INT8.")
 
-  def _convert(self):
+  def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
@@ -1243,8 +1350,86 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
     self._output_tensors = result[2]
     self._parse_saved_model_args()
 
+
+class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
+  """Converts the given SavedModel into TensorFlow Lite model."""
+
+  def __init__(self,
+               model_file,
+               input_arrays=None,
+               input_shapes=None,
+               output_arrays=None,
+               custom_objects=None):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      model_file: Full filepath of HDF5 file containing the tf.keras model.
+      input_arrays: List of input tensors to freeze graph with. Uses input
+        arrays from SignatureDef when none are provided. (default None)
+      input_shapes: Dict of strings representing input tensor names to list of
+        integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+        Automatically determined when input shapes is None (e.g., {"foo" :
+          None}). (default None)
+      output_arrays: List of output tensors to freeze graph with. Uses output
+        arrays from SignatureDef when none are provided. (default None)
+      custom_objects: Dict mapping names (strings) to custom classes or
+        functions to be considered during model deserialization. (default None)
+
+    Raises:
+      ValueError: Invalid arguments.
+    """
+    super(TFLiteKerasModelConverter,
+          self).__init__(experimental_debug_info_func=None)
+    # Handles Keras when Eager mode is enabled.
+    if context.executing_eagerly():
+      if input_arrays or output_arrays:
+        raise ValueError("`input_arrays` and `output_arrays` are unsupported "
+                         "with Eager mode. If your model requires any of these "
+                         "parameters, please use disable_eager_execution().")
+
+      _keras.backend.set_learning_phase(False)
+      keras_model = _keras.models.load_model(model_file, custom_objects)
+
+      function = _saving_utils.trace_model_call(keras_model)
+      concrete_func = function.get_concrete_function()
+
+      frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
+          concrete_func, lower_control_flow=False)
+      _set_tensor_shapes(frozen_func.inputs, input_shapes)
+      self._keras_model = keras_model
+      self._graph_def = frozen_func.graph.as_graph_def()
+      self._input_tensors = frozen_func.inputs
+      self._output_tensors = frozen_func.outputs
+      self._debug_info_func = _build_debug_info_func(frozen_func.graph)
+      return
+
+    # Handles Keras when Eager mode is disabled.
+    _keras.backend.clear_session()
+    _keras.backend.set_learning_phase(False)
+    keras_model = _keras.models.load_model(model_file, custom_objects)
+    sess = _keras.backend.get_session()
+
+    # Get input and output tensors.
+    if input_arrays:
+      input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
+    else:
+      input_tensors = keras_model.inputs
+
+    if output_arrays:
+      output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
+    else:
+      output_tensors = keras_model.outputs
+    _set_tensor_shapes(input_tensors, input_shapes)
+
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
+    self._keras_model = keras_model
+    self._graph_def = graph_def
+    self._input_tensors = input_tensors
+    self._output_tensors = output_tensors
+    self._debug_info_func = _build_debug_info_func(sess.graph)
+
   def convert(self):
-    """Converts a TensorFlow GraphDef based on instance variables.
+    """Converts a Keras model based on instance variables.
 
     Returns:
       The converted data in serialized format. Either a TFLite Flatbuffer or a
@@ -1255,7 +1440,28 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    return self._convert()
+    temp_dir = tempfile.mkdtemp()
+    try:
+      self._keras_model.save(temp_dir, save_format="tf")
+      tag_set = set([_tag_constants.SERVING])
+      signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+      result = _freeze_saved_model(temp_dir, None, None, None, tag_set,
+                                   signature_key)
+
+      self.saved_model_dir = temp_dir
+      self._saved_model_tags = tag_set
+      self._saved_model_exported_names = [signature_key]
+      self._parse_saved_model_args()
+      if self.saved_model_dir:
+        self._graph_def = result[0]
+        self._input_tensors = result[1]
+        self._output_tensors = result[2]
+        self._debug_info_func = _build_debug_info_func(result[3])
+        return super(TFLiteKerasModelConverter, self).convert()
+    finally:
+      shutil.rmtree(temp_dir, True)
+
+    return super(TFLiteKerasModelConverter, self).convert()
 
 
 class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
@@ -1303,20 +1509,6 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
             "input_arrays_with_shape and output_arrays must be defined.")
       self._input_arrays_with_shape = input_arrays_with_shape
       self._output_arrays = output_arrays
-
-  def convert(self):
-    """Converts a TensorFlow GraphDef based on instance variables.
-
-    Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
-
-    Raises:
-      ValueError:
-        Input shape is not specified.
-        None value for dimension in input_tensor.
-    """
-    return self._convert()
 
 
 @_tf_export(v1=["lite.TFLiteConverter"])
@@ -1645,53 +1837,8 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     Returns:
       TFLiteConverter class.
     """
-    # Handles Keras when Eager mode is enabled.
-    if context.executing_eagerly():
-      if input_arrays or output_arrays:
-        raise ValueError("`input_arrays` and `output_arrays` are unsupported "
-                         "with Eager mode. If your model requires any of these "
-                         "parameters, please use disable_eager_execution().")
-
-      _keras.backend.set_learning_phase(False)
-      keras_model = _keras.models.load_model(model_file, custom_objects)
-
-      function = _saving_utils.trace_model_call(keras_model)
-      concrete_func = function.get_concrete_function()
-
-      frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-          concrete_func, lower_control_flow=False)
-      _set_tensor_shapes(frozen_func.inputs, input_shapes)
-      return cls(
-          frozen_func.graph.as_graph_def(),
-          frozen_func.inputs,
-          frozen_func.outputs,
-          experimental_debug_info_func=_build_debug_info_func(
-              frozen_func.graph))
-
-    # Handles Keras when Eager mode is disabled.
-    _keras.backend.clear_session()
-    _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file, custom_objects)
-    sess = _keras.backend.get_session()
-
-    # Get input and output tensors.
-    if input_arrays:
-      input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
-    else:
-      input_tensors = keras_model.inputs
-
-    if output_arrays:
-      output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
-    else:
-      output_tensors = keras_model.outputs
-    _set_tensor_shapes(input_tensors, input_shapes)
-
-    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
-    return cls(
-        graph_def,
-        input_tensors,
-        output_tensors,
-        experimental_debug_info_func=_build_debug_info_func(sess.graph))
+    return TFLiteKerasModelConverter(model_file, input_arrays, input_shapes,
+                                     output_arrays, custom_objects)
 
   # pylint: disable=useless-super-delegation
   def convert(self):

@@ -121,16 +121,19 @@ class RMSprop(optimizer_v2.OptimizerV2):
         Setting this to `True` may help with training, but is slightly more
         expensive in terms of computation and memory. Defaults to `False`.
       name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "RMSprop".  @compatibility(eager) When eager
-        execution is enabled, `learning_rate`, `decay`, `momentum`, and
-        `epsilon` can each be a callable that takes no arguments and returns the
-        actual value to use. This can be useful for changing these values across
-        different invocations of optimizer functions. @end_compatibility
+        gradients. Defaults to "RMSprop".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
         `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
         gradients by value, `decay` is included for backward compatibility to
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `decay`, `momentum`, and
+    `epsilon` can each be a callable that takes no arguments and returns the
+    actual value to use. This can be useful for changing these values across
+    different invocations of optimizer functions.
+    @end_compatibility
     """
     super(RMSprop, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))

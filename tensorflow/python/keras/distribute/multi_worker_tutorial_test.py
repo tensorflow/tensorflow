@@ -28,6 +28,8 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
@@ -122,10 +124,11 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=70,
           callbacks=callbacks)
 
-    mpr_result = multi_process_runner.run(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
-        list_stdout=True)
+    with test_util.skip_if_error(self, errors_impl.UnavailableError):
+      mpr_result = multi_process_runner.run(
+          proc_func,
+          multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
+          list_stdout=True)
 
     def extract_accuracy(worker_id, input_string):
       match = re.match(

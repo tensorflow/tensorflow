@@ -34,9 +34,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+class ShapedType;
+}  // namespace mlir
+
 namespace tensorflow {
 
 using stream_executor::port::StatusOr;
+
+// Add custom op prefix for TensorFlow dialects.
+Status AddTensorFlowOpPrefix(std::string);
 
 // Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
 // dialect back into a TensorFlow valid op name.

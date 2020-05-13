@@ -43,6 +43,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateReduceBuilder(this, OP_QuantizedSum_8to32);
     case kTfLiteBuiltinPad:
       return CreatePadBuilder(this, OP_QuantizedPad_8);
+    case kTfLiteBuiltinMirrorPad:
+      return CreateMirrorPadBuilder(this, OP_MirrorPad_8);
     case kTfLiteBuiltinFullyConnected:
       return CreateMatMulBuilder(this, OP_QuantizedMatMul_8x8to32);
     case kTfLiteBuiltinAveragePool2d:

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/experimental/public/function_metadata.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // ConcreteFunction is an executable "function" loaded from a SavedModelAPI.
@@ -54,6 +55,7 @@ inline const FunctionMetadata* ConcreteFunction::GetFunctionMetadata() {
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_EXPERIMENTAL_PUBLIC_CONCRETE_FUNCTION_H_

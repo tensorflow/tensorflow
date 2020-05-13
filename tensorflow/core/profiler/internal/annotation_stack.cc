@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
 
+#include <atomic>
+
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace profiler {
 namespace internal {
