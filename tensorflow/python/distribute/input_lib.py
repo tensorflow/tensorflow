@@ -309,7 +309,7 @@ class DistributedIteratorBase(distribute_types.Iterator):
       for i, worker in enumerate(self._input_workers.worker_devices):
         if name is not None:
           d = tf_device.DeviceSpec.from_string(worker)
-          new_name = "%s_%s_%d" % (name, d.job, d.task)
+          new_name = "{}_{}_{}".format(name, d.job, d.task)
         else:
           new_name = None
         with ops.device(worker):
