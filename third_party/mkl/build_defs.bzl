@@ -107,7 +107,7 @@ def mkl_deps():
     return select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_only": ["@mkl_dnn"],
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_v1_only": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": ["@mkl_dnn_tp//:mkl_dnn"],
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": ["@mkl_dnn_v1//:mkl_dnn"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_ml_only": ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         "@org_tensorflow//third_party/mkl:build_with_mkl": [
             "@org_tensorflow//third_party/mkl:intel_binary_blob",

@@ -34,10 +34,10 @@ def if_mkldnn_threadpool(if_true, if_false = []):
     """Returns `if_true` if MKL-DNN v1.x is used.
 
     Shorthand for select()'ing on whether we're building with
-    MKL-DNN v1.x open source library only, without depending on MKL binary form.
+    MKL-DNN v1.x open source library only with user specified threadpool, without depending on MKL binary form.
 
     Returns a select statement which evaluates to if_true if we're building
-    with MKL-DNN v1.x open source library only. Otherwise, the
+    with MKL-DNN v1.x open source library only with user specified threadpool. Otherwise, the
     select statement evaluates to if_false.
 
     """
