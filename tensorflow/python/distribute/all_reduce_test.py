@@ -199,8 +199,8 @@ class AllReduceTest(test_util.TensorFlowTestCase):
     build_f = self._buildShuffle(num_workers, num_gpus, num_shards)
     self._testAllReduce(num_workers, num_gpus, shape, build_f)
     elapsed = time.time() - start_time
-    tf_logging.info("ShuffleAllReduce num_workers=%d num_gpus=%d shape=%s "
-                    "elapsed=%f" % (num_workers, num_gpus, shape, elapsed))
+    tf_logging.info("ShuffleAllReduce num_workers={} num_gpus={} shape={} "
+                    "elapsed={}".format(num_workers, num_gpus, shape, elapsed))
 
   @test_util.run_deprecated_v1
   def testShuffleAllReduce(self):
