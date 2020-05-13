@@ -2357,7 +2357,95 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
+  // TODO(jackcao): Generalize this to generic llvm emitter.
+  TF_RET_CHECK(hlo->shape().rank() == 1);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  for (int64 i = 1; i < hlo->operand_count(); ++i) {
+    const int64 dim_index = i - 1;
+    llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
+    llvm::LoadInst* dim_size = b_.CreateLoad(source_buffer, "dim_size");
+    llvm::Value* dest_buffer = GetEmittedValueFor(hlo);
+    llvm::Value* raw_buffer =
+        b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
+
+    int32 raw_data_size =
+        ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(hlo->shape()));
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    b_.CreateStore(dim_size,
+                   b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+  }
+
+  return EmitTargetElementLoop(hlo,
+                               [=](const llvm_ir::IrArray::Index& dest_index) {
+                                 // TODO(jackcao): Properly linearize dest_index
+                                 // and delinearize to source index.
+                                 return GetIrArrayFor(hlo->operand(0))
+                                     .EmitReadArrayElement(dest_index, &b_);
+                               });
+}
+
+Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
+  // TODO(jackcao): Generalize this to generic llvm emitter.
+  TF_RET_CHECK(hlo->operand(0)->shape().rank() == 1);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
+                      assignment_.GetUniqueSlice(hlo, {0}));
+  const Shape& data_shape = ShapeUtil::GetSubshape(hlo->shape(), {0});
+  llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
+  llvm_ir::IrArray data_array(data_address, data_shape);
+  TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(
+                         [=](const llvm_ir::IrArray::Index& dest_index) {
+                           // TODO(jackcao): Properly linearize dest_index and
+                           // delinearize to source index.
+                           return GetIrArrayFor(hlo->operand(0))
+                               .EmitReadArrayElement(dest_index, &b_);
+                         },
+                         llvm_ir::IrArray(data_address, data_shape), &b_)
+                         .EmitLoop(IrName(hlo)));
+  std::vector<llvm::Value*> tuple_operand_ptrs;
+  tuple_operand_ptrs.push_back(data_array.GetBasePointer());
+
+  // PadToStatic has a dynamic tensor as input and variadic size of outputs:
+  // (static_tensor, dynamic_dim_0, dynamic_dim_1, ... )
+  // Dynamic dimension sizes starts from output index 1.
+  for (int64 i = 1; i < hlo->shape().tuple_shapes_size(); ++i) {
+    // Read from the metadata section of the dynamic input (operand 0).
+    const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
+    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dim_size_slice,
+                        assignment_.GetUniqueSlice(hlo, {i}));
+    llvm::Value* dest_dim_size_address =
+        EmitBufferPointer(dim_size_slice, data_shape);
+    const int64 dim_index = i - 1;
+    llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(0));
+    llvm::Value* raw_buffer =
+        b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
+    int32 raw_data_size = ShapeUtil::ByteSizeOf(
+        ShapeUtil::MakeStaticShape(hlo->operand(0)->shape()));
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    llvm::Value* dim_size = b_.CreateLoad(
+        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+    b_.CreateStore(dim_size, b_.CreateBitCast(dest_dim_size_address,
+                                              b_.getInt32Ty()->getPointerTo()));
+    tuple_operand_ptrs.push_back(dest_dim_size_address);
+  }
+
+  // Emit static tensor and dynamic sizes as one tuple.
+  llvm_ir::EmitTuple(GetIrArrayFor(hlo), tuple_operand_ptrs, &b_);
+  return Status::OK();
+}
+
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "PadToStatic") {
+    return HandlePadToStatic(custom_call);
+  }
+  if (custom_call->custom_call_target() == "SliceToDynamic") {
+    return HandleSliceToDynamic(custom_call);
+  }
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =

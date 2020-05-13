@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -38,7 +39,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/timed.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
@@ -146,6 +151,231 @@ xla::StatusOr<InputBuffers> GetChainedOpInputs(
   return std::move(input_buffers);
 }
 
+// Given a shape, returns a byte array representing the shape metadata of the
+// shape. The shape metadata contains dimensions sizes stored as contiguous S32.
+std::vector<int32> PrepareMetadata(const xla::Shape& shape) {
+  DCHECK(shape.is_static());
+  DCHECK(shape.IsArray());
+  // Each dimension size is stored as a S32.
+  std::vector<int32> result(shape.dimensions_size());
+  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
+    result[i] = shape.dimensions(i);
+  }
+  return result;
+}
+
+// Given a buffer with dynamic shape, update buffer metadata at the correct
+// offset starting from that buffer.
+//
+// +-----------+
+// |Payload    |
+// +-----------+
+// | Padding   |
+// +-----------+
+// |dim_size_0 |  (each dim_size is a S32):
+// +-----------+
+// |dim_size_1 |
+// +-----------+
+//  ..........
+// +-----------+
+//
+// Size of payload = ByteSizeOf(runtime_shape)
+// Size of payload + padding = ByteSizeOf(compile_time_shape_static)
+// Size of payload + padding + metadata = ByteSizeOf(compile_time_shape)
+Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
+                      const xla::Shape& compile_time_shape,
+                      const xla::Shape& runtime_shape) {
+  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
+                                         stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
+  xla::Shape compile_time_shape_static =
+      xla::ShapeUtil::MakeStaticShape(compile_time_shape);
+  uint64 offset = shape_size_fn(compile_time_shape_static);
+  uint64 metadata_size = shape_size_fn(compile_time_shape) - offset;
+  auto metadata_buffer =
+      stream->parent()->GetSubBuffer(buffer, offset, metadata_size);
+
+  auto metadata_literal = std::make_shared<xla::Literal>(
+      xla::LiteralUtil::CreateR1<int32>(PrepareMetadata(runtime_shape)));
+  TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
+      stream, *metadata_literal, metadata_buffer));
+  // Retain the literal until the end of the transfer.
+  stream->ThenDoHostCallback([metadata_literal]() { return Status::OK(); });
+  return Status::OK();
+}
+
+// Given a static input buffer, convert it to dynamic form by expanding it to
+// the bounded size and attaching a metadata filled with dimension sizes.
+//
+// From:
+// +--------+
+// |Payload |
+// +--------+
+//
+// To:
+//
+// +--------+
+// |Payload |
+// +--------+
+// | Padding|
+// +--------+
+// |Metadata|
+// +--------+
+//
+// As we can't expand the size of an existing memory allocation, a reallocation
+// is required. A list of new allocations are returned after this function. The
+// caller is reponsible for maintaining those allocations.
+xla::StatusOr<std::vector<se::OwningDeviceMemory>> UpdateDynamicInputs(
+    se::Stream* stream, se::DeviceMemoryAllocator* allocator,
+    std::vector<xla::ShapedBuffer*> runtime_inputs,
+    const std::vector<xla::ShapeLayout>& compile_time_shapes) {
+  std::vector<se::OwningDeviceMemory> new_allocations;
+  TF_RET_CHECK(runtime_inputs.size() == compile_time_shapes.size());
+  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
+                                         stream->parent()->platform()));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
+  for (int64 i = 0; i < compile_time_shapes.size(); i++) {
+    const xla::Shape& compile_time_shape = compile_time_shapes[i].shape();
+    if (compile_time_shape.is_static()) {
+      continue;
+    }
+    auto* runtime_input = runtime_inputs[i];
+
+    bool element_modified = false;
+    TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
+        compile_time_shape,
+        [&](const xla::Shape& compile_time_shape,
+            const xla::ShapeIndex& index) -> Status {
+          if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
+            return Status::OK();
+          }
+          const xla::Shape& runtime_shape = xla::ShapeUtil::GetSubshape(
+              runtime_input->on_device_shape(), index);
+          TF_RET_CHECK(!runtime_shape.IsTuple());
+          TF_RET_CHECK(xla::ShapeUtil::DynamicShapeIsCompatible(
+              runtime_shape, compile_time_shape));
+          se::DeviceMemoryBase* static_input =
+              runtime_input->buffers().mutable_element(index);
+          TF_ASSIGN_OR_RETURN(
+              auto dynamic_input,
+              allocator->Allocate(stream->parent()->device_ordinal(),
+                                  shape_size_fn(compile_time_shape)));
+          new_allocations.emplace_back(std::move(dynamic_input));
+          se::DeviceMemory<uint8>* dynamic_input_base =
+              new_allocations.back().ptr();
+          // Send the original data to the new location.
+          stream->ThenMemcpyD2D(dynamic_input_base, *static_input,
+                                static_input->size());
+          TF_RETURN_IF_ERROR(UpdateMetadata(stream, dynamic_input_base,
+                                            compile_time_shape, runtime_shape));
+          // Modify the memory location in the input shape tree to point to the
+          // new input.
+          runtime_input->set_buffer(*dynamic_input_base, index);
+          element_modified = true;
+          return Status::OK();
+        }));
+    if (element_modified) {
+      runtime_input->set_shapes(compile_time_shape, compile_time_shape);
+      // The input location has been modified, need to fix tuple table to
+      // point to the correct address.
+      TF_ASSIGN_OR_RETURN(
+          auto transfer_manager,
+          xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+      TF_RETURN_IF_ERROR(
+          transfer_manager->WriteTupleIndexTablesAsync(stream, *runtime_input));
+    }
+  }
+  return std::move(new_allocations);
+}
+
+xla::StatusOr<xla::Literal> ReadMetadataLiteral(
+    se::Stream* stream, se::DeviceMemoryBase* buffer,
+    const xla::Shape& buffer_shape, xla::TransferManager* transfer_manager) {
+  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
+                                         stream->parent()->platform()));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
+  xla::Shape buffer_shape_static =
+      xla::ShapeUtil::MakeStaticShape(buffer_shape);
+  const int64 offset = shape_size_fn(buffer_shape_static);
+  int64 metadata_size = shape_size_fn(buffer_shape) - offset;
+  TF_RET_CHECK(metadata_size != 0);
+  auto buffer_8 = se::DeviceMemory<uint8>(*buffer);
+  auto metadata_buffer =
+      stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
+  return transfer_manager->TransferArrayFromDevice(
+      stream,
+      xla::ShapeUtil::MakeShape(xla::S32, {buffer_shape.dimensions_size()}),
+      metadata_buffer);
+}
+
+// For each subshape in the result buffer that's dynamic, read the dynamic
+// dimension sizes from the metadata, and update output shapes. The result shape
+// is a static and concrete shape.
+xla::Status UpdateDynamicOutputs(se::Stream* stream,
+                                 xla::ShapedBuffer* shaped_buffer,
+                                 xla::Shape* output_host_shape,
+                                 xla::Shape* output_device_shape) {
+  DCHECK(output_device_shape->is_dynamic());
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(shaped_buffer->buffers().ForEachMutableElementWithStatus(
+      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        const xla::Shape& buffer_shape =
+            xla::ShapeUtil::GetSubshape(*output_device_shape, index);
+        if (buffer_shape.IsTuple()) {
+          return Status::OK();
+        }
+        xla::Shape& host_shape =
+            *xla::ShapeUtil::GetMutableSubshape(output_host_shape, index);
+        xla::Shape& device_shape =
+            *xla::ShapeUtil::GetMutableSubshape(output_device_shape, index);
+        if (device_shape.is_static()) {
+          return Status::OK();
+        }
+        TF_ASSIGN_OR_RETURN(auto metadata,
+                            ReadMetadataLiteral(stream, buffer, buffer_shape,
+                                                transfer_manager));
+        // Update shape size from metadata.
+        for (int64 i = 0; i < metadata.element_count(); ++i) {
+          host_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
+          device_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
+        }
+        return Status::OK();
+      }));
+  output_host_shape->clear_dynamic_dimensions();
+  output_device_shape->clear_dynamic_dimensions();
+  return Status::OK();
+}
+
+// Create output tuple from run_result.
+xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
+    se::Stream* stream, xla::ScopedShapedBuffer run_result,
+    xla::Backend* backend, int device_ordinal) {
+  XRTTupleAllocation* output_tuple;
+  xla::ShapedBuffer shaped_buffer = run_result.release();
+  if (shaped_buffer.on_device_shape().is_dynamic()) {
+    // Update dynamic shapes from output buffer, and create a XRT tensor with
+    // dimension sizes read from metadata.
+    xla::Shape output_host_shape = shaped_buffer.on_host_shape();
+    xla::Shape output_device_shape = shaped_buffer.on_device_shape();
+    TF_RETURN_IF_ERROR(UpdateDynamicOutputs(
+        stream, &shaped_buffer, &output_host_shape, &output_device_shape));
+    TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
+        shaped_buffer, output_host_shape, output_device_shape, backend,
+        device_ordinal, &output_tuple));
+  } else {
+    // Fast-path: Don't copy shapes of output buffer.
+    TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
+        shaped_buffer, backend, device_ordinal, &output_tuple));
+  }
+  return RefPtr<XRTTupleAllocation>(output_tuple);
+}
+
 xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     OpKernelContext* context, XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
@@ -191,18 +421,31 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
 
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
+  const std::vector<xla::ShapeLayout>& shape_layouts =
+      executable->executable()
+          ->module_config()
+          .entry_computation_layout()
+          .parameter_layouts();
+  TF_ASSIGN_OR_RETURN(auto new_allocations,
+                      UpdateDynamicInputs(stream, run_options.allocator(),
+                                          input_buffers.input_pointers,
+                                          shape_layouts));
+  auto new_allocations_ptr =
+      std::make_shared<std::vector<se::OwningDeviceMemory>>(
+          std::move(new_allocations));
   TF_ASSIGN_OR_RETURN(
       xla::ScopedShapedBuffer run_result,
       executable->Run(input_buffers.input_pointers, run_options));
+  // Retain the new allocation for input memory until the end of execution.
+  stream->ThenDoHostCallback([new_allocations_ptr]() { return Status::OK(); });
+
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  auto shaped_buffer = run_result.release();
-  XRTTupleAllocation* output_tuple;
-  TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-      shaped_buffer, device_ref->backend(), device_ref->device_ordinal(),
-      &output_tuple));
-  RefPtr<XRTTupleAllocation> output_tuple_ptr(output_tuple);
+  TF_ASSIGN_OR_RETURN(
+      RefPtr<XRTTupleAllocation> output_tuple_ptr,
+      CreateOutputTuple(stream, std::move(run_result), device_ref->backend(),
+                        device_ref->device_ordinal()));
 
   // The ScopedShapedBuffer returned by the executable Run() API, in case of
   // input/output buffer aliasing, might have holes in it, which need to be
@@ -215,7 +458,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
           const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
     TF_RET_CHECK(alias.parameter_number < input_buffers.input_tuples.size());
     return alias.kind == xla::HloInputOutputAliasConfig::AliasKind::kUserAlias
-               ? output_tuple->AliasBufferFrom(
+               ? output_tuple_ptr->AliasBufferFrom(
                      *input_buffers.input_tuples[alias.parameter_number],
                      alias.parameter_index, output_index)
                : Status::OK();
