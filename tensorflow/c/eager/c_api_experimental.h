@@ -549,6 +549,18 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_CreatePackedTensorHandle(
     TFE_Context* ctx, TFE_TensorHandle** handles, int* num_handles,
     TF_Status* status);
 
+// Configure soft device placement policy for the eager executor. Note this
+// policy is applied to any subsequent op executions.
+TF_CAPI_EXPORT void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx,
+                                                      unsigned char enable,
+                                                      TF_Status* status);
+
+// Configure device placement policy logging for the eager executor. Note this
+// policy is applied to any subsequent op executions.
+TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
+                                                     unsigned char enable,
+                                                     TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

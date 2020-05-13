@@ -300,7 +300,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
+  void SetLogDevicePlacement(bool enable) { log_device_placement_ = enable; }
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
+  void SetAllowSoftPlacement(bool enable) { allow_soft_placement_ = enable; }
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
@@ -625,9 +627,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   mutex metadata_mu_;
   RunMetadata run_metadata_ TF_GUARDED_BY(metadata_mu_);
   GraphCollector graph_collector_;
-  // TODO(fishx): Allow update following two bool after context creation.
-  const bool log_device_placement_;
-  const bool allow_soft_placement_;
+  std::atomic<bool> log_device_placement_;
+  std::atomic<bool> allow_soft_placement_;
 
   // Information related to step containers.
   std::atomic<int> num_active_steps_;

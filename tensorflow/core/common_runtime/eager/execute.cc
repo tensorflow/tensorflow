@@ -365,6 +365,9 @@ Status GetOrCreateKernelAndDevice(
   Device* device = absl::get<Device*>(op->Device());
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
+  /// Include soft placement policy in cache key since the placement strategy
+  // can change and thus affect which kernel is picked.
+  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   std::vector<Device*> input_dev_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -488,13 +491,6 @@ Status GetOrCreateKernelAndDevice(
                << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
     }
-    if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
-                                   DeviceNameOrUnspecified(device));
-      if (!logging::LogToListeners(msg)) {
-        LOG(INFO) << msg;
-      }
-    }
 
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
@@ -606,6 +602,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   int num_outputs = kernel->num_outputs();
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(&ctx, op, kernel));
+
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
 
   GraphCollector* graph_collector = nullptr;
   if (ctx.ShouldStoreGraphs()) {
@@ -841,6 +845,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       ctx.GetContextViewId(), eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
+
+  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat(
+        "Executing op ", op->Name(), " on task ",
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
+
   Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
@@ -1117,15 +1131,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       op = out_op.get();
     }
     return EagerLocalExecute(op, retvals, num_retvals);
-  }
-
-  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat(
-        "Executing op ", op->Name(), " on task ",
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
-    if (!logging::LogToListeners(msg)) {
-      LOG(INFO) << msg;
-    }
   }
 
 #if defined(IS_MOBILE_PLATFORM)
@@ -1426,6 +1431,14 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   if (!s.ok()) {
     done(s);
     return;
+  }
+
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
 
   GraphCollector* graph_collector = nullptr;
