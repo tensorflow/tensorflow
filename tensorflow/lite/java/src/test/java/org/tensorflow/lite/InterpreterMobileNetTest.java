@@ -18,7 +18,11 @@ package org.tensorflow.lite;
 import static com.google.common.truth.Truth.assertThat;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.PriorityQueue;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -61,14 +65,9 @@ public final class InterpreterMobileNetTest {
   }
 
   private static void runMobileNetFloatTest(Interpreter.Options options) {
-    // Create a gray image.
-    ByteBuffer img = ByteBuffer.allocateDirect(1 * 224 * 224 * 3 * 4);
-    img.order(ByteOrder.nativeOrder());
-    img.rewind();
-    while (img.hasRemaining()) {
-      img.putFloat(0.5f);
-    }
-
+    ByteBuffer img =
+        TestUtils.getTestImageAsFloatByteBuffer(
+            "tensorflow/lite/java/src/testdata/grace_hopper_224.jpg");
     float[][] labels = new float[1][1001];
     try (Interpreter interpreter = new Interpreter(MOBILENET_FLOAT_MODEL_BUFFER, options)) {
       interpreter.run(img, labels);
@@ -78,22 +77,53 @@ public final class InterpreterMobileNetTest {
     assertThat(labels[0])
         .usingExactEquality()
         .containsNoneOf(new float[] {Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY});
+    // 653 == "military uniform"
+    assertThat(getTopKLabels(labels, 3)).contains(653);
   }
 
   private static void runMobileNetQuantizedTest(Interpreter.Options options) {
-    // Create a gray image.
-    ByteBuffer img = ByteBuffer.allocateDirect(1 * 224 * 224 * 3);
-    img.order(ByteOrder.nativeOrder());
-    img.rewind();
-    while (img.hasRemaining()) {
-      img.put((byte) 128);
-    }
-
+    ByteBuffer img =
+        TestUtils.getTestImageAsByteBuffer(
+            "tensorflow/lite/java/src/testdata/grace_hopper_224.jpg");
+    byte[][] labels = new byte[1][1001];
     try (Interpreter interpreter = new Interpreter(MOBILENET_QUANTIZED_MODEL_BUFFER, options)) {
-      byte[][] labels = new byte[1][1001];
       interpreter.run(img, labels);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
       assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
     }
+    // 653 == "military uniform"
+    assertThat(getTopKLabels(labels, 3)).contains(653);
+  }
+
+  private static ArrayList<Integer> getTopKLabels(byte[][] byteLabels, int k) {
+    float[][] labels = new float[1][1001];
+    for (int i = 0; i < byteLabels[0].length; ++i) {
+      labels[0][i] = (byteLabels[0][i] & 0xff) / 255.0f;
+    }
+    return getTopKLabels(labels, k);
+  }
+
+  private static ArrayList<Integer> getTopKLabels(float[][] labels, int k) {
+    PriorityQueue<Map.Entry<Integer, Float>> pq =
+        new PriorityQueue<>(
+            k,
+            new Comparator<Map.Entry<Integer, Float>>() {
+              @Override
+              public int compare(Map.Entry<Integer, Float> o1, Map.Entry<Integer, Float> o2) {
+                // Intentionally reversed to put high confidence at the head of the queue.
+                return o1.getValue().compareTo(o2.getValue()) * -1;
+              }
+            });
+
+    for (int i = 0; i < labels[0].length; ++i) {
+      pq.add(new AbstractMap.SimpleEntry<>(i, labels[0][i]));
+    }
+
+    final ArrayList<Integer> topKLabels = new ArrayList<>();
+    int topKLabelsSize = Math.min(pq.size(), k);
+    for (int i = 0; i < topKLabelsSize; ++i) {
+      topKLabels.add(pq.poll().getKey());
+    }
+    return topKLabels;
   }
 }

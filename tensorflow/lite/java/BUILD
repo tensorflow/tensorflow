@@ -14,6 +14,7 @@ package(
 exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
+    "src/testdata/grace_hopper_224.jpg",
 ])
 
 JAVA_SRCS = glob([
