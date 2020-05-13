@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RandomZoom"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Rescaling"
     mtype: "<type \'type\'>"
   }
