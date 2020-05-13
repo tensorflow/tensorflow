@@ -178,7 +178,7 @@ filegroup(
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -217,7 +217,7 @@ filegroup(
         "include/mlir/Dialect/AVX512/AVX512.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/IR/OpBase.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -302,7 +302,7 @@ filegroup(
         "include/mlir/Dialect/SCF/SCFOps.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -374,7 +374,7 @@ filegroup(
         "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":OpBaseTdFiles",
     ],
@@ -997,7 +997,7 @@ filegroup(
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1130,7 +1130,7 @@ filegroup(
         "include/mlir/Dialect/LLVMIR/LLVMOps.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1417,7 +1417,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/NVVMOps.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1489,7 +1489,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1541,7 +1541,7 @@ filegroup(
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ] + glob(["include/mlir/Dialect/SPIRV/*.td"]),
 )
@@ -2244,7 +2244,7 @@ gentbl(
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Interfaces/SideEffects.td",
+    td_file = "include/mlir/Interfaces/SideEffectInterfaces.td",
     td_srcs = [
         ":OpBaseTdFiles",
     ],
@@ -2910,7 +2910,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Quant/QuantOps.td",
         "include/mlir/Dialect/Quant/QuantOpsBase.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -3390,7 +3390,7 @@ exports_files(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffects.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",

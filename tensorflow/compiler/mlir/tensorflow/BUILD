@@ -36,7 +36,7 @@ filegroup(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -1075,7 +1075,7 @@ genrule(
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",

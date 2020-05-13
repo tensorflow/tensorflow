@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//

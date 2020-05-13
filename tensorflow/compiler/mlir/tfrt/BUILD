@@ -40,7 +40,7 @@ filegroup(
     srcs = [
         "runtime_fallback/runtime_fallback_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@tf_runtime//:OpBaseTdFiles",
     ],
 )

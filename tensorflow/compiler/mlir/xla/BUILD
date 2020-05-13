@@ -38,7 +38,7 @@ filegroup(
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -822,7 +822,7 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
