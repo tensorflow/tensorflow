@@ -147,7 +147,8 @@ void RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_op_inputs()->mutable_remote_handle(),
+        src_, /*wait_until_ready=*/false,
+        remote_op->add_op_inputs()->mutable_remote_handle(),
         absl::get<Device*>(src_->device()),
         absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
     if (!status.ok()) {
@@ -316,7 +317,8 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
           (i == 0) && (h->dtype == DT_RESOURCE) &&
           (ctx->OnSameTask(src_device, target_device));
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          h, op->add_handles()->mutable_remote_handle(), src_device,
+          h, /*wait_until_ready=*/false,
+          op->add_handles()->mutable_remote_handle(), src_device,
           absl::get<Device*>(h->DeviceOrHostCPU(*ctx))->name(),
           serialize_resource_dtype_and_shape));
     } else {

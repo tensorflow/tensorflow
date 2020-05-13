@@ -705,8 +705,8 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
-                                             int32* output_num) const {
+Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
+                                   int64* op_id, int32* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -714,7 +714,8 @@ Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      return mirror->second.OpIdAndOutputNumUntilReady(op_id, output_num);
+      return mirror->second.OpIdAndOutputNum(wait_until_ready, op_id,
+                                             output_num);
     }
 
     return errors::FailedPrecondition(
@@ -726,7 +727,7 @@ Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
   }
 
   auto& data = absl::get<RemoteTensorHandleData>(data_);
-  return data.OpIdAndOutputNumUntilReady(op_id, output_num);
+  return data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
 }
 
 bool TensorHandle::HasRemoteMirror(const Device* d,

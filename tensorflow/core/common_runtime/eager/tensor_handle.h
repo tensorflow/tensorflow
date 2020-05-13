@@ -168,10 +168,11 @@ class TensorHandle : public AbstractTensorHandleInterface,
   Status AddResourceShapeMirror(const Device* d, int64 op_id, int output_num,
                                 EagerContext* ctx);
 
-  // Return the op_id and output num if the handle refers to a remote tensor;
-  // and blocks until the remote tensor is ready on the given remote worker.
-  Status RemoteAddressUntilReady(const Device* d, int64* op_id,
-                                 int32* output_num) const;
+  // Return the op_id and output num if the handle refers to a remote tensor.
+  // If wait_until_ready is true, block until the remote tensor is ready on the
+  // given remote worker.
+  Status RemoteAddress(const Device* d, const bool wait_until_ready,
+                       int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by

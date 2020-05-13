@@ -970,8 +970,9 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   EXPECT_EQ(handle2->op_device()->name(), device2);
   int64 op_id;
   int32 output_num;
-  TF_ASSERT_OK(handle2->RemoteAddressUntilReady(
-      absl::get<Device*>(handle2->device()), &op_id, &output_num));
+  TF_ASSERT_OK(handle2->RemoteAddress(absl::get<Device*>(handle2->device()),
+                                      /*wait_until_ready=*/true, &op_id,
+                                      &output_num));
   EXPECT_EQ(op_id, 2);
   EXPECT_EQ(output_num, 5);
 

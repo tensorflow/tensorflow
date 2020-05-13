@@ -97,9 +97,11 @@ Status ExecuteNodeArgs::Init(
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (has_remote_inputs_) {
+    const bool is_function = kernel->IsFunction();
     serialize_remote_handle_ =
-        [ctx, &op_inputs](const FunctionArgIndex& index,
-                          eager::RemoteTensorHandle* handle) -> Status {
+        [ctx, &op_inputs, is_function](
+            const FunctionArgIndex& index,
+            eager::RemoteTensorHandle* handle) -> Status {
       TensorHandle* h = op_inputs[index.index];
       if (op_inputs[index.index]->Type() == TensorHandle::PACKED) {
         TF_RETURN_IF_ERROR(
@@ -112,8 +114,14 @@ Status ExecuteNodeArgs::Init(
             "together.");
       }
       Device* device = absl::get<Device*>(variant_device);
-      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(h, handle, device,
-                                                           device->name());
+      // For a multi-device function, a remote RunComponentFunction request is
+      // not sent through StreamingEnqueueAsync. It could arrive at a remote
+      // worker before a remote execution request which produces an input of the
+      // component function. So we wait until the remote input is ready before
+      // serializing it.
+      const bool wait_util_ready = is_function;
+      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
+          h, wait_util_ready, handle, device, device->name());
     };
   }
 #endif  // !IS_MOBILE_PLATFORM
