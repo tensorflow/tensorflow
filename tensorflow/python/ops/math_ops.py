@@ -439,8 +439,8 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
-    # We do conversion here to make sure at least either x or y is a tensor.
-    if not (tensor_util.is_tensor(x) or tensor_util.is_tensor(y)):
+    # We do conversion here to make sure at least x is a tensor.
+    if not tensor_util.is_tensor(x):
       x = ops.convert_to_tensor(x)
     return x / y
 
