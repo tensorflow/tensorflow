@@ -162,8 +162,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
-    TFRT_COMMIT = "341ba0448c117af4e29ae3911141265ee8e57860"
-    TFRT_SHA256 = "27716458f8ca7d91fc2d0f681127dbdd478eea78d6da5153c51b4696ebd14d55"
+    TFRT_COMMIT = "26fb26d716545388edb9785f8f4b3e60a4ad5092"
+    TFRT_SHA256 = "f7419a3eaab8b7137a4de5b428045a731d93da91ef1bce9ba91fab81ed23a676"
     TFRT_URLS = [
         "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/{commit}.zip".format(commit = TFRT_COMMIT),
         "https://github.com/tensorflow/runtime/archive/{commit}.zip".format(commit = TFRT_COMMIT),
@@ -679,8 +679,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "123bee602a260150ff55c74287f583a67ee78f36"
-    LLVM_SHA256 = "313ec75e47ea3f128724a61b8b6b45b7d305ba2ae57a5084b4bf1f881b4ec8f2"
+    LLVM_COMMIT = "1c44430e738ba83eefe6d56a245ee30649d8988d"
+    LLVM_SHA256 = "81ad47eaf74dfaea1befbe7b41facfd9bcee5ca3d5635325584dbabf4bf1fa5e"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
