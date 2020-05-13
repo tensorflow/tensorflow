@@ -72,7 +72,6 @@ from __future__ import print_function
 
 import numpy as np
 import six
-import sys
 from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -83,6 +82,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -439,27 +439,9 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
-    # tf.math.divide will compute python style division x / y. As python 2
-    # and python 3 have very much different semantics on `/` (__div__ vs.
-    # __truediv__), it would be natural to just use `x / y` as the operator
-    # '/' has already been registered for tensors, see
-    # _OverrideBinaryOperatorHelper for more details.
-    # However, in case both x and y are not tensors, the registered '/'
-    # _OverrideBinaryOperatorHelper will not take effect. In this case,
-    # python's default '/' operator will take effect which result in the return
-    # value of `tf.math.divide` as a non-Tensor.
-    # For that reason we excplicitly calls _truediv_python3/_div_python2
-    # in case both x and y are not tensors.
-    # Since _truediv_python3/_div_python2 operates on tensors and will convert
-    # to tensor if needed. This avoid the situation of the following if not
-    # explicitly calling _truediv_python3/_div_python2:
-    # >>> tf.divide(5, 2)
-    # 2.5 <= should be <tf.Tensor: shape=(), dtype=float64, numpy=2.5> instead.
-    if not (isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor)):
-      if sys.version_info.major < 3:
-        return _div_python2(x, y)
-      else:
-        return _truediv_python3(x, y)
+    # We do conversion here to make sure at least either x or y is a tensor.
+    if not (tensor_util.is_tensor(x) or tensor_util.is_tensor(y)):
+      x = ops.convert_to_tensor(x)
     return x / y
 
 
