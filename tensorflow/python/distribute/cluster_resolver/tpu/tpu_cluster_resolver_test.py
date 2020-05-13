@@ -25,7 +25,7 @@ from six.moves.urllib.error import URLError
 
 from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
+from tensorflow.python.distribute.cluster_resolver.tpu import tpu_cluster_resolver as resolver
 from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -41,7 +41,7 @@ except ImportError:
   logging.debug(
       'Falling back to TensorFlow client; we recommended you install the Cloud '
       'TPU client directly with pip install cloud-tpu-client.')
-  from tensorflow.python.tpu.client import client
+  from tensorflow.python.tpu.client import client  # pylint: disable=g-import-not-at-top
 
 
 class MockRequestClass(object):
