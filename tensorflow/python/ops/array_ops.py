@@ -3820,67 +3820,87 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
            block_shape[0] - crops[0,0] - crops[0,1], ..., input_shape[M] *
            block_shape[M-1] - crops[M-1,0] - crops[M-1,1],  input_shape[M+1],
            ..., input_shape[N-1]]
-      Some Examples:
-      (1) For the following input of shape `[4, 1, 1, 1]`,
-         `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
-         ```python
-         [[[[1]]],
-          [[[2]]],
-          [[[3]]],
-          [[[4]]]]
-         ```
-         The output tensor has shape `[1, 2, 2, 1]` and value:
-         ``` x = [[[[1], [2]],
-                   [[3], [4]]]] ```
-      (2) For the following input of shape `[4, 1, 1, 3]`,
-         `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
-         ```python
-         [[[1,  2,   3]],
-          [[4,  5,   6]],
-          [[7,  8,   9]],
-          [[10, 11, 12]]]
-         ```
-         The output tensor has shape `[1, 2, 2, 3]` and value:
-         ```python
-         x = [[[[1, 2, 3], [4,  5,  6 ]],
-               [[7, 8, 9], [10, 11, 12]]]]
-         ```
-      (3) For the following
-         input of shape `[4, 2, 2, 1]`,
-         `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
-         ```python
-         x = [[[[1], [3]], [[ 9], [11]]],
-              [[[2], [4]], [[10], [12]]],
-              [[[5], [7]], [[13], [15]]],
-              [[[6], [8]], [[14], [16]]]]
-         ```
-         The output tensor has shape `[1, 4, 4, 1]` and value:
-         ```python
-         x = [[[1],  [2],  [ 3], [ 4]],
-              [[5],  [6],  [ 7], [ 8]],
-              [[9],  [10], [11], [12]],
-              [[13], [14], [15], [16]]]
-         ```
-       (4) For the following input of shape
-          `[8, 1, 3, 1]`,
-          `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:
-          ```python
-          x = [[[[0], [ 1], [ 3]]],
-               [[[0], [ 9], [11]]],
-               [[[0], [ 2], [ 4]]],
-               [[[0], [10], [12]]],
-               [[[0], [ 5], [ 7]]],
-               [[[0], [13], [15]]],
-               [[[0], [ 6], [ 8]]],
-               [[[0], [14], [16]]]]
-          ```
-          The output tensor has shape `[2, 2, 4, 1]` and value:
-          ```python
-          x = [[[[ 1], [ 2], [ 3], [ 4]],
-                [[ 5], [ 6], [ 7], [ 8]]],
-               [[[ 9], [10], [11], [12]],
-                [[13], [14], [15], [16]]]] ```
     name: A name for the operation (optional).
+
+  Examples:
+
+  (1) For the following input of shape `[4, 1, 1, 1]`,
+     `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+     ```python
+     [[[[1]]],
+      [[[2]]],
+      [[[3]]],
+      [[[4]]]]
+     ```
+
+    The output tensor has shape `[1, 2, 2, 1]` and value:
+
+     ```
+     x = [[[[1], [2]],
+         [[3], [4]]]]
+     ```
+
+  (2) For the following input of shape `[4, 1, 1, 3]`,
+     `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+     ```python
+     [[[1,  2,   3]],
+      [[4,  5,   6]],
+      [[7,  8,   9]],
+      [[10, 11, 12]]]
+     ```
+
+    The output tensor has shape `[1, 2, 2, 3]` and value:
+
+    ```python
+     x = [[[[1, 2, 3], [4,  5,  6 ]],
+           [[7, 8, 9], [10, 11, 12]]]]
+     ```
+
+  (3) For the following
+     input of shape `[4, 2, 2, 1]`,
+     `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+     ```python
+     x = [[[[1], [3]], [[ 9], [11]]],
+          [[[2], [4]], [[10], [12]]],
+          [[[5], [7]], [[13], [15]]],
+          [[[6], [8]], [[14], [16]]]]
+     ```
+
+    The output tensor has shape `[1, 4, 4, 1]` and value:
+
+    ```python
+     x = [[[1],  [2],  [ 3], [ 4]],
+          [[5],  [6],  [ 7], [ 8]],
+          [[9],  [10], [11], [12]],
+          [[13], [14], [15], [16]]]
+     ```
+
+   (4) For the following input of shape
+      `[8, 1, 3, 1]`,
+      `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:
+
+      ```python
+      x = [[[[0], [ 1], [ 3]]],
+           [[[0], [ 9], [11]]],
+           [[[0], [ 2], [ 4]]],
+           [[[0], [10], [12]]],
+           [[[0], [ 5], [ 7]]],
+           [[[0], [13], [15]]],
+           [[[0], [ 6], [ 8]]],
+           [[[0], [14], [16]]]]
+      ```
+
+      The output tensor has shape `[2, 2, 4, 1]` and value:
+
+      ```python
+      x = [[[[ 1], [ 2], [ 3], [ 4]],
+            [[ 5], [ 6], [ 7], [ 8]]],
+           [[[ 9], [10], [11], [12]],
+            [[13], [14], [15], [16]]]]
+      ```
 
   Returns:
     A `Tensor`. Has the same type as `input`.
