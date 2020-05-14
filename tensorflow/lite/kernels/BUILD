@@ -386,7 +386,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
