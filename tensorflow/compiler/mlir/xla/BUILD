@@ -132,6 +132,7 @@ cc_library(
         "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
+        ":chlo_legalize_to_hlo",
         ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",

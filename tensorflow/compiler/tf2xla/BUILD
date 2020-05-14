@@ -182,6 +182,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
     ],
 )
