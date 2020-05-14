@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_DEFS_H_
 #define TENSORFLOW_CORE_TPU_TPU_DEFS_H_
 
+#include <array>
+
+#include "tensorflow/core/framework/types.pb.h"
+
 namespace tensorflow {
 
 // Name of the TPU device, which corresponds to a single core.
@@ -42,6 +46,11 @@ extern const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR;
 // Attribute used internally to annoate ops which might consume TPU FastMem
 // variable.
 extern const char* const TPU_FAST_MEM_ATTR;  // "_TPU_FAST_MEM"
+
+// Supported types for TPUs.
+static constexpr std::array<DataType, 11> kTpuAllTypes = {
+    {DT_INT32, DT_UINT32, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
+     DT_COMPLEX64, DT_INT64, DT_UINT64, DT_QINT8, DT_QUINT8}};
 
 }  // namespace tensorflow
 
