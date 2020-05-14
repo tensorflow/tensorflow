@@ -175,11 +175,11 @@ __device__ std::complex<T> impl_rsqrt(std::complex<T> x) {
   // due to subtraction of two close values. We have to get fancy
   root[0] = sqrt(r * ((std::is_same<T, float>::value && re * r < -0.98)
                           ? rsqrt_helper(im * im * r * r)
-                          : 1 + re * r)) *
+                          : max(T(0.0), 1 + re * r))) *
             root2;
   root[1] = sqrt(r * ((std::is_same<T, float>::value && re * r > 0.98)
                           ? rsqrt_helper(im * im * r * r)
-                          : 1 - re * r)) *
+                          : max(T(0.0), 1 - re * r))) *
             root2 * (im >= 0 ? -1. : 1.);
   return *(reinterpret_cast<std::complex<T>*>(&root));
 }

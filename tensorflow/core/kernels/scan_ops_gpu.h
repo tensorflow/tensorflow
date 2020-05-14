@@ -279,7 +279,13 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
         GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
                         num_blocks, block_size, 0, d.stream(), in.data(),
                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+  // HIP-CLANG has some kind of problem here with 32 threads (possibly because
+  // the warpsize is 64). Reenable when working properly
+  } else if (true) {
+#else
   } else if (ideal_block_size >= 64) {
+#endif
     const int block_size = 64;
     TF_CHECK_OK(
         GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
