@@ -414,9 +414,9 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, I32]>:$bias,
+    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
@@ -425,7 +425,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     I32Attr:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 0b1;
 }
