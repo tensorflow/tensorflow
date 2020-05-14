@@ -144,7 +144,7 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  TF_Tensor* tensor,
                                                  TF_Status* status);
 // Create a serialized tensorflow.ServerDef proto.
-TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
+TF_CAPI_EXPORT extern TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
 
 // TODO: remove this API in favor of the next one.
 TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
