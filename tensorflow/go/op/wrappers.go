@@ -17329,13 +17329,13 @@ func MatrixLogarithm(scope *Scope, input tf.Output) (output tf.Output) {
 // SparseBincountAttr is an optional argument to SparseBincount.
 type SparseBincountAttr func(optionalAttr)
 
-// SparseBincountBinaryCount sets the optional binary_count attribute to value.
+// SparseBincountBinaryOutput sets the optional binary_output attribute to value.
 //
 // value: bool; Whether the kernel should count the appearance or number of occurrences.
 // If not specified, defaults to false
-func SparseBincountBinaryCount(value bool) SparseBincountAttr {
+func SparseBincountBinaryOutput(value bool) SparseBincountAttr {
 	return func(m optionalAttr) {
-		m["binary_count"] = value
+		m["binary_output"] = value
 	}
 }
 
@@ -17434,13 +17434,13 @@ func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
 // DenseBincountAttr is an optional argument to DenseBincount.
 type DenseBincountAttr func(optionalAttr)
 
-// DenseBincountBinaryCount sets the optional binary_count attribute to value.
+// DenseBincountBinaryOutput sets the optional binary_output attribute to value.
 //
 // value: bool; Whether the kernel should count the appearance or number of occurrences.
 // If not specified, defaults to false
-func DenseBincountBinaryCount(value bool) DenseBincountAttr {
+func DenseBincountBinaryOutput(value bool) DenseBincountAttr {
 	return func(m optionalAttr) {
-		m["binary_count"] = value
+		m["binary_output"] = value
 	}
 }
 
@@ -38654,13 +38654,13 @@ func SparseTensorDenseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output,
 // RaggedBincountAttr is an optional argument to RaggedBincount.
 type RaggedBincountAttr func(optionalAttr)
 
-// RaggedBincountBinaryCount sets the optional binary_count attribute to value.
+// RaggedBincountBinaryOutput sets the optional binary_output attribute to value.
 //
 // value: bool; Whether the kernel should count the appearance or number of occurrences.
 // If not specified, defaults to false
-func RaggedBincountBinaryCount(value bool) RaggedBincountAttr {
+func RaggedBincountBinaryOutput(value bool) RaggedBincountAttr {
 	return func(m optionalAttr) {
-		m["binary_count"] = value
+		m["binary_output"] = value
 	}
 }
 
