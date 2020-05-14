@@ -370,14 +370,15 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   int64 NewChannel() { return (*next_channel_id_)++; }
 
   PartitionedHlo::PartitioningState MakePartitioningState() {
-    return PartitionedHlo::PartitioningState{
-        .b = &b_,
-        .module = module_,
-        .num_replicas = num_replicas_,
-        .partition_id = partition_id_,
-        .collective_ops_creator = collective_ops_creator_,
-        .next_channel_id = next_channel_id_,
-        .reshard_cache = &reshard_cache_};
+    PartitionedHlo::PartitioningState state;
+    state.b = &b_;
+    state.module = module_;
+    state.num_replicas = num_replicas_;
+    state.partition_id = partition_id_;
+    state.collective_ops_creator = collective_ops_creator_;
+    state.next_channel_id = next_channel_id_;
+    state.reshard_cache = &reshard_cache_;
+    return state;
   }
 
   SpmdBuilder* builder() { return &b_; }
