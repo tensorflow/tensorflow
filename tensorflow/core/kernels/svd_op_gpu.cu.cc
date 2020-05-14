@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -390,8 +391,22 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
 
     if (n == 0 || m == 0) {
-      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
-      // Therefore, we return X.
+      if (n == m || !compute_uv_ || !full_matrices_) {
+        // S, U, and V are all empty. Nothing to do.
+        done();
+        return;
+      }
+      auto device = context->eigen_device<GPUDevice>();
+      functor::EyeFunctor<GPUDevice, Scalar> eye;
+      if (m > 0) {
+        // Return a full canonical basis for the column space.
+        auto outputU_reshaped = outputU->flat_inner_dims<Scalar, 3>();
+        eye(device, outputU_reshaped);
+      } else if (n > 0) {
+        // Return a full canonical basis for the row space.
+        auto outputV_reshaped = outputV->flat_inner_dims<Scalar, 3>();
+        eye(device, outputV_reshaped);
+      }
       done();
       return;
     }

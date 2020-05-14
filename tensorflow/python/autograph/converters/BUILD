@@ -33,6 +33,7 @@ py_library(
         "logical_expressions.py",
         "return_statements.py",
         "slices.py",
+        "variables.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -204,6 +205,19 @@ py_test(
 py_test(
     name = "slices_test",
     srcs = ["slices_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":converters",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/autograph/pyct",
+    ],
+)
+
+py_test(
+    name = "variables_test",
+    srcs = ["variables_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

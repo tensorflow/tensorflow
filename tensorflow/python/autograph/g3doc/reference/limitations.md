@@ -16,6 +16,88 @@ should not be confused with TensorFlow variables.
 Key Term: A TensorFlow loop variable (or loop variable for short) refers to a
 value (typically a `tf.Tensor`) modified by a loop. See `tf.while_loop`.
 
+### Undefined and None values in TensorFlow
+
+TensorFlow does not support undefined or `None` values. All tensors must have
+a value.
+
+Example:
+
+```
+x = tf.cond(
+    tf.random.uniform(()) > 0.5,
+    lambda: tf.constant(1),
+    lambda: None)  # Error -- a Tensor cannot be None
+```
+
+The same restriction carries over in AutoGraph. If a variable is created inside
+control flow, and used after, then it must be defined before the control flow
+statement:
+
+```
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+else:
+  x = None
+tf.print(x)  # Error -- x may be None here
+```
+
+For this reason, AutoGraph forbids variables to be defined in only one branch
+of a TensorFlow conditional, if the variable is used afterwards:
+
+```
+del x
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+else:
+  pass
+tf.print(x)  # Error -- x may be undefined here
+```
+
+Note that if the variable is not used after the control flow statement, then it
+is considered local to the control flow block, and is not subject to these
+restrictions.
+
+```
+del x
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)  # Okay -- x does not need to be returned from the TF cond
+else:
+  pass
+```
+
+Similarly, variables may not be defined inside a TensorFlow loop, unless they
+are local to the loop. A variable is local to the loop if (1) it's not used
+after the loop and (2) the value from a previour iteration is not used in the
+next iteration:
+
+```
+del x
+while tf.random.uniform(()) > 0.5:  # Error -- x must be defined before the loop
+  x = tf.constant(1)
+tf.print(x)
+```
+
+```
+del x
+while tf.random.uniform(()) > 0.5:  # Okay -- x is local to the loop
+  x = tf.constant(1)
+```
+
+Avoid these limitations by defining a default value before the control flow
+statement:
+
+```
+x = tf.constant()
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+tf.print(x)  # Okay -- x is either 0 or 1
+```
+
+Note: `None` values and undefined symbols are allowed in Eager control flow,
+because Eager execution uses Python control flow, rather than TensorFlow
+control flow ops.
+
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
 Key Point: We recommend using a functional programming style, immutable Python
@@ -186,6 +268,62 @@ Note: TensorFlow control flow does not currently support arbitrary Python
 objects, but it does support basic collection objects such as `list`, `dict`,
 `tuple`, `namedtuple` and their subclasses. Design your objects as subclasses
 of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple).
+
+#### Variables closed over by lambda functions
+
+AutoGraph assumes that variables that local functions close over may be used
+anywhere in the parent function, because in general it is possible to hide a
+function call in almost any Python statement). For this reason, these variables
+are accounted within TensorFlow loops.
+
+For example, the following code correctly captures `a` in the TensorFlow loop
+variables:
+
+```
+a = 0
+def f():
+  tf.print(a)
+for i in tf.range(3):
+  a = i
+f()  # Prints 2
+```
+
+An consequence is that these variables must be defined before the loop (see
+Undefined and None values above). So the following code will raise an error,
+even if the variable is never used after the loop:
+
+```
+def f():
+  tf.print(a)
+for i in tf.range(3):  # Error -- `a` must be defined before the loop.
+  a = i
+```
+
+However, lambda functions are handled differently, for reasons of backward
+compatibility. Lambda functions are assumed to be used in the statement where
+they are used, or at least in the same block.
+
+```
+a = 0
+foo(lambda: a)  # This lambda is not expected to be called anywhere else.
+for i in tf.range(3):  # Okay -- `a` is local to the loop.
+  a = i
+```
+
+Due to that reason, the following code will not work as expected for TensorFlow
+loops.
+
+```
+a = 0
+l = lambda: tf.print(a)
+for i in tf.range(3):
+  a = i  # `a` is considered local to the loop
+l()  # Prints 0!
+```
+
+Note that none of these restrictions only apply to TensorFlow loops; Python
+loops correctly correctly handle closures in all cases.
+
 
 ### Python collections in TensorFlow control flow
 
@@ -488,69 +626,6 @@ x = tf.constant(1,)
 while tf.random.uniform(()) > 0.5:
   x = tf.constant((1, 2, 3))  # Error -- inconsistent shapes: (), (3,)
 ```
-
-### Undefined and None values in TensorFlow
-
-TensorFlow does not support undefined and `None` values. All tensors must have
-a value.
-
-Example:
-
-```
-x = tf.cond(
-    tf.random.uniform(()) > 0.5,
-    lambda: tf.constant(1),
-    lambda: None)  # Error -- a Tensor cannot be None
-```
-
-The same restriction carries over in AutoGraph, but only if the symbol is used
-after the conditional (otherwise AutoGraph avoids making it a return value
-of the `tf.cond`):
-
-```
-if tf.random.uniform(()) > 0.5:
-  x = tf.constant(1)
-else:
-  x = None
-tf.print(x)  # Error -- x may be None here
-```
-
-A related but less obvious restriction in AutoGraph forbids symbols to be
-defined in only one branch of TensorFlow control flow, if the symbol is
-used afterwards:
-
-```
-del x
-if tf.random.uniform(()) > 0.5:
-  x = tf.constant(1)
-else:
-  pass
-tf.print(x)  # Error -- x may be undefined here
-```
-
-Similarly, variables defined in a loop may not be used outside the loop, again
-if the symbol is used afterwards:
-
-```
-del x
-if tf.random.uniform(()) > 0.5:
-  x = tf.constant(1)
-tf.print(x)  # Error -- x may be undefined here
-```
-
-Avoid these limitations by defining a default value before the control flow
-statement:
-
-```
-x = tf.constant()
-if tf.random.uniform(()) > 0.5:
-  x = tf.constant(1)
-tf.print(x)  # Okay -- x is either 0 or 1
-```
-
-Note: `None` values and undefined symbols are allowed in Eager control flow,
-because Eager execution uses Python control flow, rather than TensorFlow
-control flow ops.
 
 ### Access to source code
 

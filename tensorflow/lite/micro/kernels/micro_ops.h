@@ -81,6 +81,7 @@ TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_L2_NORMALIZATION();
+TfLiteRegistration* Register_TANH();
 
 }  // namespace micro
 }  // namespace ops

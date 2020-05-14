@@ -152,10 +152,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
-  int exponent;
-  xtensa::hifimini::QuantizeMultiplier(real_multiplier,
-                                       &data->output_multiplier, &exponent);
-  data->output_shift = -exponent;
+  xtensa::hifimini::QuantizeMultiplier(
+      real_multiplier, &data->output_multiplier, &data->output_shift);
   return CalculateActivationRangeQuantized(context, activation, output,
                                            &data->output_activation_min,
                                            &data->output_activation_max);
@@ -200,8 +198,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.weights_offset = -filter->params.zero_point;
   op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data.output_multiplier;
-  // TODO(b/138810107): Figure out whether output shift should be inverted
-  op_params.output_shift = -data.output_shift;
+  op_params.output_shift = data.output_shift;
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
 

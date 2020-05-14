@@ -393,6 +393,9 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
+@deprecated('2020-10-11',
+            'Simply pass a True/False value to the `training` argument '
+            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
@@ -1157,53 +1160,6 @@ def is_placeholder(x):
       return x.op.type == 'Placeholder'
   except AttributeError:
     return False
-
-
-def freezable_variable(value, shape=None, name=None):
-  """A tensor-like object whose value can be updated only up until execution.
-
-  After creating the freezable variable, you can update its value by calling
-  `var.update_value(new_value)` (similar to a regular variable).
-  Unlike an actual variable, the value used during execution is the current
-  value at the time the execution function (`backend.function()`) was created.
-
-  This is an internal API, expected to be temporary. It is used to implement a
-  mutable `trainable` property for `BatchNormalization` layers, with a frozen
-  value after model compilation.
-
-  We don't use a plain variable in this case because we need the value used
-  in a specific model to be frozen after `compile` has been called
-  (e.g. GAN use case).
-
-  Arguments:
-    value: The initial value for the tensor-like object.
-    shape: The shape for the tensor-like object (cannot be changed).
-    name: The name for the tensor-like object.
-
-  Returns:
-    A tensor-like object with a static value that can be updated via
-    `x.update_value(new_value)`, up until creating an execution function
-    (afterwards the value is fixed).
-  """
-  graph = get_graph()
-  with graph.as_default():
-    x = array_ops.placeholder_with_default(
-        value, shape=shape, name=name)
-    x._initial_value = value
-    x._current_value = value
-
-    def update_value(new_value):
-      x._current_value = new_value
-
-    def get_value():
-      return x._current_value
-
-    x.update_value = update_value
-    x.get_value = get_value
-
-    global _FREEZABLE_VARS
-    _FREEZABLE_VARS[graph].add(x)
-  return x
 
 
 @keras_export('keras.backend.shape')

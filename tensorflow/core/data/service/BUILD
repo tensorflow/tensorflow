@@ -56,6 +56,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
+        ":data_service",
         ":grpc_util",
         ":master_proto_cc",
         ":worker_cc_grpc_proto",

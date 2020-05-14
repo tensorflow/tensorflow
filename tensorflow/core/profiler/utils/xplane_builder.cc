@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -54,7 +62,7 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
   return metadata;
 }
 
-XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(string&& name) {
+XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   XEventMetadata*& metadata = event_metadata_by_name_[name];
   if (metadata == nullptr) {
     metadata =

@@ -85,6 +85,7 @@ tf_py_test(
     deps = [
         ":image",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

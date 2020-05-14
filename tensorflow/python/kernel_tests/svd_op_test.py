@@ -93,7 +93,8 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
                   full_matrices_):
 
   def CompareSingularValues(self, x, y, tol):
-    self.assertAllClose(x, y, atol=(x[0] + y[0]) * tol)
+    atol = (x[0] + y[0]) * tol if len(x) else tol
+    self.assertAllClose(x, y, atol=atol)
 
   def CompareSingularVectors(self, x, y, rank, tol):
     # We only compare the first 'rank' singular vectors since the
@@ -374,8 +375,8 @@ if __name__ == "__main__":
   for compute_uv in False, True:
     for full_matrices in False, True:
       for dtype in dtypes_to_test:
-        for rows in 1, 2, 5, 10, 32, 100:
-          for cols in 1, 2, 5, 10, 32, 100:
+        for rows in 0, 1, 2, 5, 10, 32, 100:
+          for cols in 0, 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
               # TF2 does not support placeholders under eager so we skip it

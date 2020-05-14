@@ -41,6 +41,7 @@ tensorflow::ProfileRequest MakeProfileRequest(
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
   request.add_tools("tensorflow_stats");
+  request.add_tools("memory_profile");
   request.set_host_name(host);
   request.set_repository_root(logdir);
   request.set_session_id(session_id);

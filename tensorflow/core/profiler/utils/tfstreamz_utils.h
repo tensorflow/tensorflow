@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TFSTREAMZ_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TFSTREAMZ_UTILS_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -90,6 +91,18 @@ class ShapedBuffer {
   void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
     CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
     buffers_ = std::move(buffers);
+    buffers_.replace_shape_ptr(&on_device_shape_);
+  }
+
+  // Reset the shape of this shaped buffer and underlying buffer structure.
+  //
+  // Precondition: EqualStructure(this->on_device_shape_, on_device_shape).
+  void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {
+    CHECK(ShapeUtil::EqualStructure(on_device_shape, on_device_shape_))
+        << "Structures are not the same. new: " << on_device_shape
+        << ", old: " << on_device_shape_;
+    on_host_shape_ = on_host_shape;
+    on_device_shape_ = on_device_shape;
     buffers_.replace_shape_ptr(&on_device_shape_);
   }
 

@@ -2231,7 +2231,7 @@ class FeatureColumn(object):
     In CPython, `__lt__` must be defined for all objects in the
     sequence being sorted.
 
-    If any objects in teh sequence being sorted do not have an `__lt__` method
+    If any objects in the sequence being sorted do not have an `__lt__` method
     compatible with feature column objects (such as strings), then CPython will
     fall back to using the `__gt__` method below.
     https://docs.python.org/3/library/stdtypes.html#list.sort

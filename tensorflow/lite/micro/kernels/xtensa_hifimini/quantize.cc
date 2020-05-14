@@ -108,22 +108,24 @@ struct OpData {
   int scale_multiplier = 0;
 };
 
-// This size will work for both the hotword (1) and ambient music (1):
-constexpr int kMaxOpDataSize = 2;
-static int op_data_counter = 0;
-static OpData kStaticOpData[kMaxOpDataSize];
-
-void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  auto* op_data = static_cast<OpData*>(node->user_data);
+
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* input = GetInput(context, node, 0);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
-  // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[op_data_counter++];
-  node->user_data = op_data;
-
+  // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
   op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
       0, input->params.scale / output->params.scale);
 
@@ -131,7 +133,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  TFLITE_DCHECK(node->user_data != nullptr);
+  auto* op_data = static_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -159,8 +162,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/quantize::Free,
+  static TfLiteRegistration r = {/*init=*/quantize::Init,
+                                 /*free=*/nullptr,
                                  /*prepare=*/quantize::Prepare,
                                  /*invoke=*/quantize::Eval,
                                  /*profiling_string=*/nullptr,

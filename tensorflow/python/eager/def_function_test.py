@@ -368,13 +368,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
 
-    with self.assertRaisesRegexp(
-        ValueError, 'either zero or all names have to be specified'):
-      conc = g.get_concrete_function([
-          tensor_spec.TensorSpec(None, dtypes.float32, 'z'),
-          tensor_spec.TensorSpec(None, dtypes.float32),
-      ])
-
   def test_error_inner_capture(self):
 
     @def_function.function

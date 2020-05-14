@@ -38,7 +38,8 @@ namespace lite {
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
-    const std::unordered_set<std::string>& operator_names, bool fully_quantize,
+    const std::unordered_set<std::string>& operator_names,
+    bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter) {
   // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`
@@ -74,6 +75,7 @@ TfLiteStatus QuantizeModel(
   TFL::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tensorflow::DT_QINT8;
   quant_specs.post_training_quantization = true;
+  quant_specs.disable_per_channel = disable_per_channel;
 
   bool emit_adaptor = false;
   auto input_tf_type = tflite::TflTypeToTfType(input_type);

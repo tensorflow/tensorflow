@@ -31,9 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LoopOps/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -59,34 +60,6 @@ namespace mlir_gpu {
 namespace {
 
 using ::mlir::xla_lhlo::FusionOp;
-
-// Following are some small transformations that are required to clean up code
-// after lowering from linalg to loops.
-
-// A simple pass that applies lowering of HLO to LHLO only within LHLO ops that
-// contain regions with HLO ops, e.g. FusionOp, ReduceOp, SelectAndScatterOp.
-// This is needed, as these ops are not closed from above and hence nested pass
-// managers can not be applied.
-struct NestedHloRegionsConverter
-    : public mlir::PassWrapper<NestedHloRegionsConverter,
-                               ::mlir::FunctionPass> {
-  void runOnFunction() override {
-    auto& ctx = getContext();
-    mlir::OwningRewritePatternList patterns;
-    mlir::ConversionTarget target(ctx);
-    target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
-    ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
-
-    getFunction().walk([&](mlir::Operation* op) {
-      if (op->getNumRegions() == 0) {
-        return;
-      }
-      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
-        signalPassFailure();
-      }
-    });
-  }
-};
 
 // Replaces a FusionOp by the operations contained in its region.
 struct FusionOpRemover
@@ -132,7 +105,7 @@ struct StoreForwardingPass
     // No store operation found. Continue search outside of the parallel
     // loop if block is in a parallel loop.
     if (auto parallelOp =
-            llvm::dyn_cast<mlir::loop::ParallelOp>(block->getParentOp())) {
+            llvm::dyn_cast<mlir::scf::ParallelOp>(block->getParentOp())) {
       return findStore(parallelOp.getOperation(), matches);
     }
     return {};
@@ -388,8 +361,8 @@ struct MapParallelLoops
 struct FuseInnerParallelLoops
     : public mlir::PassWrapper<FuseInnerParallelLoops, mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](mlir::loop::ParallelOp op) {
-      mlir::loop::naivelyFuseParallelOps(op.region());
+    getFunction().walk([](mlir::scf::ParallelOp op) {
+      mlir::scf::naivelyFuseParallelOps(op.region());
     });
   }
 };
@@ -401,7 +374,7 @@ struct ParallelLoopCollapsingToFirstDim
   void runOnOperation() override {
     mlir::Operation* module = getOperation();
 
-    module->walk([&](mlir::loop::ParallelOp op) {
+    module->walk([&](mlir::scf::ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       std::vector<unsigned> combinedLoops;
       combinedLoops.reserve(num_loops);
@@ -436,8 +409,10 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
     tiling_for_unrolling.append(tile_sizes.begin(), tile_sizes.end());
   }
 
-  // First, lower bodies of LHLO operations that contain HLO ops.
-  pm.addPass(absl::make_unique<NestedHloRegionsConverter>());
+  // Legalize from HLO to LHLO.
+  pm.addPass(::mlir::xla_hlo::createLegalizeToLhloPass());
+  // Moving `AllocOp`s and inserting missing `DeallocOp`s
+  pm.addPass(::mlir::createBufferPlacementPass());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary LHLO copies.

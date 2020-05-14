@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 
+#include <algorithm>
 #include <stack>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -52,6 +57,21 @@ std::pair<TfFunctionExecutionMode, TfFunctionCompiler> Decode(
              << std::endl;
   return {INVALID_MODE, INVALID_COMPILER};
   DCHECK(false);
+}
+
+double ComputeExpensiveCallPercent(const TfFunction& tf_function) {
+  // Computes the expensiveness in terms of time (rather than count).
+  uint64 total_call_time_ps = 0;
+  uint64 expensive_call_time_ps = 0;
+  for (const auto& mode_metrics : tf_function.metrics()) {
+    const auto mode = mode_metrics.first;
+    const auto& metrics = mode_metrics.second;
+    total_call_time_ps += metrics.self_time_ps();
+    if (mode == TRACED_MODE || mode == EAGER_MODE) {
+      expensive_call_time_ps += metrics.self_time_ps();
+    }
+  }
+  return SafeDivide(100.0 * expensive_call_time_ps, total_call_time_ps);
 }
 
 // Each invocation of a tf-function creates an ActivationRecord.
@@ -133,6 +153,7 @@ void CombineTfFunction(const TfFunction& src, TfFunction* dst) {
       CombineTfFunctionMetrics(src_metrics, dst_metrics);
     }
   }
+  dst->set_expensive_call_percent(ComputeExpensiveCallPercent(*dst));
 }
 
 // Execution history of all tf-functions invoked.
@@ -145,7 +166,7 @@ class TfFunctionExecutions {
       int64 tracing_count = 0;
       event.ForEachStat([&mode, &tracing_count](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kTfFunctionCall)
-          mode = std::string(stat.StrValue());
+          mode = std::string(stat.StrOrRefValue());
         if (stat.Type() == StatType::kTfFunctionTracingCount)
           tracing_count = stat.IntValue();
       });
@@ -210,6 +231,10 @@ class TfFunctionExecutions {
       metrics->set_count(metrics->count() + 1);
       metrics->set_self_time_ps(metrics->self_time_ps() + self_time_ps);
     }
+    for (auto& name_fun : *result.mutable_tf_functions()) {
+      TfFunction& fun = name_fun.second;
+      fun.set_expensive_call_percent(ComputeExpensiveCallPercent(fun));
+    }
     return result;
   }
 
@@ -243,9 +268,9 @@ class TfFunctionExecutions {
 
 }  // namespace
 
-std::string DebugString(const TfFunctionDb tf_function_db) {
+std::string DebugString(const TfFunctionDb& tf_function_db) {
   std::string str;
-  ::tensorflow::protobuf::TextFormat::PrintToString(tf_function_db, &str);
+  protobuf::TextFormat::PrintToString(tf_function_db, &str);
   return str;
 }
 

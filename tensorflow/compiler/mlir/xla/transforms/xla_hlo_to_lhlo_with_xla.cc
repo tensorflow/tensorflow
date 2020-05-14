@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/xla/transforms/xla_hlo_to_lhlo_with_xla.h"
+
 #include <memory>
 #include <tuple>
 
@@ -72,15 +74,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 // dialect.
 class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
  public:
-  // Populate the MLIR `module` with the computation from the `hlo_module` using
-  // the provided buffer `assignment`. The returned `Status` indicates success
-  // or failure in the conversion.
-  static Status EmitModule(const BufferAssignment& assignment,
-                           const HloModule& hlo_module, ModuleOp module) {
-    return LhloDialectEmitter(assignment, hlo_module, module).Run();
-  }
-
- private:
   // Main entry point of the processing: after this call the MLIR ModuleOp is
   // populated with the computation from the HloModule. The returned `Status`
   // indicates success or failure in the conversion.
@@ -94,6 +87,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
+ private:
   Status DefaultAction(HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
@@ -257,17 +251,15 @@ Value LhloDialectEmitter::GetOrCreateView(
 
   // Create the view for this slice size, possible with an affine map to model
   // the offset. The result is cached in the slices_ map.
-  SmallVector<AffineMap, 1> offset_map;
-  if (slice.offset()) {
-    offset_map.push_back(AffineMap::get(
-        /*dimCount=*/1, /*symbolCount=*/0,
-        {getAffineDimExpr(0, builder_.getContext()) + slice.offset()},
-        builder_.getContext()));
-  }
-  auto slice_type = MemRefType::get({slice.size()}, i8_type_, offset_map);
+  // The std.view result type does not carry the static offset: this is not
+  // useful information. Rather, the view op must have the static offset.
+  auto slice_type = MemRefType::get({slice.size()}, i8_type_, {});
 
-  auto slice_view = builder_.create<ViewOp>(
-      alloc_buffer.getLoc(), slice_type, alloc_buffer, /*operands=*/llvm::None);
+  Value byte_shift =
+      builder_.create<ConstantIndexOp>(alloc_buffer.getLoc(), slice.offset());
+  auto slice_view =
+      builder_.create<ViewOp>(alloc_buffer.getLoc(), slice_type, alloc_buffer,
+                              byte_shift, /*sizes=*/ArrayRef<Value>{});
   slices_.insert({slice_key, slice_view});
   return slice_view;
 }
@@ -283,9 +275,12 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateView(
   Value slice_view = GetOrCreateView(out_slice);
   TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
                                          target_shape, builder_));
+  Value byte_shift =
+      builder_.create<ConstantIndexOp>(builder_.getUnknownLoc(), 0);
   if (slice_view.getType() != out_type)
-    slice_view = builder_.create<ViewOp>(builder_.getUnknownLoc(), out_type,
-                                         slice_view, llvm::None);
+    slice_view =
+        builder_.create<ViewOp>(builder_.getUnknownLoc(), out_type, slice_view,
+                                byte_shift, /*sizes=*/ArrayRef<Value>{});
   return slice_view;
 }
 
@@ -414,8 +409,7 @@ Status ConvertModule(ModuleOp module, StringRef platform_name) {
   module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      LhloDialectEmitter::EmitModule(*assignment, *optimized_hlo_module,
-                                     module),
+      HloToLhloModule(*assignment, *optimized_hlo_module, module),
       "converting HLO to LHLO");
 
   return Status::OK();
@@ -450,6 +444,11 @@ class XlaHloToLhloPass
 
 std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
   return std::make_unique<XlaHloToLhloPass>();
+}
+
+Status HloToLhloModule(const BufferAssignment& assignment,
+                       const HloModule& hlo_module, ModuleOp module) {
+  return LhloDialectEmitter(assignment, hlo_module, module).Run();
 }
 
 static PassRegistration<XlaHloToLhloPass> registration(

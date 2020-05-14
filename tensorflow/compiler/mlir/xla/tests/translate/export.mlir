@@ -294,6 +294,12 @@ func @main() {
   // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
   %cst_8 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
 
+  // CHECK: c64[] constant((1, 0))
+  %cst_9 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+
+  // CHECK: c128[] constant((1, 0))
+  %cst_10 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+
   return
 }
 
@@ -1038,3 +1044,16 @@ func @main(%arg0: tensor<4xui8>) -> (tensor<4xui8>) {
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = u8[4] parameter(0)
 //  ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+  %0 = "xla_hlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  return %1 : tensor<*xi32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = s32[4] parameter(0)
+//  ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])

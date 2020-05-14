@@ -45,12 +45,27 @@ void ArgOp::Compute(OpKernelContext* ctx) {
   auto frame = ctx->call_frame();
   OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
   const Tensor* val;
-  OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-  OP_REQUIRES(ctx, val->dtype() == dtype_,
-              errors::InvalidArgument("Type mismatch: actual ",
-                                      DataTypeString(val->dtype()),
-                                      " vs. expect ", DataTypeString(dtype_)));
-  ctx->set_output(0, *val);
+
+  auto validate_type = [this](const Tensor& val) {
+    if (val.dtype() == dtype_) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Type mismatch: actual ",
+                                     DataTypeString(val.dtype()),
+                                     " vs. expect ", DataTypeString(dtype_));
+    }
+  };
+
+  if (frame->CanConsumeArg(index_)) {
+    Tensor val;
+    frame->ConsumeArg(index_, &val);
+    OP_REQUIRES_OK(ctx, validate_type(val));
+    ctx->set_output(0, std::move(val));
+  } else {
+    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
+    OP_REQUIRES_OK(ctx, validate_type(*val));
+    ctx->set_output(0, *val);
+  }
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {

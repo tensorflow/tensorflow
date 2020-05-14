@@ -37,11 +37,14 @@ from tensorflow.python.platform import test
 PROTOCOL = "grpc"
 
 
-def _make_distributed_dataset(dataset, service):
+def _make_distributed_dataset(dataset, service, job_name=None):
   """Creates a distributed dataset with a short task refresh interval."""
   return dataset.apply(
       data_service_ops._distribute(
-          "parallel_epochs", service, task_refresh_interval_hint_ms=20))
+          "parallel_epochs",
+          service,
+          job_name=job_name,
+          task_refresh_interval_hint_ms=20))
 
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -213,6 +216,21 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testMaxOutstandingRequests(self):
+    num_elements = 10
+    num_workers = 3
+    service = self.create_cluster(num_workers)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops._distribute(
+            "parallel_epochs",
+            service,
+            max_outstanding_requests=1,
+            task_refresh_interval_hint_ms=20))
+    self.assertCountEqual(num_workers * list(range(num_elements)),
+                          self.getDatasetOutput(ds))
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):
     num_workers = 3
     num_elements = 10
@@ -232,6 +250,72 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     result = list(f().numpy())
     self.assertCountEqual(num_workers * list(range(num_elements)), result)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSharedJobName(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = _make_distributed_dataset(ds, service, job_name="job_name")
+    ds2 = _make_distributed_dataset(ds, service, job_name="job_name")
+    iter1 = iter(ds1)
+    iter2 = iter(ds2)
+    results = []
+    for _ in range(3):
+      results.append(next(iter1).numpy())
+      results.append(next(iter2).numpy())
+    for elem in iter1:
+      results.append(elem.numpy())
+    for elem in iter2:
+      results.append(elem.numpy())
+    self.assertCountEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDifferentJobNames(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = _make_distributed_dataset(ds, service, job_name="job_name1")
+    ds2 = _make_distributed_dataset(ds, service, job_name="job_name2")
+    self.assertDatasetProduces(ds1, list(range(num_elements)))
+    self.assertDatasetProduces(ds2, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSharedJobNameMultiIteration(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = _make_distributed_dataset(ds, service, job_name="job_name")
+    ds2 = _make_distributed_dataset(ds, service, job_name="job_name")
+    # iteration 1
+    self.assertDatasetProduces(ds1, list(range(num_elements)))
+    self.assertDatasetProduces(ds2, [])
+    # iteration 2
+    self.assertDatasetProduces(ds2, list(range(num_elements)))
+    self.assertDatasetProduces(ds1, [])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSharedJobNameRepeat(self):
+    num_elements = 10
+    num_repetitions = 3
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = _make_distributed_dataset(ds, service, job_name="job_name")
+    ds1 = ds1.repeat(num_repetitions)
+    ds2 = _make_distributed_dataset(ds, service, job_name="job_name")
+    ds2 = ds2.repeat(num_repetitions)
+    results = []
+    iter1 = iter(ds1)
+    iter2 = iter(ds2)
+    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+      results.append(next(iter1).numpy())
+    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+      results.append(next(iter2).numpy())
+    for elem in iter1:
+      results.append(elem.numpy())
+    for elem in iter2:
+      results.append(elem.numpy())
+    self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
   def run_stateful(self, external_state_policy):
     num_elements = 10

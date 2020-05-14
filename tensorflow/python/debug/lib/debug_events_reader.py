@@ -491,7 +491,13 @@ class DebuggedGraph(object):
     """
     return self._op_consumers[src_op_name]
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    return {
+        "name": self.name,
+        "graph_id": self.graph_id,
+        "outer_graph_id": self._outer_graph_id,
+        "inner_graph_ids": self._inner_graph_ids,
+    }
 
 
 class DebuggedDevice(object):
@@ -517,7 +523,11 @@ class DebuggedDevice(object):
   def device_id(self):
     return self._device_id
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    return {
+        "device_name": self._device_name,
+        "device_id": self._device_id,
+    }
 
 
 class GraphOpCreationDigest(BaseDigest):

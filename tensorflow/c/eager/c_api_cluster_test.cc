@@ -50,6 +50,13 @@ tensorflow::ServerDef GetServerDef(int num_tasks) {
   return GetServerDef("localhost", num_tasks);
 }
 
+void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index) {
+  tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
+  int port = tensorflow::testing::PickUnusedPortOrDie();
+  job_def->mutable_tasks()->at(task_index) =
+      tensorflow::strings::StrCat("localhost:", port);
+}
+
 void CheckTFE_TensorHandleHasFloats(TFE_TensorHandle* handle,
                                     const std::vector<float>& expected_values) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -98,6 +105,22 @@ void CheckRemoteMatMulExecutesOK(TFE_Context* ctx,
   TFE_ExecutorWaitForAllPendingNodes(executor, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteExecutor(executor);
+  TF_DeleteStatus(status);
+}
+
+// Read the value of variable `var` and save it into `out_value`.
+void ReadVariable(TFE_Context* ctx, TFE_TensorHandle* var,
+                  TFE_TensorHandle** out_value) {
+  TF_Status* status = TF_NewStatus();
+  TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpAddInput(op, var, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  int num_retvals = 1;
+  TFE_Execute(op, out_value, &num_retvals, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(op);
   TF_DeleteStatus(status);
 }
 
@@ -243,6 +266,102 @@ TEST(CAPI, RemoteExecuteUpdateServerDefAsync) {
   TestRemoteExecuteUpdateServerDef(true);
 }
 
+void TestRemoteExecuteUpdateServerDefResourceAccess(bool async) {
+  tensorflow::ServerDef server_def = GetServerDef(2);
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
+  ASSERT_TRUE(worker_server->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  const char dev0_name[] = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const char dev1_name[] = "/job:localhost/replica:0/task:1/device:CPU:0";
+
+  TFE_TensorHandle* var_handle0 = TestVariable(ctx, 1.0, dev0_name);
+  EXPECT_NE(var_handle0, nullptr);
+  TFE_TensorHandle* var_handle1 = TestVariable(ctx, 2.0, dev1_name);
+  EXPECT_NE(var_handle1, nullptr);
+
+  TFE_TensorHandle* value_handle = nullptr;
+  ReadVariable(ctx, var_handle1, &value_handle);
+  CheckTFE_TensorHandleHasFloats(value_handle, {2});
+  TFE_DeleteTensorHandle(value_handle);
+
+  // Start a new worker to replace task:1
+  ReplaceTaskInServerDef(&server_def, 1);
+  server_def.set_task_index(1);
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
+  worker_server.release();
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
+  ASSERT_TRUE(worker_server->Start().ok());
+
+  // Update server def to replace the remote device with the device info on the
+  // new worker (different incarnation ID).
+  server_def.set_task_index(0);
+  string serialized_update = server_def.SerializeAsString();
+  TFE_ContextUpdateServerDef(ctx, 0, serialized_update.data(),
+                             serialized_update.size(), status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // The device of var_handle0 is local device which is the same before and
+  // after cluster update. Remove resource with valid device should succeed.
+  TFE_Op* op = TFE_NewOp(ctx, "DestroyResourceOp", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, var_handle0, status);
+  TFE_OpSetDevice(op, dev0_name, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  int num_retvals = 0;
+  TFE_Execute(op, nullptr, &num_retvals, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(op);
+
+  // The device of var_handle1 is remote device, which was replaced during
+  // cluster update. Removing resource with invalid device should fail
+  // gracefully (i.e., with error status) instead of crashing with segfaults.
+  op = TFE_NewOp(ctx, "DestroyResourceOp", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, var_handle1, status);
+  TFE_OpSetDevice(op, dev1_name, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  num_retvals = 0;
+  TFE_Execute(op, nullptr, &num_retvals, status);
+  EXPECT_NE(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(op);
+
+  TFE_DeleteTensorHandle(var_handle0);
+  TFE_DeleteTensorHandle(var_handle1);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
+  worker_server.release();
+}
+
+TEST(CAPI, TestRemoteExecuteUpdateServerDefResourceAccess) {
+  TestRemoteExecuteUpdateServerDefResourceAccess(false);
+}
+
+TEST(CAPI, TestRemoteExecuteUpdateServerDefResourceAccessAsync) {
+  TestRemoteExecuteUpdateServerDefResourceAccess(true);
+}
+
 void TestRemoteExecuteUpdateServerDefWithFailures(bool async) {
   // Fail fast on GetStatus requests so we can get errors instead of timeout
   // when updating cluster with non-exsitent worker
@@ -282,6 +401,7 @@ void TestRemoteExecuteUpdateServerDefWithFailures(bool async) {
   int port = tensorflow::testing::PickUnusedPortOrDie();
   job_def->mutable_tasks()->insert(
       {2, tensorflow::strings::StrCat("localhost:", port)});
+  server_def.set_task_index(0);
   string serialized_update = server_def.SerializeAsString();
   TFE_ContextUpdateServerDef(ctx, 0, serialized_update.data(),
                              serialized_update.size(), status);
