@@ -430,6 +430,7 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
 Attribute ComputeOutputComponent(const ValuePort& value_port,
                                  ValueQueryFn values) {
   LLVM_DEBUG(value_port.print(llvm::errs() << "\nComputing output for "));
+  if (auto known = values(value_port)) return known;
 
   auto op = value_port.producer.dyn_cast<Operation*>();
   if (!op) return nullptr;
@@ -454,6 +455,7 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     ValuePort op_port(op->getOperand(port[1]));
     return values(op_port);
   }
+
   return nullptr;
 }
 
@@ -475,8 +477,11 @@ class ShapeInference {
   }
 
   Attribute ComputeOutputComponent(const ValuePort& value_port) {
-    return ::mlir::TF::ComputeOutputComponent(
+    if (auto known_attr = results_[value_port]) return known_attr;
+    auto attr = ::mlir::TF::ComputeOutputComponent(
         value_port, [this](const ValuePort& port) { return results_[port]; });
+    RecordValue(value_port, attr);
+    return attr;
   }
 
   // Returns ShapeHandle if the op result could be computed as shape.
@@ -520,19 +525,35 @@ class ShapeInference {
   LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                     int64_t max_iteration);
 
+  // Propagates any constant operand of call_op to the called function body's
+  // corresponding argument if the callee has only one use.
+  //
+  // TODO(b/154065712): Move this to a more general inter-procedural constant
+  // folding pass.
+  void PropagateConstantToCallee(CallOpInterface call_op,
+                                 SymbolRefAttr callee_sym, ModuleOp module);
+
+  // Propagates any constant return value of the callee function to the call
+  // op's corresponding result.
+  void PropagateConstantFromCallee(CallOpInterface call_op,
+                                   SymbolRefAttr callee_sym, ModuleOp module);
+
+  // Tries to compute the result of folding the op. This doesn't actually
+  // perform constant folding, it is just computes the equivalent constants.
+  // Returns whether it was able to compute constant values.
+  LogicalResult TryToFold(Operation* op);
+
  private:
   // Mapping between ValuePort (which corresponds to an OpResult or smaller,
   // e.g., first element of OpResult produded) to an Attribute if the ValuePort
   // corresponds to a constant value.
   ValuePortResultMap results_;
   int64_t graph_version_;
-  MLIRContext* context_;
   Dialect* tf_dialect_;
 };
 
 ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context)
     : graph_version_(graph_version) {
-  context_ = context;
   tf_dialect_ = context->getRegisteredDialect<TensorFlowDialect>();
 }
 
@@ -581,7 +602,6 @@ ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
       auto ret = ComputeOutputComponent(front);
       if (!ret) continue;
 
-      RecordValue(front, ret);
       LLVM_DEBUG(ret.print(llvm::dbgs() << "\ncomputed result = "));
 
       // If worklist is empty, then this is the root query op.
@@ -686,10 +706,14 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     size_t index = it.index();
 
     // If the operand is constant, then convert it to Tensor.
-    ElementsAttr attr;
-    if (matchPattern(operand, m_Constant(&attr))) {
+    ValuePort vp(operand);
+    Attribute attr = ComputeOutputComponent(vp);
+    if (!attr && matchPattern(operand, m_Constant(&attr)))
+      RecordValue(vp, attr);
+    if (attr) {
       tensorflow::Tensor* input_tensor = &tensors[index];
-      auto status = tensorflow::ConvertToTensor(attr, input_tensor);
+      auto status =
+          tensorflow::ConvertToTensor(attr.cast<ElementsAttr>(), input_tensor);
       if (status.ok()) {
         input_tensors[index] = input_tensor;
       } else {
@@ -865,13 +889,9 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
   return success(all_succeeded);
 }
 
-// If the callee has only one use, propagates any constant operand of call_op to
-// the called function body's corresponding argument.
-//
-// TODO(b/154065712): Move this to a more general inter-procedural constant
-// folding pass.
-void PropagateConstantToCallee(CallOpInterface call_op,
-                               SymbolRefAttr callee_sym, ModuleOp module) {
+void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
+                                               SymbolRefAttr callee_sym,
+                                               ModuleOp module) {
   auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
@@ -879,31 +899,29 @@ void PropagateConstantToCallee(CallOpInterface call_op,
   Operation* op = call_op.getOperation();
   if (num_uses == 1) {
     // If this is the only caller, and an operand is a constant, propagate
-    // the constant inside the function.
+    // the constant value inside the function.
     for (auto arg : func.getArguments()) {
-      auto operand = op->getOperand(arg.getArgNumber()).getDefiningOp();
-      if (isa_and_nonnull<TF::ConstOp>(operand)) {
-        arg.replaceAllUsesWith(builder.clone(*operand)->getResult(0));
-      }
+      auto operand = op->getOperand(arg.getArgNumber());
+      if (auto known_constant = ComputeOutputComponent(ValuePort(operand)))
+        RecordValue(ValuePort(arg), known_constant);
     }
   }
 }
 
-// Propagates any constant return value of the callee function to the call op's
-// corresponding result.
-void PropagateConstantFromCallee(CallOpInterface call_op,
-                                 SymbolRefAttr callee_sym, ModuleOp module) {
+void ShapeInference::PropagateConstantFromCallee(CallOpInterface call_op,
+                                                 SymbolRefAttr callee_sym,
+                                                 ModuleOp module) {
   auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
-  // If the return value is a constant, replace the call result with a constant.
+  // If the return value is a constant, use the constant as the value of
+  // the call return.
   Operation* op = call_op.getOperation();
   OpBuilder builder(op);
   builder.setInsertionPointAfter(op);
   for (auto retval :
        llvm::enumerate(func.front().getTerminator()->getOperands())) {
-    auto retval_op = retval.value().getDefiningOp();
-    if (isa_and_nonnull<TF::ConstOp>(retval_op)) {
-      op->getResult(retval.index())
-          .replaceAllUsesWith(builder.clone(*retval_op)->getResult(0));
+    ValuePort vp(retval.value());
+    if (auto known_constant = ComputeOutputComponent(vp)) {
+      RecordValue(ValuePort(op->getResult(retval.index())), known_constant);
     }
   }
 }
@@ -938,10 +956,68 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
   return success();
 }
 
+LogicalResult ShapeInference::TryToFold(Operation* op) {
+  // If any output result is known, then the op probably has been computed
+  // before.
+  if (op->getNumResults() > 0 && results_[ValuePort(op->getResult(0))])
+    return success();
+
+  SmallVector<Attribute, 8> constant_operands(op->getNumOperands());
+  SmallVector<OpFoldResult, 8> fold_results;
+
+  // Check to see if any operands to the operation is constant and whether
+  // the operation knows how to constant fold itself.
+  bool some_unknown = false;
+  for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
+    if (!(constant_operands[i] =
+              ComputeOutputComponent(ValuePort(op->getOperand(i)))))
+      some_unknown = true;
+  }
+
+  // Attempt to constant fold the operation.
+  auto* abstract_op = op->getAbstractOperation();
+  if (abstract_op) {
+    if (failed(abstract_op->foldHook(op, constant_operands, fold_results)))
+      return failure();
+  } else {
+    Dialect* dialect = op->getDialect();
+    if (!dialect) return failure();
+    // Only attempt TF dialect fallback if there are no unknown operands.
+    if (some_unknown && dialect == tf_dialect_) return failure();
+    SmallVector<Attribute, 8> constants;
+    if (failed(dialect->constantFoldHook(op, constant_operands, constants)))
+      return failure();
+    fold_results.assign(constants.begin(), constants.end());
+  }
+
+  for (auto result : zip(op->getResults(), fold_results)) {
+    auto fold_result = std::get<1>(result);
+    Attribute attr = nullptr;
+    if ((attr = fold_result.dyn_cast<Attribute>())) {
+      RecordValue(ValuePort(std::get<0>(result)), attr);
+    } else {
+      auto value = fold_result.get<Value>();
+      if ((attr = ComputeOutputComponent(ValuePort(value))))
+        RecordValue(ValuePort(std::get<0>(result)), attr);
+    }
+
+    if (ElementsAttr eattr = attr.dyn_cast_or_null<ElementsAttr>()) {
+      if (std::get<0>(result).getType() == eattr.getType()) continue;
+
+      // Inserts a cast back to the original type if any user is not in the
+      // TF dialect.
+      Type old_type = std::get<0>(result).getType();
+      std::get<0>(result).setType(eattr.getType());
+      AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result), tf_dialect_,
+                                         old_type);
+    }
+  }
+
+  return success();
+}
+
 LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
                                                       int64_t max_iteration) {
-  // An operation folder that is used to attempt folding before inference._
-  OperationFolder folder(context_);
   bool changed = true;
 
   // TODO(aminim): we could have a more efficient traversal by guiding the
@@ -955,9 +1031,7 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
     region->walk([&](Operation* op) {
       if (auto infer_ti = dyn_cast<InferTypeOpInterface>(op)) {
         changed |= RefineWithInferTypeOpInterface(infer_ti, tf_dialect_);
-        // TODO(jpienaar): Debug why we can't just return here. We end up with
-        // additional constant due to the propagation of constant into attached
-        // function if we return already.
+        return;
       }
 
       if (op->getDialect() != tf_dialect_) {
@@ -965,8 +1039,9 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
         return;
       }
 
-      // Before attempting inference, just try to fold the operation.
-      if (succeeded(folder.tryToFold(op))) return;
+      // Before attempting inference, just try to compute the folded
+      // value/shape.
+      if (succeeded(TryToFold(op))) return;
 
       // Best-effort shape inference in attached functions. Do not return
       // failure even if it doesn't get to fixed point.

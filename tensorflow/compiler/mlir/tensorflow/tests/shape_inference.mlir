@@ -3,8 +3,8 @@
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
   func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
- // CHECK-NOT: tf.Cast
- // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+ // CHECK: %[[RESULT:.*]] = "tf.AddV2"
+ // CHECK-SAME: (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
  // CHECK: return %[[RESULT]] : tensor<1xi32>
     %0 = "tf.Cast"(%arg0) : (tensor<1xi32>) -> tensor<*xi32>
     %1 = "tf.Cast"(%arg1) : (tensor<1xi32>) -> tensor<*xi32>
@@ -60,8 +60,8 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: func @simple_folding
   func @simple_folding(%arg0: tensor<1x1x1x1xi32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32> {
-// CHECK: %[[CST:.*]] = "tf.Const"{{.*}} {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
-// CHECK: %[[CONV:.*]] = "tf.Conv2DBackpropInput"(%[[CST]]
+// CHECK: %[[SHAPE:.*]] = "tf.Shape"
+// CHECK: %[[CONV:.*]] = "tf.Conv2DBackpropInput"(%[[SHAPE]]
 // CHECK-SAME: (tensor<4xi32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
 // CHECK: return %[[CONV]] : tensor<1x1x1x1xf32>
     %0 = "tf.Shape"(%arg0) : (tensor<1x1x1x1xi32>) -> tensor<4xi32>
@@ -300,13 +300,6 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %0 : tensor<*xi32>
   }
 
-  // CHECK-LABEL: func @fold_cast
-  func @fold_cast(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    // CHECK-NOT: Cast
-    %0 = "tf.Cast"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
-    return %0 : tensor<*xf32>
-  }
-
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
   func @while_variant(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant> {
@@ -362,8 +355,6 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @partitioned_call_func_const
   func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-    // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
-    // CHECK: return %[[CONST]]
     return %arg0 : tensor<2xi32>
   }
 
@@ -409,5 +400,19 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     // CHECK: -> tensor<1x512xf32>
     %40 = "tf.Reshape"(%39, %19) {T = f32, Tshape = i32, device = ""} : (tensor<1x4x4x32xf32>, tensor<2xi32>) -> tensor<?x?xf32>
    return
+  }
+
+  // CHECK-LABEL: const_fold
+  func @const_fold() -> () {
+    // CHECK: tf.Const
+    // CHECK-SAME: () -> tensor<4xi32>
+    %0 = "tf.Const"() {value = dense<[200, 26, 26, 32]> : tensor<4xi32>} : () -> tensor<*xi32>
+    // CHECK: tf.Const
+    // CHECK-SAME: () -> tensor<4xi32>
+    %1 = "tf.Const"() {value = dense<[200, 26, 26, 32]> : tensor<4xi32>} : () -> tensor<*xi32>
+    // CHECK: tf.Add
+    // CHECK-SAME: (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+    %2 = "tf.Add"(%0, %1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    return
   }
 }
