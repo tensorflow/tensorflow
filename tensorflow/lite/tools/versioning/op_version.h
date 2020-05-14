@@ -37,6 +37,9 @@ typedef struct {
     struct {
       bool keep_num_dims;
       FullyConnectedOptionsWeightsFormat weights_format;
+      // TODO(b/156530611): Make this global when more ops support sparse
+      // computation.
+      bool sparse_weight;
     } fully_connected;
     struct {
       float input1_scale;
