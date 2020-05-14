@@ -76,6 +76,7 @@ class AotCompilationOptions {
 
   virtual int64 replica_count() const { return 0; }
   virtual int64 num_cores() const { return 0; }
+  virtual bool use_spmd_partitioning() const { return false; }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.

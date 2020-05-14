@@ -500,11 +500,11 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         : EagerKernelArgs(std::move(tensor_args)),
           serialize_remote_handle_(std::move(serialize_remote_handle)) {}
 
-    bool HasRemoteInputs() const override { return true; }
+    bool HasRemoteOrPackedInputs() const override { return true; }
 
-    Status GetRemoteArg(const int index,
+    Status GetRemoteArg(const FunctionArgIndex& index,
                         eager::RemoteTensorHandle* val) const override {
-      return serialize_remote_handle_(index, val);
+      return serialize_remote_handle_(index.index, val);
     }
 
    private:
@@ -562,7 +562,14 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
-        /*thread_pool=*/nullptr, eager_cluster_flr_.get());
+        /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
+        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        Rendezvous::Factory{[this](const int64 step_id,
+                                   const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          return Status::OK();
+        }});
   }
 
   void CheckOutputTensorAndClose(const Tensor& tensor) {
@@ -721,7 +728,9 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
@@ -766,7 +775,9 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
   const int64 op_id = 2;
   kernel.reset(new KernelAndDeviceFunc(
-      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs),
+      /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
+      /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
@@ -861,6 +872,109 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   EXPECT_EQ(10, actual(1));
   EXPECT_EQ(15, actual(2));
   EXPECT_EQ(22, actual(3));
+
+  CloseContextRequest close_context_request;
+  close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
+  CloseContextResponse close_context_response;
+  TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
+                                               &close_context_response));
+}
+
+// Test serializes and sends a pack TensorHandle.
+TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
+
+  const string device0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const string device1 = "/job:localhost/replica:0/task:1/device:CPU:0";
+  const string device2 = "/job:localhost/replica:0/task:2/device:CPU:0";
+
+  uint64 context_id = random::New64();
+  CreateContextRequest request;
+  auto* server_def = request.mutable_server_def();
+  server_def->set_job_name("localhost");
+  server_def->set_task_index(0);
+  request.add_cluster_device_attributes()->set_name(device0);
+  request.add_cluster_device_attributes()->set_name(device1);
+  request.add_cluster_device_attributes()->set_name(device2);
+  request.set_context_id(context_id);
+  CreateContextResponse response;
+
+  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+
+  // Copy a tensor to device0
+  auto* send_tensor = remote_enqueue_request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(1);
+  SetTensorProto(send_tensor->add_tensors());
+
+  // Copy a packed handle to device0
+  auto* send_packed_handle =
+      remote_enqueue_request.add_queue()->mutable_send_packed_handle();
+  send_packed_handle->set_op_id(3);
+  RemoteTensorHandle* remote_handle =
+      send_packed_handle->add_handles()->mutable_remote_handle();
+  remote_handle->set_op_id(send_tensor->op_id());
+  remote_handle->set_output_num(0);
+  remote_handle->set_op_device(device0);
+  remote_handle->set_device(device0);
+
+  SendPackedHandleOp::LocalTensorHandle* lcoal_handle =
+      send_packed_handle->add_handles()->mutable_local_handle();
+  SetTensorProto(lcoal_handle->mutable_tensor());
+  lcoal_handle->set_device(device1);
+
+  remote_handle = send_packed_handle->add_handles()->mutable_remote_handle();
+  remote_handle->set_op_id(2);
+  remote_handle->set_output_num(5);
+  remote_handle->set_op_device(device2);
+  remote_handle->set_device(device2);
+
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+                                          &remote_enqueue_response));
+
+  tensorflow::TensorHandle* packed_handle;
+  TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+      context_id, RemoteTensorHandleInternal(3, 0), &packed_handle));
+
+  EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
+  EXPECT_EQ(packed_handle->NumPackedHandles(), 3);
+
+  TensorHandle* handle0 = nullptr;
+  TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &handle0));
+  EXPECT_EQ(handle0->Type(), TensorHandle::LOCAL);
+  EXPECT_EQ(handle0->op_device()->name(), device0);
+  const Tensor* t0 = nullptr;
+  TF_ASSERT_OK(handle0->Tensor(&t0));
+  auto actual = t0->flat<float>();
+  EXPECT_EQ(4, actual.size());
+  EXPECT_EQ(1.0, actual(0));
+  EXPECT_EQ(2.0, actual(1));
+  EXPECT_EQ(3.0, actual(2));
+  EXPECT_EQ(4.0, actual(3));
+
+  TensorHandle* handle1 = nullptr;
+  TF_ASSERT_OK(packed_handle->ExtractPackedHandle(1, &handle1));
+  EXPECT_EQ(handle1->Type(), TensorHandle::LOCAL);
+  EXPECT_EQ(handle1->op_device()->name(), device1);
+  const Tensor* t1 = nullptr;
+  TF_ASSERT_OK(handle0->Tensor(&t1));
+  EXPECT_EQ(t1, t0);
+
+  TensorHandle* handle2 = nullptr;
+  TF_ASSERT_OK(packed_handle->ExtractPackedHandle(2, &handle2));
+  EXPECT_EQ(handle2->Type(), TensorHandle::REMOTE);
+  EXPECT_EQ(handle2->op_device()->name(), device2);
+  int64 op_id;
+  int32 output_num;
+  TF_ASSERT_OK(handle2->RemoteAddress(absl::get<Device*>(handle2->device()),
+                                      /*wait_until_ready=*/true, &op_id,
+                                      &output_num));
+  EXPECT_EQ(op_id, 2);
+  EXPECT_EQ(output_num, 5);
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);

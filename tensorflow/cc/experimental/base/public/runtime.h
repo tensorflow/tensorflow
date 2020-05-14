@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // Runtime represents an opaque instance of a Tensorflow runtime, with its own
@@ -40,6 +41,7 @@ class Runtime {
  private:
   friend class RuntimeBuilder;
   friend class SavedModelAPI;
+  friend class TensorHandle;
 
   // Wraps a TFE_Context. Takes ownership of ctx.
   explicit Runtime(TFE_Context* ctx) : ctx_(ctx) {}
@@ -63,6 +65,7 @@ class Runtime {
 };
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_PUBLIC_RUNTIME_H_

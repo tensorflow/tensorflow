@@ -7,8 +7,8 @@
 func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_basic
 // CHECK-SAME:        ([[LHS:%.*]]: tensor<1x4x2xf32>, [[RHS:%.*]]: tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
-// CHECK:           [[LHSSHAPE:%.*]] = "shape.shape_of"([[LHS]]) : (tensor<1x4x2xf32>) -> !shape.shape
-// CHECK:           [[RHSSHAPE:%.*]] = "shape.shape_of"([[RHS]]) : (tensor<3x2x4xf32>) -> !shape.shape
+// CHECK:           [[LHSSHAPE:%.*]] = shape.shape_of [[LHS]] : tensor<1x4x2xf32>
+// CHECK:           [[RHSSHAPE:%.*]] = shape.shape_of [[RHS]] : tensor<3x2x4xf32>
 // CHECK:           [[CM2:%.*]] = constant -2 : i32
 // CHECK:           [[LHSHEAD:%.*]], [[LHSTAIL:%.*]] = "shape.split_at"([[LHSSHAPE]], [[CM2]]) : (!shape.shape, i32) -> (!shape.shape, !shape.shape)
 // CHECK:           [[RHSHEAD:%.*]], [[RHSTAIL:%.*]] = "shape.split_at"([[RHSSHAPE]], [[CM2]]) : (!shape.shape, i32) -> (!shape.shape, !shape.shape)
@@ -86,8 +86,8 @@ func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2
 // CHECK:           [[RHSIM:%.*]] = "xla_hlo.imag"([[RHS]])
 // CHECK:           [[RHSIMNEG:%.*]] = "xla_hlo.negate"([[RHSIM]])
 // CHECK:           [[RHSCONJ:%.*]] = "xla_hlo.complex"([[RHSRE]], [[RHSIMNEG]])
-// CHECK:           "shape.shape_of"([[LHSCONJ]])
-// CHECK:           "shape.shape_of"([[RHSCONJ]])
+// CHECK:           shape.shape_of [[LHSCONJ]]
+// CHECK:           shape.shape_of [[RHSCONJ]]
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xcomplex<f32>>, tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
   return %0 : tensor<5x4xcomplex<f32>>
 }

@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -69,6 +69,16 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     CPred<"mlir::TF::BroadcastCompatible("
               "$_op.getOperand(" # opId # ").getType(), "
               "$_op.getResult(" # resId # ").getType())">]>;
+
+
+class TF_AllTypesMatchPred<list<string> values> :
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class TF_AllTypesMatch<list<string> names> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        TF_AllTypesMatchPred<
+            !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -129,9 +139,16 @@ def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
 def TF_Uint8 : UI<8>;
+def TF_Uint8Tensor : TensorOf<[TF_Uint8]>;
+
 def TF_Uint16 : UI<16>;
+def TF_Uint16Tensor : TensorOf<[TF_Uint16]>;
+
 def TF_Uint32 : UI<32>;
+def TF_Uint32Tensor : TensorOf<[TF_Uint32]>;
+
 def TF_Uint64 : UI<64>;
+def TF_Uint64Tensor : TensorOf<[TF_Uint64]>;
 
 // Any unsigned integer type
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;

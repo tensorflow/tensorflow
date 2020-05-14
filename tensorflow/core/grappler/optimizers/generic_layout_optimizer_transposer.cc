@@ -1672,19 +1672,14 @@ string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node) {
 }
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
-  std::set<string> default_layout_sensitive_ops = {"AvgPool",
-                                                   "BiasAdd",
-                                                   "Conv2D",
-                                                   "DepthwiseConv2dNative",
-                                                   "DepthToSpace",
-                                                   "FusedBatchNorm",
-                                                   "FusedBatchNormV2",
-                                                   "FusedBatchNormV3",
-                                                   "FusedConv2DBiasActivation",
-                                                   "MaxPool",
-                                                   "SpaceToDepth"};
-  return default_layout_sensitive_ops.find(node.op()) !=
-         default_layout_sensitive_ops.end();
+  static absl::flat_hash_set<string>* default_layout_sensitive_ops =
+      new absl::flat_hash_set<std::string>(
+          {"AvgPool", "BiasAdd", "Conv2D", "DepthwiseConv2dNative",
+           "DepthToSpace", "FusedBatchNorm", "FusedBatchNormV2",
+           "FusedBatchNormV3", "FusedConv2DBiasActivation", "MaxPool",
+           "SpaceToDepth"});
+  return default_layout_sensitive_ops->find(node.op()) !=
+         default_layout_sensitive_ops->end();
 }
 
 bool IsLayoutSensitiveOp(const NodeDef& node) {
@@ -1699,37 +1694,72 @@ bool IsLayoutSensitiveOp(const NodeDef& node) {
 }
 
 bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
-  std::set<string> agnostic_nodes = {"Abs",          "Acos",
-                                     "Acosh",        "Angle",
-                                     "Asin",         "Asinh",
-                                     "Atan",         "Atanh",
-                                     "Bitcast",      "Cast",
-                                     "Ceil",         "CheckNumerics",
-                                     "ComplexAbs",   "Conj",
-                                     "Cos",          "Cosh",
-                                     "Digamma",      "Elu",
-                                     "Enter",        "Erf",
-                                     "Erfc",         "Exit",
-                                     "Exp",          "Expm1",
-                                     "Floor",        "GuaranteeConst",
-                                     "Identity",     "Imag",
-                                     "Inv",          "IsFinite",
-                                     "IsInf",        "IsNan",
-                                     "Lgamma",       "Log",
-                                     "LogicalNot",   "Log1p",
-                                     "Neg",          "NextIteration",
-                                     "OnesLike",     "PreventGradient",
-                                     "Real",         "Reciprocal",
-                                     "Relu",         "Relu6",
-                                     "Rint",         "Selu",
-                                     "Sigmoid",      "Sign",
-                                     "Sin",          "Sinh",
-                                     "Snapshot",     "Softplus",
-                                     "Round",        "Rsqrt",
-                                     "Sqrt",         "Square",
-                                     "StopGradient", "Tan",
-                                     "Tanh",         "ZerosLike"};
-  return agnostic_nodes.find(node.op()) != agnostic_nodes.end();
+  static absl::flat_hash_set<string>* agnostic_nodes =
+      new absl::flat_hash_set<std::string>({"Abs",
+                                            "Acos",
+                                            "Acosh",
+                                            "Angle",
+                                            "Asin",
+                                            "Asinh",
+                                            "Atan",
+                                            "Atanh",
+                                            "Bitcast",
+                                            "Cast",
+                                            "Ceil",
+                                            "CheckNumerics",
+                                            "ComplexAbs",
+                                            "Conj",
+                                            "Cos",
+                                            "Cosh",
+                                            "Digamma",
+                                            "Elu",
+                                            "Enter",
+                                            "Erf",
+                                            "Erfc",
+                                            "Exit",
+                                            "Exp",
+                                            "Expm1",
+                                            "FakeQuantWithMinMaxVars",
+                                            "FakeQuantWithMinMaxArgs",
+                                            "Floor",
+                                            "GuaranteeConst",
+                                            "Identity",
+                                            "Imag",
+                                            "Inv",
+                                            "IsFinite",
+                                            "IsInf",
+                                            "IsNan",
+                                            "Lgamma",
+                                            "Log",
+                                            "LogicalNot",
+                                            "Log1p",
+                                            "Neg",
+                                            "NextIteration",
+                                            "OnesLike",
+                                            "PreventGradient",
+                                            "QuantizeAndDequantizeV2",
+                                            "QuantizeAndDequantizeV3",
+                                            "Real",
+                                            "Reciprocal",
+                                            "Relu",
+                                            "Relu6",
+                                            "Rint",
+                                            "Selu",
+                                            "Sigmoid",
+                                            "Sign",
+                                            "Sin",
+                                            "Sinh",
+                                            "Snapshot",
+                                            "Softplus",
+                                            "Round",
+                                            "Rsqrt",
+                                            "Sqrt",
+                                            "Square",
+                                            "StopGradient",
+                                            "Tan",
+                                            "Tanh",
+                                            "ZerosLike"});
+  return agnostic_nodes->find(node.op()) != agnostic_nodes->end();
 }
 
 bool IsLayoutAgnosticOp(const NodeDef& node) {

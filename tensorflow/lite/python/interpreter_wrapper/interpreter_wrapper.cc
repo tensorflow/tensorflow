@@ -257,7 +257,7 @@ PyObject* InterpreterWrapper::OutputIndices() const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
+PyObject* InterpreterWrapper::ResizeInputTensorImpl(int i, PyObject* value) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
 
   std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
@@ -282,10 +282,27 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
     return nullptr;
   }
 
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(array),
+                      NPY_ARRAY_OWNDATA);
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(array));
+}
+
+PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
+                                                bool strict) {
+  PyArrayObject* array =
+      reinterpret_cast<PyArrayObject*>(ResizeInputTensorImpl(i, value));
+  if (array == nullptr) {
+    return nullptr;
+  }
+
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
-  TFLITE_PY_CHECK(interpreter_->ResizeInputTensor(i, dims));
+  if (strict) {
+    TFLITE_PY_CHECK(interpreter_->ResizeInputTensorStrict(i, dims));
+  } else {
+    TFLITE_PY_CHECK(interpreter_->ResizeInputTensor(i, dims));
+  }
   Py_RETURN_NONE;
 }
 
@@ -592,6 +609,7 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
       size_t size_of_type;
       if (GetSizeOfType(nullptr, tensor->type, &size_of_type) != kTfLiteOk) {
         PyErr_SetString(PyExc_ValueError, "Unknown tensor type.");
+        free(data);
         return nullptr;
       }
       sparse_buffer_dims[0] = tensor->bytes / size_of_type;

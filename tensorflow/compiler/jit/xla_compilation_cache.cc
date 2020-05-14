@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
@@ -277,29 +278,25 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    bool are_params = absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
-      return arg.kind == XlaCompiler::Argument::kParameter;
-    });
+    bool are_args_supported =
+        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kConstant ||
+                 arg.kind == XlaCompiler::Argument::kParameter;
+        });
     const ConfigProto* config = ctx->function_library()->config_proto();
     bool use_mlir = config && config->experimental().enable_mlir_bridge();
-    // Use MLIR bridge if all the arguments are parameters.
-    // TODO(hinsu): Support other argument types instead of silently falling
-    // back to the XLA compiler.
-    if (!are_params || !use_mlir) {
+    // TODO(b/155596779): Understand the source of other argument types and
+    // depending on the source either support those or avoid these codepath.
+    if (!use_mlir || !are_args_supported) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
 
-    absl::InlinedVector<TensorShape, 4> arg_shapes;
-    arg_shapes.reserve(args.size());
-    for (const XlaCompiler::Argument& arg : args) {
-      arg_shapes.push_back(absl::get<TensorShape>(arg.shape));
-    }
     GraphDebugInfo debug_info;
     return CompileGraphToXlaHlo(
-        *graph, {arg_shapes.data(), arg_shapes.size()},
-        options.device_type.type_string(), compile_options.use_tuple_arg,
-        *options.flib_def, debug_info, options.shape_representation_fn, result);
+        *graph, {args.data(), args.size()}, options.device_type.type_string(),
+        compile_options.use_tuple_arg, *options.flib_def, debug_info,
+        options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

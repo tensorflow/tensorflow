@@ -713,6 +713,19 @@ class TensorUtilTest(test.TestCase):
     self.assertAllEqual(
         np.array([[(1 + 2j), (3 + 4j)], [(5 + 6j), (7 + 8j)]]), a)
 
+  def testNestedNumpyArrayWithoutDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)])
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
+  def testNestedNumpyArrayWithDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)],
+                                      dtype=dtypes.float32)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
   def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)

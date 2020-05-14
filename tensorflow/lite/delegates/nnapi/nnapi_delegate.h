@@ -89,6 +89,9 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // The selection is currently done sorting partitions in decreasing order
     // of number of nodes and selecting them until the limit is reached.
     int max_number_delegated_partitions = 3;
+
+    // allow fp32 compuation to be run in fp16
+    bool allow_fp16 = false;
   };
 
   // Uses default options.
@@ -184,6 +187,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Maximum number of NNAPI partition to delegate. Zero or negative means
     // no limit. Copied from StatefulNnApiDelegate::Options
     int max_number_delegated_partitions;
+    // allow fp32 computation to be run in fp32
+    bool allow_fp16 = false;
 
     ~Data();
 

@@ -13,11 +13,15 @@ package(
 swift_library(
     name = "TensorFlowLite",
     srcs = glob(["Sources/*.swift"]),
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
-        "//tensorflow/lite/experimental/ios:TensorFlowLiteC",
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
     ],
 )
 

@@ -230,7 +230,7 @@ class Dropout(Layer):
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 1D feature maps instead of individual elements. If adjacent frames
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -272,7 +272,7 @@ class SpatialDropout1D(Dropout):
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 2D feature maps instead of individual elements. If adjacent pixels
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -331,7 +331,7 @@ class SpatialDropout2D(Dropout):
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 3D feature maps instead of individual elements. If adjacent voxels
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -542,7 +542,7 @@ class Reshape(Layer):
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
-  Useful for e.g. connecting RNNs and convnets together.
+  Useful e.g. connecting RNNs and convnets.
 
   Example:
 
@@ -554,7 +554,7 @@ class Permute(Layer):
   ```
 
   Arguments:
-    dims: Tuple of integers. Permutation pattern, does not include the
+    dims: Tuple of integers. Permutation pattern does not include the
       samples dimension. Indexing starts at 1.
       For instance, `(2, 1)` permutes the first and second dimensions
       of the input.
@@ -736,7 +736,7 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced usecases, follow
+  quick experimentation. For more advanced use cases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   for subclassing `tf.keras.layers.Layer`.
 
@@ -811,7 +811,7 @@ class Lambda(Layer):
       input shape: `output_shape = f(input_shape)`
     mask: Either None (indicating no masking) or a callable with the same
       signature as the `compute_mask` layer method, or a tensor that will be
-      returned as output mask regardless what the input is.
+      returned as output mask regardless of what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
   Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
@@ -1097,7 +1097,7 @@ class Dense(Layer):
       the `kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
+      the output of the layer (its "activation").
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.

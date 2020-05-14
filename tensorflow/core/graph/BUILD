@@ -45,7 +45,6 @@ filegroup(
         "algorithm.h",
         "default_device.h",
         "graph.h",
-        "graph_constructor.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -96,7 +95,6 @@ filegroup(
         "edgeset.h",
         "gpu_fusion_pass.h",
         "graph.h",
-        "graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
         "graph_def_builder.h",
         "graph_node_util.h",
         "graph_partition.h",
@@ -149,13 +147,6 @@ filegroup(
 )
 
 filegroup(
-    name = "higher_level_tests_needing_kernels",
-    srcs = [
-        "graph_constructor_test.cc",
-    ],
-)
-
-filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "algorithm.cc",
@@ -174,7 +165,6 @@ filegroup(
         "edgeset.h",
         "graph.cc",
         "graph.h",
-        "graph_constructor.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",
         "graph_node_util.cc",

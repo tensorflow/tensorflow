@@ -19,30 +19,53 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <functional>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/cc/experimental/base/public/status.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // Tensor represents an n-dimensional array of values.
 class Tensor {
  public:
-  // TODO(bmzhao): Add a factory function that constructs a Tensor from a char
-  // buffer, with an options struct (to specify the buffer's layout, device?,
-  // whether to create a TFRT or TF tensor, whether we should take ownership of
-  // the memory, etc). This requires extending TF_NewTensor with an options
-  // struct:
-  // https://github.com/tensorflow/tensorflow/blob/3c520614a3c056d56afdc79b59979b9b0087f8b9/tensorflow/c/tf_tensor.h#L77-L80
+  using DeleterCallback = std::function<void(void*, size_t)>;
+
+  // Constructs a Tensor from user provided buffer.
+  //
+  // Params:
+  //  dtype - The dtype of the tensor's data.
+  //  shape - A shape vector, where each element corresponds to the size of
+  //          the tensor's corresponding dimension.
+  //  data - Pointer to a buffer of memory to construct a Tensor out of.
+  //  len - The length (in bytes) of `data`
+  //  deleter - A std::function to be called when the Tensor no longer needs the
+  //            memory in `data`. This can be used to free `data`, or
+  //            perhaps decrement a refcount associated with `data`, etc.
+  //  status - Set to OK on success and an error on failure.
+  // Returns:
+  // If an error occurred, status->ok() will be false, and the returned
+  // Tensor must not be used.
+  // TODO(bmzhao): Add Runtime as an argument to this function so we can swap to
+  // a TFRT backed tensor.
+  // TODO(bmzhao): Add benchmarks on overhead for this function; we can
+  // consider using int64_t* + length rather than vector.
+  static Tensor FromBuffer(TF_DataType dtype, const std::vector<int64_t>& shape,
+                           void* data, size_t len, DeleterCallback deleter,
+                           Status* status);
 
   // TODO(bmzhao): In the case we construct a tensor from non-owned memory,
   // we should offer a way to deep copy the tensor into a new tensor, which
   // owns the underlying memory. This could be a .deepcopy()/clone() method.
 
   // TODO(bmzhao): In the future, we want to relax the non-copyability
-  // constraint. To do so, we can add a C API function that acts like CopyFrom:
+  // constraint. To do so, we can add a C API function that acts like
+  // CopyFrom:
   // https://github.com/tensorflow/tensorflow/blob/08931c1e3e9eb2e26230502d678408e66730826c/tensorflow/core/framework/tensor.h#L301-L311
 
   // Tensor is movable, but not copyable
@@ -85,6 +108,16 @@ class Tensor {
   // This object retains ownership of the pointer.
   TF_Tensor* GetTFTensor() const { return tensor_.get(); }
 
+  struct DeleterStruct {
+    std::function<void(void*, size_t)> deleter;
+  };
+
+  static void DeleterFunction(void* memory, size_t len, void* deleter_struct) {
+    DeleterStruct* deleter = reinterpret_cast<DeleterStruct*>(deleter_struct);
+    deleter->deleter(memory, len);
+    delete deleter;
+  }
+
   struct TFTensorDeleter {
     void operator()(TF_Tensor* p) const { TF_DeleteTensor(p); }
   };
@@ -111,7 +144,32 @@ inline size_t Tensor::num_bytes() const {
   return TF_TensorByteSize(tensor_.get());
 }
 
+inline Tensor Tensor::FromBuffer(TF_DataType dtype,
+                                 const std::vector<int64_t>& shape, void* data,
+                                 size_t len, DeleterCallback deleter,
+                                 Status* status) {
+  // Credit to apassos@ for this technique:
+  // Despite the fact that our API takes a std::function deleter, we are able
+  // to maintain ABI stability because:
+  // 1. Only a function pointer is sent across the C API (&DeleterFunction)
+  // 2. DeleterFunction is defined in the same build artifact that constructed
+  //    the std::function (so there isn't confusion about std::function ABI).
+  // Note that 2. is satisifed by the fact that this is a header-only API, where
+  // the function implementations are inline.
+
+  DeleterStruct* deleter_struct = new DeleterStruct{deleter};
+  TF_Tensor* tensor = TF_NewTensor(dtype, shape.data(), shape.size(), data, len,
+                                   &DeleterFunction, deleter_struct);
+  if (tensor == nullptr) {
+    status->SetStatus(TF_INVALID_ARGUMENT,
+                      "Failed to create tensor for input buffer");
+    return Tensor(nullptr);
+  }
+  return Tensor(tensor);
+}
+
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_PUBLIC_TENSOR_H_

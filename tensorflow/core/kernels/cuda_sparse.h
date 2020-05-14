@@ -26,6 +26,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusparse.h"
 
 using gpusparseStatus_t = cusparseStatus_t;
@@ -34,6 +35,14 @@ using gpusparseMatDescr_t = cusparseMatDescr_t;
 using gpusparseAction_t = cusparseAction_t;
 using gpusparseHandle_t = cusparseHandle_t;
 using gpuStream_t = cudaStream_t;
+#if CUDA_VERSION >= 10020
+using gpusparseDnMatDescr_t = cusparseDnMatDescr_t;
+using gpusparseSpMatDescr_t = cusparseSpMatDescr_t;
+using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
+#endif
+
+#define GPUSPARSE(postfix) CUSPARSE_##postfix
+#define gpusparse(postfix) cusparse##postfix
 
 #elif TENSORFLOW_USE_ROCM
 
@@ -45,6 +54,9 @@ using gpusparseMatDescr_t = hipsparseMatDescr_t;
 using gpusparseAction_t = hipsparseAction_t;
 using gpusparseHandle_t = hipsparseHandle_t;
 using gpuStream_t = hipStream_t;
+
+#define GPUSPARSE(postfix) HIPSPARSE_##postfix
+#define gpusparse(postfix) hipsparse##postfix
 
 #endif
 
@@ -247,6 +259,7 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-coo2csr.
   Status Coo2csr(const int* cooRowInd, int nnz, int m, int* csrRowPtr) const;
 
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
   // Sparse-dense matrix multiplication C = alpha * op(A) * op(B)  + beta * C,
   // where A is a sparse matrix in CSR format, B and C are dense tall
   // matrices.  This routine allows transposition of matrix B, which
@@ -266,18 +279,64 @@ class GpuSparse {
                const int* csrSortedRowPtrA, const int* csrSortedColIndA,
                const Scalar* B, int ldb, const Scalar* beta_host, Scalar* C,
                int ldc) const;
+#else
+  // Workspace size query for sparse-dense matrix multiplication. Helper
+  // function for SpMM which computes y = alpha * op(A) * op(B) + beta * C,
+  // where A is a sparse matrix in CSR format, B and C are dense matricies in
+  // column-major format. Returns needed workspace size in bytes.
+  template <typename Scalar>
+  Status SpMMBufferSize(gpusparseOperation_t transA,
+                        gpusparseOperation_t transB, const Scalar* alpha,
+                        const gpusparseSpMatDescr_t matA,
+                        const gpusparseDnMatDescr_t matB, const Scalar* beta,
+                        gpusparseDnMatDescr_t matC, gpusparseSpMMAlg_t alg,
+                        size_t* bufferSize) const;
+
+  // Sparse-dense matrix multiplication y = alpha * op(A) * op(B) + beta * C,
+  // where A is a sparse matrix in CSR format, B and C are dense matricies in
+  // column-major format. Buffer is assumed to be at least as large as the
+  // workspace size returned by SpMMBufferSize().
+  //
+  // **NOTE** This is an in-place operation for data in C.
+  template <typename Scalar>
+  Status SpMM(gpusparseOperation_t transA, gpusparseOperation_t transB,
+              const Scalar* alpha, const gpusparseSpMatDescr_t matA,
+              const gpusparseDnMatDescr_t matB, const Scalar* beta,
+              gpusparseDnMatDescr_t matC, gpusparseSpMMAlg_t alg,
+              int8* buffer) const;
+#endif
 
   // Sparse-dense vector multiplication y = alpha * op(A) * x  + beta * y,
   // where A is a sparse matrix in CSR format, x and y are dense vectors. See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrmv_mergepath
   //
   // **NOTE** This is an in-place operation for data in y.
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
   template <typename Scalar>
   Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
                const Scalar* alpha_host, const gpusparseMatDescr_t descrA,
                const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
                const int* csrSortedColIndA, const Scalar* x,
                const Scalar* beta_host, Scalar* y) const;
+#else
+  template <typename Scalar>
+  Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
+               const Scalar* alpha_host, const Scalar* csrSortedValA,
+               const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+               const Scalar* x, const Scalar* beta_host, Scalar* y) const;
+#endif  // CUDA_VERSION < 10020
+
+  // Computes workspace size for sparse - sparse matrix addition of matrices
+  // stored in CSR format.
+  template <typename Scalar>
+  Status CsrgeamBufferSizeExt(
+      int m, int n, const Scalar* alpha, const gpusparseMatDescr_t descrA,
+      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+      const int* csrSortedColIndA, const Scalar* beta,
+      const gpusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+      const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+      const gpusparseMatDescr_t descrC, Scalar* csrSortedValC,
+      int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize);
 
   // Computes sparse-sparse matrix addition of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
@@ -289,7 +348,7 @@ class GpuSparse {
                     const gpusparseMatDescr_t descrB, int nnzB,
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
                     const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
-                    int* nnzTotalDevHostPtr);
+                    int* nnzTotalDevHostPtr, void* workspace);
 
   // Computes sparse - sparse matrix addition of matrices
   // stored in CSR format.  This is part two: perform sparse-sparse
@@ -305,13 +364,26 @@ class GpuSparse {
                  const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
-                 int* csrSortedColIndC);
+                 int* csrSortedColIndC, void* workspace);
+
+#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+  // Computes sparse-sparse matrix multiplication of matrices
+  // stored in CSR format.  This is part zero: calculate required workspace
+  // size.
+  template <typename Scalar>
+  Status CsrgemmBufferSize(
+      int m, int n, int k, const gpusparseMatDescr_t descrA, int nnzA,
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+      const gpusparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
+      const int* csrSortedColIndB, csrgemm2Info_t info, size_t* workspaceBytes);
+#endif
 
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
   // output.  csrSortedRowPtrC must be preallocated on device with
   // m + 1 entries.  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
   Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
                     int m, int k, int n, const gpusparseMatDescr_t descrA,
                     int nnzA, const int* csrSortedRowPtrA,
@@ -320,12 +392,23 @@ class GpuSparse {
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
                     const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
                     int* nnzTotalDevHostPtr);
+#else
+  Status CsrgemmNnz(int m, int n, int k, const gpusparseMatDescr_t descrA,
+                    int nnzA, const int* csrSortedRowPtrA,
+                    const int* csrSortedColIndA,
+                    const gpusparseMatDescr_t descrB, int nnzB,
+                    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+                    int* nnzTotalDevHostPtr, csrgemm2Info_t info,
+                    void* workspace);
+#endif
 
   // Computes sparse - sparse matrix matmul of matrices
   // stored in CSR format.  This is part two: perform sparse-sparse
   // addition.  csrValC and csrColIndC must be allocated on the device
   // with nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
   template <typename Scalar>
   Status Csrgemm(gpusparseOperation_t transA, gpusparseOperation_t transB,
                  int m, int k, int n, const gpusparseMatDescr_t descrA,
@@ -336,6 +419,18 @@ class GpuSparse {
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC);
+#else
+  template <typename Scalar>
+  Status Csrgemm(int m, int n, int k, const gpusparseMatDescr_t descrA,
+                 int nnzA, const Scalar* csrSortedValA,
+                 const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+                 const gpusparseMatDescr_t descrB, int nnzB,
+                 const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
+                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
+                 Scalar* csrSortedValC, int* csrSortedRowPtrC,
+                 int* csrSortedColIndC, const csrgemm2Info_t info,
+                 void* workspace);
+#endif
 
   // In-place reordering of unsorted CSR to sorted CSR.
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csru2csr

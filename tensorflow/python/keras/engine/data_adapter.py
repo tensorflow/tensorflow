@@ -746,7 +746,7 @@ class DatasetAdapter(DataAdapter):
       if size == cardinality.INFINITE and steps is None:
         raise ValueError(
             "When providing an infinite dataset, you must specify "
-            "the number of steps to run (if you did not intend to ."
+            "the number of steps to run (if you did not intend to "
             "create an infinite dataset, make sure to not call "
             "`repeat()` on the dataset).")
 

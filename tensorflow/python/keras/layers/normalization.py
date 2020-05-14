@@ -28,7 +28,6 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
@@ -234,7 +233,6 @@ class BatchNormalizationBase(Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
-    self._trainable_var = None
     self.trainable = trainable
 
     if renorm:
@@ -294,14 +292,6 @@ class BatchNormalizationBase(Layer):
   @trainable.setter
   def trainable(self, value):
     self._trainable = value
-    if self._trainable_var is not None:
-      self._trainable_var.update_value(value)
-
-  def _get_trainable_var(self):
-    if self._trainable_var is None:
-      self._trainable_var = K.freezable_variable(
-          self._trainable, name=self.name + '_trainable')
-    return self._trainable_var
 
   @property
   def _param_dtype(self):
@@ -722,12 +712,9 @@ class BatchNormalizationBase(Layer):
     if self._USE_V2_BEHAVIOR:
       if isinstance(training, int):
         training = bool(training)
-      if base_layer_utils.is_in_keras_graph():
-        training = math_ops.logical_and(training, self._get_trainable_var())
-      elif not self.trainable:
-        # When the layer is not trainable, it overrides the value passed from
-        # model.
-        training = self.trainable
+      # When the layer is not trainable, it overrides the value passed from
+      # model.
+      training = math_ops.logical_and(training, self.trainable)
     return training
 
   def call(self, inputs, training=None):
@@ -736,8 +723,14 @@ class BatchNormalizationBase(Layer):
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
-      original_shape = [-1] + inputs.shape.as_list()[1:]
-      expanded_shape = [self.virtual_batch_size, -1] + original_shape[1:]
+      original_shape = array_ops.shape(inputs)
+      original_shape = array_ops.concat(
+          [constant_op.constant([-1]), original_shape[1:]], axis=0)
+      expanded_shape = array_ops.concat([
+          constant_op.constant([self.virtual_batch_size, -1]),
+          original_shape[1:]
+      ],
+                                        axis=0)
 
       # Will cause errors if virtual_batch_size does not divide the batch size
       inputs = array_ops.reshape(inputs, expanded_shape)

@@ -86,7 +86,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
                                                uint64 context_view_id)
-    : is_ready_(false),
+    : is_ready_(true),
       op_id_(op_id),
       output_num_(output_num),
       context_view_id_(context_view_id),
@@ -194,17 +194,26 @@ string RemoteTensorHandleData::DebugString() const {
                          " output_num: ", output_num_);
 }
 
-Status RemoteTensorHandleData::WaitReady(const char* caller) const {
-  if (ctx_ == nullptr) {
-    return errors::Internal("Cannot wait on lazy remote handle");
+Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
+                                                int64* op_id,
+                                                int32* output_num) const {
+  if (wait_util_ready) {
+    TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
   }
+  *op_id = op_id_;
+  *output_num = output_num_;
+  return Status::OK();
+}
 
+Status RemoteTensorHandleData::WaitReady(const char* caller) const {
   tf_shared_lock l(mu_);
   if (!is_ready_) {
     profiler::TraceMe activity(
         [caller] { return absl::StrCat(caller, " WaitReady"); },
         profiler::TraceMeLevel::kInfo);
     DVLOG(3) << "WaitReady: " << caller << " " << this;
+    // TODO(b/155493048): add a timeout here if it could cause any hanging
+    // issue.
     mu_.Await(Condition(&is_ready_));
   }
   return is_poisoned_;

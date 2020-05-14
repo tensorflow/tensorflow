@@ -71,7 +71,7 @@ important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
 For an example of how to include and use a model in your program, see
-[`sine_model_data.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/sine_model_data.cc)
+[`model.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/model.cc)
 in the *Hello World* example.
 
 ## Model architecture and training

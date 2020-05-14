@@ -3223,6 +3223,9 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
 
+  TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
   // Set dtype
   DCHECK(PyObject_HasAttrString(input, "_dtype"));
   tensorflow::Safe_PyObjectPtr dtype(PyObject_GetAttrString(input, "_dtype"));
@@ -3231,9 +3234,6 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
     return false;
   }
   TFE_OpSetAttrType(op, "dtype", static_cast<TF_DataType>(value));
-
-  TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
 
   // Get handle
   tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(input, "_handle"));

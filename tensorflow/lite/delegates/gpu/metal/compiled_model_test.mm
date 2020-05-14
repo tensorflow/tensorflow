@@ -159,7 +159,8 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   std::vector<ComputeTaskDescriptorPtr> descriptors;
   descriptors.push_back(ComputeTaskDescriptorPtr(new ComputeTaskDescriptor({
       id,
-      true,  // Is linkable?
+      true,  // linkable
+      true,  // associative_op
       R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buffer2) {
            return value + buffer2[linear_index];
          }
@@ -250,12 +251,14 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
 
 - (void)testAddOperationFused {
   auto graph = Add(1, 1, 3);
-  auto graph2 = Add2Linkable(2, 2, 3, 4);
+  auto graph2 = Add(1, 2, 4);
+  auto graph3 = Add2Linkable(2, 4, 3, 5);
   graph.insert(graph.end(), graph2.begin(), graph2.end());
+  graph.insert(graph.end(), graph3.begin(), graph3.end());
   std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1, 2}, {4}, graph, &model);
+  auto status = ValidateOptimizeModel({1, 2}, {5}, graph, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  XCTAssertTrue(model.size() == 1, @"Not fused, more than one task descriptor.");
+  XCTAssertTrue(model.size() <= 2, @"Not fused, more than two task descriptors.");
 }
 
 - (void)testBinaryOperationSuccess {

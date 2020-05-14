@@ -38,7 +38,6 @@ class GatherNdTest(xla_test.XLATestCase):
       feed_dict = {paramsp: params, indicesp: indices}
       return gather_nd_t.eval(feed_dict=feed_dict)
 
-  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testSimpleDtype(self):
     for dtype in self.numeric_types:
       self.assertAllEqual(
@@ -47,6 +46,7 @@ class GatherNdTest(xla_test.XLATestCase):
               np.array([8, 1, 2, 3, 7, 5], dtype=dtype),
               np.array([[4], [4], [0]], np.int32)))
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
     with self.session():
       params = np.ones((3, 3), dtype=np.float32)

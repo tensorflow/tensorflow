@@ -14,12 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -249,10 +258,17 @@ void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
+// Normalize the line's timestamp in this XPlane.
+// NOTE: This can be called multiple times on the same plane. Only the first
+// call will do the normalization, subsequent calls will do nothing.
+// The assumption is that both line's timestamp_ns and start_time_ns are
+// nano-seconds from epoch time, the different of these values is much
+// smaller than these value.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
-    DCHECK_GE(line.timestamp_ns(), start_time_ns);
-    line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    if (line.timestamp_ns() >= start_time_ns) {
+      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    }
   }
 }
 

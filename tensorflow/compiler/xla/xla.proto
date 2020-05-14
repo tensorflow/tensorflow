@@ -333,6 +333,10 @@ message ExecutionOptions {
 
   // Used to identify a set of programs that should be launch together.
   int32 launch_id = 10;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 11;
 }
 
 message GetDeviceHandlesRequest {

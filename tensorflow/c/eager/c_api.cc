@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #ifdef PLATFORM_GOOGLE
-#include "tensorflow/c/eager/c_api_tfrt.h"
+#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -924,7 +924,7 @@ extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
       context->GetDevicePlacementPolicy());
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
@@ -1472,20 +1472,21 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }  // namespace
 
 void TFE_ContextStartStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->StartStep();
+  tensorflow::unwrap(ctx)->StartStep();
 }
 
 void TFE_ContextEndStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->EndStep();
+  tensorflow::unwrap(ctx)->EndStep();
+}
+
+const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+  return tensorflow::wrap(
+      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   tensorflow::AttrValueMap m;
-  attrs->attributes->FillAttrValueMap(&m);
+  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
@@ -1497,8 +1498,8 @@ void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  attrs->attributes->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(attrs->attributes->op_name());
+  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
+  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
@@ -1619,9 +1620,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    TFE_OpAttrs attributes(&op->Attrs());
     device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    &attributes, num_retvals, outputs.data(), &status, info_);
+                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+                    info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
         retvals[i] = tensorflow::TensorHandleFromInterface(
