@@ -219,7 +219,7 @@ tf_cuda_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -232,12 +232,13 @@ cc_library(
     srcs = ["tf_status.cc"],
     hdrs = ["tf_status.h"],
     visibility = ["//visibility:public"],
-    deps = select({
+    deps = [
+        ":tf_status_internal",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tf_status_internal",
             "//tensorflow/core:lib",
         ],
     }),
@@ -259,10 +260,15 @@ cc_library(
     name = "tensor_interface",
     hdrs = ["tensor_interface.h"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
 )
 
 cc_library(
@@ -286,16 +292,17 @@ cc_library(
     srcs = ["tf_tensor.cc"],
     hdrs = ["tf_tensor.h"],
     visibility = ["//visibility:public"],
-    deps = select({
+    deps = [
+        ":tensor_interface",
+        ":tf_datatype",
+        ":tf_status",
+        ":tf_status_helper",
+        ":tf_tensor_internal",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tensor_interface",
-            ":tf_datatype",
-            ":tf_status",
-            ":tf_status_helper",
-            ":tf_tensor_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
@@ -311,14 +318,15 @@ tf_cuda_library(
         "tf_tensor_internal.h",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = select({
+    deps = [
+        ":tensor_interface",
+        ":tf_datatype",
+        ":tf_status",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tensor_interface",
-            ":tf_datatype",
-            ":tf_status",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/platform:casts",

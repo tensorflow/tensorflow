@@ -1472,6 +1472,7 @@ filegroup(
         "abi.h",
         "blocking_counter.h",
         "byte_order.h",
+        "casts.h",
         "coding.cc",
         "coding.h",
         "context.h",
@@ -1557,7 +1558,6 @@ filegroup(
     srcs = [
         "base64.cc",
         "base64.h",
-        "casts.h",
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
         "fingerprint.h",
