@@ -1028,12 +1028,14 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
 
+#ifndef INTEL_MKL
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, ExplicitPaddingConvolution) {
   const int filter_size = 3;
   const int filter_count = 12;
   this->VerifyConv2DWithBias(filter_size, filter_count,
                              /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
 }
+#endif
 
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
@@ -1062,6 +1064,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndActivation) {
   }
 }
 
+#ifndef INTEL_MKL
 TYPED_TEST_P(FusedConv2DWithBiasOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
@@ -1072,6 +1075,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
   }
 }
+#endif
 
 // -------------------------------------------------------------------------- //
 // Conv2D + FusedBatchNorm + {Activation}                                     //
@@ -1095,6 +1099,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBatchNorm(filter_size, filter_count);
 }
 
+#ifndef INTEL_MKL
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ExplicitPaddingConvolution) {
   const int filter_size = 3;
   const int filter_count = 12;
@@ -1102,6 +1107,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ExplicitPaddingConvolution) {
       filter_size, filter_count,
       /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
 }
+#endif
 
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
@@ -1131,6 +1137,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndActivation) {
   }
 }
 
+#ifndef INTEL_MKL
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
@@ -1141,34 +1148,50 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
   }
 }
+#endif
 
 REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,          //
                             OneByOneConvolution,                //
                             ImageSizeConvolution,               //
                             SpatialConvolution,                 //
+#ifndef INTEL_MKL
                             ExplicitPaddingConvolution,         //
+#endif
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
+#ifndef INTEL_MKL
                             SpatialConvolutionAndActivation,    //
                             ExplicitPaddingConvolutionAndActivation);
+#else
+                            SpatialConvolutionAndActivation);
+#endif
 
 REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
                             OneByOneConvolution,                //
                             ImageSizeConvolution,               //
                             SpatialConvolution,                 //
+#ifndef INTEL_MKL
                             ExplicitPaddingConvolution,         //
+#endif
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
+#ifndef INTEL_MKL
                             SpatialConvolutionAndActivation,    //
                             ExplicitPaddingConvolutionAndActivation);
+#else
+                            SpatialConvolutionAndActivation);
+#endif
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
                                FusedBiasAddDataTypes);
 
+
+#ifndef INTEL_MKL
 using FusedBatchNormDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
                                FusedBatchNormDataTypes);
+#endif
 
 #endif  // TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

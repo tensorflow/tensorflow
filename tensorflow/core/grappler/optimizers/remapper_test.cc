@@ -607,6 +607,7 @@ TEST_F(RemapperTest, FuseMatMulWithBiasAndActivation) {
   }
 }
 
+#ifndef INTEL_MKL
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   using ops::Placeholder;
 
@@ -684,6 +685,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
+
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
   using ops::Placeholder;
@@ -850,6 +852,7 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
+#endif
 
 }  // namespace grappler
 }  // namespace tensorflow
