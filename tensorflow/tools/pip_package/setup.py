@@ -60,7 +60,7 @@ REQUIRED_PACKAGES = [
     'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
-    'keras_preprocessing >= 1.1.0',
+    'keras_preprocessing == 1.1.0',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
