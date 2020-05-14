@@ -25,24 +25,23 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def.proto.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/types.proto.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tensorflow/python/util/stack_trace.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #if !defined(PLATFORM_WINDOWS)
 #include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
@@ -160,7 +159,6 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
-  options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
@@ -234,7 +232,8 @@ struct OpExecutionState : public core::RefCounted {
 Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    std::unique_ptr<StackTraceBase> stack_trace) {
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
@@ -247,6 +246,35 @@ Status KernelAndDeviceOp::Run(
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendezvous_;
+  params.stack_trace = std::move(stack_trace);
+
+  // Note: e.g., We can get the stack trace string with
+  // `static_cast<StackTrace*>(params.stack_trace.get())->to_string();`
+  // But it requires Python dependency.
+
+  // Sample output
+  // E0505 12:42:50.228320   56529 execute.cc:1124] s   File "<embedded stdlib>/unittest/suite.py", line 84, in __call__
+  //   <source line unimplemented>
+  // File "<embedded stdlib>/unittest/suite.py", line 122, in run
+  //   <source line unimplemented>
+  // File "<embedded stdlib>/unittest/suite.py", line 84, in __call__
+  //   <source line unimplemented>
+  // File "<embedded stdlib>/unittest/suite.py", line 122, in run
+  //   <source line unimplemented>
+  // File "<embedded stdlib>/unittest/case.py", line 653, in __call__
+  //   <source line unimplemented>
+  // File "<embedded stdlib>/unittest/case.py", line 605, in run
+  //   <source line unimplemented>
+  // File "/usr/local/google/_blaze_kkb/8a370b5376016f9e9c317f45311331b4/execroot/google3/blaze-out/k8-fastbuild/bin/tensorflow/python/eager/ops_test.runfiles/google3/tensorflow/python/eager/ops_test.py", line 82, in testExecuteBoolAttr
+  //   <source line unimplemented>
+  // File "/usr/local/google/_blaze_kkb/8a370b5376016f9e9c317f45311331b4/execroot/google3/blaze-out/k8-fastbuild/bin/tensorflow/python/eager/ops_test.runfiles/google3/tensorflow/python/util/dispatch.py", line 180, in wrapper
+  //   <source line unimplemented>
+  // File "/usr/local/google/_blaze_kkb/8a370b5376016f9e9c317f45311331b4/execroot/google3/blaze-out/k8-fastbuild/bin/tensorflow/python/eager/ops_test.runfiles/google3/tensorflow/python/ops/math_ops.py", line 3115, in matmul
+  //   <source line unimplemented>
+  // File "/usr/local/google/_blaze_kkb/8a370b5376016f9e9c317f45311331b4/execroot/google3/blaze-out/k8-fastbuild/bin/tensorflow/python/eager/ops_test.runfiles/google3/tensorflow/python/ops/gen_math_ops.py", line 5620, in mat_mul
+  //   <source line unimplemented>
+
+
   OpExecutionState* op_execution_state = nullptr;
 
   CancellationManager default_cancellation_manager;
@@ -283,8 +311,6 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
-    port::ScopedFlushDenormal flush;
-    port::ScopedSetRound round(FE_TONEAREST);
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
@@ -312,14 +338,17 @@ Status KernelAndDeviceOp::Run(
 Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    std::unique_ptr<StackTraceBase> stack_trace) {
   Notification n;
   Status status;
-  RunAsync(step_container, inputs, outputs, cancellation_manager,
-           remote_func_params, [&status, &n](const Status& s) {
-             status = s;
-             n.Notify();
-           });
+  RunAsync(
+      step_container, inputs, outputs, cancellation_manager, remote_func_params,
+      [&status, &n](const Status& s) {
+        status = s;
+        n.Notify();
+      },
+      std::move(stack_trace));
   n.WaitForNotification();
   return status;
 }
@@ -328,7 +357,8 @@ void KernelAndDeviceFunc::RunAsync(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-    std::function<void(const Status&)> done) {
+    std::function<void(const Status&)> done,
+    std::unique_ptr<StackTraceBase> stack_trace) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (remote_func_params.has_value()) {
     const EagerRemoteFunctionParams& params = remote_func_params.value();
@@ -430,9 +460,7 @@ Device* KernelAndDeviceOp::InputDevice(int i) const {
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
-  if ((input_dtypes_[i] == DT_RESOURCE) &&
-      (composite_devices_.find(input_devices_[i]->name()) ==
-       composite_devices_.end())) {
+  if (input_dtypes_[i] == DT_RESOURCE) {
     return host_cpu_device_;
   } else {
     return input_devices_[i];

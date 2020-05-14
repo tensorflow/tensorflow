@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/util/stack_trace_base.h"
 
 namespace tensorflow {
 
@@ -100,6 +101,10 @@ class AbstractContextInterface {
   virtual void StartStep() = 0;
   // Destroy the step resource container for a training step.
   virtual void EndStep() = 0;
+
+  virtual void SetStackTrace(std::unique_ptr<StackTraceBase> stack_trace) = 0;
+
+  virtual std::unique_ptr<StackTraceBase> GetStackTrace() = 0;
 
  protected:
   virtual ~AbstractContextInterface() {}

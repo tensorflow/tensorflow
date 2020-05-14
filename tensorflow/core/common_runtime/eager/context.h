@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/stack_trace_base.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -208,6 +209,14 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
+
+  void SetStackTrace(std::unique_ptr<StackTraceBase> stack_trace) override {
+    stack_trace_ = std::move(stack_trace);
+  }
+
+  std::unique_ptr<StackTraceBase> GetStackTrace() override {
+    return std::move(stack_trace_);
+  }
 
   const std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
       const {
@@ -713,6 +722,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Function that will be invoked in destructor to deallocate resources related
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
+
+  std::unique_ptr<StackTraceBase> stack_trace_;
+  OpaquePythonStackTrace* python_stack_trace_ = nullptr;
 };
 
 inline EagerContext* ContextFromInterface(AbstractContextInterface* context) {

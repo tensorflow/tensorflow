@@ -70,6 +70,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "
+tensorflow/python/util/stack_trace.h"
 
 namespace tensorflow {
 
@@ -1171,7 +1173,8 @@ Status EagerKernelExecute(
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                 cancellation_manager, remote_func_params));
+                                 cancellation_manager, remote_func_params,
+                                 ctx->GetStackTrace()));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }
@@ -1394,7 +1397,8 @@ void EagerKernelExecuteAsync(
         DCHECK_EQ(num_outputs, outputs->size());
         wrapped_done(GetKernelOutputs(outputs.get(), num_outputs, retvals, ctx,
                                       kernel_raw));
-      });
+      },
+      ctx->GetStackTrace());
 }
 }  // namespace
 

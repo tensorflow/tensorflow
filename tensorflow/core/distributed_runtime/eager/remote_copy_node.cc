@@ -109,7 +109,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
 
   return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
-                     /*remote_func_params=*/absl::nullopt);
+                     /*remote_func_params=*/absl::nullopt, nullptr);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -193,7 +193,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   EagerKernelArgs args;
   return kernel->Run(/*step_container*/ nullptr, args, outputs,
                      captured_state_->recv_cancellation(),
-                     /*remote_func_params=*/absl::nullopt);
+                     /*remote_func_params=*/absl::nullopt, nullptr);
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {

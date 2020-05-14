@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
@@ -46,6 +47,8 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/util/util.h"
+#include "
+tensorflow/python/util/stack_trace.h"
 
 using tensorflow::string;
 using tensorflow::strings::Printf;
@@ -852,6 +855,10 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
+  tensorflow::unwrap(ctx)->SetStackTrace(
+      std::unique_ptr<tensorflow::StackTraceBase>(
+          new tensorflow::StackTrace(tensorflow::StackTrace::Capture())));
+
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
@@ -3481,6 +3488,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
 
   TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
       PyCapsule_GetPointer(PyTuple_GET_ITEM(args, 0), nullptr));
+  tensorflow::unwrap(ctx)->SetStackTrace(
+      std::unique_ptr<tensorflow::StackTraceBase>(
+          new tensorflow::StackTrace(tensorflow::StackTrace::Capture())));
   op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 

@@ -54,6 +54,9 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/stack_trace_base.h"
+
+class OpaquePythonStackTrace;
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -592,6 +595,12 @@ class OpKernelContext {
   // The Params struct is passed in to initialize an OpKernelContext,
   // and must outlive the OpKernelContext.
   struct Params {
+    Params() {}
+
+    // TODO(kkb@): There is a place that copies Params.  But not possible with
+    // std::unique_ptr member.  Figure out what to do there.
+    Params(const Params& p) {}
+
     ~Params() { delete eigen_gpu_device; }
 
     // The step being executed.
@@ -707,6 +716,8 @@ class OpKernelContext {
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
+
+    std::unique_ptr<StackTraceBase> stack_trace = nullptr;
   };
 
   // params must outlive the OpKernelContext.
