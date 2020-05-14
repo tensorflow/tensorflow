@@ -1,3 +1,26 @@
+/*******************************************************************************
+ * * Copyright (c) 2018-2020 Cadence Design Systems, Inc.
+ * *
+ * * Permission is hereby granted, free of charge, to any person obtaining
+ * * a copy of this software and associated documentation files (the
+ * * "Software"), to use this Software with Cadence processor cores only and
+ * * not with any other processors and platforms, subject to
+ * * the following conditions:
+ * *
+ * * The above copyright notice and this permission notice shall be included
+ * * in all copies or substantial portions of the Software.
+ * *
+ * * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * ******************************************************************************/
+
+
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +49,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
+#include "xtensa_tf_micro_common.h"
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -147,11 +171,16 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              OpData* data) {
-  TFLITE_DCHECK(data_type != kTfLiteFloat32);
+  if(data_type != kTfLiteInt8)
+  {
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+        TfLiteTypeGetName(data_type), data_type);
+    return kTfLiteError;
+  }
 
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-      context, input, filter, bias, output, &real_multiplier));
+        context, input, filter, bias, output, &real_multiplier));
   xtensa::hifimini::QuantizeMultiplier(
       real_multiplier, &data->output_multiplier, &data->output_shift);
   return CalculateActivationRangeQuantized(context, activation, output,
@@ -202,11 +231,32 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
 
-  xtensa::hifimini::FullyConnected(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(filter), GetTensorData<int8_t>(filter),
-      GetTensorShape(bias), GetTensorData<int32_t>(bias),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
+  {
+    int ret, b, weight_depth, out_depth, batches;
+    int8_t * p_out = GetTensorData<int8_t>(output);
+    weight_depth = GetTensorShape(filter).Dims(GetTensorShape(filter).DimensionsCount()-1);
+    out_depth = GetTensorShape(output).Dims(GetTensorShape(output).DimensionsCount()-1);
+    batches = FlatSizeSkipDim(GetTensorShape(output), GetTensorShape(output).DimensionsCount()-1);
+
+    //TODO: Use xa_nn_fully_connected_sym8xasym8s_asym8s? the kernel tests fail with it.
+    for(b = 0; b < batches; b++) {
+      ret = xa_nn_fully_connected_asym8sxasym8s_asym8s(
+          (GetTensorData<int8_t>(output) + b*out_depth),
+          GetTensorData<int8_t>(filter),
+          (GetTensorData<int8_t>(input) + b*weight_depth),
+          GetTensorData<int32_t>(bias),
+          weight_depth,
+          out_depth,
+          op_params.weights_offset,
+          op_params.input_offset,
+          (op_params.output_multiplier << 8),
+          op_params.output_shift,
+          op_params.output_offset);
+      CHECK_ERR_HIFI_NNLIB_KER(ret, "xa_nn_fully_connected_sym8xasym8s_asym8s failed");
+    }
+    ret = xa_nn_vec_activation_min_max_asym8s_asym8s(p_out, p_out, data.output_activation_min, data.output_activation_max, batches * out_depth);
+    CHECK_ERR_HIFI_NNLIB_KER(ret, "fully_connected: xa_nn_vec_activation_min_max_asym8s_asym8s failed");
+  }
   return kTfLiteOk;
 }
 

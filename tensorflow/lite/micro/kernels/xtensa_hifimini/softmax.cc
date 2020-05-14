@@ -1,3 +1,24 @@
+/*******************************************************************************
+ * * Copyright (c) 2018-2020 Cadence Design Systems, Inc.
+ * *
+ * * Permission is hereby granted, free of charge, to any person obtaining
+ * * a copy of this software and associated documentation files (the
+ * * "Software"), to use this Software with Cadence processor cores only and
+ * * not with any other processors and platforms, subject to
+ * * the following conditions:
+ * *
+ * * The above copyright notice and this permission notice shall be included
+ * * in all copies or substantial portions of the Software.
+ * *
+ * * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * ******************************************************************************/
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +44,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
+#include "xtensa_tf_micro_common.h"
+
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -30,6 +53,10 @@ namespace activations {
 namespace {
 
 struct OpData {
+  int32_t input_multiplier;
+  int32_t input_left_shift;
+  int32_t diff_min;
+  int scratch_tensor_index;
   uint16_t* exp_lut;
 };
 
@@ -127,21 +154,17 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
       }
     }
 
-    // Precompute e^(-x * input_scale * beta) for every possible int8 input.
-    // This computation is used for every iteration of Softmax.  We must compute
-    // using pre-scaled inputs to avoid introducing additional error, while
-    // restricting our input range to the int8 range. This is valid since beta
-    // and input scale are constant for a given op in the graph. Skip index 0
-    // since that is a special case which requires 1 integer bit instead of 0.
-    for (int i = 1; i <= kInt8Range; i++) {
-      float scaled_input = i * input->params.scale;
-      float exp_value =
-          std::exp((-scaled_input) * static_cast<float>(params->beta));
+    static const int kScaledDiffIntegerBits = 5;
 
-      float exponent_scaled =
-          std::round(exp_value * static_cast<float>(1 << kExpFractionalBits));
-      op_data->exp_lut[i] = static_cast<uint16_t>(exponent_scaled);
-    }
+    int input_left_shift;
+    tflite::PreprocessSoftmaxScaling(
+        static_cast<double>(params->beta),
+        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
+        &op_data->input_multiplier, &input_left_shift);
+    op_data->input_left_shift = input_left_shift;
+    op_data->diff_min =
+        -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                            op_data->input_left_shift);
   }
   return kTfLiteOk;
 }
@@ -168,6 +191,17 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
+  const RuntimeShape& input_shape = GetTensorShape(input);
+  const RuntimeShape& output_shape = GetTensorShape(output);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+    MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  int scratch_size = xa_nn_get_softmax_scratch_size(PREC_SYM8S, PREC_SYM8S, depth);
+
+  const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+      context, scratch_size,
+      &(op_data->scratch_tensor_index));
+  TF_LITE_ENSURE_OK(context, scratch_status);
   // Allocate an array to precompute exponents over all int8 inputs, applying
   // the scale and beta before calculating exp. It is mandatory to apply beta
   // and scale here, since each softmax op may have different beta and scale
@@ -190,14 +224,31 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    // TODO(b/155656675): Const ref params can be slow on xtensa.
-    return Softmax(*op_data, GetTensorShape(input),
-                   GetTensorData<int8_t>(input), GetTensorShape(output),
-                   GetTensorData<int16_t>(output));
+    const RuntimeShape& input_shape = GetTensorShape(input);
+    const int8_t* input_data = GetTensorData<int8_t>(input);
+    const RuntimeShape& output_shape = GetTensorShape(output);
+    int16* output_data = GetTensorData<int16>(output);
+    const int trailing_dim = input_shape.DimensionsCount() - 1;
+    const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+    const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+    void* p_scratch = static_cast<void*>(
+        context->GetScratchBuffer(context, op_data->scratch_tensor_index));
+    TFLITE_DCHECK(p_scratch != nullptr);
+
+    for (int i = 0; i < outer_size; ++i) {
+      int err = xa_nn_vec_softmax_asym8s_16(
+          &output_data[i * depth], &input_data[i * depth], op_data->diff_min,
+          op_data->input_left_shift, op_data->input_multiplier, depth, p_scratch);
+      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_16 failed");
+    }
+    return kTfLiteOk;
   } else {
-    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                       TfLiteTypeGetName(input->type), input->type);
-    return kTfLiteError;
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
+      return kTfLiteError;
   }
 }
 }  // namespace activations

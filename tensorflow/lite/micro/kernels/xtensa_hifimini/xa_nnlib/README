@@ -1,0 +1,59 @@
+#
+# Copyright (c) 2018-2020 Cadence Design Systems, Inc.
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to use this Software with Cadence processor cores only and
+# not with any other processors and platforms, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+
+======================================================================
+Cadence HiFi Mini Neural Network (NN) Library
+======================================================================
+
+======================================================================
+Revision History
+======================================================================
+
+Version 0.6.0 API 1.0: May 13, 2020
+
++ Alpha Release
++ Tested using RI.2 tools and xt-xcc compiler
++ Added xa_nn_vec_softmax_asym8s_16 variant
++ Further optimized kernels supporting following operations
+  Fully connected
+  SVDF
+
+Known Issues:
+- Programmers Guide - partially complete, DRAFT version
+- Regression testing for some kernels is pending
+
+----------------------------------------------------------------------
+
+Version 0.5.0 API 1.0: December 16, 2019
+
++ Alpha Release
++ Tested using RI.2 tools and xt-xcc compiler
++ Initial version of HiFi Mini NN Library supporting following kernels:
+  Convolution 2D
+  Depthwise convolution 2D
+  Fully connected
+  Softmax
+  SVDF
+
+Known Issues:
+- Programmers Guide - partially complete, DRAFT version
+- Regression testing for some kernels is pending
+
