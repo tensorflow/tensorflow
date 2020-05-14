@@ -448,6 +448,8 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",

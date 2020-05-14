@@ -29,7 +29,12 @@ using tensorflow::string;
 namespace tensorflow {
 namespace {
 
-TEST(UnifiedCAPI, TestBasicEager) {
+class UnifiedCAPI : public ::testing::TestWithParam<const char*> {
+ protected:
+  void SetUp() override { TF_SetTracingImplementation(GetParam()); }
+};
+
+TEST_P(UnifiedCAPI, TestBasicEager) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -81,33 +86,18 @@ TEST(UnifiedCAPI, TestBasicEager) {
   TF_DeleteExecutionContext(ctx);
 }
 
-TEST(UnifiedCAPI, TestBasicGraph) {
+TEST_P(UnifiedCAPI, TestBasicGraph) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
+  // Start a new function / execution context.
+  string fn_name = "double";
+  TF_ExecutionContext* graph_ctx =
+      TF_CreateFunction(fn_name.c_str(), status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
-  // Add a placeholder to the graph.
-  auto* placeholder_op = TF_NewAbstractOp(graph_ctx);
-  TF_AbstractOpSetOpType(placeholder_op, "Placeholder", status.get());
+  auto* placeholder_t =
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TF_AbstractOpSetOpName(placeholder_op, "my_ph", status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TF_AbstractOpSetAttrType(placeholder_op, "dtype", TF_FLOAT, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-
-  // Build inputs and outputs.
-  TF_OutputList* placeholder_outputs = TF_NewOutputList();
-
-  // Execute.
-  TF_ExecuteOperation(placeholder_op, 0, nullptr, placeholder_outputs,
-                      graph_ctx, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  ASSERT_EQ(1, TF_OutputListNumOutputs(placeholder_outputs));
-  TF_AbstractTensor* placeholder_t = TF_OutputListGet(placeholder_outputs, 0);
-
-  // Delete placeholder op.
-  TF_DeleteAbstractOp(placeholder_op);
 
   // Build an abstract operation.
   auto* add_op = TF_NewAbstractOp(graph_ctx);
@@ -123,17 +113,13 @@ TEST(UnifiedCAPI, TestBasicGraph) {
   // Execute.
   TF_ExecuteOperation(add_op, 2, inputs, add_outputs, graph_ctx, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TF_AbstractTensor* output_t = TF_OutputListGet(add_outputs, 0);
 
   // Clean up operation and inputs.
   TF_DeleteAbstractOp(add_op);
 
-  string fn_name = "double";
-  TF_AbstractFunction* func = TF_ExecutionContextToFunction(
-      graph_ctx, fn_name.c_str(), 1, placeholder_t, 1, output_t, status.get());
+  TF_AbstractFunction* func =
+      TF_FinalizeFunction(graph_ctx, add_outputs, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TF_DeleteAbstractTensor(placeholder_t);
-  TF_DeleteAbstractTensor(output_t);
 
   // Build eager context.
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -174,18 +160,16 @@ TEST(UnifiedCAPI, TestBasicGraph) {
   ASSERT_EQ(*f_value, 4.0);
 
   TF_DeleteOutputList(add_outputs);
-  TF_DeleteOutputList(placeholder_outputs);
   TF_DeleteAbstractOp(fn_op);
   TF_DeleteAbstractTensor(input_t);
   TF_DeleteAbstractTensor(final_result);
   TF_DeleteTensor(f_t);
   TF_DeleteAbstractFunction(func);
 
-  TF_DeleteExecutionContext(graph_ctx);
   TF_DeleteExecutionContext(eager_execution_ctx);
 }
 
-TEST(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
+TEST_P(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -193,18 +177,15 @@ TEST(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TFE_DeleteContextOptions(opts);
 
-  TF_AbstractFunction* func = TF_ExecutionContextToFunction(
-      ctx, nullptr, 0, nullptr, 0, nullptr, status.get());
+  TF_AbstractFunction* func = TF_FinalizeFunction(ctx, nullptr, status.get());
   ASSERT_EQ(nullptr, func);
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
-
-  TF_DeleteExecutionContext(ctx);
 }
 
-TEST(UnifiedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
+TEST_P(UnifiedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction("some_func", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Add a placeholder to the graph.
@@ -222,10 +203,10 @@ TEST(UnifiedCAPI, TF_CallingSetOpTypeAfterFinishingOpBuildingRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifiedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
+TEST_P(UnifiedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction("some_func", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Add a placeholder to the graph.
@@ -243,7 +224,7 @@ TEST(UnifiedCAPI, TF_CallingSetOpNameAfterFinishingOpBuildingRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifiedCAPI, TestExecutingEagerOpInGraphModeRaises) {
+TEST_P(UnifiedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   // Build an Eager context.
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -273,7 +254,8 @@ TEST(UnifiedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build a Graph context.
-  TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction("some_func", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Execute eager op using graph context.
@@ -289,10 +271,11 @@ TEST(UnifiedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   TF_DeleteExecutionContext(graph_ctx);
 }
 
-TEST(UnifiedCAPI, TestExecutingGraphOpInEagerModeRaises) {
+TEST_P(UnifiedCAPI, TestExecutingGraphOpInEagerModeRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_ExecutionContext* graph_ctx = TF_NewGraphExecutionContext(status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction("some_func", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Add a placeholder to the graph.
@@ -348,6 +331,8 @@ TEST(UnifiedCAPI, TestExecutingGraphOpInEagerModeRaises) {
   TF_DeleteExecutionContext(graph_ctx);
   TF_DeleteExecutionContext(eager_execution_ctx);
 }
+
+INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI, ::testing::Values("graphdef"));
 
 }  // namespace
 }  // namespace tensorflow
