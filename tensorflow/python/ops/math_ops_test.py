@@ -45,7 +45,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
       self.assertEqual(y_tf, 21)
 
   def testReduceExtendType(self):
-    in_f32 = np.random.rand(1024, 1024).astype(np.float)
+    in_f32 = np.random.randn(1000, 1000).astype(np.float32)
     in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
 
     out_f32 = self.evaluate(math_ops.reduce_sum(in_f32))

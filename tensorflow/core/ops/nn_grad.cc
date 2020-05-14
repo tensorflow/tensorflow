@@ -31,7 +31,7 @@ Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"grad_x: T"},
       // Attr defs
-#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if defined(INTEL_MKL)
       {{"T: {float, double, bfloat16}"}},
 #else
       {{"T: {float, double}"}},
