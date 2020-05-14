@@ -39,6 +39,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+autograph_ctx = lazy_loader.LazyLoader(
+    "autograph_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph.impl.api")
 
 @tf_export(v1=["map_fn"])
 @deprecation.deprecated_args(None, "Use fn_output_signature instead", "dtype")
@@ -477,7 +483,8 @@ def map_fn(fn,
       elems_value_flat = _elems_value_batchable_to_flat(elems_value_batchable,
                                                         elems_flat_signature)
       elems_value = elems_unflatten(elems_value_flat)
-      result_value = fn(elems_value)
+      ag_ctx = autograph_ctx.control_status_ctx()
+      result_value = autograph.tf_convert(elems_value, ag_ctx)
       nest.assert_same_structure(fn_output_signature or elems, result_value)
       result_value_flat = nest.flatten(result_value)
       result_value_batchable = _result_value_flat_to_batchable(

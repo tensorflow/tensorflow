@@ -187,7 +187,7 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(nums, received[2])
 
   @test_util.run_in_graph_and_eager_modes
-  def testMap_autograph_indirect():
+  def testMap_autograph_indirect(self):
     def test_function(x):
       cond = tf.constant(-1)
       if cond == 0:
