@@ -34,14 +34,14 @@ void FloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
 
 void FloatToBFloat16(const Eigen::ThreadPoolDevice& d, const float* src,
                      bfloat16* dst, int64 size) {
-  auto ParallelFloatToBFloat16 = [&](Eigen::Index start, Eigen::Index end) {
+  auto parallel_float_to_bfloat16 = [&](Eigen::Index start, Eigen::Index end) {
     FloatToBFloat16(src + start, dst + start, end - start);
   };
   const int input_bytes = size * sizeof(float);
   const int output_bytes = size * sizeof(bfloat16);
   const int compute_cycles = (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
   const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-  d.parallelFor(size, cost, ParallelFloatToBFloat16);
+  d.parallelFor(size, cost, parallel_float_to_bfloat16);
 }
 
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size) {
@@ -62,14 +62,14 @@ void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size) {
 
 void BFloat16ToFloat(const Eigen::ThreadPoolDevice& d, const bfloat16* src,
                      float* dst, int64 size) {
-  auto ParallelBFloat16ToFloat = [&](Eigen::Index start, Eigen::Index end) {
+  auto parallel_bfloat16_to_float = [&](Eigen::Index start, Eigen::Index end) {
     BFloat16ToFloat(src + start, dst + start, end - start);
   };
   const int input_bytes = size * sizeof(bfloat16);
   const int output_bytes = size * sizeof(float);
   const int compute_cycles = (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
   const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-  d.parallelFor(size, cost, ParallelBFloat16ToFloat);
+  d.parallelFor(size, cost, parallel_bfloat16_to_float);
 }
 
 }  // end namespace tensorflow
