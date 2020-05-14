@@ -3,6 +3,7 @@ ifeq ($(TARGET), stm32f4)
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
+  TARGET_TOOLCHAIN_ROOT := $(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
 
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
@@ -42,20 +43,21 @@ ifeq ($(TARGET), stm32f4)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
     --specs=nosys.specs \
-    -T $(MAKEFILE_DIR)/targets/stm32f4/stm32f4.lds \
-    -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
+    -T ${TENSORFLOW_ROOT}$(MAKEFILE_DIR)/targets/stm32f4/stm32f4.lds \
+    -Wl,-Map=${TENSORFLOW_ROOT}$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
     -Wl,--gc-sections
   BUILD_TYPE := micro
   MICROLITE_LIBS := \
     -lm
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
-    -I$(MAKEFILE_DIR)/downloads/stm32_bare_lib/include
-  MICROLITE_CC_SRCS += \
+    -I$(MAKEFILE_DIR)/downloads/stm32_bare_lib/include/
+  THIRD_PARTY_CC_SRCS += \
     $(wildcard $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/*.c) \
     $(wildcard $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/*.cc)
   EXCLUDED_SRCS := \
     $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
+  THIRD_PARTY_CC_SRCS  := $(filter-out $(EXCLUDED_SRCS), $(THIRD_PARTY_CC_SRCS))
   MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
   # TODO, non working tests.. the micro_speech example partly works
@@ -85,7 +87,8 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/examples/person_detection_experimental/Makefile.inc \
     tensorflow/lite/micro/examples/mobilenet_v2/Makefile.inc \
     tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-    tensorflow/lite/micro/examples/ds_cnn_l/Makefile.inc
+    tensorflow/lite/micro/examples/ds_cnn_l/Makefile.inc \
+    tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
   MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
 # These are microcontroller-specific rules for converting the ELF output

@@ -37,8 +37,6 @@ $(HELLO_WORLD_TEST_SRCS),$(HELLO_WORLD_TEST_HDRS)))
 $(eval $(call microlite_test,output_handler_test,\
 $(OUTPUT_HANDLER_TEST_SRCS),$(OUTPUT_HANDLER_TEST_HDRS)))
 
-$(eval $(call generate_project_third_party_parsing))
-
 # Builds a standalone binary.
 $(eval $(call microlite_test,hello_world,\
 $(HELLO_WORLD_SRCS),$(HELLO_WORLD_HDRS)))

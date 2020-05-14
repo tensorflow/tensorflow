@@ -274,9 +274,6 @@ $(eval $(call microlite_test,command_responder_test,\
 $(COMMAND_RESPONDER_TEST_SRCS),$(COMMAND_RESPONDER_TEST_HDRS)))
 
 
-$(eval $(call generate_project_third_party_parsing))
-
-
 # Builds a standalone speech command recognizer binary.
 $(eval $(call microlite_test,micro_speech,\
 $(MICRO_SPEECH_SRCS),$(MICRO_SPEECH_HDRS)))

@@ -79,7 +79,6 @@ $(GESTURE_PREDICTOR_TEST_SRCS),$(GESTURE_PREDICTOR_TEST_HDRS)))
 $(eval $(call microlite_test,magic_wand_test,\
 $(magic_wand_TEST_SRCS),$(magic_wand_TEST_HDRS)))
 
-$(eval $(call generate_project_third_party_parsing))
 
 # Builds a standalone binary
 $(eval $(call microlite_test,magic_wand,\
