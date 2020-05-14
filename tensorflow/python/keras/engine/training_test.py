@@ -28,6 +28,7 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -87,6 +88,35 @@ class TrainingTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
     self.assertAllClose(hist.history['loss'][0], 10000)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_run_eagerly_setting(self):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    run_eagerly = testing_utils.should_run_eagerly()
+    model.compile('sgd', 'mse', run_eagerly=run_eagerly)
+    self.assertEqual(model.run_eagerly, run_eagerly)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @parameterized.named_parameters(
+      ('train_on_batch', 'train_on_batch'),
+      ('test_on_batch', 'test_on_batch'),
+      ('predict_on_batch', 'predict_on_batch'),
+      ('fit', 'fit'),
+      ('evaluate', 'evaluate'),
+      ('predict', 'predict'),
+  )
+  def test_disallow_methods_inside_tf_function(self, method_name):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    run_eagerly = testing_utils.should_run_eagerly()
+    model.compile('sgd', 'mse', run_eagerly=run_eagerly)
+
+    @def_function.function
+    def my_fn():
+      getattr(model, method_name)(1)
+
+    error_msg = 'inside a `tf.function`'
+    with self.assertRaisesRegexp(RuntimeError, error_msg):
+      my_fn()
 
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_learning_phase(self):
@@ -2949,6 +2979,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
+    self.assertListEqual([m.name for m in model.metrics],
+                         ['metric_1', 'metric_2'])
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(0.01),
@@ -2967,6 +2999,41 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.predict(x, batch_size=5)
     model.train_on_batch(x, y)
     model.test_on_batch(x, y)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_multiple_add_metric_calls_layer(self):
+
+    class TestLayer(layers_module.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__(name='test_layer')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
+        self.m1 = metrics_module.Mean(name='m_1')
+        self.m2 = [
+            metrics_module.Mean(name='m_2'),
+            metrics_module.Mean(name='m_3')
+        ]
+        self.m3 = {
+            'mean4': metrics_module.Mean(name='m_4'),
+            'mean5': metrics_module.Mean(name='m_5')
+        }
+
+      def call(self, x):
+        self.add_metric(self.m2[0](x))
+        self.add_metric(self.m2[1](x))
+        self.add_metric(self.m1(x))
+        self.add_metric(self.m3['mean4'](x))
+        self.add_metric(self.m3['mean5'](x))
+        self.add_metric(math_ops.reduce_sum(x), name='m_6', aggregation='mean')
+        return self.dense1(x)
+
+    layer = TestLayer()
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5'])
+
+    layer(np.ones((10, 10)))
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5', 'm_6'])
 
   @keras_parameterized.run_all_keras_modes
   def test_duplicate_metric_name_in_add_metric(self):

@@ -252,6 +252,37 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
               ::testing::HasSubstr(expected_signature));
 }
 
+TEST(CompileSerializedMlirToXlaHloTest, ShapeInferenceAfterLegalization) {
+  constexpr char mlir_module[] = R"(
+    module attributes {tf.versions = {producer = 179 : i32}} {
+      func @main(%arg0: tensor<8x16x16x64xbf16>, %arg1: tensor<64xf32>) -> (tensor<8x16x16x64xbf16>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<*xf32>) {
+        %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg1, %arg1, %arg1) {data_format = "NHWC", device = "", epsilon = 9.99999974E-5 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = false} : (tensor<8x16x16x64xbf16>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>) -> (tensor<8x16x16x64xbf16>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<*xf32>)
+        return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<8x16x16x64xbf16>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<*xf32>
+      }
+    }
+  )";
+
+  std::vector<TensorShape> arg_shapes{TensorShape({8, 16, 16, 64}),
+                                      TensorShape({64})};
+  XlaCompiler::CompilationResult compilation_result;
+
+  Status s = CompileSerializedMlirToXlaHlo(
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
+      /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
+  TF_ASSERT_OK(s);
+
+  const xla::HloModuleConfig module_config(
+      compilation_result.computation->GetProgramShape().ValueOrDie());
+  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
+      compilation_result.computation->proto(), module_config);
+  TF_ASSERT_OK(status_or_hlo_module.status());
+
+  constexpr char expected_signature[] =
+      R"(-> (bf16[8,16,16,64], f32[64], f32[64], f32[64], f32[64], f32[0]))";
+  EXPECT_THAT(status_or_hlo_module.ValueOrDie()->ToString(),
+              ::testing::HasSubstr(expected_signature));
+}
+
 TEST(CompileSerializedMlirToXlaHloTest, ConstantFoldHook) {
   constexpr char mlir_module[] = R"(
 module attributes {tf.versions = {producer = 179 : i32}} {
@@ -424,8 +455,12 @@ TEST(CompileGraphToXlaHlo, Basic) {
   test::graph::Retval(&graph, 0, arg);
 
   XlaCompiler::CompilationResult result;
+  XlaCompiler::Argument compiler_arg;
+  compiler_arg.kind = XlaCompiler::Argument::kParameter;
+  compiler_arg.shape = TensorShape();
+
   TF_ASSERT_OK(
-      CompileGraphToXlaHlo(graph, /*arg_shapes=*/{TensorShape()}, "XLA_CPU_JIT",
+      CompileGraphToXlaHlo(graph, /*args=*/{compiler_arg}, "XLA_CPU_JIT",
                            /*use_tuple_args=*/false, flib_def, GraphDebugInfo(),
                            /*shape_representation_fn=*/nullptr, &result));
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -28,6 +29,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   DCHECK_EQ(src.name(), dst->name());
   dst->set_category(src.category());
   dst->set_provenance(src.provenance());
+  dst->set_is_eager(dst->is_eager() || src.is_eager());
   dst->set_deduplicated_name(src.deduplicated_name());
   if (!dst->has_layout() && src.has_layout()) {
     *dst->mutable_layout() = src.layout();

@@ -269,7 +269,18 @@ message DebugOptions {
   bool xla_tpu_detect_nan = 135;
   bool xla_tpu_detect_inf = 136;
 
-  // Next id: 137
+  // True if TraceMe annotations are enabled for XLA:CPU.
+  bool xla_cpu_enable_xprof_traceme = 137;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_error = 139;
+
+  // Next id: 140
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -319,6 +330,13 @@ message ExecutionOptions {
   // Number of partitions of the computation to run (model parallelism).
   // If zero, uses the default number of partitions for the XLA service.
   int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 11;
 }
 
 message GetDeviceHandlesRequest {

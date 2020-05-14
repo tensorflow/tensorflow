@@ -22,7 +22,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -749,10 +748,22 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   ASSERT_EQ(interpreter.SetOutputs({4}), kTfLiteOk);
 
   TfLiteQuantizationParams quantized;
-  char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'A', 'B', 'C'};
+
+  // String tensor with one string of length 3
+  union {
+    char raw_bytes[15];
+    struct {
+      int32_t num_strs;
+      int32_t offsets[2];
+      char str_data[3];
+    } tensor_data;
+  } data;
+  data.tensor_data = {1, {12, 15}, {'A', 'B', 'C'}};
+
   // Read only string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadOnly(0, kTfLiteString, "", {1},
-                                                    quantized, data, 15),
+                                                    quantized, data.raw_bytes,
+                                                    sizeof(data.raw_bytes)),
             kTfLiteOk);
   // Read-write string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "", {1},
@@ -960,8 +971,7 @@ TEST(BasicInterpreter, TestUseNNAPI) {
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
-  TfLiteRegistration registration = {
-      .init = nullptr, .free = nullptr, .prepare = nullptr, .invoke = nullptr};
+  TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
   // These functions are only supported inside Delegate's Prepare function.
   // The test verifies that these functions returns `kTfLiteError`, but not
   // `kTfLiteOk` or just crashes.
@@ -1079,8 +1089,11 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
     TfLiteTensor* first_tensor = context->tensors;
 
     int new_tensor_index;
-    context->AddTensors(context, Interpreter::kTensorsCapacityHeadroom + 1,
-                        &new_tensor_index);
+    // Add enough tensors to trigger buffer re-allocation.
+    context->AddTensors(
+        context,
+        (context->tensors_size + Interpreter::kTensorsCapacityHeadroom + 1) * 2,
+        &new_tensor_index);
     EXPECT_NE(first_tensor, context->tensors);
     return kTfLiteOk;
   };
@@ -1091,7 +1104,7 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
-  static const TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
+  static constexpr TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
 
   static TestExternalContext* Get(TfLiteContext* context) {
     return reinterpret_cast<TestExternalContext*>(
@@ -1609,7 +1622,7 @@ TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   // TfLiteRegistration returns an error status.
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
-      kTfLiteError);
+      kTfLiteDelegateError);
   // Execution plan should remain unchanged.
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);
 
@@ -1677,21 +1690,20 @@ TEST_F(TestDelegate, SecondDelegationPrepareFailure) {
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 2);
-  // Second delegate won't get applied. However, we should be back to the
-  // previous 2-node plan.
+  // Second delegate won't get applied.
+  // As a result, previous delegate should also get undone, restoring the
+  // execution plan to its original state.
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
-      kTfLiteError);
-  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+      kTfLiteDelegateError);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
 
   std::vector<float> input = {1.0f, 2.0f, 3.0f};
-  // Node 0: tensor_2 = tensor0 + tensor0
-  // Delegated node: tensor_2 + tensor_1
-  std::vector<float> expected_output = {3.0f, 6.0f, 9.0f};
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f};
   constexpr int kOutputTensorIndex = 3;
   TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
 
-  // Verify Invoke() behavior to ensure Interpreter isn't broken.
+  // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
   interpreter_->Invoke();

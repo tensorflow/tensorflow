@@ -22,6 +22,76 @@ namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
+
+// Returns a heuristic value that captures how much putting this tensor to
+// the alternate memory would help if the op is memory bound, or otherwise
+// how far off is the op to memory boundedness. The larger this number, the
+// higher priority it will be placed in the alternate memory.
+float GetAlternateMemoryBenefit(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const HloInstruction& instruction,
+    float elapsed_time_due_to_alternate_mem) {
+  float elapsed_time_due_to_compute =
+      cost_analysis.GetInstructionElapsedDueToCompute(instruction);
+  float elapsed_time_due_to_memory =
+      cost_analysis.GetInstructionElapsedDueToMemory(instruction);
+  if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
+    // Memory bound, return how much alternate memory is better.
+    return elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem;
+  } else {
+    // Compute bound, return how far off are we to memory boundedness.
+    return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
+  }
+}
+
+// Returns a heuristic value of memory boundedness for the given BufferInterval.
+// The larger this number, the higher priority it will be placed in the
+// alternate memory.
+float GetMemoryBoundedness(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) {
+  const HloInstruction& defining_instruction =
+      *interval.buffer->defining_instruction();
+  float alternate_mem_benefit =
+      GetAlternateMemoryBenefit(cost_analysis, defining_instruction,
+                                cost_analysis.GetInstructionElapsedDueToMemory(
+                                    defining_instruction,
+                                    /*operand_in_alternate_mem=*/{},
+                                    /*output_in_alternate_mem=*/true));
+  for (const HloUse& use : interval.buffer->uses()) {
+    float use_alternate_mem_benefit = GetAlternateMemoryBenefit(
+        cost_analysis, *use.instruction,
+        cost_analysis.GetInstructionElapsedDueToMemory(*use.instruction,
+                                                       use.operand_number));
+    // If the benefit is positive (memory bound), add it to this buffer's
+    // benefit. If the benefit is negative (compute bound), calculate the
+    // maximum.
+    if (alternate_mem_benefit > 0 && use_alternate_mem_benefit > 0) {
+      alternate_mem_benefit += use_alternate_mem_benefit;
+    } else {
+      alternate_mem_benefit =
+          std::max(alternate_mem_benefit, use_alternate_mem_benefit);
+    }
+  }
+
+  // Get performance slowdown in seconds of prefetching current BufferInterval
+  // causing to other BufferIntervals.
+  float alternate_mem_slowdown =
+      cost_analysis.GetInstructionElapsedDueToMemorySlowdown(interval.size);
+
+  // Scale the slowdown based on the time of this buffer. We would want earlier
+  // buffers have lower slowdown values, because they are less likely to overlap
+  // with other HLOs.
+  // TODO(yuemmawang): We may want a piecewise function, where a lower slowdown
+  // for early HLOs, and full slowdown for mid-to-late HLOs.
+  // TODO(yuemmawang): Further in a smarter way, we want buffers overlapped with
+  // more HLOs have higher slowdown, and vice versa.
+  float scale = interval.start * 1.0 / cost_analysis.GetScheduleEndTime();
+  alternate_mem_slowdown *= scale;
+
+  return alternate_mem_benefit - alternate_mem_slowdown;
+}
+
 }  // namespace
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
@@ -253,6 +323,12 @@ std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
   return absl::StrCat(
       "Async copy elapsed (s) = ", async_copy_elapsed,
       ", logical interval elapsed (s) = ", logical_interval_elapsed);
+}
+
+absl::optional<float>
+CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+  return GetMemoryBoundedness(cost_analysis_, interval);
 }
 
 std::string MemorySpaceAssignment::AllocationValue::ToString() const {
@@ -495,6 +571,99 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
   return true;
 }
 
+void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    std::string* debug_str) const {
+  // Columns in buffer information:
+  // buffer_id: int. This value can be used to match the allocation in
+  // allocation information.
+  // buffer_name: string.
+  // alt_mem_benefit: float. Roughly corresponds to how much the cost analysis
+  // thought it would be beneficial to put this in the alternate memory. The
+  // higher the value, the more it is memory bound.
+  // size: int. In bytes.
+  // definition_time: int. Logical time this value was defined in the schedule.
+  // use_times: string. This is a semicolon-separated list of integers for all
+  // the use times.
+  // use_names: string. This is a semicolon-separated list of string
+  // representation of uses.
+  if (debug_str->empty()) {
+    // Append the column names.
+    absl::StrAppend(debug_str,
+                    "buffer_id,buffer_name,alt_mem_benefit,size,"
+                    "definition_time,use_times,use_names\n");
+  }
+  const HloBuffer& buffer =
+      alias_analysis_.GetBufferContainingValue(*interval.buffer);
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  int64 definition_time =
+      instruction_schedule.at(interval.buffer->defining_position().instruction);
+  std::vector<std::pair<int64, std::string>> uses;
+  for (const HloValue* value : buffer.values()) {
+    for (const HloUse& use : value->uses()) {
+      uses.push_back(
+          {instruction_schedule.at(use.instruction), use.ToString()});
+    }
+  }
+  absl::c_sort(uses);
+  std::vector<int64> use_times;
+  std::vector<std::string> use_names;
+  use_times.reserve(uses.size());
+  use_names.reserve(uses.size());
+  for (auto use : uses) {
+    use_times.push_back(use.first);
+    use_names.push_back(use.second);
+  }
+
+  absl::StrAppend(debug_str, buffer.id(), ",");
+  absl::StrAppend(debug_str, "\"", interval.buffer->ToShortString(), "\",");
+  auto alternate_memory_benefit =
+      options_.prefetch_interval_picker->BufferIntervalAlternateMemoryBenefit(
+          interval);
+  absl::StrAppend(
+      debug_str, alternate_memory_benefit ? *alternate_memory_benefit : 0, ",");
+  absl::StrAppend(debug_str, interval.size, ",");
+  absl::StrAppend(debug_str, definition_time, ",");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\",");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\"");
+  absl::StrAppend(debug_str, "\n");
+}
+
+void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    const MemorySpaceAssignment::Allocation& allocation,
+    std::string* debug_str) const {
+  // Columns in allocation information:
+  // buffer_id: int. This value can be used the match with buffer info.
+  // size: int. In bytes.
+  // offset: int. In bytes.
+  // start_time: int. Logical start time of the allocation.
+  // end_time: int. Logical end time of the allocation.
+  if (debug_str->empty()) {
+    // Append the column names.
+    absl::StrAppend(debug_str, "buffer_id,size,offset,start_time,end_time\n");
+  }
+  if (allocation.memory_space() == MemorySpace::kAlternate) {
+    const HloBuffer& buffer =
+        alias_analysis_.GetBufferContainingValue(*interval.buffer);
+    absl::StrAppend(debug_str, buffer.id(), ",");
+    absl::StrAppend(debug_str, interval.size, ",");
+    absl::StrAppend(debug_str, allocation.chunk().offset, ",");
+    absl::StrAppend(debug_str, allocation.start_time(), ",");
+    absl::StrAppend(debug_str, allocation.end_time(), "\n");
+  }
+}
+
+void AlternateMemoryBestFitHeap::DumpIfEnabled(
+    absl::string_view buffer_info_str,
+    absl::string_view allocation_info_str) const {
+  if (!options_.dump_fn) {
+    return;
+  }
+  options_.dump_fn("bufferinfo", buffer_info_str);
+  options_.dump_fn("allocinfo", allocation_info_str);
+}
+
 HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -504,15 +673,18 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
   AddInputAndOutputRequiredAssignments();
 
-  if (VLOG_IS_ON(4)) {
-    VLOG(4) << "Flattened instruction sequence:";
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Flattened instruction sequence:";
     const auto& instruction_sequence =
         hlo_live_range_.flattened_instruction_sequence().instructions();
     for (int i = 0; i < instruction_sequence.size(); ++i) {
-      VLOG(4) << " " << i << ": " << instruction_sequence[i]->parent()->name()
+      VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
     }
   }
+
+  std::string buffer_info_str;
+  std::string allocation_info_str;
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
@@ -545,7 +717,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     }
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
-      VLOG(4) << "Interval " << interval.buffer->ToShortString()
+      VLOG(3) << "Interval " << interval.buffer->ToShortString()
               << " is reserved in the alternate memory. Total reserved bytes = "
               << reserved_in_bytes_;
       for (const BufferInterval* colocated_interval : colocated_intervals) {
@@ -554,7 +726,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
         // alternate memory allocations will not have an entry in preset
         // allocations that is normally used for coloring.
         for (auto& position : value->positions()) {
-          VLOG(3) << "Coloring " << position.ToString();
+          VLOG(4) << "Coloring " << position.ToString();
           Shape* shape = ShapeUtil::GetMutableSubshape(
               position.instruction->mutable_shape(), position.index);
           CHECK(shape->IsArray()) << "Coloring a shape that is not an array: "
@@ -616,6 +788,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
     }
 
+    AppendBufferInfoDebugString(interval, &buffer_info_str);
+
     // Data structure to contain the preferred offset for a given computation.
     // We ensure that the same offset will be allocated outside the while loop
     // as well as inside the while loop.
@@ -672,6 +846,12 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
             // interval (5-6) can be allocated separately and this buffer
             // doesn't waste alternate memory space within the while loop body.
             HloComputation* while_body = use.instruction->while_body();
+            // We require while body ROOTs to be the last in the schedule.
+            CHECK_EQ(
+                instruction_schedule.at(while_body->root_instruction()) + 1,
+                instruction_schedule.at(use.instruction))
+                << "While body ROOTs need to be the last in the schedule!  "
+                   "Please run RootInstructionSinker.";
             // Replace the use time with the parameter time so that we can
             // decide on alternate memory allocations within the while loop body
             // when we look at uses within the while loop body.
@@ -737,6 +917,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     if (allocation_success) {
       for (AllocationValue& allocation_value : allocation_values) {
         for (auto& allocation : *allocation_value.allocation_sequence()) {
+          AppendAllocationInfoDebugString(interval, *allocation,
+                                          &allocation_info_str);
           allocations_->push_back(std::move(allocation));
         }
       }
@@ -745,6 +927,12 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     pending_chunks_.clear();
     pending_async_copies_.clear();
   }
+
+  VLOG(3) << "Debug buffer info: ";
+  VLOG(3) << buffer_info_str;
+  VLOG(3) << "Debug allocation info: ";
+  VLOG(3) << allocation_info_str;
+  DumpIfEnabled(buffer_info_str, allocation_info_str);
 
   return result_;
 }
@@ -994,7 +1182,7 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
   for (const auto& interval_and_chunk : pending_chunks_) {
     const BufferInterval& interval = interval_and_chunk.first;
     const Chunk& chunk = interval_and_chunk.second.chunk;
-    VLOG(4) << "Uncommitting: (" << interval.start << ", " << interval.end
+    VLOG(3) << "Uncommitting: (" << interval.start << ", " << interval.end
             << ") off = " << chunk.offset << " size = " << chunk.size;
     interval_tree_.Remove(interval.start, interval.end, chunk);
   }
@@ -1139,7 +1327,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
   // If the buffer must be in default memory at the end_time, don't prefetch.
   if (required_memory_space_at_end == MemorySpace::kDefault) {
-    VLOG(4)
+    VLOG(3)
         << "Not trying to prefetch because use requires buffer in default mem.";
     (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
     (*prev_allocation_in_default_mem_it)->AddUse(request.use);
@@ -1183,8 +1371,10 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
-  pending_async_copies_.push_back({start_time, end_time, memory_space});
-  async_copy_interval_tree_.Add(start_time, end_time, kDummyChunk);
+  pending_async_copies_.push_back(
+      {start_time, copy_done_schedule_before_time, memory_space});
+  async_copy_interval_tree_.Add(start_time, copy_done_schedule_before_time,
+                                kDummyChunk);
   if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
     async_copy_ordering_.AddCopy(pending_async_copies_.back());
   }
@@ -1265,7 +1455,7 @@ bool AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     preferred_offset = request.preferred_offset;
   }
 
-  VLOG(4) << "We can eliminate copy to alternate memory. Preferred offset = "
+  VLOG(3) << "We can eliminate copy to alternate memory. Preferred offset = "
           << (preferred_offset ? *preferred_offset : -1);
   // In case there are additional uses after this use, we rely on the last use
   // time to try to reserve a chunk in the heap simulator. This is to prevent
@@ -1345,7 +1535,7 @@ bool AlternateMemoryBestFitHeap::Evict(const AllocationRequest& request) {
   eviction_mem_interval.end =
       std::min(preferred_eviction_end_time, global_max_time_);
   int64 preferred_offset = prev_allocation->chunk().offset;
-  VLOG(4) << "Eviction (" << eviction_start_time << ", " << eviction_end_time
+  VLOG(3) << "Eviction (" << eviction_start_time << ", " << eviction_end_time
           << ") preferred end time = " << eviction_mem_interval.end;
 
   for (; eviction_mem_interval.end > eviction_end_time;
@@ -1385,7 +1575,7 @@ bool AlternateMemoryBestFitHeap::Evict(const AllocationRequest& request) {
     // this interval.
     bool eviction_scheduled = false;
     for (int64 time = eviction_start_time; time < eviction_end_time; ++time) {
-      VLOG(3) << "Try evicting (" << time << ", " << time + 1 << ")";
+      VLOG(4) << "Try evicting (" << time << ", " << time + 1 << ")";
       if (!ViolatesMaximumOutstandingAsyncCopies(time, time + 1)) {
         VLOG(3) << "Eviction successful.";
         AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
@@ -1431,7 +1621,7 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   options_.prefetch_interval_picker->Begin(
       request.use, prev_allocation_in_default_mem.earliest_available_time(),
       request.latest_prefetch_time);
-  VLOG(4) << "Trying prefetch picker = "
+  VLOG(3) << "Trying prefetch picker = "
           << options_.prefetch_interval_picker->ToDebugString();
 
   // Create an alternate memory interval that starts at the earliest
@@ -1446,12 +1636,12 @@ bool AlternateMemoryBestFitHeap::Prefetch(
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              request.end_time)) {
+                                              request.latest_prefetch_time)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
     if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  request.end_time)) {
+                                  request.latest_prefetch_time)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
@@ -1536,70 +1726,8 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
 MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
     const MemorySpaceAssignmentCostAnalysis& cost_analysis) {
   return [&](const BufferInterval& x, const BufferInterval& y) {
-    // Returns a heuristic value that captures how much putting this tensor to
-    // the alternate memory would help if the op is memory bound, or otherwise
-    // how far off is the op to memory boundedness. The larger this number, the
-    // higher priority it will be placed in the alternate memory.
-    auto get_alternate_mem_benefit =
-        [&](const HloInstruction& instruction,
-            float elapsed_time_due_to_alternate_mem) {
-          float elapsed_time_due_to_compute =
-              cost_analysis.GetInstructionElapsedDueToCompute(instruction);
-          float elapsed_time_due_to_memory =
-              cost_analysis.GetInstructionElapsedDueToMemory(instruction);
-          if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
-            // Memory bound, return how much alternate memory is better.
-            return elapsed_time_due_to_memory -
-                   elapsed_time_due_to_alternate_mem;
-          } else {
-            // Compute bound, return how far off are we to memory boundedness.
-            return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
-          }
-        };
-
-    auto get_memory_boundedness = [&](const BufferInterval& interval) {
-      const HloInstruction& defining_instruction =
-          *interval.buffer->defining_instruction();
-      float alternate_mem_benefit = get_alternate_mem_benefit(
-          defining_instruction, cost_analysis.GetInstructionElapsedDueToMemory(
-                                    defining_instruction,
-                                    /*operand_in_alternate_mem=*/{},
-                                    /*output_in_alternate_mem=*/true));
-      for (const HloUse& use : interval.buffer->uses()) {
-        float use_alternate_mem_benefit = get_alternate_mem_benefit(
-            *use.instruction, cost_analysis.GetInstructionElapsedDueToMemory(
-                                  *use.instruction, use.operand_number));
-        // If the benefit is positive (memory bound), add it to this buffer's
-        // benefit. If the benefit is negative (compute bound), calculate the
-        // maximum.
-        if (alternate_mem_benefit > 0 && use_alternate_mem_benefit > 0) {
-          alternate_mem_benefit += use_alternate_mem_benefit;
-        } else {
-          alternate_mem_benefit =
-              std::max(alternate_mem_benefit, use_alternate_mem_benefit);
-        }
-      }
-
-      // Get performance slowdown in seconds of prefetching current
-      // BufferInterval causing to other BufferIntervals.
-      float alternate_mem_slowdown =
-          cost_analysis.GetInstructionElapsedDueToMemorySlowdown(interval.size);
-
-      // Scale the slowdown based on the time of this buffer. We would want
-      // earlier buffers have lower slowdown values, because they are less
-      // likely to overlap with other HLOs.
-      // TODO (yuemmawang) We may want a piecewise function, where a lower
-      // slowdown for early HLOs, and full slowdown for mid-to-late HLOs.
-      // TODO (yuemmawang) Further in a smarter way, we want buffers overlapped
-      // with more HLOs have higher slowdown, and vice versa.
-      float scale = interval.start * 1.0 / cost_analysis.GetScheduleEndTime();
-      alternate_mem_slowdown *= scale;
-
-      return alternate_mem_benefit - alternate_mem_slowdown;
-    };
-
-    float x_memory_boundedness = get_memory_boundedness(x);
-    float y_memory_boundedness = get_memory_boundedness(y);
+    float x_memory_boundedness = GetMemoryBoundedness(cost_analysis, x);
+    float y_memory_boundedness = GetMemoryBoundedness(cost_analysis, y);
     if (x_memory_boundedness != y_memory_boundedness) {
       return x_memory_boundedness > y_memory_boundedness;
     }
@@ -1699,29 +1827,36 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const HloAliasAnalysis& alias_analysis,
                            const Options& options) {
   CHECK(module->has_schedule());
-  VLOG(4) << "Module before memory space assignment: ";
-  XLA_VLOG_LINES(4, module->ToString());
-  VLOG(4) << "Schedule: " << module->schedule().ToString();
+  VLOG(3) << "Module before memory space assignment: ";
+  XLA_VLOG_LINES(3, module->ToString());
+  VLOG(3) << "Schedule: " << module->schedule().ToString();
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
 
-  TF_RETURN_IF_ERROR(memory_space_assignment.FindAllocationSequence(
-      hlo_live_range, alias_analysis));
-  TF_RETURN_IF_ERROR(memory_space_assignment.Process());
-  memory_space_assignment.ScheduleAsynchronousCopies();
-  TF_RETURN_IF_ERROR(memory_space_assignment.SimplifyGraph());
-  TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
+  return memory_space_assignment.RunMemorySpaceAssignment(hlo_live_range,
+                                                          alias_analysis);
+}
 
-  VLOG(4) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(4, module->ToString());
-  TF_CHECK_OK(module->schedule().Verify());
+StatusOr<std::unique_ptr<PresetAssignments>>
+MemorySpaceAssignment::RunMemorySpaceAssignment(
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
+  TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+  TF_RETURN_IF_ERROR(Process());
+  ScheduleAsynchronousCopies();
+  TF_RETURN_IF_ERROR(SimplifyGraph());
+  TF_RETURN_IF_ERROR(FixSchedule());
+  TF_RETURN_IF_ERROR(ExportAndColorBuffers());
+
+  VLOG(3) << "Module after memory space assignment: ";
+  XLA_VLOG_LINES(3, module_->ToString());
+  TF_CHECK_OK(module_->schedule().Verify());
   VLOG(1) << "Maximum number of outstanding async copies: "
-          << CountMaximumOutstandingAsyncCopies(*module);
+          << CountMaximumOutstandingAsyncCopies(*module_);
 
-  TF_RETURN_IF_ERROR(
-      memory_space_assignment.VerifyAndExportHeapSimulatorTrace());
+  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace());
 
-  return std::move(memory_space_assignment.preset_assignments_);
+  return std::move(preset_assignments_);
 }
 
 Status MemorySpaceAssignment::FindAllocationSequence(
@@ -1868,6 +2003,18 @@ HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() {
   return producing_instruction;
 }
 
+std::string MemorySpaceAssignment::Allocation::ToString() const {
+  return absl::StrCat("Allocation in ",
+                      memory_space_ == MemorySpace::kDefault ? "def" : "alt",
+                      " defined at ", defining_position_.ToString());
+}
+
+std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
+  return absl::StrCat("Copy Allocation in ",
+                      memory_space_ == MemorySpace::kDefault ? "def" : "alt",
+                      " from ", prev_allocation_.ToString());
+}
+
 Status MemorySpaceAssignment::CopyAllocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
   // Copy allocations need to insert asynchronous copy nodes.
@@ -1912,25 +2059,29 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
 }
 
 Status MemorySpaceAssignment::Process() {
+  VLOG(1) << "Processing assigned buffers...";
   // Insert CopyStart/CopyDone pairs.
-  int64 alternate_memory_size = 0;
-  std::vector<std::pair<HloPosition, Chunk>> position_and_chunks;
   for (auto& allocation : allocations_) {
+    VLOG(3) << "Processing: " << allocation->ToString();
     TF_RETURN_IF_ERROR(allocation->Process(this));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->memory_space() == MemorySpace::kAlternate) {
-      position_and_chunks.emplace_back(allocation->defining_position(),
-                                       allocation->chunk());
-      alternate_memory_size =
-          std::max(alternate_memory_size, allocation->chunk().chunk_end());
+      alternate_memory_assignments_.emplace_back(
+          allocation->defining_position(), allocation->chunk());
+      alternate_memory_size_ =
+          std::max(alternate_memory_size_, allocation->chunk().chunk_end());
     }
   }
+  return Status::OK();
+}
 
+Status MemorySpaceAssignment::ExportAndColorBuffers() {
+  VLOG(1) << "Exporting buffers...";
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module_));
   absl::flat_hash_map<int64, int64> seen_buffer_offsets;
   VLOG(3) << "Exported alternate memory allocations:";
-  for (const auto& position_and_chunk : position_and_chunks) {
+  for (const auto& position_and_chunk : alternate_memory_assignments_) {
     const HloPosition& defining_position = position_and_chunk.first;
     const Chunk& chunk = position_and_chunk.second;
     const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(
@@ -1952,7 +2103,7 @@ Status MemorySpaceAssignment::Process() {
   if (!preset_assignments_->chunks().empty()) {
     preset_assignments_
         ->assignment_information_for_space(options_.alternate_memory_space)
-        ->size = alternate_memory_size;
+        ->size = alternate_memory_size_;
   }
 
   VLOG(3) << "Exported alternate memory sizes:";
@@ -1960,6 +2111,7 @@ Status MemorySpaceAssignment::Process() {
     VLOG(3) << "  space: " << pair.first << ", size: " << pair.second.size;
   }
 
+  VLOG(1) << "Coloring buffers...";
   // Color the pending positions and all of their aliased buffers.
   for (const auto& defining_position_and_chunk :
        preset_assignments_->chunks()) {
@@ -1968,7 +2120,7 @@ Status MemorySpaceAssignment::Process() {
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
         for (auto& position : value->positions()) {
-          VLOG(3) << "Coloring " << position.ToString();
+          VLOG(4) << "Coloring " << position.ToString();
           Shape* shape = ShapeUtil::GetMutableSubshape(
               position.instruction->mutable_shape(), position.index);
           CHECK(shape->IsArray()) << "Coloring a shape that is not an array: "
@@ -1979,25 +2131,25 @@ Status MemorySpaceAssignment::Process() {
       }
     }
   }
-
   return Status::OK();
 }
 
-void PresetAssignments::RemoveAssignmentForInstruction(
+void MemorySpaceAssignment::RemoveAssignmentForInstruction(
     const HloInstruction* instruction) {
-  for (auto& position_and_chunk : chunks_) {
+  for (auto& position_and_chunk : alternate_memory_assignments_) {
     const HloPosition& position = position_and_chunk.first;
     if (position.instruction == instruction) {
-      VLOG(3) << "Removing instruction from preset assignments.";
+      VLOG(3) << "Removing instruction from alternate memory assignments.";
       // Swap the removed position and chunk with the back and pop back.
-      position_and_chunk = chunks_.back();
-      chunks_.pop_back();
+      position_and_chunk = alternate_memory_assignments_.back();
+      alternate_memory_assignments_.pop_back();
       break;
     }
   }
 }
 
 Status MemorySpaceAssignment::SimplifyGraph() {
+  VLOG(1) << "Simplifying graph...";
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
@@ -2032,9 +2184,9 @@ Status MemorySpaceAssignment::SimplifyGraph() {
             instruction->opcode() != HloOpcode::kCopyStart &&
             instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
-          // Ensure the exported preset assignments don't contain a reference to
-          // the removed instruction.
-          preset_assignments_->RemoveAssignmentForInstruction(instruction);
+          // Ensure the alternate memory assignments don't contain a reference
+          // to the removed instruction.
+          RemoveAssignmentForInstruction(instruction);
           // Instead of deleting the instruction from the schedule, replace it
           // with a nullptr. This is needed because FixSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
@@ -2120,6 +2272,7 @@ void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
 }
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
+  VLOG(1) << "Scheduling asynchronous copies...";
   for (MemorySpace memory_space :
        {MemorySpace::kDefault, MemorySpace::kAlternate}) {
     std::vector<CopyAllocation*> copy_allocations;
@@ -2168,6 +2321,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
 }
 
 Status MemorySpaceAssignment::FixSchedule() {
+  VLOG(1) << "Fixing schedule...";
   CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
   for (const HloComputation* computation :
@@ -2241,7 +2395,7 @@ Status MemorySpaceAssignment::FixSchedule() {
 }
 
 Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
-  VLOG(3) << "Verifying:";
+  VLOG(1) << "Verifying...";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module_));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
@@ -2250,7 +2404,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64> seen_buffers;
-  std::map<std::pair<int64, int64>,
+  // The key for events is: time, is_free, value_id. This is so that the events
+  // are sorted first by time, then within the same time, allocations are sorted
+  // earlier than frees, and finally the value id as a tie breaker.
+  std::map<std::tuple<int64, bool, int64>,
            std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
       events;
 
@@ -2289,9 +2446,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     for (const HloValue* value : buffer.values()) {
       const HloLiveRange::TimeBound& time_bound =
           hlo_live_range->buffer_live_ranges().at(value);
-      events[std::make_pair(time_bound.start, value->id())] =
+      events[std::make_tuple(time_bound.start, /*is_free=*/false,
+                             value->id())] =
           std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
-      events[std::make_pair(time_bound.end, value->id())] =
+      events[std::make_tuple(time_bound.end, /*is_free=*/true, value->id())] =
           std::make_tuple(value, chunk, HeapSimulatorTrace::Event::FREE);
 
       VLOG(3) << " buffer: " << buffer.ToString()
@@ -2326,8 +2484,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   int64 memory_usage = 0;
   int64 max_memory_usage = 0;
   for (const auto& event : events) {
-    int64 time = event.first.first;
-    int64 buffer_id = event.first.second;
+    int64 time;
+    bool is_free;
+    int64 buffer_id;
+    std::tie(time, is_free, buffer_id) = event.first;
     const HloValue* value;
     Chunk chunk;
     HeapSimulatorTrace::Event::Kind kind;
@@ -2346,7 +2506,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
       memory_usage -= chunk.size;
     }
     max_memory_usage = std::max(max_memory_usage, memory_usage);
-    VLOG(3) << "Memory usage: " << memory_usage << " at time: " << time;
+    VLOG(4) << "Memory usage: " << memory_usage << " at time: " << time;
   }
   VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 

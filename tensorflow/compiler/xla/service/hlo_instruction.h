@@ -618,6 +618,16 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, const int exponent_bits,
       const int mantissa_bits);
 
+  // Creates an all-gather op, which concats the operands of all participants
+  // along all_gather_dimension. The replica_groups, channel_id, and
+  // use_global_device_ids arguments are identical to those in all-reduce,
+  // except that the order of the group members determines the concatenation
+  // order of inputs from different participants.
+  static std::unique_ptr<HloInstruction> CreateAllGather(
+      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+
   // Creates a cross replica reduction op.
   //
   // `reduction_computation`: the reduction function.
@@ -667,7 +677,7 @@ class HloInstruction {
   // It is used to implement the higher-level instruction in XlaBuilder.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id,
       const absl::optional<int64>& split_dimension = absl::nullopt);
 
@@ -1603,6 +1613,9 @@ class HloInstruction {
     LOG(FATAL) << "Unimplemented method.";
   }
   virtual int64 dimensions(int64 index) const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+  virtual std::vector<int64>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
   }
 

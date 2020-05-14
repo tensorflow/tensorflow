@@ -54,7 +54,7 @@ class DepthwiseConvolution : public NodeShader {
           {"dilation_h", attr.dilations.h},
           {"kernel_w", weights.w},
           {"kernel_h", weights.h},
-          {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
+          {"src_depth", DivideRoundUp(weights.i, 4)},
           {"channel_multiplier", weights.o},
           {"stride", int2(attr.strides.w, attr.strides.h)},
       };
@@ -71,7 +71,7 @@ class DepthwiseConvolution : public NodeShader {
           {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
           {"offsets_count", offsets_count},
           {"offsets", offsets},
-          {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
+          {"src_depth", DivideRoundUp(weights.i, 4)},
           {"channel_multiplier", weights.o},
           {"stride", int2(attr.strides.w, attr.strides.h)},
       };

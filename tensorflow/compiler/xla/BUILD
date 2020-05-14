@@ -17,7 +17,6 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
-        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
@@ -332,6 +331,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -449,6 +449,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )

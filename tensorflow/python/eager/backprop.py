@@ -86,13 +86,13 @@ def make_attr(attr_type, value):
   # from integer value to class.
   if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
+  if attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
-  elif isinstance(value, str):
+  if isinstance(value, str):
     return value.encode()
   return value
 
@@ -149,10 +149,9 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   # This does not work with v1 TensorArrays.
   if ops.executing_eagerly_outside_functions(
   ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    gradient_name_scope = "gradient_tape/"
     if forward_pass_name_scope:
-      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
-    else:
-      gradient_name_scope = "gradient_tape/"
+      gradient_name_scope += forward_pass_name_scope + "/"
     with ops.name_scope(gradient_name_scope):
       return grad_fn(mock_op, *out_grads)
   else:
@@ -530,7 +529,7 @@ def make_vjp(f, params=None, persistent=True):
     wrapped_fn = tfe.make_vjp(f)
     result, vjp = wrapped_fn(tf.constant(3.0))
     # result is 9.0
-    vjp()  # the vjp function rturns 6.0
+    vjp()  # the vjp function returns 6.0
 
   Raises:
     ValueError: if `f` returns None.
@@ -588,28 +587,27 @@ def aggregate_indexed_slices_gradients(grads):
   """Aggregates gradients containing `IndexedSlices`s."""
   if len(grads) < 1:
     return None
-  elif len(grads) == 1:
+  if len(grads) == 1:
     return grads[0]
-  else:
-    grads = [g for g in grads if g is not None]
-    # If any gradient is a `Tensor`, sum them up and return a dense tensor
-    # object.
-    if any(isinstance(g, ops.Tensor) for g in grads):
-      return math_ops.add_n(grads)
+  grads = [g for g in grads if g is not None]
+  # If any gradient is a `Tensor`, sum them up and return a dense tensor
+  # object.
+  if any(isinstance(g, ops.Tensor) for g in grads):
+    return math_ops.add_n(grads)
 
-    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
-    # int64. It is to make sure the inputs of `concat` all have same the data
-    # type.
-    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+  # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+  # int64. It is to make sure the inputs of `concat` all have same the data
+  # type.
+  grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
 
-    grads = [flatten_nested_indexed_slices(x) for x in grads]
-    # Form IndexedSlices out of the concatenated values and indices.
-    concat_grad = ops.IndexedSlices(
-        array_ops.concat([x.values for x in grads], axis=0),
-        array_ops.concat([x.indices for x in grads], axis=0),
-        grads[0].dense_shape)
+  grads = [flatten_nested_indexed_slices(x) for x in grads]
+  # Form IndexedSlices out of the concatenated values and indices.
+  concat_grad = ops.IndexedSlices(
+      array_ops.concat([x.values for x in grads], axis=0),
+      array_ops.concat([x.indices for x in grads], axis=0),
+      grads[0].dense_shape)
 
-    return concat_grad
+  return concat_grad
 
 
 def _aggregate_grads(gradients):

@@ -84,11 +84,11 @@ class HloTestBase : public ::testing::Test {
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const string& name = TestName());
+      const string& name = TestName(), int64 replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
+      absl::string_view hlo_text, int64 replica_count = 1);
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config);
 
@@ -130,9 +130,10 @@ class HloTestBase : public ::testing::Test {
   virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest() {
+  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
+    config.set_replica_count(replica_count);
     return config;
   }
 

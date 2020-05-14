@@ -76,12 +76,16 @@ are verified in `IsNodeSupportedByHexagon`:
       - dilation only supported when stride == 1
       - Otherwise, stride height/width <= 3
 * FullyConnected (without any activation)
+* Hardswish
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)
 * MaxPool2D (without any activation) (b/129276536)
+* Mean
+* MirrorPad
 * Mul (without any activation) (b/129276536)
 * Neg
 * Pad: Only supports 0 padding (b/139277813)
+* Quantize (8-bit inputs & outputs only)
 * Relu
 * Relu6
 * Reshape

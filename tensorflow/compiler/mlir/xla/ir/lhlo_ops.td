@@ -19,7 +19,7 @@ limitations under the License.
 #define LHLO_OPS
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
@@ -37,13 +37,12 @@ def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 // Any floating-point tensor types
 def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
-
 def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
 def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -93,9 +92,19 @@ def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential">, BASE_HLO_ExpOp;
 
+def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
 def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
 
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"negate">, BASE_HLO_NegOp;
+
+def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
 
@@ -103,11 +112,14 @@ def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
+def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine">, BASE_HLO_SinOp;
+
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         LHLO_Op<mnemonic, traits> {
@@ -120,6 +132,12 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add", []>, BASE_HLO_AddOp;
+
+def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide", []>, BASE_HLO_DivOp;
 
@@ -402,7 +420,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"Builder *builder, OperationState &result, "
+     OpBuilder<"OpBuilder &builder, OperationState &result, "
                "ArrayRef<NamedAttribute> attributes">
    ];
 }

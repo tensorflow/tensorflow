@@ -81,8 +81,8 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
 //
-// When 'use_parallel_loops' is set, the tiling will use loop.parallel
-// operations. Otherwise, loop.for operations are used.
+// When 'use_parallel_loops' is set, the tiling will use scf.parallel
+// operations. Otherwise, scf.for operations are used.
 //
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as

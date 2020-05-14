@@ -3,8 +3,5 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "users",
-    packages = [
-        "//learning/brain/mobile/lite/support/...",
-        "//tensorflow/lite/experimental/support/...",
-    ],
+    packages = ["//tensorflow/lite/experimental/support/..."],
 )

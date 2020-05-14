@@ -346,11 +346,9 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   if (new_while_op.output_shapes().size() != 0) {
     auto new_output_shapes = llvm::to_vector<4>(new_while_op.output_shapes());
     // VarHandleOp is a scalar shape resource.
-    tensorflow::TensorShapeProto scalar;
-    scalar.set_unknown_rank(false);
     for (int64_t i = 0; i < state_vars.size(); ++i) {
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(scalar)));
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
     }
     new_while_op.setAttr("output_shapes",
                          builder.getArrayAttr(new_output_shapes));

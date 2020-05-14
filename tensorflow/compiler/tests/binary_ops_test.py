@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
@@ -474,6 +475,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
+  @test_util.disable_mlir_bridge("Enable tf.NextAfter Compilation")
   def testNextAfter(self):
     for dtype in self.numeric_types:
       if dtype in [np.float32, np.float64]:
@@ -501,6 +503,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
+  @test_util.disable_mlir_bridge(
+      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}
@@ -724,6 +728,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
+  @test_util.disable_mlir_bridge(
+      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -1218,6 +1224,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1249,6 +1257,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[0, 0], [0, 0]], dtype=np.int32),
           expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
@@ -1402,6 +1412,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             ],
             equality_test=self.ListsAreClose)
 
+  @test_util.disable_mlir_bridge("TODO(b/155097657): Debug incorrect answer")
   def testTile(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1559,6 +1570,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                      np.array([2, 1, 5], dtype=np.int32),
                      expected=np.array([2, 3, 5], dtype=np.int32))
 
+  @test_util.disable_mlir_bridge("Error handling")
+  def testBroadcastArgsError(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                              "Incompatible shapes"):
       self._testBinary(array_ops.broadcast_dynamic_shape,
@@ -1566,6 +1579,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
+  @test_util.disable_mlir_bridge(
+      "Requires BroadcastInDim method in MlirHloBuilder")
   def testBroadcastTo(self):
     for dtype in self.all_types:
       x = np.random.randint(0, high=100, size=[2, 3])

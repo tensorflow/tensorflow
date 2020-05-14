@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
+#include <queue>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
@@ -219,6 +223,197 @@ Status Reader::Create(Env* env, const std::string& filename,
   return (*out_reader)->Initialize(env);
 }
 
+class Reader::Dataset : public DatasetBase {
+ public:
+  explicit Dataset(const std::string& filename, const std::string& compression,
+                   const int64 version, const DataTypeVector& dtypes,
+                   const std::vector<PartialTensorShape>& shapes,
+                   DatasetContext::Params params)
+      : DatasetBase(DatasetContext(std::move(params))),
+        filename_(filename),
+        compression_(compression),
+        version_(version),
+        dtypes_(dtypes),
+        shapes_(shapes) {}
+
+  const DataTypeVector& output_dtypes() const override { return dtypes_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return shapes_;
+  }
+
+  std::string DebugString() const override {
+    return "snapshot_util::Reader::Dataset";
+  }
+
+  Status CheckExternalState() const override { return Status::OK(); }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** node) const override {
+    // TODO(frankchn): Implement for serialization and checkpointing.
+    return Status::OK();
+  }
+
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override {
+    return absl::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(node_name(), prefix)});
+  }
+
+ private:
+  std::string filename_;
+  std::string compression_;
+  int64 version_;
+  DataTypeVector dtypes_;
+  std::vector<PartialTensorShape> shapes_;
+
+  class Iterator : public DatasetIterator<Dataset> {
+   public:
+    explicit Iterator(const Params& params)
+        : DatasetIterator<Dataset>(params) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      return Reader::Create(ctx->env(), dataset()->filename_,
+                            dataset()->compression_, dataset()->version_,
+                            dataset()->dtypes_, &reader_);
+    }
+
+   protected:
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      *end_of_sequence = false;
+      Status s = reader_->ReadTensors(out_tensors);
+      if (errors::IsOutOfRange(s)) {
+        *end_of_sequence = true;
+        return Status::OK();
+      }
+      return s;
+    }
+
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      // TODO(frankchn): Implement for serialization and checkpointing.
+      return Status::OK();
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      // TODO(frankchn): Implement for serialization and checkpointing.
+      return Status::OK();
+    }
+
+   private:
+    std::unique_ptr<Reader> reader_;
+  };
+};
+
+class Reader::NestedDataset : public DatasetBase {
+ public:
+  explicit NestedDataset(std::vector<DatasetBase*> datasets,
+                         DatasetContext::Params params)
+      : DatasetBase(DatasetContext(std::move(params))), datasets_(datasets) {
+    dtypes_.push_back(DT_VARIANT);
+    gtl::InlinedVector<int64, 1> element_dim_sizes;
+    element_dim_sizes.push_back(1);
+    partial_shapes_.emplace_back(element_dim_sizes);
+  }
+
+  const DataTypeVector& output_dtypes() const override { return dtypes_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return partial_shapes_;
+  }
+
+  std::string DebugString() const override {
+    return "snapshot_util::Reader::NestedDataset";
+  }
+
+  Status CheckExternalState() const override { return Status::OK(); }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** node) const override {
+    // TODO(frankchn): Implement for serialization and checkpointing.
+    return Status::OK();
+  }
+
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override {
+    return absl::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(node_name(), prefix)});
+  }
+
+ private:
+  std::vector<DatasetBase*> datasets_;
+  DataTypeVector dtypes_;
+  std::vector<PartialTensorShape> partial_shapes_;
+
+  class Iterator : public DatasetIterator<NestedDataset> {
+   public:
+    explicit Iterator(const Params& params)
+        : DatasetIterator<NestedDataset>(params), index_(0) {}
+
+   protected:
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      *end_of_sequence = dataset()->datasets_.size() == index_;
+      if (!*end_of_sequence) {
+        Tensor tensor(DT_VARIANT, TensorShape({}));
+
+        TF_RETURN_IF_ERROR(
+            StoreDatasetInVariantTensor(dataset()->datasets_[index_], &tensor));
+        out_tensors->clear();
+        out_tensors->push_back(std::move(tensor));
+
+        index_++;
+      }
+      return Status::OK();
+    }
+
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      // TODO(frankchn): Implement for serialization and checkpointing.
+      return Status::OK();
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      // TODO(frankchn): Implement for serialization and checkpointing.
+      return Status::OK();
+    }
+
+   private:
+    int64 index_;
+  };
+};
+
+Status Reader::MakeNestedDataset(Env* env,
+                                 const std::vector<std::string>& filenames,
+                                 const string& compression_type, int version,
+                                 const DataTypeVector& dtypes,
+                                 const std::vector<PartialTensorShape>& shapes,
+                                 DatasetBase** output) {
+  std::vector<DatasetBase*> datasets;
+
+  datasets.reserve(filenames.size());
+  for (const auto& filename : filenames) {
+    datasets.push_back(
+        new Dataset(filename, compression_type, version, dtypes, shapes,
+                    DatasetContext::Params({"snapshot_util::Reader::Dataset",
+                                            "snapshot_util_reader_Dataset"})));
+  }
+
+  *output = new NestedDataset(
+      datasets, DatasetContext::Params({"snapshot_util::Reader::NestedDataset",
+                                        "snapshot_util_reader_NestedDataset"}));
+  return Status::OK();
+}
+
 Reader::Reader(const std::string& filename, const string& compression_type,
                int version, const DataTypeVector& dtypes)
     : filename_(filename),
@@ -308,12 +503,10 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
 #if defined(PLATFORM_GOOGLE)
-      auto tensor_proto_ptr = tensor_proto_str.release();
-      absl::Cord c;
-      c.AppendExternalMemory(
-          absl::string_view(tensor_proto_ptr, tensor_proto_size),
-          tensor_proto_ptr,
-          [](void* arg) { delete[] static_cast<char*>(arg); });
+      absl::string_view tensor_proto_view(tensor_proto_str.get(),
+                                          tensor_proto_size);
+      absl::Cord c = absl::MakeCordFromExternal(
+          tensor_proto_view, [s = std::move(tensor_proto_str)] {});
       if (!tp.ParseFromCord(c)) {
         return errors::Internal("Could not parse TensorProto");
       }
@@ -420,11 +613,9 @@ Status Reader::ReadRecord(absl::Cord* record) {
   } else {
     auto tmp_str = absl::make_unique<tstring>();
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
-    tstring* tmp_str_raw = tmp_str.release();
-    record->AppendExternalMemory(*tmp_str_raw, tmp_str_raw,
-                                 [](absl::string_view unused_data, void* arg) {
-                                   delete static_cast<tstring*>(arg);
-                                 });
+    absl::string_view tmp_str_view(*tmp_str);
+    record->Append(
+        absl::MakeCordFromExternal(tmp_str_view, [s = std::move(tmp_str)] {}));
     return Status::OK();
   }
 }

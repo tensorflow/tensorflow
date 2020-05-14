@@ -1444,7 +1444,7 @@ struct CudaVersion {
 };
 
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-    TF_CUDA_CAPABILITIES,};
+    CudaVersion("3.5"), CudaVersion("5.2")};
 
 std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;

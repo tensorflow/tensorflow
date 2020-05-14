@@ -474,7 +474,7 @@ FunctionDef* FuseFunctions(
               fused_function->mutable_ret());
 
   set_nodes(first_function, setup_function, fused_function, library);
-
+  (*fused_function->mutable_attr())[data::kTFDataFunction].set_b(true);
   return fused_function;
 }
 

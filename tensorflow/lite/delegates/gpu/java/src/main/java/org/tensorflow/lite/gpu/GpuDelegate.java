@@ -63,6 +63,18 @@ public class GpuDelegate implements Delegate, Closeable {
     }
 
     /**
+     * Enables running quantized models with the delegate. Defaults to false.
+     *
+     * <p>WARNING: This is an experimental API and subject to change.
+     *
+     * @param quantizedModelsAllowed When {@code true}, the GPU may run quantized models.
+     */
+    public Options setQuantizedModelsAllowed(boolean quantizedModelsAllowed) {
+      this.quantizedModelsAllowed = quantizedModelsAllowed;
+      return this;
+    }
+
+    /**
      * Sets the inference preference for precision/compilation/runtime tradeoffs.
      *
      * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
@@ -74,11 +86,16 @@ public class GpuDelegate implements Delegate, Closeable {
     }
 
     boolean precisionLossAllowed = true;
+    boolean quantizedModelsAllowed = false;
     int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
   }
 
   public GpuDelegate(Options options) {
-    delegateHandle = createDelegate(options.precisionLossAllowed, options.inferencePreference);
+    delegateHandle =
+        createDelegate(
+            options.precisionLossAllowed,
+            options.quantizedModelsAllowed,
+            options.inferencePreference);
   }
 
   public GpuDelegate() {
@@ -107,7 +124,8 @@ public class GpuDelegate implements Delegate, Closeable {
     System.loadLibrary(TFLITE_GPU_LIB);
   }
 
-  private static native long createDelegate(boolean precisionLossAllowed, int preference);
+  private static native long createDelegate(
+      boolean precisionLossAllowed, boolean quantizedModelsAllowed, int preference);
 
   private static native void deleteDelegate(long delegateHandle);
 }

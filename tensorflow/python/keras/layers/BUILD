@@ -34,6 +34,7 @@ py_library(
         ":core",
         ":cudnn_recurrent",
         ":dense_attention",
+        ":einsum_dense",
         ":embeddings",
         ":kernelized",
         ":local",
@@ -46,7 +47,6 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
-        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras/layers/preprocessing",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
@@ -185,6 +185,22 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
+    ],
+)
+
+py_library(
+    name = "einsum_dense",
+    srcs = ["einsum_dense.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:activations",
+        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras:constraints",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:regularizers",
     ],
 )
 
@@ -456,6 +472,7 @@ tf_py_test(
     srcs = ["convolutional_recurrent_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -578,6 +595,18 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "einsum_dense_test",
+    srcs = ["einsum_dense_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":einsum_dense",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

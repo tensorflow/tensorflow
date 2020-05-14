@@ -132,12 +132,20 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
     return node_and_registrations_[node_index];
   }
+
+  // For debugging only.
+  // Returns the actual used arena in bytes. This method gives the optimal arena
+  // size. It's only available after `AllocateTensors` has been called.
+  // Note that normally `tensor_arena` requires 16 bytes alignment to fully
+  // utilize the space. If it's not the case, the optimial arena size would be
+  // arena_used_bytes() + 16.
+  size_t arena_used_bytes() const { return allocator_.used_bytes(); }
 
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
@@ -155,8 +163,6 @@ class MicroInterpreter {
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;

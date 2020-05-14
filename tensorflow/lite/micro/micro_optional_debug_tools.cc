@@ -95,6 +95,8 @@ const char* AllocTypeName(TfLiteAllocationType type) {
       return "kTfLiteArenaRw";
     case kTfLiteArenaRwPersistent:
       return "kTfLiteArenaRwPersistent";
+    case kTfLitePersistentRo:
+      return "kTfLitePersistentRo";
   }
   return "(invalid)";
 }

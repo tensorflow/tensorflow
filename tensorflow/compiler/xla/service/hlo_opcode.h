@@ -48,6 +48,7 @@ namespace xla {
   V(kAdd, "add", 2)                                                    \
   V(kAddDependency, "add-dependency", 2)                               \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                      \
+  V(kAllGather, "all-gather", 1)                                       \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                    \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                     \
   V(kAtan2, "atan2", 2)                                                \
@@ -138,6 +139,7 @@ namespace xla {
   V(kSlice, "slice", 1)                                                \
   V(kSort, "sort", kHloOpcodeIsVariadic)                               \
   V(kSqrt, "sqrt", 1)                                                  \
+  V(kCbrt, "cbrt", 1)                                                  \
   V(kSubtract, "subtract", 2)                                          \
   V(kTanh, "tanh", 1)                                                  \
   V(kTrace, "trace", 1)                                                \

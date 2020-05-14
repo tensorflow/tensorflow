@@ -56,7 +56,6 @@ class Discretization(Layer):
 
   def __init__(self, bins, output_mode=INTEGER, **kwargs):
     super(Discretization, self).__init__(**kwargs)
-    self._supports_ragged_inputs = True
     self.bins = bins
     self.output_mode = output_mode
 

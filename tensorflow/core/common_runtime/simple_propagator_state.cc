@@ -17,21 +17,22 @@ limitations under the License.
 #include <atomic>
 
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
 SimplePropagatorState::SimplePropagatorState(
-    const ImmutableExecutorState& immutable_state, int64 step_id)
+    const ImmutableExecutorState& immutable_state, int64 step_id, bool vlog)
     : SimplePropagatorState(immutable_state, step_id,
-                            immutable_state.get_root_frame_info()) {}
+                            immutable_state.get_root_frame_info(), vlog) {}
 
 SimplePropagatorState::SimplePropagatorState(
     const ImmutableExecutorState& immutable_state, int64 step_id,
-    const ImmutableExecutorState::FrameInfo& finfo)
+    const ImmutableExecutorState::FrameInfo& finfo, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),
-      vlog_(VLOG_IS_ON(1)),
+      vlog_(vlog || VLOG_IS_ON(1)),
       input_tensors_(finfo.total_inputs),
       pending_(
           new std::atomic<int32>[immutable_state.graph_view().num_nodes()]),
@@ -107,15 +108,13 @@ void SimplePropagatorState::DumpState() {
   // Dump any waiting nodes that are holding on to tensors.
   for (const NodeItem* node : *nodes_) {
     if (pending_[node->node_id]) {
-      DumpPendingNodeState(immutable_state_, node->node_id,
-                           input_tensors_.data(), false);
+      DumpPendingNodeState(*node, input_tensors_.data(), false);
     }
   }
   // Then the active nodes.
   for (const NodeItem* node : *nodes_) {
     if ((*active_)[node->node_id]) {
-      DumpActiveNodeState(immutable_state_, node->node_id,
-                          input_tensors_.data());
+      DumpActiveNodeState(*node, input_tensors_.data());
     }
   }
   // Show all input tensors in use.

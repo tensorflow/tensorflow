@@ -117,7 +117,7 @@ TEST_F(TransitiveFaninTest, PruneNodesUnreachableFromMultipleTerminalNodes) {
   ASSERT_FALSE(node_map.NodeExists("6"));
 }
 
-TEST_F(TransitiveFaninTest, InvalidGraph) {
+TEST_F(TransitiveFaninTest, InvalidGraphOrTerminalNodes) {
   GraphDef graph = CreateGraph({
       {"1", {"2"}},  //
       {"2", {"3"}},  //
@@ -131,7 +131,11 @@ TEST_F(TransitiveFaninTest, InvalidGraph) {
   const std::vector<string> terminal_nodes = {"1", "5"};
   auto s = SetTransitiveFaninGraph(graph, &output_graph, terminal_nodes);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(), "Invalid input graph.");
+  EXPECT_EQ(s.error_message(), "Graph does not contain input 6 of node 5.");
+  const std::vector<string> invalid_terminal_nodes = {"0", "1", "5"};
+  s = SetTransitiveFaninGraph(graph, &output_graph, invalid_terminal_nodes);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(), "Graph does not contain terminal node 0.");
 }
 
 }  // namespace

@@ -253,6 +253,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
@@ -573,6 +574,9 @@ cc_test(
 #   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite",
+    # Until we have more granular symbol export for the C++ API on Windows,
+    # export all symbols.
+    features = ["windows_export_all_symbols"],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",

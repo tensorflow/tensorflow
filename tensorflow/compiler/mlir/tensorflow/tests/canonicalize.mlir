@@ -462,3 +462,23 @@ func @testMultiReadVariableOpsOfCast(%arg0: tensor<!tf.resource<tensor<f32>>>) -
  // CHECK: %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
  // CHECK: return %1
 }
+
+// CHECK-LABEL: testRankOfRankedTensor
+func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
+  // CHECK:[[VAL0:%.+]] = "tf.Const"() {value = dense<3> : tensor<i32>}
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<i32>
+
+  // CHECK: return [[VAL0]]
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: @foldFill
+func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>) {
+  %0 = "tf.Const"() {value = dense<[3, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<23.0> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: "tf.Const"() {value = dense<2.300000e+01> : tensor<3x2x1xf32>}
+  %2 = "tf.Fill"(%0, %1) : (tensor<3xi32>, tensor<f32>) -> tensor<3x2x1xf32>
+  // CHECK: "tf.Const"() {value = dense<2.300000e+01> : tensor<3x2x1xf32>}
+  %3 = "tf.Fill"(%0, %1) : (tensor<3xi32>, tensor<f32>) -> tensor<*xf32>
+  return %2, %3 : tensor<3x2x1xf32>, tensor<*xf32>
+}

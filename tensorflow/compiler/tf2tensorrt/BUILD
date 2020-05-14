@@ -384,6 +384,7 @@ tf_cuda_library(
         ":utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
@@ -487,9 +488,15 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/grappler/costs:graph_properties",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )

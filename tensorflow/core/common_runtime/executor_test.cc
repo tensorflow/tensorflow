@@ -17,17 +17,26 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -477,6 +486,34 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 // Tall fat graph
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 
+static void BM_const_identity(int iters, int width, int outputs_per_const) {
+#ifdef PLATFORM_GOOGL
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(
+      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
+                             static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g).Run(iters);
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->ArgPair(100, 100);
+
 static void BM_FeedInputFetchOutput(int iters) {
   testing::StopTiming();
   Graph* g = new Graph(OpRegistry::Global());
@@ -504,4 +541,157 @@ static void BM_FeedInputFetchOutput(int iters) {
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 
+// Defines a graph to perform the following computation:
+//
+//     i = 0
+//     while (i < loop_iters)
+//       i += 1;
+//
+// ...using the functional `WhileOp` (if `lower` is false) or the
+// `Switch`/`Merge`-style of control flow (if `lower` is true).
+static void BM_WhileLoopHelper(int iters, int loop_iters, int loop_vars,
+                               bool lower) {
+  testing::StopTiming();
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // Add test functions for cond and body.
+  FunctionDefLibrary f_lib_proto;
+
+  // Define the loop body as a function: `x = x + 1`.
+  const Tensor one_t = test::AsScalar<int32>(1);
+
+  std::vector<string> args;
+  args.reserve(loop_vars);
+  args.push_back("x: int32");
+  for (int i = 1; i < loop_vars; ++i) {
+    args.push_back(strings::StrCat("x", i, ": int32"));
+  }
+
+  std::vector<string> body_rets;
+  body_rets.reserve(loop_vars);
+  body_rets.push_back("y: int32");
+  for (int i = 1; i < loop_vars; ++i) {
+    body_rets.push_back(strings::StrCat("y", i, ": int32"));
+  }
+
+  std::vector<FunctionDefHelper::Node> body_nodes;
+  body_nodes.reserve(1 + loop_vars);
+  body_nodes.push_back(
+      {{"one"}, "Const", {}, {{"value", one_t}, {"dtype", DT_INT32}}});
+  body_nodes.push_back({{"y"}, "Add", {"x", "one"}, {{"T", DT_INT32}}});
+  for (int i = 1; i < loop_vars; ++i) {
+    body_nodes.push_back({{strings::StrCat("y", i)},
+                          "Identity",
+                          {strings::StrCat("x", i)},
+                          {{"T", DT_INT32}}});
+  }
+
+  *f_lib_proto.add_function() = FunctionDefHelper::Define(
+      // Name
+      "XPlusOne",
+      // Args
+      args,
+      // Return values
+      body_rets,
+      // Attr def
+      {},
+      // Nodes
+      body_nodes);
+
+  // Define the loop condition as a function: `x < loop_iters`.
+  const Tensor loop_iters_t = test::AsScalar<int32>(loop_iters);
+  *f_lib_proto.add_function() = FunctionDefHelper::Define(
+      // Name
+      "LessThanOrEqualToN",
+      // Args
+      args,
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", loop_iters_t}, {"dtype", DT_INT32}}},
+          {{"z"}, "LessEqual", {"x", "N"}, {{"T", DT_INT32}}},
+      });
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto a = ops::Const(root.WithOpName("A"), 0, {});
+  Node* while_node;
+  std::vector<NodeBuilder::NodeOut> inputs;
+  std::vector<DataType> input_types(loop_vars, DT_INT32);
+  inputs.reserve(loop_vars);
+  for (int i = 0; i < loop_vars; ++i) {
+    inputs.push_back(NodeBuilder::NodeOut(a.node()));
+  }
+  AttrValue int32_attr;
+  int32_attr.set_type(DT_INT32);
+  AttrValue cond_func;
+  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("XPlusOne");
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &root.graph()->flib_def())
+          .Input(inputs)
+          .Attr("T", input_types)
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr("parallel_iterations", 100)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &while_node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(while_node)),
+      Output(while_node));
+  TF_ASSERT_OK(root.DoShapeInference(while_node));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  if (lower) {
+    FunctionLibraryDefinition flib_def(graph->flib_def());
+    GraphOptimizationPassOptions opt_options;
+    SessionOptions session_options;
+    session_options.config.mutable_graph_options()
+        ->mutable_optimizer_options()
+        ->set_do_function_inlining(true);
+    opt_options.session_options = &session_options;
+    opt_options.graph = &graph;
+    opt_options.flib_def = &flib_def;
+    LowerFunctionalOpsPass pass;
+    TF_ASSERT_OK(pass.Run(opt_options));
+  }
+
+  FixupSourceAndSinkEdges(graph.get());
+  testing::StartTiming();
+  test::Benchmark("cpu", graph.release()).Run(iters);
+}
+
+static void BM_LoweredWhileLoop(int iters, int loop_iters, int loop_vars) {
+  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ true);
+}
+BENCHMARK(BM_LoweredWhileLoop)
+    ->ArgPair(0, 1)
+    ->ArgPair(1, 1)
+    ->ArgPair(10, 1)
+    ->ArgPair(100, 1)
+    ->ArgPair(1000, 1)
+    ->ArgPair(0, 100)
+    ->ArgPair(1, 100)
+    ->ArgPair(10, 100)
+    ->ArgPair(100, 100)
+    ->ArgPair(1000, 100);
+
+static void BM_FunctionalWhileLoop(int iters, int loop_iters, int loop_vars) {
+  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ false);
+}
+BENCHMARK(BM_FunctionalWhileLoop)
+    ->ArgPair(0, 1)
+    ->ArgPair(1, 1)
+    ->ArgPair(10, 1)
+    ->ArgPair(100, 1)
+    ->ArgPair(1000, 1)
+    ->ArgPair(0, 100)
+    ->ArgPair(1, 100)
+    ->ArgPair(10, 100)
+    ->ArgPair(100, 100)
+    ->ArgPair(1000, 100);
 }  // namespace tensorflow

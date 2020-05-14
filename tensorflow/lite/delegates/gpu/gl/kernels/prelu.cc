@@ -69,8 +69,8 @@ class PReLULinearAlpha : public NodeShader {
                   /*workload=*/
                   uint3(static_cast<int>(ctx.output_shapes[0][2]),
                         static_cast<int>(ctx.output_shapes[0][1]),
-                        IntegralDivideRoundUp(
-                            static_cast<int>(ctx.output_shapes[0][3]), 4)),
+                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
+                                      4)),
                   /*workgroup=*/uint3(),
                   /*source_code=*/
                   "value_0 = max(value_0, 0.0) + $alpha[gid.z]$ * min(value_0, "
@@ -98,10 +98,10 @@ class PReLUFull : public NodeShader {
           "Alpha shape does not match input shape.");
     }
 
-    ObjectSize obj_size = uint3(
-        static_cast<int>(ctx.output_shapes[0][2]),
-        static_cast<int>(ctx.output_shapes[0][1]),
-        IntegralDivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4));
+    ObjectSize obj_size =
+        uint3(static_cast<int>(ctx.output_shapes[0][2]),
+              static_cast<int>(ctx.output_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4));
 
     *generated_code =
         attr.clip
@@ -116,8 +116,8 @@ class PReLUFull : public NodeShader {
                   /*workload=*/
                   uint3(static_cast<int>(ctx.output_shapes[0][2]),
                         static_cast<int>(ctx.output_shapes[0][1]),
-                        IntegralDivideRoundUp(
-                            static_cast<int>(ctx.output_shapes[0][3]), 4)),
+                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
+                                      4)),
                   /*workgroup=*/uint3(),
                   /*source_code=*/
                   "value_0 = clamp(value_0, 0.0, $clip$) + "
@@ -136,8 +136,8 @@ class PReLUFull : public NodeShader {
                   /*workload=*/
                   uint3(static_cast<int>(ctx.output_shapes[0][2]),
                         static_cast<int>(ctx.output_shapes[0][1]),
-                        IntegralDivideRoundUp(
-                            static_cast<int>(ctx.output_shapes[0][3]), 4)),
+                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
+                                      4)),
                   /*workgroup=*/uint3(),
                   /*source_code=*/
                   "value_0 = max(value_0, 0.0) + $alpha[gid.x, gid.y, gid.z]$ "

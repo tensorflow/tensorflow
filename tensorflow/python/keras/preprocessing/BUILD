@@ -31,6 +31,7 @@ py_library(
 py_library(
     name = "image",
     srcs = [
+        "dataset_utils.py",
         "image.py",
         "image_dataset.py",
     ],
@@ -69,7 +70,9 @@ py_library(
 py_library(
     name = "text",
     srcs = [
+        "dataset_utils.py",
         "text.py",
+        "text_dataset.py",
     ],
     deps = ["//tensorflow/python:util"],
 )
@@ -82,6 +85,7 @@ tf_py_test(
     deps = [
         ":image",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -121,6 +125,19 @@ tf_py_test(
         ":text",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "text_dataset_test",
+    size = "small",
+    srcs = ["text_dataset_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":text",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
     ],
 )
 

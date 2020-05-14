@@ -278,14 +278,28 @@ TensorHandlePtr Multiply(TFE_Context* context, TFE_TensorHandle* first,
 }
 
 // Assert that `handle` is equal to `expected_value`.
-void AssertScalarFloatEq(TFE_TensorHandle* handle, float expected_value) {
+template <typename value_type>
+void ExpectScalarEq(TFE_TensorHandle* handle, value_type expected_value) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> value_zero(
       TFE_TensorHandleResolve(handle, status.get()), TF_DeleteTensor);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  ASSERT_EQ(expected_value,
-            *static_cast<float*>(TF_TensorData(value_zero.get())));
+  EXPECT_EQ(expected_value,
+            *static_cast<value_type*>(TF_TensorData(value_zero.get())));
+}
+
+template <std::size_t num_devices>
+void RegisterParallelDevice(
+    TFE_Context* context, const char* device_name,
+    const std::array<const char*, num_devices>& underlying_devices,
+    TF_Status* status) {
+  TFE_CustomDevice device;
+  void* device_info;
+  tensorflow::eager::AllocateParallelDevice(
+      device_name, underlying_devices.data(), underlying_devices.size(),
+      &device, &device_info);
+  TFE_RegisterCustomDevice(context, device, device_name, device_info, status);
 }
 
 // Create and modify a variable placed on a parallel device which composes
@@ -297,9 +311,8 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
       TF_NewStatus(), TF_DeleteStatus);
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
   std::array<const char*, 2> underlying_devices{first_device, second_device};
-  tensorflow::eager::RegisterParallelDevice(
-      context, device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  RegisterParallelDevice(context, device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a variable handle (uninitialized to start) placed on the parallel
@@ -331,8 +344,8 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
     ExtractPerDeviceValues(context, read.get(), &components, status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
-    AssertScalarFloatEq(components[0].get(), 20.);
-    AssertScalarFloatEq(components[1].get(), 20.);
+    ExpectScalarEq<float>(components[0].get(), 20.);
+    ExpectScalarEq<float>(components[1].get(), 20.);
 
     std::string first_device =
         TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
@@ -361,9 +374,35 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
     ExtractPerDeviceValues(context, read.get(), &components, status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
-    AssertScalarFloatEq(components[0].get(), 23.);
-    AssertScalarFloatEq(components[1].get(), 18.);
+    ExpectScalarEq<float>(components[0].get(), 23.);
+    ExpectScalarEq<float>(components[1].get(), 18.);
 
+    std::string first_device =
+        TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
+    ASSERT_EQ(underlying_devices[0], first_device);
+    std::string second_device =
+        TFE_TensorHandleBackingDeviceName(components[1].get(), status.get());
+    ASSERT_EQ(underlying_devices[1], second_device);
+  }
+  // Compute the device ID twice and verify the result
+  for (int i = 0; i < 2; ++i) {
+    std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
+        TFE_NewOp(context, "DeviceID", status.get()), TFE_DeleteOp);
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    TFE_OpSetDevice(op.get(), device_name, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    TFE_TensorHandle* result_handle;
+    int num_retvals = 1;
+    TFE_Execute(op.get(), &result_handle, &num_retvals, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    std::array<TensorHandlePtr, 2> components;
+    ExtractPerDeviceValues(context, result_handle, &components, status.get());
+    TFE_DeleteTensorHandle(result_handle);
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    ExpectScalarEq<int64_t>(components[0].get(), 0);
+    ExpectScalarEq<int64_t>(components[1].get(), 1);
     std::string first_device =
         TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
     ASSERT_EQ(underlying_devices[0], first_device);
@@ -456,16 +495,14 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
   const char* first_device_name =
       "/job:localhost/replica:0/task:0/device:CPU:0";
-  underlying_devices.push_back(first_device_name);
   const char* second_device_name =
       "/job:localhost/replica:0/task:0/device:CPU:1";
-  underlying_devices.push_back(second_device_name);
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{first_device_name,
+                                                second_device_name};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   TensorHandlePtr cpu_value(FloatTensorHandle(3., status.get()));
@@ -488,8 +525,8 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
     // The value of the original tensor is replicated on each device.
-    AssertScalarFloatEq(components[0].get(), 3.);
-    AssertScalarFloatEq(components[1].get(), 3.);
+    ExpectScalarEq<float>(components[0].get(), 3.);
+    ExpectScalarEq<float>(components[1].get(), 3.);
 
     // Verify that the mirrors are placed on the component devices.
     std::string first_device =
@@ -524,12 +561,11 @@ TEST(PARALLEL_DEVICE, TestDifferentShapes) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create two vectors with different lengths
@@ -570,24 +606,22 @@ TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
   // Create a parallel device with two CPUs
   const char* first_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> first_underlying_devices{
+  std::array<const char*, 2> first_underlying_devices{
       "/job:localhost/replica:0/task:0/device:CPU:0",
       "/job:localhost/replica:0/task:0/device:CPU:1"};
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), first_device_name, first_underlying_devices.data(),
-      first_underlying_devices.size(), status.get());
+  RegisterParallelDevice(context.get(), first_device_name,
+                         first_underlying_devices, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a second parallel device with the first parallel device and one
   // additional CPU.
   const char* second_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:1";
-  std::vector<const char*> second_underlying_devices{
+  std::array<const char*, 2> second_underlying_devices{
       "/job:localhost/replica:0/task:0/device:CUSTOM:0",
       "/job:localhost/replica:0/task:0/device:CPU:2"};
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), second_device_name, second_underlying_devices.data(),
-      second_underlying_devices.size(), status.get());
+  RegisterParallelDevice(context.get(), second_device_name,
+                         second_underlying_devices, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a tensor on the first parallel device
@@ -623,7 +657,7 @@ TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
                          &second_components, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
-  AssertScalarFloatEq(second_components[1].get(), 9.);
+  ExpectScalarEq<float>(second_components[1].get(), 9.);
 
   // Verify that the mirrors are placed on the component devices.
   std::string first_device = TFE_TensorHandleBackingDeviceName(
@@ -637,8 +671,8 @@ TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
   std::array<TensorHandlePtr, 2> first_components;
   ExtractPerDeviceValues(context.get(), second_components[0].get(),
                          &first_components, status.get());
-  AssertScalarFloatEq(first_components[0].get(), 3.);
-  AssertScalarFloatEq(first_components[1].get(), 6.);
+  ExpectScalarEq<float>(first_components[0].get(), 3.);
+  ExpectScalarEq<float>(first_components[1].get(), 6.);
 
   first_device = TFE_TensorHandleBackingDeviceName(first_components[0].get(),
                                                    status.get());
@@ -656,11 +690,10 @@ TEST(PARALLEL_DEVICE, TestInvalidPacking) {
   std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
       TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 1> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   TensorHandlePtr value_one(FloatTensorHandle(1., status.get()));
@@ -775,12 +808,11 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a tensor on the parallel device
@@ -801,8 +833,8 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   ExtractPerDeviceValues(context.get(), reduced.get(), &result_components,
                          status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  AssertScalarFloatEq(result_components[0].get(), 3.);
-  AssertScalarFloatEq(result_components[1].get(), 3.);
+  ExpectScalarEq<float>(result_components[0].get(), 3.);
+  ExpectScalarEq<float>(result_components[1].get(), 3.);
 }
 
 void RegisterCollectiveMulFunction(TFE_Context* context,
@@ -867,12 +899,11 @@ TEST(PARALLEL_DEVICE, TestFunction) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* function_name = "test_reduce_mul";
@@ -905,8 +936,8 @@ TEST(PARALLEL_DEVICE, TestFunction) {
   ExtractPerDeviceValues(context.get(), reduced.get(), &result_components,
                          status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  AssertScalarFloatEq(result_components[0].get(), 7. * 9.);
-  AssertScalarFloatEq(result_components[1].get(), 7. * 9.);
+  ExpectScalarEq<float>(result_components[0].get(), 7. * 9.);
+  ExpectScalarEq<float>(result_components[1].get(), 7. * 9.);
 
   std::string first_device = TFE_TensorHandleBackingDeviceName(
       result_components[0].get(), status.get());

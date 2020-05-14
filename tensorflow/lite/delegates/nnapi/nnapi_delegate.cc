@@ -87,6 +87,16 @@ std::string NnApiErrorDescription(int error_code) {
       return "ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE";
     case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
       return "ANEURALNETWORKS_UNAVAILABLE_DEVICE";
+    case ANEURALNETWORKS_MISSED_DEADLINE_TRANSIENT:
+      return "ANEURALNETWORKS_MISSED_DEADLINE_TRANSIENT";
+    case ANEURALNETWORKS_MISSED_DEADLINE_PERSISTENT:
+      return "ANEURALNETWORKS_MISSED_DEADLINE_PERSISTENT";
+    case ANEURALNETWORKS_RESOURCE_EXHAUSTED_TRANSIENT:
+      return "ANEURALNETWORKS_RESOURCE_EXHAUSTED_TRANSIENT";
+    case ANEURALNETWORKS_RESOURCE_EXHAUSTED_PERSISTENT:
+      return "ANEURALNETWORKS_RESOURCE_EXHAUSTED_PERSISTENT";
+    case ANEURALNETWORKS_DEAD_OBJECT:
+      return "ANEURALNETWORKS_DEAD_OBJECT";
     default:
       return "Unknown NNAPI error code: " + std::to_string(error_code);
   }
@@ -1638,13 +1648,14 @@ bool NNAPIDelegateKernel::Validate(
       }
       auto builtin =
           reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
-      Expect(!builtin->align_corners,
-             NNAPIValidationFailureType::kUnsupportedOperandValue,
-             "NNAPI does not support align_corners == true.", &val_ctx);
-      // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
-      Expect(!builtin->half_pixel_centers,
-             NNAPIValidationFailureType::kUnsupportedOperandValue,
-             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
+      if (android_sdk_version <= kMinSdkVersionForNNAPI12) {
+        Expect(!builtin->align_corners,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI does not support align_corners == true.", &val_ctx);
+        Expect(!builtin->half_pixel_centers,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI does not support half_pixel_centers == true.", &val_ctx);
+      }
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
                NNAPIValidationFailureType::kUnsupportedInputType,
@@ -1658,9 +1669,14 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
-      Expect(!builtin->align_corners,
-             NNAPIValidationFailureType::kUnsupportedOperandValue,
-             "NNAPI does not support align_corners == true.", &val_ctx);
+      if (android_sdk_version <= kMinSdkVersionForNNAPI12) {
+        Expect(!builtin->align_corners,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI does not support align_corners == true.", &val_ctx);
+        Expect(!builtin->half_pixel_centers,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI does not support half_pixel_centers == true.", &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinSqueeze: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -1789,7 +1805,7 @@ bool NNAPIDelegateKernel::Validate(
              " NNAPI only support float tanh.", &val_ctx);
     } break;
     case kTfLiteBuiltinSub: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
       Expect((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
@@ -1798,6 +1814,13 @@ bool NNAPIDelegateKernel::Validate(
                   IsQuantized(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinDiv: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -2317,7 +2340,7 @@ bool NNAPIDelegateKernel::Validate(
                            "Unsupported operation type.", &val_ctx);
   }
   return val_ctx.is_valid;
-}
+}  // NOLINT(readability/fn_size)
 
 TfLiteStatus NNAPIDelegateKernel::Map(
     TfLiteContext* context, int builtin_code, int version,
@@ -2414,6 +2437,14 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       const int output_width = output.dims->data[2];
       mapping_args.builder->AddScalarInt32Operand(output_width);
       mapping_args.builder->AddScalarInt32Operand(output_height);
+      auto builtin = reinterpret_cast<TfLiteResizeBilinearParams*>(
+          mapping_args.node->builtin_data);
+      if (builtin->align_corners == true ||
+          builtin->half_pixel_centers == true) {
+        mapping_args.builder->AddScalarBoolOperand(false);  // Use NHWC format
+        mapping_args.builder->AddScalarBoolOperand(builtin->align_corners);
+        mapping_args.builder->AddScalarBoolOperand(builtin->half_pixel_centers);
+      }
       *nn_op_type = ANEURALNETWORKS_RESIZE_BILINEAR;
     } break;
     case kTfLiteBuiltinResizeNearestNeighbor: {
@@ -2423,7 +2454,13 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarInt32Operand(new_shape.data.i32[1]);
       mapping_args.builder->AddScalarInt32Operand(new_shape.data.i32[0]);
       mapping_args.builder->AddScalarBoolOperand(false);  // Use NHWC format
-
+      auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
+          mapping_args.node->builtin_data);
+      if (builtin->align_corners == true ||
+          builtin->half_pixel_centers == true) {
+        mapping_args.builder->AddScalarBoolOperand(builtin->align_corners);
+        mapping_args.builder->AddScalarBoolOperand(builtin->half_pixel_centers);
+      }
       *nn_op_type = ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR;
     } break;
     case kTfLiteBuiltinSqueeze: {
@@ -3114,7 +3151,8 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                     "creating NNAPI model", nnapi_errno);
     nn_model_.reset(model);
 
-    TF_LITE_ENSURE_STATUS(BuildGraph(context, params->input_tensors,
+    TF_LITE_ENSURE_STATUS(BuildGraph(context, delegate_options,
+                                     params->input_tensors,
                                      params->output_tensors, nnapi_errno));
   }
 
@@ -3732,7 +3770,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
         }
       } else if (reg->builtin_code == kTfLiteBuiltinMaximum ||
                  reg->builtin_code == kTfLiteBuiltinMinimum) {
-        const TfLiteTensor& operand_tensor = context->tensors[input_pos];
+        const TfLiteTensor& operand_tensor =
+            context->tensors[node->inputs->data[input_pos]];
         if (operand_tensor.dims->size == 0) {
           int tensor_index;
 
@@ -3777,7 +3816,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
                   reg->builtin_code == kTfLiteBuiltinSum) &&
                  (input_pos == 1)) {
         // The axis needs, be converted to a tensor if specified as scalar
-        const TfLiteTensor& axis_tensor = context->tensors[1];
+        const TfLiteTensor& axis_tensor =
+            context->tensors[node->inputs->data[input_pos]];
         if (axis_tensor.dims->size == 0) {
           TF_LITE_ENSURE_STATUS(
               builder.AddVectorInt32Operand(axis_tensor.data.i32, 1));
@@ -3836,8 +3876,10 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
 }
 
 TfLiteStatus NNAPIDelegateKernel::BuildGraph(
-    TfLiteContext* context, const TfLiteIntArray* input_tensors,
-    const TfLiteIntArray* output_tensors, int* nnapi_errno) {
+    TfLiteContext* context,
+    const StatefulNnApiDelegate::Options& delegate_options,
+    const TfLiteIntArray* input_tensors, const TfLiteIntArray* output_tensors,
+    int* nnapi_errno) {
   // Build the ops and tensors.
   TF_LITE_ENSURE_STATUS(AddOpsAndTensors(context, nnapi_errno));
   // Map input and output tensor indices to ANN
@@ -3902,11 +3944,13 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
           outputs.data()),
       "identifying model inputs and outputs", nnapi_errno);
 
+  auto allow_fp16 =
+      context->allow_fp32_relax_to_fp16 | delegate_options.allow_fp16;
   if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
-            nn_model_.get(), context->allow_fp32_relax_to_fp16),
+            nn_model_.get(), allow_fp16),
         "set relaxed computation mode for fp32 if possible", nnapi_errno);
   }
 
@@ -3980,6 +4024,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;
+  delegate_data_.allow_fp16 = options.allow_fp16;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -4009,6 +4054,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.disallow_nnapi_cpu = delegate_data->disallow_nnapi_cpu;
   options.max_number_delegated_partitions =
       delegate_data->max_number_delegated_partitions;
+  options.allow_fp16 = delegate_data->allow_fp16;
   return options;
 }
 

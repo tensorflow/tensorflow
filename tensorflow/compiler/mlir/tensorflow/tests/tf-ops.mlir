@@ -82,7 +82,7 @@ func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x
 // -----
 
 func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
-  // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
+  // expected-error @+1 {{all operands and results to have compatible element}}
   %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
   return %0 : tensor<4x2x!tf.stringref>
 }
@@ -725,10 +725,10 @@ func @testFusedBatchNormWrongMeanType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor
 
 // -----
 // Test invalid tf.FusedBatchNorm
-func @testFusedBatchNormWrongVarianceType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>) -> tensor<8x8x8x8xf32> {
-^bb0(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<*xf32>):
+func @testFusedBatchNormWrongVarianceType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>) -> tensor<8x8x8x8xf32> {
+^bb0(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<10x2xf32>):
   // expected-error @+1 {{requires variance to be a 1D float tensor}}
-  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>)
+  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>)
   return %0#0 : tensor<8x8x8x8xf32>
 }
 
@@ -881,20 +881,29 @@ func @testValidMatrixBandPartOpUnranked(%arg0: tensor<*xbf16>, %arg1: tensor<i64
 
 // -----
 
-// Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
-  return %0 : tensor<64x64xbf16>
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpUnrankedBand
+func @testValidMatrixBandPartOpUnrankedBand(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpCompatibleDynamicShapes
+func @testValidMatrixBandPartOpCompatibleDynamicShapes(%arg0: tensor<?x10x?xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<?x?x8xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<?x10x?xbf16>, tensor<i64>, tensor<i64>) -> tensor<?x?x8xbf16>
+  return %0 : tensor<?x?x8xbf16>
 }
 
 // -----
 
 // Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
-  return %0 : tensor<*xbf16>
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have dynamically equal types}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
 }
 
 // -----
@@ -1297,11 +1306,11 @@ func @testShapeWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf3
 
 // -----
 
-func @testShapeWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
+func @testShapeWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires 1D type for result}}
-  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<3x2xi32>
+  return %0 : tensor<3x2xi32>
 }
 
 // -----
@@ -1341,11 +1350,11 @@ func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf
 
 // -----
 
-func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
+func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<2x2xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires 1D type for result #1}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<*xi32>)
-  return %0#1 : tensor<*xi32>
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<2x2xi32>)
+  return %0#1 : tensor<2x2xi32>
 }
 
 // -----
@@ -1402,10 +1411,10 @@ func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf.resource<tensor<1
 
 // -----
 
-func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32> {
+func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32> {
   // expected-error @+1 {{requires 1D type for result}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
 }
 
 // -----
@@ -1768,7 +1777,7 @@ func @testOneHot(%indices: tensor<3xi32>, %depth: tensor<i32>, %on_value: tensor
 // -----
 
 func @testOneHot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tensor<f32>) -> tensor<3x5xf32> {
-  %depth = "tf.Const"() { value = dense<-5> : tensor<i64> } : () -> tensor<i32>
+  %depth = "tf.Const"() { value = dense<-5> : tensor<i32> } : () -> tensor<i32>
   // expected-error @+1 {{depth must be non-negative}}
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>
@@ -2400,7 +2409,7 @@ func @tensor_scatter_update(%tensor: tensor<4xf32>, %indices: tensor<4x2xi32>, %
 // CHECK-LABEL: func @testParseExampleV2DenseOnlyValid
 func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %dense_keys : tensor<2x!tf.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
   %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
-  %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = ["tfshape$", "tfshape$"], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
+  %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf.shape<>, #tf.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
   return %result#0 : tensor<32xf32>
 }
 
@@ -2409,7 +2418,7 @@ func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf.string>, %name
 func @testParseExampleV2DenseMismatchedInputOutput(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %dense_keys : tensor<2x!tf.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
   %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
   // expected-error @+1 {{output 'dense_values' should have same length as attribute 'Tdense'}}
-  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = ["tfshape$", "tfshape$"], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 3, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xi64>)
+  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf.shape<>, #tf.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 3, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xi64>)
   return %result#0 : tensor<32xf32>
 }
 

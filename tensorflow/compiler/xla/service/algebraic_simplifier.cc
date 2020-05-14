@@ -816,6 +816,8 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     // Concatenate the indices and updates
     if (index_concat_is_safe && same_dimension_numbers &&
         index_concat_dimension &&
+        lhs_scatter_index->shape().element_type() ==
+            rhs_scatter_index->shape().element_type() &&
         ShapeUtil::SameDimensions(lhs_update_window, rhs_update_window)) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand,
                           MakeBinaryHlo(HloOpcode::kAdd, lhs_scatter_operand,
@@ -2969,26 +2971,6 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
                                             MakeScalarLike(lhs, 1), lhs));
   }
 
-  VLOG(10) << "trying transform [pow(pow(A, X), Y) => pow(A, X*Y)]: "
-           << power->ToString();
-
-  // Don't perform this optimization if either of the exponents is complex; this
-  // identity is true only for real-valued exponents.  In addition, we cowardly
-  // refuse to do this transformation if the two exponents have different
-  // element types.
-  if (lhs->opcode() == HloOpcode::kPower &&
-      !ShapeUtil::ElementIsComplex(lhs->operand(1)->shape()) &&
-      !ShapeUtil::ElementIsComplex(rhs->shape()) &&
-      ShapeUtil::SameElementType(lhs->operand(1)->shape(), rhs->shape())) {
-    auto exponent_product =
-        computation_->AddInstruction(HloInstruction::CreateBinary(
-            rhs->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
-    return ReplaceWithNewInstruction(
-        power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kPower,
-                                            lhs->mutable_operand(0),
-                                            exponent_product));
-  }
-
   return Status::OK();
 }
 
@@ -3656,6 +3638,39 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         MakeBroadcastHlo(new_dynamic_slice, operand->dimensions(),
                          dynamic_slice->shape()));
   }
+
+  // Convert a dynamic slice into a slice if all offsets are  constant and the
+  // operand is not constant. If ev
+  if (operand->opcode() != HloOpcode::kConstant &&
+      absl::c_all_of(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
+                                    dynamic_slice->operands().end()),
+                     [](HloInstruction* operand) {
+                       return operand->opcode() == HloOpcode::kConstant &&
+                              ShapeUtil::ElementIsIntegral(operand->shape());
+                     })) {
+    const int64 rank = operand->shape().rank();
+    std::vector<int64> slice_starts(rank);
+    std::vector<int64> slice_limits(rank);
+    std::vector<int64> slice_strides(rank, 1);
+
+    for (int64 i = 0; i < rank; ++i) {
+      absl::optional<int64> offset =
+          dynamic_slice->operand(i + 1)->literal().GetFirstInteger();
+      if (!offset || *offset < 0) {
+        return Status::OK();
+      }
+      const int64 max_offset =
+          dynamic_slice->operand(0)->shape().dimensions(i) -
+          dynamic_slice->shape().dimensions(i);
+      slice_starts[i] = std::min(max_offset, *offset);
+      slice_limits[i] =
+          std::min(max_offset, *offset) + dynamic_slice->shape().dimensions(i);
+    }
+    return ReplaceWithNewInstruction(
+        dynamic_slice,
+        HloInstruction::CreateSlice(dynamic_slice->shape(), operand,
+                                    slice_starts, slice_limits, slice_strides));
+  }
   return Status::OK();
 }
 
@@ -3690,8 +3705,8 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         compatible = false;
       }
     }
+    PaddingConfig padding_config;
     if (compatible) {
-      PaddingConfig padding_config;
       for (int64 dim = 0; dim < updated_shape.rank(); ++dim) {
         auto padding_config_dim = padding_config.add_dimensions();
         auto slice_dim_start = update_start_indx->operand(dim + offset);
@@ -3700,37 +3715,32 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
           break;
         }
         VLOG(2) << "slice :" << slice_dim_start->ToString();
-        int64 beg;
-        if (slice_dim_start->shape().element_type() == S32) {
-          beg = slice_dim_start->literal().Get<int32>({});
-        } else if (slice_dim_start->shape().element_type() == U32) {
-          beg = slice_dim_start->literal().Get<uint32>({});
-        } else {
+        absl::optional<int64> beg =
+            slice_dim_start->literal().GetFirstInteger();
+        if (!beg) {
           compatible = false;
           break;
         }
-        VLOG(2) << "beg value:" << beg;
+        VLOG(2) << "beg value:" << *beg;
         auto update_width = ShapeUtil::GetDimension(update_shape, dim);
         auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
-        padding_config_dim->set_edge_padding_low(beg);
+        padding_config_dim->set_edge_padding_low(*beg);
         padding_config_dim->set_edge_padding_high(
-            std::max(bcast_width - (beg + update_width), 0LL));
+            std::max(bcast_width - (*beg + update_width), int64{0}));
         // dynamic_update_slice does not specify a stride
         padding_config_dim->set_interior_padding(0);
       }
-      if (compatible) {
-        HloInstruction* pad =
-            computation_->AddInstruction(HloInstruction::CreatePad(
-                updated_shape, dus_update, pad_value, padding_config));
-        VLOG(2) << dynamic_update_slice->ToString();
-        VLOG(2) << " with pad:" << pad->ToString();
-        VLOG(2) << " Computation before rewrite is: "
-                << dynamic_update_slice->parent()->ToString();
-        auto res = ReplaceInstruction(dynamic_update_slice, pad);
-        VLOG(2) << " Computation after rewrite is: "
-                << pad->parent()->ToString();
-        return res;
-      }
+    }
+
+    if (compatible) {
+      HloInstruction* pad =
+          computation_->AddInstruction(HloInstruction::CreatePad(
+              updated_shape, dus_update, pad_value, padding_config));
+      VLOG(2) << dynamic_update_slice->ToString();
+      VLOG(2) << " with pad:" << pad->ToString();
+      VLOG(2) << " Computation before rewrite is: "
+              << dynamic_update_slice->parent()->ToString();
+      return ReplaceInstruction(dynamic_update_slice, pad);
     }
   }
 

@@ -18,8 +18,15 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def HLO_Int : SignlessIntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
+
+// TODO(hinsu): Use signed integers instead of signless integer which is being
+// used for legacy reasons.
+def HLO_SInt : SignlessIntOfWidths<[8, 16, 32, 64]>;
+def HLO_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
+def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
+
+def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
 // smaller rank shape is broadcast into a larger rank shape. For example,
@@ -47,9 +54,9 @@ def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
+def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
 
-def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
+def HLO_ComplexTensor : TensorOf<[HLO_Complex]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
@@ -57,14 +64,14 @@ def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : ShapedContainerType<
-    [Index, AnySignlessInteger],
+    [Index, HLO_Pred, HLO_Int],
     And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, AnySignlessInteger, AnyComplex]>;
+      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
 
 //===----------------------------------------------------------------------===//
 // XLA on tensors combined type definitions.
@@ -77,10 +84,10 @@ def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
 
 // Any floating-point or complex tensor types
-def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
+def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, HLO_Complex]>;
 
 // Any int, floating-point or complex tensor types
-def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
 
 // Any pred, int or floating-point tensor types
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
@@ -140,15 +147,6 @@ class BASE_HLO_ClzOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
-class BASE_HLO_ComplexOp {
-  string summary = "Complex operator";
-
-  string description = [{
-    Performs element-wise conversion of a pair of real and imaginary values to
-    a complex value.
   }];
 }
 
@@ -393,6 +391,15 @@ class BASE_HLO_AddOp {
   }];
 }
 
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_DivOp {
   string summary = "Division operator";
 
@@ -517,7 +524,7 @@ class BASE_HLO_AndOp {
   string summary = "Logical and";
 
   string description = [{
-    Returns `lhs /\ rhs` element-wise.
+    Returns `logical_and(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -528,7 +535,7 @@ class BASE_HLO_OrOp {
   string summary = "Logical or";
 
   string description = [{
-    Returns `lhs \/ rhs` element-wise.
+    Returns `logical_or(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -539,7 +546,7 @@ class BASE_HLO_XorOp {
   string summary = "Logical xor";
 
   string description = [{
-    Returns `lhs xor rhs` element-wise.
+    Returns `logical_xor(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

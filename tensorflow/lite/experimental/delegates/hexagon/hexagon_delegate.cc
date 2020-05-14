@@ -152,8 +152,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
           std::string* unsupported_details) -> bool {
     return IsNodeSupportedByHexagon(registration, node, context);
   };
-  TfLiteIntArray* plan;
-  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
   delegates::GraphPartitionHelper helper(context, node_supported_fn);
   TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
 
@@ -175,7 +173,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   supported_nodes[0] = supported_nodes.size() - 1;
   auto* hexagon_delegate = static_cast<HexagonDelegate*>(delegate);
   // Make sure dynamic batch is requested on fully delegated graph only.
-  if (supported_nodes[0] != plan->size && hexagon_delegate != nullptr &&
+  if (supported_nodes[0] != helper.num_total_nodes() &&
+      hexagon_delegate != nullptr &&
       hexagon_delegate->params()->enable_dynamic_batch_size) {
     TF_LITE_KERNEL_LOG(
         context, "Dynamic batch requested on non-fully delegated graph !!.");
@@ -220,6 +219,11 @@ TfLiteDelegate* CreateDelegate(const TfLiteHexagonDelegateOptions* params) {
 TfLiteDelegate* TfLiteHexagonDelegateCreate(
     const TfLiteHexagonDelegateOptions* options) {
   return tflite::CreateDelegate(options);
+}
+
+TfLiteHexagonDelegateOptions TfLiteHexagonDelegateOptionsDefault() {
+  TfLiteHexagonDelegateOptions result{0};
+  return result;
 }
 
 void TfLiteHexagonDelegateDelete(TfLiteDelegate* delegate) { delete delegate; }

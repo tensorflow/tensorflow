@@ -23,6 +23,15 @@ func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: not_whitelisted_op
+func @not_whitelisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
+  // CHECK: tf.TensorListReserve
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?x?xf32>>>
+  // CHECK: tf.TensorListGetItem
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %1 : tensor<?x?x?xf32>
+}
+
 // CHECK-LABEL: unranked_operand
 func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.Abs
@@ -39,6 +48,15 @@ func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
   return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: unsupported_dtype
+func @unsupported_dtype(%arg0: tensor<2x!tf.variant>) -> tensor<2x!tf.variant> {
+  // CHECK: tf.AddN
+  // expected-remark@+1 {{unsupported type: tensor<2x!tf.variant>}}
+  %0 = "tf.AddN"(%arg0, %arg0) : (tensor<2x!tf.variant>, tensor<2x!tf.variant>) -> tensor<2x!tf.variant>
+
+  return %0 : tensor<2x!tf.variant>
 }
 
 // CHECK-LABEL: multiple_dialect_ops
@@ -106,12 +124,44 @@ func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
   return %0: tensor<2xi1>
 }
 
-// TODO(hinsu): Add a test with variant type once one of the ops supporting
-// the type is whitelisted. It should be rejected with unsupported type remark.
+// CHECK-LABEL: func @const_inputs
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x2xf64>, %[[ARG1:.*]]: tensor<f64>,
+func @const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>, %arg4: tensor<2xi32>) -> tensor<6x5xf64> {
 
-// TODO(hinsu): Add a test with uint8 type once one of the ops supporting the
-// type is whitelisted. Unsigned types are not yet added to the HLO dialect so
-// it should return an error. See b/130356985
+  // CHECK: "xla_hlo.pad"(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME-DAG: edge_padding_high = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME-DAG: edge_padding_low = dense<[2, 1]> : tensor<2xi64>
+  // CHECK-SAME-DAG: interior_padding = dense<[1, 0]> : tensor<2xi64>
+
+  %0 = xla_hlo.constant dense<[2, 1]> : tensor<2xi32>
+  %1 = xla_hlo.constant dense<[1, 2]> : tensor<2xi32>
+  %2 = xla_hlo.constant dense<[1, 0]> : tensor<2xi32>
+  %3 = "tf.XlaPad"(%arg0, %arg1, %0, %1, %2) : (tensor<2x2xf64>, tensor<f64>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<6x5xf64>
+  return %3 : tensor<6x5xf64>
+}
+
+func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>, %arg4: tensor<2xi32>) -> tensor<6x5xf64> {
+  // expected-remark@+1 {{lowering requires operand #2 to be a constant}}
+  %0 = "tf.XlaPad"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<2x2xf64>, tensor<f64>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<6x5xf64>
+  return %0 : tensor<6x5xf64>
+}
+
+// CHECK-LABEL: dynamic_result_type
+func @dynamic_result_type(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: tensor_cast %0 : tensor<2xf32> to tensor<*xf32>
+  %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<*xf32>
+
+  // return %[[RESULT]]
+  return %0 : tensor<*xf32>
+}
+
+func @truncated_normal() -> tensor<2x2xf32> {
+  // CHECK-NOT: tf.TruncatedNormal
+  %0 = xla_hlo.constant dense<[2, 2]> : tensor<2xi32>
+  %1 = "tf.TruncatedNormal"(%0) {T = i32, device = "", dtype = f32, seed = 0 : i64, seed2 = 1950157571 : i64} : (tensor<2xi32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.

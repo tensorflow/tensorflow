@@ -75,6 +75,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
     ],
 )
 
@@ -530,7 +531,10 @@ cc_library(
 tf_cuda_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
-    tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
+    tags = [
+        "no_cuda_on_cpu_tap",  # Do not re-enable again without actually testing.
+        "no_windows",  # b/56402646
+    ],
     deps = [
         ":gpu_swapping_kernels",
         ":gpu_swapping_ops",

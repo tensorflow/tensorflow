@@ -46,6 +46,12 @@ struct QuantizationSpecs {
   // post-training quantization. We need to deprecate the `weight_quantization`.
   bool post_training_quantization = false;
 
+  // When set to true, quantization will be done per-tensor. Currently, this
+  // option is only valid when the quantization parameters need to be created by
+  // scanning the constant content (post-training quantization or QAT without
+  // weight FakeQuant).
+  bool disable_per_channel = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
@@ -84,7 +90,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferenceType() {
+  bool IsSignedInferenceType() const {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:
@@ -96,7 +102,7 @@ struct QuantizationSpecs {
 
   // Gets the width of this quantization type. Returns 0 if it isn't a
   // quantization type.
-  int64_t GetQuantizationTypeWidth() {
+  int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:

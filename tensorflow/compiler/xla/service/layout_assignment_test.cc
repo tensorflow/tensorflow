@@ -814,27 +814,6 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
   EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
 }
 
-TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
-  auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  builder.AddInstruction(
-      HloInstruction::CreateBitcast(constant0->shape(), constant0));
-  auto m = CreateNewVerifiedModule();
-  m->AddEntryComputation(builder.Build());
-
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
-  EXPECT_FALSE(error_status.ok());
-  EXPECT_THAT(
-      error_status.error_message(),
-      ::testing::HasSubstr(
-          "Unexpected bitcast operation seen during layout assignment"));
-}
-
 TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   // Pin non matching layouts to parameter and root.
   const char* module_str = R"(
@@ -1383,6 +1362,43 @@ ENTRY entry_computation {
   ExpectTupleLayoutIs(crs->shape(), {{0, 1}, {1, 0}});
   ExpectLayoutIs(crs->operand(0)->shape(), {0, 1});
   ExpectLayoutIs(crs->operand(1)->shape(), {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest, LayoutConstrainedAllToAll) {
+  const char* module_str = R"(
+HloModule test_module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry_computation {
+  param = (f32[16,4]{0,1}, f32[16,4]{1,0}) parameter(0)
+  gte0 = f32[16,4] get-tuple-element(param), index=0
+  gte1 = f32[16,4] get-tuple-element(param), index=1
+  alltoall = (f32[16,4]{1,0}, f32[16,4]{1,0}) all-reduce(gte0, gte1),
+    replica_groups={{0,1}}, constrain_layout=true, to_apply=add
+  gte2 = f32[16,4] get-tuple-element(alltoall), index=0
+  gte3 = f32[16,4] get-tuple-element(alltoall), index=1
+  ROOT concat = f32[16,8]{0,1} concatenate(gte2, gte3), dimensions={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+
+  const HloInstruction* alltoall = FindInstruction(m.get(), "alltoall");
+  ExpectTupleLayoutIs(alltoall->shape(), {{1, 0}, {1, 0}});
+  ExpectLayoutIs(alltoall->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(alltoall->operand(1)->shape(), {1, 0});
 }
 
 }  // namespace

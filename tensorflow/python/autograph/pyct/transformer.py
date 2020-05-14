@@ -19,13 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum
 
 import gast
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
+
+
+class AnalysisLevel(enum.IntEnum):
+
+  NONE = 0
+  ACTIVITY = 1
+  DEFINEDNESS = 2
+  LIVENESS = 3
 
 
 # TODO(znado): Use namedtuple.
@@ -267,7 +276,7 @@ class NodeStateTracker(object):
   def debug_print_src(self, node):
     """Helper method useful for debugging. Prints the AST as code."""
     if __debug__:
-      print(loader.load_ast(node))
+      print(parser.unparse(node))
     return node
 
   def visit_block(self, nodes, before_visit=None, after_visit=None):
@@ -345,17 +354,6 @@ class NodeStateTracker(object):
       if new_destination is not None:
         node_destination = new_destination
     return results
-
-  def _get_source(self, node):
-    try:
-      source, _ = loader.load_ast(node)
-      return source
-    # pylint: disable=broad-except
-    # This function is used for error reporting.  If an exception occurs here,
-    # it should be suppressed, in favor of emitting as informative a message
-    # about the original error as possible.
-    except Exception:
-      return '<could not convert AST to source>'
 
 
 # TODO(mdan): Rename to PythonCodeTransformer.

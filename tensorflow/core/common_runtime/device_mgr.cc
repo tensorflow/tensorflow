@@ -45,6 +45,7 @@ StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
     }
     const auto& t = d->device_type();
     device_type_counts_[t]++;
+    device_incarnation_set_.insert(d->attributes().incarnation());
     if (cpu_device_ == nullptr && t == "CPU" && d->parsed_name().id == 0) {
       cpu_device_ = d.get();
     }
@@ -121,6 +122,10 @@ Status StaticDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   }
   *device = iter->second;
   return Status::OK();
+}
+
+bool StaticDeviceMgr::ContainsDevice(int64 device_incarnation) const {
+  return device_incarnation_set_.contains(device_incarnation);
 }
 
 void StaticDeviceMgr::ClearContainers(

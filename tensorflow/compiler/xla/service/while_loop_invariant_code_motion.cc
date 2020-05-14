@@ -300,7 +300,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 }
 
 StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
-  VLOG(2) << "HLO module before WhileLoopConstantSinking:";
+  VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
@@ -332,10 +332,10 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
   }
 
   if (changed) {
-    VLOG(2) << "HLO module after WhileLoopConstantSinking:";
+    VLOG(2) << "HLO module after WhileLoopInvariantCodeMotion:";
     XLA_VLOG_LINES(2, module->ToString());
   } else {
-    VLOG(2) << "HLO module unchanged after WhileLoopConstantSinking";
+    VLOG(2) << "HLO module unchanged after WhileLoopInvariantCodeMotion";
   }
 
   return changed;

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -123,6 +124,9 @@ class Node {
   };
 
   using Factory = std::function<std::shared_ptr<Node>(Args)>;
+  using NodeVector = std::vector<std::shared_ptr<Node>>;
+  using NodePairList =
+      std::list<std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>>;
 
   explicit Node(Args args)
       : id_(args.id),
@@ -138,7 +142,31 @@ class Node {
         metrics_(name_),
         output_(args.output.get()) {}
 
-  virtual ~Node() { FlushMetrics(); }
+  virtual ~Node() {
+    // Clear the sub-nodes instead of relying on implicit shared pointer
+    // destructor to avoid potential stack overflow when the tree is deep.
+    std::deque<std::shared_ptr<Node>> queue;
+    {
+      mutex_lock l(mu_);
+      while (inputs_.size() > 0) {
+        queue.push_back(inputs_.front());
+        inputs_.pop_front();
+      }
+    }
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+      {
+        mutex_lock l(node->mu_);
+        while (node->inputs_.size() > 0) {
+          queue.push_back(node->inputs_.front());
+          node->inputs_.pop_front();
+        }
+      }
+    }
+
+    FlushMetrics();
+  }
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_) {
@@ -232,18 +260,15 @@ class Node {
 
   // Records that a node thread has started executing.
   void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    work_start_[std::this_thread::get_id()] = time_nanos;
+    DCHECK_EQ(work_start_, 0);
+    work_start_ = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
   void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    std::thread::id tid = std::this_thread::get_id();
-    auto iter = work_start_.find(tid);
-    if (iter != work_start_.end()) {
-      processing_time_ += time_nanos - iter->second;
-      work_start_.erase(iter);
+    if (work_start_ != 0) {
+      processing_time_ += time_nanos - work_start_;
+      work_start_ = 0;
     } else {
       VLOG(1) << "Encountered a stop event without a matching start event.";
     }
@@ -260,9 +285,29 @@ class Node {
     autotune_.store(autotune);
   }
 
+  // Given the average time between output events (`output_time`), the average
+  // time between input events (`input_time`) and the buffer size, the method
+  // computes the expected time an input event will have to wait.
+  //
+  // The wait time is approximated as the product of the probability the buffer
+  // will be empty and the time it takes to produce an element into the buffer.
+  //
+  // The formula used for computing the probability is derived by modeling the
+  // problem as an M/M/1/K queue
+  // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+  //
+  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
+  // and `buffer_size` if the corresponding pointers are not `nullptr`.
+  static double ComputeWaitTime(const double& output_time,
+                                const double& input_time,
+                                const double& buffer_size,
+                                double* output_time_derivative,
+                                double* input_time_derivative,
+                                double* buffer_size_derivative);
+
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
-      std::map<string, std::shared_ptr<Parameter>>* parameters) const
+      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a human-readable representation of this node.
@@ -275,7 +320,7 @@ class Node {
   // `nullptr`, collects the gradient of the output time w.r.t. tunable
   // parameters of the subtree rooted in this node and the last input time.
   double OutputTime(std::vector<double>* input_times,
-                    std::map<string, double>* gradient) const
+                    absl::flat_hash_map<string, double>* gradient) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a copy of this node, making a deep copy of its inputs and a
@@ -283,7 +328,7 @@ class Node {
   //
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
-  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output)
+  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the per-element processing time spent in this node.
@@ -301,7 +346,8 @@ class Node {
   // Returns the per-element CPU time spent in the subtree rooted in this node.
   // If `processing_times` is not `nullptr`, collects the per-element CPU time
   // spent in each node of the subtree.
-  double TotalProcessingTime(std::map<string, double>* processing_times)
+  double TotalProcessingTime(
+      absl::flat_hash_map<string, double>* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
  protected:
@@ -372,37 +418,76 @@ class Node {
   // if `gradient` is not `nullptr`, collects gradients of output times w.r.t.
   // tunable parameters and the last input time.
   double OutputTimeForInputs(std::vector<double>* input_times,
-                             std::map<string, double>* gradient) const
-      TF_SHARED_LOCKS_REQUIRED(mu_);
+                             absl::flat_hash_map<string, double>* gradient)
+      const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the per-element output time for this node and if `gradient` is not
   // `nullptr`, collects the gradient of the output time w.r.t. tunable
   // parameters of the subtree rooted in this node and the last input time.
   virtual double OutputTimeLocked(std::vector<double>* input_times,
-                                  std::map<string, double>* gradient) const
-      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
+                                  absl::flat_hash_map<string, double>* gradient)
+      const TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  // Returns the sum of per-element processing time for the inputs of this node.
-  // Processing time for a given input is a weighted combination of a statistic
-  // based on history of input processing time and the actual time. This is done
-  // to improve accuracy of processing time estimation for newly created inputs.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each input node.
+  // Returns the sum of per-element processing time for the inputs of this node
+  // by adding values for input nodes in `total_processing_times`. Processing
+  // time for a given input is a weighted combination of a statistic based on
+  // history of input processing time and the actual time. This is done to
+  // improve accuracy of processing time estimation for newly created inputs.
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
   double TotalProcessingTimeForInputs(
-      std::map<string, double>* processing_times) TF_SHARED_LOCKS_REQUIRED(mu_);
+      const absl::flat_hash_map<string, double>& total_processing_times)
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTimeLocked() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each node of the subtree.
-  virtual double TotalProcessingTimeLocked(
-      std::map<string, double>* processing_times)
+  // Computes the per-element CPU time spent in the subtree rooted in this node
+  // and stores it in `total_processing_times`. If `processing_times` is not
+  // `nullptr`, collects the per-element CPU time spent in each node of the
+  // subtree.
+  virtual void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
+
+  // Returns a vector of nodes of the subtree rooted in this node.
+  // The nodes are in the reverse breadth-first search order.
+  NodeVector CollectNodes() const;
+
+  // Collect tunable parameters for the node.
+  void CollectTunableParametersHelper(
+      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters)
+      const;
+
+  // Build up debug string for the node and store in the debug strings map.
+  void DebugStringHelper(
+      absl::flat_hash_map<string, string>* debug_strings) const;
+
+  // Copy the node and add the (input, copy) pairs to the NodePairList.
+  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
+                                       NodePairList* node_pairs) const;
+
+  // Compute total buffered bytes for the node and store in the total bytes map.
+  void TotalBufferedBytesHelper(
+      absl::flat_hash_map<string, double>* total_bytes) const;
+
+  // Compute total maximum buffered bytes for the node and store in the total
+  // bytes map.
+  void TotalMaximumBufferedBytesHelper(
+      absl::flat_hash_map<string, double>* total_bytes) const;
+
+  // Stores the time passed to the last call to `Node::record_start()` on the
+  // current thread.
+  //
+  // NOTE: This thread-local variable is shared between all instances of `Node`
+  // on which the same thread calls `record_start()` or `record_stop()`. It
+  // relies on the invariant that at most one `Node` can be "active" on a
+  // particular thread at any time. Therefore if `n->record_start()` is called
+  // on thread `t`, then `n->record_stop()` must be called before another call
+  // to `Node::record_start()` (for any node).
+  static thread_local int64 work_start_;  // Will be initialized to zero.
 
   mutable mutex mu_;
   const int64 id_;
@@ -420,8 +505,8 @@ class Node {
   std::atomic<int64> processing_time_;
   std::atomic<bool> record_metrics_;
   Metrics metrics_;
-  std::map<string, std::shared_ptr<Parameter>> parameters_ TF_GUARDED_BY(mu_);
-  std::map<std::thread::id, int64> work_start_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters_
+      TF_GUARDED_BY(mu_);
 
   // Statistic of inputs processing time history.
   double input_processing_time_sum_ = 0.0L;
@@ -506,16 +591,16 @@ class Model {
  private:
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a mapping from a (unique) node name to a tunable parameter.
-  std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
-      std::shared_ptr<Node> node);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
+  CollectTunableParameters(std::shared_ptr<Node> node);
 
   // Collects "essential" parallelism parameters of transformations in the tree
   // rooted in the given node. Which parameters are essential is determined by
   // comparison the processing time spent in the corresponding transformation
   // relative to other transformations. The collected parameters are returned
   // as a mapping from a (unique) node name to a parallelism parameter.
-  std::map<string, std::shared_ptr<Parameter>> CollectEssentialParallelism(
-      std::shared_ptr<Node> node);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
+  CollectEssentialParallelism(std::shared_ptr<Node> node);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the
@@ -538,7 +623,7 @@ class Model {
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
   // node and the last input time.
   double OutputTime(std::shared_ptr<Node> node,
-                    std::map<string, double>* gradient);
+                    absl::flat_hash_map<string, double>* gradient);
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);
@@ -559,7 +644,8 @@ class Model {
   mutex mu_;
   int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
-  std::map<string, std::shared_ptr<Node>> lookup_table_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<string, std::shared_ptr<Node>> lookup_table_
+      TF_GUARDED_BY(mu_);
 
   // Indicates whether the modeling framework should collect resource usage
   // (e.g. CPU, memory). The logic for collecting this information assumes that

@@ -338,6 +338,7 @@ cc_library(
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
+        "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
@@ -356,9 +357,9 @@ cc_test(
         ":cpu_backend_context",
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest",
-        # ruy's reference path provides the reference implementation
+        # ruy:reference_mul provides the reference implementation
         # that this test compares against.
-        "@ruy//ruy",
+        "@ruy//ruy:reference_mul",
     ],
 )
 
@@ -525,6 +526,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_gemm",
         ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",
@@ -600,7 +602,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
@@ -732,7 +734,10 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -747,7 +752,10 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1200,7 +1208,10 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1414,7 +1425,10 @@ cc_test(
     name = "pooling_test",
     size = "small",
     srcs = ["pooling_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1428,7 +1442,10 @@ cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",

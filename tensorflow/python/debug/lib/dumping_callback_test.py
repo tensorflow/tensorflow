@@ -289,7 +289,8 @@ class DumpingCallbackTest(
     with debug_events_reader.DebugDataReader(self.dump_root) as reader:
       reader.update()
       graph_exec_traces = reader.graph_execution_traces()
-      executed_op_types = [trace.op_type for trace in graph_exec_traces]
+      executed_op_types = [trace.op_type for trace in graph_exec_traces
+                           if trace.op_type != "Const"]
       self.assertCountEqual(
           executed_op_types,
           ["Placeholder", "Placeholder", "AddV2", "Sub", "RealDiv"])
@@ -345,6 +346,46 @@ class DumpingCallbackTest(
                               [tensor_id, 19, 1, 8, 8, 0, 0, 0, 0, 0])
 
   @parameterized.named_parameters(
+      ("CurtHealth", "CURT_HEALTH"),
+      ("FullTensor", "FULL_TENSOR"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testConstTensorsAreCaptured(self, tensor_debug_mode):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
+    @def_function.function
+    def times_two_plus_three(x):
+      return x * constant_op.constant(2.0) + constant_op.constant(3.0)
+    self.assertAllEqual(
+        self.evaluate(times_two_plus_three(10.0)), 23.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      const_traces = [trace for trace in reader.graph_execution_traces()
+                      if trace.op_type == "Const"]
+      self.assertGreaterEqual(len(const_traces), 3)
+      if tensor_debug_mode == "CURT_HEALTH":
+        # Under CURT_HEALTH, each debug tensor value has the form
+        # [tensor_id, has_inf_or_nan].
+        self.assertLen(const_traces[0].debug_tensor_value, 2)
+        self.assertEqual(const_traces[0].debug_tensor_value[1], 0)
+        self.assertLen(const_traces[1].debug_tensor_value, 2)
+        self.assertEqual(const_traces[1].debug_tensor_value[1], 0)
+        self.assertLen(const_traces[2].debug_tensor_value, 2)
+        self.assertEqual(const_traces[2].debug_tensor_value[1], 0)
+      else:  # FULL_TENSOR.
+        const_tensor_values = [
+            reader.graph_execution_trace_to_tensor_value(const_trace)
+            for const_trace in const_traces]
+        # Avoid making assertion on the particular order of the debug tensors
+        # for the three Consts because it may be indeterminate.
+        self.assertIn(10.0, const_tensor_values)
+        self.assertIn(2.0, const_tensor_values)
+        self.assertIn(3.0, const_tensor_values)
+
+  @parameterized.named_parameters(
       ("Shape", "SHAPE"),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -367,7 +408,8 @@ class DumpingCallbackTest(
     with debug_events_reader.DebugDataReader(self.dump_root) as reader:
       reader.update()
       graph_exec_traces = reader.graph_execution_traces()
-      executed_op_types = [trace.op_type for trace in graph_exec_traces]
+      executed_op_types = [trace.op_type for trace in graph_exec_traces
+                           if trace.op_type != "Const"]
       self.assertEqual(
           executed_op_types,
           ["Placeholder", "Placeholder", "LogicalAnd", "LogicalNot"])
@@ -489,7 +531,8 @@ class DumpingCallbackTest(
         _, stack_frames = reader.read_graph_op_creation_stack_trace(op_digest)
         self._verifyStackFrames(stack_frames)
 
-      graph_exec_traces = reader.graph_execution_traces()
+      graph_exec_traces = [trace for trace in reader.graph_execution_traces()
+                           if trace.op_type != "Const"]
       executed_op_types = [digest.op_type for digest in graph_exec_traces]
       self.assertEqual(
           executed_op_types,
@@ -713,6 +756,63 @@ class DumpingCallbackTest(
             non_placeholder_full_tensor_values[3],
             np.sin(np.log(5.0) + 1.0))  # Sin op.
 
+  @parameterized.named_parameters(
+      ("NoTensor", "NO_TENSOR"),
+      ("FullTensor", "FULL_TENSOR"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testGraphOpConsumingRelationIsCaptured(self, tensor_debug_mode):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
+
+    @def_function.function
+    def log_sum(x, y):
+      return math_ops.log(x + y)
+
+    @def_function.function
+    def maxindex_sin1p_log_sum(x, y):
+      _, indices = array_ops.unique(math_ops.sin(1.0 + log_sum(x, y)))
+      return math_ops.reduce_max(indices)
+
+    x = constant_op.constant([2.0, 2.0])
+    y = constant_op.constant([3.0, 3.0])
+    maxindex = maxindex_sin1p_log_sum(x, y)
+    self.assertAllEqual(maxindex, 0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      traces = reader.graph_execution_traces()
+      add_traces = [trace for trace in traces if trace.op_type == "AddV2"]
+      log_traces = [trace for trace in traces if trace.op_type == "Log"]
+      sin_traces = [trace for trace in traces if trace.op_type == "Sin"]
+      unique_traces = [trace for trace in traces if trace.op_type == "Unique"]
+      max_traces = [trace for trace in traces if trace.op_type == "Max"]
+      self.assertLen(add_traces, 2)
+      self.assertLen(log_traces, 1)
+      self.assertLen(sin_traces, 1)
+      self.assertLen(unique_traces, 2)  # The Unique op outputs two tensors.
+      self.assertLen(max_traces, 1)
+      graph = reader.graph_by_id(add_traces[0].graph_id)
+      # The first AddV2 op is consumed by the Log op.
+      self.assertEqual(
+          graph.get_op_consumers(add_traces[0].op_name),
+          [(0, log_traces[0].op_name, 0)])
+      graph = reader.graph_by_id(add_traces[1].graph_id)
+      # The second AddV2 op is consumed by the Sin op.
+      self.assertEqual(
+          graph.get_op_consumers(add_traces[1].op_name),
+          [(0, sin_traces[0].op_name, 0)])
+      # The last Sin op is consumed by the Unique op.
+      self.assertEqual(
+          graph.get_op_consumers(sin_traces[0].op_name),
+          [(0, unique_traces[0].op_name, 0)])
+      # The Unique op's 2nd output tensor is consumed by the Max op.
+      self.assertEqual(
+          graph.get_op_consumers(unique_traces[0].op_name),
+          [(1, max_traces[0].op_name, 0)])
+
   def testCapturingExecutedGraphIdsOfTwoCompilationsOfSameFunction(self):
     """Test correct executed IDs of two FuncGraphs from the same Py function."""
     writer = dumping_callback.enable_dump_debug_info(
@@ -902,10 +1002,10 @@ class DumpingCallbackTest(
       reader.update()
       graph_exec_digests = reader.graph_execution_traces(digest=True)
       executed_op_types = [digest.op_type for digest in graph_exec_digests
-                           if digest.op_type != "Placeholder"]
+                           if digest.op_type not in ("Const", "Placeholder")]
       tensor_values = [reader.graph_execution_trace_to_tensor_value(digest)
                        for digest in graph_exec_digests
-                       if digest.op_type != "Placeholder"]
+                       if digest.op_type not in ("Const", "Placeholder")]
 
       if tensor_dtypes == [dtypes.float32] and not op_regex:
         self.assertEqual(executed_op_types, ["Unique", "Sum"])
@@ -1003,7 +1103,8 @@ class DumpingCallbackTest(
           self.assertAllClose(tensor_values, [8.0])
 
       graph_exec_traces = reader.graph_execution_traces()
-      executed_op_types = [trace.op_type for trace in graph_exec_traces]
+      executed_op_types = [trace.op_type for trace in graph_exec_traces
+                           if trace.op_type != "Const"]
       if tensor_debug_mode != "CURT_HEALTH":
         # Less outputs a boolean tensor, which is not tracked under CURT_HEALTH.
         # The Less op should have been executed 5 times.
@@ -1341,6 +1442,51 @@ class DumpingCallbackTest(
       self.assertNotEqual(less_op_digest.graph_id, sub_op_digest.graph_id)
       # The Mul and Sub ops are from the same innermost context.
       self.assertEqual(mul_op_digest.graph_id, sub_op_digest.graph_id)
+
+  @parameterized.named_parameters(
+      ("NoTensor", "NO_TENSOR"),
+      ("Shape", "SHAPE"),
+      ("FullTensor", "FULL_TENSOR"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testGraphInputTracingWorksWithConstAndPlaceholderTensors(
+      self, tensor_debug_mode):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
+
+    @def_function.function
+    def func(x):
+      return (x + constant_op.constant(4.0)) / x
+
+    x = constant_op.constant(2.0)
+    self.assertAllClose(self.evaluate(func(x)), 3.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      graph_op_digests = reader.graph_op_digests()
+      placeholder_op_name = None
+      const_op_name = None
+      add_op_name = None
+      div_op_name = None
+      for op_digest in graph_op_digests:
+        if op_digest.op_type == "Placeholder":
+          placeholder_op_name = op_digest.op_name
+        elif op_digest.op_type == "Const":
+          const_op_name = op_digest.op_name
+        elif op_digest.op_type == "AddV2":
+          add_op_name = op_digest.op_name
+          self.assertLen(op_digest.input_names, 2)
+          self.assertEqual(op_digest.input_names[0], placeholder_op_name + ":0")
+          self.assertEqual(op_digest.input_names[1], const_op_name + ":0")
+        elif op_digest.op_type == "RealDiv":
+          div_op_name = op_digest
+          self.assertLen(op_digest.input_names, 2)
+          self.assertEqual(op_digest.input_names[0], add_op_name + ":0")
+          self.assertEqual(op_digest.input_names[1], placeholder_op_name + ":0")
+      self.assertTrue(add_op_name)
+      self.assertTrue(div_op_name)
 
 
 if __name__ == "__main__":

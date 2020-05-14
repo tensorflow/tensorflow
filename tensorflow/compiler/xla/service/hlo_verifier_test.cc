@@ -859,8 +859,17 @@ string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
   return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
 }
 
+int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
+  int64 replica_count = 0;
+  for (auto group : replica_groups) {
+    replica_count += group.size();
+  }
+  return replica_count;
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
-    std::vector<std::vector<int64>> replica_groups) {
+    std::vector<std::vector<int64>> replica_groups,
+    absl::optional<int64> replica_count = absl::nullopt) {
   const char* kTemplate = R"(
   HloModule test
   add {
@@ -872,8 +881,17 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     p = f32[128]{0} parameter(0)
     crs = f32[128]{0} all-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
   })";
-  return ParseAndReturnUnverifiedModule(absl::StrReplaceAll(
-      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+
+  HloModuleConfig config;
+  if (replica_count) {
+    config.set_replica_count(*replica_count);
+  } else {
+    config.set_replica_count(ReplicaCount(replica_groups));
+  }
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
 }
 
 TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
@@ -907,22 +925,36 @@ TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
               HasSubstr("Replica 4 is not named"));
 }
 
+TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 8, but "
+                        "ReplicaGroup config contains 2 replicas"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 2, but "
+                        "ReplicaGroup config contains 4 replicas"));
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64>> replica_groups) {
   const char* kTemplate = R"(
   HloModule test
-  add {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-  }
   ENTRY entry {
     p0 = f32[128]{0} parameter(0)
     p1 = f32[128]{0} parameter(1)
     a2a = (f32[128], f32[128]) all-to-all(p0, p1), replica_groups=REPLICA_GROUPS
   })";
-  return ParseAndReturnUnverifiedModule(absl::StrReplaceAll(
-      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+  HloModuleConfig config;
+  config.set_replica_count(ReplicaCount(replica_groups));
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
@@ -957,6 +989,24 @@ TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
               HasSubstr("Replica group has size 1"));
 }
 
+TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4]{0,1} parameter(0)
+    p1 = f32[128,4]{1,0} parameter(1)
+    ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -966,8 +1016,10 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
       source_target_pairs={{0,1}, {0,2}, {1,0}}
   }
   )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("Source 0 appears more than once"));
 }

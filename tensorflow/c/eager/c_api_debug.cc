@@ -17,8 +17,11 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_tensor_debug_info_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/platform/status.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/jit/xla_device.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA
@@ -54,7 +57,8 @@ extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* h, TF_Status* status) {
-  tensorflow::TensorHandle* handle = TensorHandleFromInterface(h->handle);
+  tensorflow::TensorHandle* handle =
+      TensorHandleFromInterface(tensorflow::unwrap(h));
   const tensorflow::Tensor* tensor;
   status->status = handle->Tensor(&tensor);
   if (!status->status.ok()) {

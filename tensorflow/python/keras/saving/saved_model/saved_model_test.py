@@ -86,7 +86,7 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
     return inputs * 2
 
 
@@ -391,6 +391,37 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.evaluate(loaded.get_updates_for(input_arr2))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
+  def testDisablingBatchNormTrainableBeforeSaving(self):
+    # We disable trainable on the batchnorm layers before saving
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    model.trainable = False
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+
+    # Trainable should still be disabled after loading
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.0])
+
+    # Re-enabling trainable on the loaded model should cause the batchnorm
+    # layer to start training again.
+    # Note: this only works in v2.
+    if context.executing_eagerly():
+      loaded.trainable = True
+      self.evaluate(loaded(input_arr, training=True))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+      self.evaluate(loaded(input_arr2, training=False))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
   def testSaveWithSignatures(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(5, input_shape=(3,),
@@ -547,7 +578,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         else:
           return inputs
 
-    t = array_ops.sequence_mask(1)
+    t = self.evaluate(array_ops.sequence_mask(1))
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 

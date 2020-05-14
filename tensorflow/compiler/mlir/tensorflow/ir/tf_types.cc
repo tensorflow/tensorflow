@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
@@ -26,6 +27,134 @@ llvm::Optional<llvm::ArrayRef<int64_t>> GetShape(mlir::Value value) {
   auto shaped_type = value.getType().cast<mlir::ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return llvm::None;
+}
+
+// Merges cast compatible shapes and returns a more refined shape. The two
+// shapes are cast compatible if they have the same rank and at each dimension,
+// either both have same size or one of them is dynamic. Returns false if the
+// given shapes are not cast compatible. The refined shape is same or more
+// precise than the two input shapes.
+bool GetCastCompatibleShape(llvm::ArrayRef<int64_t> a_shape,
+                            llvm::ArrayRef<int64_t> b_shape,
+                            llvm::SmallVectorImpl<int64_t>* refined_shape) {
+  if (a_shape.size() != b_shape.size()) return false;
+  int64_t rank = a_shape.size();
+  refined_shape->reserve(rank);
+  for (auto dims : llvm::zip(a_shape, b_shape)) {
+    int64_t dim1 = std::get<0>(dims);
+    int64_t dim2 = std::get<1>(dims);
+
+    if (mlir::ShapedType::isDynamic(dim1)) {
+      refined_shape->push_back(dim2);
+      continue;
+    }
+    if (mlir::ShapedType::isDynamic(dim2)) {
+      refined_shape->push_back(dim1);
+      continue;
+    }
+    if (dim1 == dim2) {
+      refined_shape->push_back(dim1);
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+// Given two types `a` and `b`, returns a refined type which is cast compatible
+// with both `a` and `b` and is equal to or more precise than both of them. It
+// returns empty Type if the input types are not cast compatible.
+//
+// The two types are considered cast compatible if they have dynamically equal
+// shapes and element type. For element types that do not have subtypes, they
+// must be equal. However for TensorFlow types such as Resource and Variant,
+// that also have subtypes, we recursively check for subtype compatibilty for
+// Resource types and assume all variant types are cast compatible. If either
+// one of `a` or `b` have empty subtypes, they are considered cast compatible.
+//
+// The returned type is same or more precise than the input types. For example,
+// if `a` and `b` are cast compatible types tensor<2x?x?xf32> and
+// tensor<?x4x?xf32> respectively, the returned type is tensor<2x4x?xf32>.
+//
+// Provides option to ignore ref types on 'a'. This is useful for TF ops that
+// might allow operands to either be same as result type or be a ref type
+// corresponding to it.
+mlir::Type GetCastCompatibleType(mlir::Type a, mlir::Type b,
+                                 bool may_ignore_ref_type_a) {
+  // Fast path if everything is equal.
+  if (a == b) return b;
+
+  auto a_tt = a.dyn_cast<mlir::TensorType>();
+  auto b_tt = b.dyn_cast<mlir::TensorType>();
+
+  // If only one of a or b is a tensor type, they are incompatible.
+  if (static_cast<bool>(a_tt) ^ static_cast<bool>(b_tt)) return nullptr;
+
+  // For non-tensor types, we do not need to worry about shape and can return
+  // early.
+  if (!a_tt && !b_tt) {
+    // Remove ref types.
+    if (may_ignore_ref_type_a) {
+      if (auto ref_type = a.dyn_cast<mlir::TF::TensorFlowRefType>()) {
+        a = ref_type.RemoveRef();
+        if (a == b) return a;
+      }
+    }
+    if (a.getKind() != b.getKind()) return nullptr;
+
+    // If either is not a type that contain subtypes then the types are not cast
+    // compatible.
+    auto a_wst = a.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+    auto b_wst = b.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+    if (!a_wst || !b_wst) return nullptr;
+
+    // For Variant types we are more permissive right now and accept all pairs
+    // of Variant types. If we are more constrainted and check compatibility of
+    // subtypes, we might reject valid graphs.
+    // TODO(prakalps): Variant doesn't have a subtype, we assign it
+    // one, so we should only assign it one when we know the subtype. Then we
+    // can be more constrained and check subtypes for cast compatibility as
+    // well.
+    if (a.isa<mlir::TF::VariantType>()) return a;
+
+    // For Resource types, we recursively check the subtypes for cast
+    // compatibility, if possible. Otherwise treat them as compatible.
+    auto a_wst_st = a_wst.GetSubtypes();
+    auto b_wst_st = b_wst.GetSubtypes();
+    if (a_wst_st.empty() || b_wst_st.empty()) return a;
+    if (a_wst_st.size() != b_wst_st.size()) return nullptr;
+    llvm::SmallVector<mlir::TensorType, 4> refined_subtypes;
+    for (auto subtypes : llvm::zip(a_wst_st, b_wst_st)) {
+      mlir::Type refined_st =
+          GetCastCompatibleType(std::get<0>(subtypes), std::get<1>(subtypes),
+                                /*may_ignore_ref_type_a=*/false);
+      if (!refined_st) return nullptr;
+      refined_subtypes.push_back(refined_st.cast<mlir::TensorType>());
+    }
+
+    return mlir::TF::ResourceType::get(refined_subtypes, a.getContext());
+  }
+
+  // For tensor types, check compatibility of both element type and shape.
+  mlir::Type refined_element_ty = GetCastCompatibleType(
+      a_tt.getElementType(), b_tt.getElementType(), may_ignore_ref_type_a);
+  if (!refined_element_ty) return nullptr;
+
+  if (!a_tt.hasRank() && !b_tt.hasRank()) {
+    return mlir::UnrankedTensorType::get(refined_element_ty);
+  }
+  if (!a_tt.hasRank()) {
+    return mlir::RankedTensorType::get(b_tt.getShape(), refined_element_ty);
+  }
+  if (!b_tt.hasRank()) {
+    return mlir::RankedTensorType::get(a_tt.getShape(), refined_element_ty);
+  }
+
+  llvm::SmallVector<int64_t, 8> refined_shape;
+  if (!GetCastCompatibleShape(a_tt.getShape(), b_tt.getShape(), &refined_shape))
+    return nullptr;
+
+  return mlir::RankedTensorType::get(refined_shape, refined_element_ty);
 }
 }  // namespace
 
@@ -159,6 +288,82 @@ Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
     default:
       llvm_unreachable("unexpected tensorflow type with subtypes kind");
   }
+}
+
+ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
+  switch (getKind()) {
+    case TensorFlowTypes::VARIANT:
+      return this->cast<VariantType>().getSubtypes();
+    case TensorFlowTypes::RESOURCE:
+      return this->cast<ResourceType>().getSubtypes();
+    default:
+      llvm_unreachable("unexpected tensorflow type with subtypes kind");
+  }
+}
+
+// TODO(jpienaar): BroadcastCompatible and HasCompatibleElementTypes have
+// similar structure that could be extracted into helper method.
+bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto types : llvm::zip(lhs, rhs)) {
+    auto lhs_type = std::get<0>(types);
+    auto rhs_type = std::get<1>(types);
+
+    // This should be true for all TF ops:
+    auto lhs_tt = lhs_type.dyn_cast<TensorType>();
+    auto rhs_tt = rhs_type.dyn_cast<TensorType>();
+    if (!lhs_tt || !rhs_tt) {
+      if (lhs_type != rhs_type) return false;
+      continue;
+    }
+
+    // Verify matching element types. These should be identical, except for
+    // variant type where unknown subtype is considered compatible with all
+    // subtypes.
+    auto lhs_et = lhs_tt.getElementType();
+    auto rhs_et = rhs_tt.getElementType();
+    if (lhs_et != rhs_et) {
+      // If either does not have subtypes, then the element types don't match.
+      auto lhs_wst = lhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+      auto rhs_wst = rhs_et.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+      if (!lhs_wst || !rhs_wst) return false;
+
+      // Consider the subtype of variant types.
+      auto lhs_wst_st = lhs_wst.GetSubtypes();
+      auto rhs_wst_st = rhs_wst.GetSubtypes();
+      if (!lhs_wst_st.empty() && !rhs_wst_st.empty()) {
+        for (auto subtypes : llvm::zip(lhs_wst_st, rhs_wst_st)) {
+          if (!BroadcastCompatible(std::get<0>(subtypes),
+                                   std::get<1>(subtypes)))
+            return false;
+        }
+      }
+    }
+
+    auto lhs_rt = lhs_type.dyn_cast<RankedTensorType>();
+    auto rhs_rt = rhs_type.dyn_cast<RankedTensorType>();
+    if (!lhs_rt || !rhs_rt) return true;
+    SmallVector<int64_t, 4> shape;
+    return OpTrait::util::getBroadcastedShape(lhs_rt.getShape(),
+                                              rhs_rt.getShape(), shape);
+  }
+  return true;
+}
+
+bool HasCompatibleElementTypes(Type lhs, Type rhs,
+                               bool may_ignore_ref_type_lhs) {
+  return GetCastCompatibleType(lhs, rhs, may_ignore_ref_type_lhs) != nullptr;
+}
+
+bool AreCastCompatible(ArrayRef<Type> types) {
+  Type common = types.front();
+  for (auto type : types.drop_front()) {
+    Type refined_type =
+        GetCastCompatibleType(common, type, /*may_ignore_ref_type_a=*/false);
+    if (!refined_type) return false;
+    common = refined_type;
+  }
+  return true;
 }
 
 }  // namespace TF

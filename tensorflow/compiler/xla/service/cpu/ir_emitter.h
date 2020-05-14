@@ -58,6 +58,8 @@ namespace cpu {
 // functions.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
+  friend class CpuElementalIrEmitter;
+
  public:
   using GeneratorForOperandIrArrays =
       std::function<std::vector<llvm_ir::IrArray>()>;
@@ -113,27 +115,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit an LLVM global variable for every constant buffer allocation.
   Status EmitConstantGlobals();
 
-  // Emit code to map one element according to `map_instr`.
-  llvm::Value* EmitElementalMap(
-      const HloMapInstruction& map_instr,
-      absl::Span<llvm::Value* const> elemental_operands,
-      absl::string_view name);
-  // Emit code to emit the element at `index` for a reduce window instruction.
-  StatusOr<llvm::Value*> EmitElementalReduceWindow(
-      const HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::IrArray::Index& index);
   // Emit code to emit the element at `index` for a convolution instruction.
   StatusOr<llvm::Value*> EmitElementalConvolution(
       const HloConvolutionInstruction* convolution,
       const llvm_ir::ElementGenerator& input_generator,
       const llvm_ir::ElementGenerator& kernel_generator,
-      const llvm_ir::IrArray::Index& index);
-  // Emit code to emit the element at `index` for a reduce instruction.
-  StatusOr<llvm::Value*> EmitElementalReduce(
-      const HloReduceInstruction* reduce,
-      std::vector<llvm_ir::ElementGenerator> input_generators,
-      std::vector<llvm_ir::ElementGenerator> initial_value_generator,
       const llvm_ir::IrArray::Index& index);
 
  protected:
@@ -197,6 +183,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
+  Status HandleSliceToDynamic(HloInstruction* hlo);
+  Status HandlePadToStatic(HloInstruction* hlo);
   Status HandleAllReduceSingleReplica(HloInstruction* crs);
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 

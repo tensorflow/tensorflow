@@ -22,6 +22,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -39,6 +40,8 @@ public final class InterpreterTest {
       "tensorflow/lite/testdata/multi_add_flex.bin";
   private static final String UNKNOWN_DIMS_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/add_unknown_dimensions.bin";
+  private static final String DYNAMIC_SHAPES_MODEL_PATH =
+      "tensorflow/lite/testdata/dynamic_shapes.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -47,6 +50,8 @@ public final class InterpreterTest {
       TestUtils.getTestFileAsBuffer(FLEX_MODEL_PATH);
   private static final ByteBuffer UNKNOWN_DIMS_MODEL_PATH_BUFFER =
       TestUtils.getTestFileAsBuffer(UNKNOWN_DIMS_MODEL_PATH);
+  private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
+      TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -210,6 +215,15 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testRunWithScalarInput() {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.run(2.37f, parsedOutput);
+    }
+    assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+  }
+
+  @Test
   public void testResizeInput() {
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       int[] inputDims = {1};
@@ -256,10 +270,23 @@ public final class InterpreterTest {
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 
+      // Resize tensor with strict checking. Try invalid resize.
+      inputDims[2] = 5;
+      try {
+        interpreter.resizeInput(0, inputDims, true);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "ResizeInputTensorStrict only allows mutating unknown dimensions identified by -1");
+      }
+      inputDims[2] = 3;
+
       // Set the dimension of the unknown dimension to the expected dimension and ensure shape
       // signature doesn't change.
       inputDims[1] = 3;
-      interpreter.resizeInput(0, inputDims);
+      interpreter.resizeInput(0, inputDims, true);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
       assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
 
@@ -411,7 +438,7 @@ public final class InterpreterTest {
     interpreter.close();
   }
 
-  /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
+  // Smoke test validating that flex model loading fails when the flex delegate is not linked.
   @Test
   public void testFlexModel() throws Exception {
     try {
@@ -547,6 +574,45 @@ public final class InterpreterTest {
       interpreter.resetVariableTensors();
       interpreter.resetVariableTensors();
       interpreter.run(inputs, parsedOutputs);
+    }
+  }
+
+  private static FloatBuffer fill(FloatBuffer buffer, float value) {
+    while (buffer.hasRemaining()) {
+      buffer.put(value);
+    }
+    buffer.rewind();
+    return buffer;
+  }
+
+  // Regression test case to ensure that graphs with dynamically computed shapes work properly.
+  // Historically, direct ByteBuffer addresses would overwrite the arena-allocated tensor input
+  // pointers. Normally this works fine, but for dynamic graphs, the original input tensor pointers
+  // may be "restored" at invocation time by the arena allocator, resetting the direct ByteBuffer
+  // address and leading to stale input data being used.
+  @Test
+  public void testDynamicShapesWithDirectBufferInputs() {
+    try (Interpreter interpreter = new Interpreter(DYNAMIC_SHAPES_MODEL_BUFFER)) {
+      ByteBuffer input0 =
+          ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input1 =
+          ByteBuffer.allocateDirect(1 * 90 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input2 = ByteBuffer.allocateDirect(1 * 4).order(ByteOrder.nativeOrder());
+      Object[] inputs = {input0, input1, input2};
+
+      fill(input0.asFloatBuffer(), 2.0f);
+      fill(input1.asFloatBuffer(), 0.5f);
+      // Note that the value of this input dictates the shape of the output.
+      fill(input2.asFloatBuffer(), 1.0f);
+
+      FloatBuffer output = FloatBuffer.allocate(8 * 1 * 1024);
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, output);
+
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
+
+      FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }
   }
 

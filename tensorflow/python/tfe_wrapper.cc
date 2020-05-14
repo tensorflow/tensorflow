@@ -270,7 +270,6 @@ static py::object TFE_ClearScalarCache() {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
-  py::class_<TFE_Context> TFE_Context_class(m, "TFE_Context");
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");
@@ -489,6 +488,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
+  m.def("TFE_ContextSetLogDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
 
   // TFE_Executor logic
   m.def(
@@ -665,6 +676,23 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(TFE_Py_TapeWatchedVariables(tape.ptr()));
   });
 
+  // TFE_Py_VariableWatcher logic.
+  m.def("TFE_Py_VariableWatcherNew",
+        []() { return tensorflow::PyoOrThrow(TFE_Py_VariableWatcherNew()); });
+  m.def("TFE_Py_VariableWatcherRemove", [](const py::handle& variable_watcher) {
+    TFE_Py_VariableWatcherRemove(variable_watcher.ptr());
+  });
+  m.def("TFE_Py_VariableWatcherVariableAccessed",
+        [](const py::handle& variable) {
+          TFE_Py_VariableWatcherVariableAccessed(variable.ptr());
+        });
+  m.def("TFE_Py_VariableWatcherWatchedVariables",
+        [](const py::handle& variable_watcher) {
+          return tensorflow::PyoOrThrow(
+              TFE_Py_VariableWatcherWatchedVariables(variable_watcher.ptr()));
+        });
+
+  // TFE_Py_ForwardAccumulator logic.
   m.def("TFE_Py_ForwardAccumulatorNew", []() {
     return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew());
   });
@@ -743,7 +771,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextStartStep", [](py::handle& o) {
     TFE_ContextStartStep(tensorflow::InputTFE_Context(o.ptr()));
   });
-  m.def("TFE_ContextEndStep", &TFE_ContextEndStep);
+  m.def("TFE_ContextEndStep", [](py::handle& o) {
+    TFE_ContextEndStep(tensorflow::InputTFE_Context(o.ptr()));
+  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });

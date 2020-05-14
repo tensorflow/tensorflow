@@ -273,8 +273,9 @@ void PrepareQuantizePass::runOnFunction() {
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
-  ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
-                                     GetOpQuantSpec);
+  ApplyQuantizationParamsPropagation(
+      func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
+      GetOpQuantSpec);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

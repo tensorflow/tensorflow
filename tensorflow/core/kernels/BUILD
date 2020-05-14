@@ -1281,7 +1281,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "shape_ops",
     prefix = "shape_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
 )
 
 tf_kernel_library(
@@ -1371,7 +1371,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -2192,6 +2194,9 @@ tf_cuda_cc_test(
     name = "quantize_and_dequantize_op_test",
     size = "small",
     srcs = ["quantize_and_dequantize_op_test.cc"],
+    tags = [
+        "no_windows",  # test uses rand_r which does not exist on Windows
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -2279,6 +2284,25 @@ tf_kernel_library(
 )
 
 tf_cc_test(
+    name = "shape_ops_test",
+    size = "small",
+    srcs = ["shape_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":shape_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
+    ],
+)
+
+tf_cc_test(
     name = "slice_op_test",
     size = "small",
     srcs = ["slice_op_test.cc"],
@@ -2335,6 +2359,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -3767,7 +3792,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":eye_functor",
+    ]),
 )
 
 tf_kernel_library(
@@ -4518,6 +4545,9 @@ tf_cuda_cc_test(
     name = "split_v_op_test",
     size = "small",
     srcs = ["split_v_op_test.cc"],
+    tags = [
+        "no_windows",  # split_v_op uses lrand48 which does not exist on Windows
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -4843,6 +4873,7 @@ tf_kernel_library(
     name = "bincount_op",
     prefix = "bincount_op",
     deps = [
+        ":fill_functor",
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5641,6 +5672,32 @@ tf_kernel_library(
     name = "scatter_op",
     prefix = "scatter_op",
     deps = STATE_DEPS,
+)
+
+tf_kernel_library(
+    name = "count_ops",
+    prefix = "count_ops",
+    deps = STATE_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/framework:op_requires",
+    ],
+)
+
+tf_cc_test(
+    name = "count_ops_test",
+    size = "small",
+    srcs = ["count_ops_test.cc"],
+    deps = [
+        ":count_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -6991,6 +7048,11 @@ filegroup(
         # rule above. Seems to have only have worked before because of
         # hdrs_check loose.
         "stateful_random_ops_cpu_gpu.h",
+        # Allows conv_3d ops for android but excluded from *_3d* rule above.
+        "conv_3d.h",
+        "conv_ops_3d.h",
+        "conv_ops_3d.cc",
+        "conv_ops_gpu.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -7036,7 +7098,7 @@ cc_library(
 
 build_test(
     name = "android_tensorflow_kernels_build_test",
-    targets = [":android_tensorflow_kernels"],
+    targets = [":portable_tensorflow_kernels"],
 )
 
 cc_library(
@@ -7049,7 +7111,7 @@ cc_library(
         "//tensorflow/core:android_gif_internal",
         "//tensorflow/core:android_jpeg_internal",
         "//tensorflow/core:android_png_internal",
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )
@@ -7066,7 +7128,7 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )

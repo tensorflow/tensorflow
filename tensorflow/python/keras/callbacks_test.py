@@ -274,6 +274,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegexpMatches(printed.contents(), expected_log)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_callback_warning(self):
+
+    class SleepCallback(keras.callbacks.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        time.sleep(1)
+
+    model = sequential.Sequential()
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(
+        'sgd',
+        loss='binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    warning_messages = []
+
+    def warning(msg):
+      warning_messages.append(msg)
+
+    with test.mock.patch.object(logging, 'warning', warning):
+      model.fit(
+          np.ones((10, 10), 'float32'),
+          np.ones((10, 1), 'float32'),
+          batch_size=5,
+          epochs=10,
+          callbacks=[SleepCallback()])
+    warning_msg = ('Callbacks method `on_train_batch_end` is slow compared '
+                   'to the batch time')
+    self.assertIn(warning_msg, '\n'.join(warning_messages))
+
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes
   def test_progbar_logging_deferred_model_build(self):

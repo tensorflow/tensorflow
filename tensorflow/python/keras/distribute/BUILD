@@ -128,8 +128,11 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "notpu",  # TODO(b/142805125): Enable tpu_test_target once fixed on tpu.
+        "notpu",  # TODO(b/155867206) flaky segfault
         "notsan",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
     ],
     deps = [
         ":distribute_strategy_test_lib",
@@ -187,12 +190,9 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 19,
     tags = [
-        "manual",
         "multi_and_single_gpu",
-        "no_oss",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "notap",  # TODO(b/153671866)
         "notsan",
     ],
     deps = [
@@ -246,11 +246,10 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # TODO(b/153672562)
+        "notpu",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
@@ -266,12 +265,9 @@ distribute_py_test(
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
     tags = [
-        "manual",
         "multi_and_single_gpu",
-        "no_oss",
         "no_pip",
         "no_windows_gpu",
-        "notap",  # TODO(b/153392670)
         "notsan",
     ],
     deps = [
@@ -324,7 +320,6 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
     deps = [
@@ -364,30 +359,6 @@ cuda_py_test(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "multi_worker_callback_tf1_test",
-    srcs = ["multi_worker_callback_tf1_test.py"],
-    # TODO(b/132384649): Enable for guitar and oss tests.
-    shard_count = 24,
-    tags = [
-        "manual",
-        "no_oss",
-        "noguitar",
-        "notap",
-    ],
-    deps = [
-        ":distribute",
-        ":multi_worker_testing_utils",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/keras",
     ],
 )
 
@@ -436,6 +407,41 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy_test_utils",
+    srcs = ["tpu_strategy_test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+)
+
+py_test(
+    name = "multi_worker_tutorial_test",
+    srcs = ["multi_worker_tutorial_test.py"],
+    python_version = "PY3",
+    shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],  # TODO(b/156029134)
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/optimizer_v2",
     ],

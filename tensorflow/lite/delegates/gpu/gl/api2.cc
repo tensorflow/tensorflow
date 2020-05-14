@@ -569,7 +569,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
           } else {
             shader_index = it->second;
           }
-          auto num_workgroups = IntegralDivideRoundUp(code.workload, workgroup);
+          auto num_workgroups = DivideRoundUp(code.workload, workgroup);
           return runtime_ptr->AddProgram(shaders[shader_index], code.parameters,
                                          code.objects, num_workgroups);
         }));

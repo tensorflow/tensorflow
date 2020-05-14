@@ -288,7 +288,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
           model_layers, input_shape=(10,))
 
       x = np.ones((10, 10), 'float32')
-      y = np.ones((10, 1), 'float32')
+      y = np.zeros((10, 1), 'float32')
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       model.compile(
@@ -340,7 +340,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     shared_layer = LayerWithLoss()
@@ -357,7 +357,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     class LayerWithNestedLayerWithLoss(layers.Layer):

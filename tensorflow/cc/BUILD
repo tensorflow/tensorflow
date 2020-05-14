@@ -178,10 +178,11 @@ cc_library_with_android_deps(
     name = "ops",
     srcs = ["framework/ops.cc"],
     hdrs = ["framework/ops.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
@@ -196,7 +197,7 @@ cc_library_with_android_deps(
         "framework/scope_internal.h",
     ],
     hdrs = ["framework/scope.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     common_deps = [
         ":ops",
     ],
@@ -236,7 +237,7 @@ cc_library_with_android_deps(
     name = "client_session",
     srcs = ["client/client_session.cc"],
     hdrs = ["client/client_session.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     common_deps = [
         ":ops",
         ":scope",
@@ -274,7 +275,7 @@ cc_library_with_android_deps(
     srcs = ["ops/const_op.cc"],
     hdrs = ["ops/const_op.h"],
     android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ],
     common_deps = [
         ":ops",
@@ -303,7 +304,7 @@ cc_library_with_android_deps(
     srcs = ["ops/while_loop.cc"],
     hdrs = ["ops/while_loop.h"],
     android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ],
     common_deps = [
         ":cc_ops",

@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 
-#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -33,6 +32,7 @@ TfStatsRecord ConvertOpMetricsToTfStatsRecord(
     double ridge_point_operational_intensity) {
   TfStatsRecord record;
   record.set_host_or_device(on_device ? "Device" : "Host");
+  record.set_is_eager(metrics.is_eager());
   record.set_op_type(metrics.category());
   record.set_op_name(metrics.name());
   SetExecutionTimes(metrics, &record);

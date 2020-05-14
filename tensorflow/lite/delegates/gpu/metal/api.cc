@@ -167,10 +167,10 @@ std::vector<ComputeTaskDescriptorPtr> SelectWinograd36To4x4(
 
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const BHWC& dst_shape) {
-  const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+  const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
@@ -225,12 +225,16 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     }
     case OperationType::CONVOLUTION_2D: {
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "Convolution does not support more than 1 runtime tensor");
+      }
       const auto dst_shape = graph.FindOutputs(node_id)[0]->tensor.shape;
       auto attr =
           absl::any_cast<Convolution2DAttributes>(node->operation.attributes);
       if (IsSuitableForWinograd4x4To6x6(attr, dst_shape)) {
-        int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-        int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+        int tiles_x = DivideRoundUp(dst_shape.w, 4);
+        int tiles_y = DivideRoundUp(dst_shape.h, 4);
 
         Winograd4x4To36Attributes wino_up_attr;
         wino_up_attr.padding = attr.padding;

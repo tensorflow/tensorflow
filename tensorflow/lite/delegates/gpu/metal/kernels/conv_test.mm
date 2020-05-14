@@ -34,6 +34,7 @@ using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Convolution2DAttributes;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::DivideRoundUp;
 using ::tflite::gpu::HW;
 using ::tflite::gpu::Linear;
 using ::tflite::gpu::OHWI;
@@ -44,7 +45,6 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::ValueId;
 using ::tflite::gpu::metal::ConvolutionGeneric;
 using ::tflite::gpu::metal::ConvolutionWino4x4To6x6;
-using ::tflite::gpu::IntegralDivideRoundUp;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
@@ -275,7 +275,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   BHWC conv_shape;
   conv_shape.b = dst_shape.b;
   conv_shape.h = 36;
-  conv_shape.w = IntegralDivideRoundUp(new_width, 4) * IntegralDivideRoundUp(new_height, 4);
+  conv_shape.w = DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
   conv_shape.c = dst_shape.c;
 
   TensorFloat32 src_tensor;

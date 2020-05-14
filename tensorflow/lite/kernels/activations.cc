@@ -84,8 +84,10 @@ struct LeakyReluOpData : public OpData {
 };
 
 struct PreluOpData : public OpData {
-  int32_t output_multiplier = 0;
-  int output_shift = 0;
+  int32_t output_multiplier_1 = 0;
+  int32_t output_shift_1 = 0;
+  int32_t output_multiplier_2 = 0;
+  int32_t output_shift_2 = 0;
 };
 
 struct HardSwishData {
@@ -364,7 +366,8 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   LeakyReluOpData* data = reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
     const auto* params =
         reinterpret_cast<TfLiteLeakyReluParams*>(node->builtin_data);
 
@@ -436,21 +439,29 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    TF_LITE_ENSURE(context,
-                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+    bool param_scale_pot =
+        CheckedLog2(input->params.scale, &input_scale_log2_rounded);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    param_scale_pot &=
+        (data->input_left_shift == 0 || data->input_left_shift == 1);
+
+    if (!param_scale_pot) {
+      // In case of general scale parameter, we need to do a rescaling.
+      // Magic constant 4096:
+      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
+      // from 16-bit (-2^15, 2^15),
+      // so we need to multiply by
+      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
+      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+    }
 
     int output_scale_log2_rounded;
     TF_LITE_ENSURE(
         context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
     TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
                       -kOutputFractionalBits);
-
-    data->input_left_shift =
-        (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    // Support for shifts is limited until we have a parameterized version of
-    // SaturatingRoundingMultiplyByPOT().
-    TF_LITE_ENSURE(context, data->input_left_shift >= 0);
-    TF_LITE_ENSURE(context, data->input_left_shift <= 1);
   }
 
   return context->ResizeTensor(context, output,
@@ -524,19 +535,28 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    TF_LITE_ENSURE(context,
-                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+    bool param_scale_pot =
+        CheckedLog2(input->params.scale, &input_scale_log2_rounded);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    param_scale_pot &= (data->input_left_shift == 0);
+
+    if (!param_scale_pot) {
+      // In case of general scale parameter, we need to do a rescaling.
+      // Magic constant 4096:
+      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
+      // from 16-bit (-2^15, 2^15),
+      // so we need to multiply by
+      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
+      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+    }
 
     int output_scale_log2_rounded;
     TF_LITE_ENSURE(
         context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
     TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
                       -kOutputFractionalBits);
-
-    data->input_left_shift =
-        (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    // The int16 logistic implementation does not support shifting of the input.
-    TF_LITE_ENSURE_EQ(context, data->input_left_shift, 0);
   }
 
   return context->ResizeTensor(context, output,
@@ -642,13 +662,35 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, input->type, alpha->type);
+
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
-    double real_multiplier =
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
+    // prelu(x) = x if x >= 0 else x * alpha.
+    // So if we translate that for quantized computation:
+    //
+    // input_float = (input_q - input_zp) * input_scale
+    // output_float = (output_q - output_zp) * output_scale
+    // alpha_float = (alpha_q - alpha_zp) * alpha_scale
+    //
+    // When input_q - input_zp >= 0:
+    // ouput_q = (input_q - input_zp) * input_scale / output_scale + output_q
+    // else:
+    // output_q = (input_q - input_zp) * (alpha_q - alpha_zp) * input_scale
+    //            * alpha_scale / output_scale + output_q
+    //
+    // So for input_q - input_zp >= 0:
+    // output real multiplier 1 is input_scale / output_scale;
+    // for input_q - input_zp < 0:
+    // output real multiplier 2 is input_scale  * alpha_scale/ output_scale.
+    double real_multiplier_1 = input->params.scale / output->params.scale;
+    double real_multiplier_2 =
         input->params.scale * alpha->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
+    QuantizeMultiplier(real_multiplier_1, &data->output_multiplier_1,
+                       &data->output_shift_1);
+    QuantizeMultiplier(real_multiplier_2, &data->output_multiplier_2,
+                       &data->output_shift_2);
   }
 
   // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
@@ -826,13 +868,13 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16: {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
-      if (kernel_type == kReference) {
+      if (kernel_type == kReference || (data->input_multiplier > 0)) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Tanh(data->input_left_shift, size,
-                                    GetTensorData<int16_t>(input),
-                                    GetTensorData<int16_t>(output));
+        reference_integer_ops::Tanh(
+            data->input_multiplier, data->input_left_shift, size,
+            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -901,11 +943,12 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt16: {
       LogisticParams params;
-      if (kernel_type == kReference) {
+      if (kernel_type == kReference || (data->input_multiplier > 0)) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Logistic(size, GetTensorData<int16_t>(input),
+        reference_integer_ops::Logistic(data->input_multiplier, size,
+                                        GetTensorData<int16_t>(input),
                                         GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Logistic(
@@ -1130,20 +1173,54 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.input_offset = -input->params.zero_point;
       op_params.alpha_offset = -alpha->params.zero_point;
       op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier = data->output_multiplier;
-      op_params.output_shift = data->output_shift;
+      op_params.output_multiplier_1 = data->output_multiplier_1;
+      op_params.output_shift_1 = data->output_shift_1;
+      op_params.output_multiplier_2 = data->output_multiplier_2;
+      op_params.output_shift_2 = data->output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_1 = data->output_multiplier_1;
+      op_params.output_shift_1 = data->output_shift_1;
+      op_params.output_multiplier_2 = data->output_multiplier_2;
+      op_params.output_shift_2 = data->output_shift_2;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Only float32 and uint8 are supported currently, got %d.",
+          context,
+          "Only float32 and uint8 and int8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
+}
+
+template <typename T>
+void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
+                       const LeakyReluOpData* data) {
+  LeakyReluParams op_params;
+
+  op_params.input_offset = input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier_alpha = data->output_multiplier_alpha;
+  op_params.output_shift_alpha = data->output_shift_alpha;
+  op_params.output_multiplier_identity = data->output_multiplier_identity;
+  op_params.output_shift_identity = data->output_shift_identity;
+  reference_ops::QuantizeLeakyRelu(
+      op_params, GetTensorShape(input), GetTensorData<T>(input),
+      GetTensorShape(output), GetTensorData<T>(output));
 }
 
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -1164,33 +1241,21 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      op_params.input_offset = input->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
-      op_params.output_shift_alpha = data->output_shift_alpha;
-      op_params.output_multiplier_identity = data->output_multiplier_identity;
-      op_params.output_shift_identity = data->output_shift_identity;
-      reference_ops::QuantizeLeakyRelu(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      QuantizeLeakyRelu<uint8_t>(input, output, data);
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
-      op_params.input_offset = input->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
-      op_params.output_shift_alpha = data->output_shift_alpha;
-      op_params.output_multiplier_identity = data->output_multiplier_identity;
-      op_params.output_shift_identity = data->output_shift_identity;
-      reference_ops::QuantizeLeakyRelu(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+      QuantizeLeakyRelu<int8_t>(input, output, data);
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt16: {
+      QuantizeLeakyRelu<int16_t>(input, output, data);
       return kTfLiteOk;
     } break;
     default:
       TF_LITE_KERNEL_LOG(
           context,
-          "Only float32, int8 and uint8 is supported currently, got %s.",
+          "Only float32, int8, int16 and uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }

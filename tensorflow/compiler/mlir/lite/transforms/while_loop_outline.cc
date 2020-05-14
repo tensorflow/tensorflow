@@ -228,8 +228,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   Operation* new_op = OpBuilder(op).insert(Operation::create(
       op->getLoc(), op->getName(), new_types, operands, op->getAttrs(),
-      /*successors=*/{}, /*numRegions=*/2,
-      /*resizableOperandList=*/true));
+      /*successors=*/{}, /*numRegions=*/2));
   for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
   op->replaceAllUsesWith(new_op->getResults().take_front(op->getNumResults()));
   op->erase();

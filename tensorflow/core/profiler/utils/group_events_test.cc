@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -152,10 +155,14 @@ TEST(GroupEventsTest, EagerOpTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   // Eagerly scheduled GPU kernel.
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 10, 100, {});
   CreateXEvent(&host_plane_builder, &main_thread, "matmul", 10, 100,
                {{StatType::kCorrelationId, 100}});
   // Eagerly executed CPU TF op.
-  CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80, {});
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 120, 80, {});
+  CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80);
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
@@ -168,7 +175,7 @@ TEST(GroupEventsTest, EagerOpTest) {
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
-  const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(1);
+  const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(3);
   EXPECT_EQ(eager_cpu_tf_op.stats_size(), 1);
   EXPECT_EQ(host_plane_visitor.GetStatType(eager_cpu_tf_op.stats(0)),
             StatType::kIsEager);
@@ -191,6 +198,8 @@ TEST(GroupEventsTest, FunctionOpTest) {
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, 123}});
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 10, 90, {});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, 0}});
 
@@ -202,7 +211,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 30,
                {{StatType::kCorrelationId, 100}});
   // CPU TF op executed inside tf.function.
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "add:Add", 70, 20, {});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "add:Add", 70, 20);
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);

@@ -61,9 +61,11 @@ class RemoteMgr {
   }
 
   // Serialize a remote TensorHandle to a RemoteTensorHandle.
+  // If wait_until_ready is true, block until the remote handle is ready on a
+  // remote worker.
   Status SerializeRemoteTensorHandle(
-      TensorHandle* in, RemoteTensorHandle* out, Device* device,
-      const string& device_name,
+      TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
+      Device* device, const string& device_name,
       const bool serialize_resource_dtype_and_shape = false);
 
   // Deserialize a RemoteTensorHandle to a TensorHandle(local/remote).
@@ -83,7 +85,8 @@ class RemoteMgr {
   // Returns the op_id and output_num if the given local TensorHandle exists in
   // remote_tensor_handle_map_.
   Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                               int64* op_id, int32* output_num)
+                               const bool wait_until_ready, int64* op_id,
+                               int32* output_num)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 
   Status GetTensorHandleImpl(const RemoteTensorHandleInternal& remote_handle,

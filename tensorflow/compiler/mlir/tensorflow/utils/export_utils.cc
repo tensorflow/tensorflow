@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -52,12 +54,23 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace {
+// static TensorFlow op prefix set.
+std::set<std::string>* GlobalOpPrefixes() {
+  static std::set<std::string>* global_op_prefixes = [] {
+    std::set<std::string>* result = new std::set<std::string>;
+    result->insert("tf.");
+    result->insert("_tf.");
+    result->insert("tf_executor.");
+    return result;
+  }();
+  return global_op_prefixes;
+}
+
 // Converts a location to the debug information for the node def.
 Status ConvertLocation(mlir::Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
@@ -94,6 +107,19 @@ Status ConvertAttribute(const mlir::FloatAttr& attr, AttrValue* value) {
 
 Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
+}
+
+Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
+  auto* shape = value->mutable_shape();
+  if (attr.hasRank()) {
+    for (auto dim_size : attr.getShape()) {
+      auto* dim = shape->add_dim();
+      dim->set_size(dim_size);
+    }
+  } else {
+    shape->set_unknown_rank(true);
+  }
+  return Status::OK();
 }
 
 Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
@@ -182,6 +208,10 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       }
       TF_RETURN_IF_ERROR(ConvertAttribute(elt_type, &attr_val));
       list->add_type(attr_val.type());
+    } else if (auto attr = a.dyn_cast<mlir::TF::ShapeAttr>()) {
+      AttrValue attr_val;
+      TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
+      *list->add_shape() = attr_val.shape();
     } else {
       return errors::Unimplemented("Unhandled attribute!");
     }
@@ -250,8 +280,10 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
   // don't need to consider ".source"/".Source" because the nodes with this
   // suffix are skipped by the caller and will not be added to the graph.
-  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.") &&
-      !op_name.consume_front("tf_executor.")) {
+  auto prefixes = GlobalOpPrefixes();
+  if (std::none_of(prefixes->begin(), prefixes->end(), [&](std::string prefix) {
+        return op_name.consume_front(prefix);
+      })) {
     return errors::FailedPrecondition("op node '", op_name.str(),
                                       "' was not a TF op!");
   }
@@ -367,7 +399,8 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ArrayAttr>(), &value));
         break;
-      case mlir::StandardAttributes::DenseElements:
+      case mlir::StandardAttributes::DenseIntOrFPElements:
+      case mlir::StandardAttributes::DenseStringElements:
       case mlir::StandardAttributes::OpaqueElements:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
@@ -379,6 +412,10 @@ Status ConvertAttributes(
       case mlir::StandardAttributes::Unit:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
+        break;
+      case static_cast<unsigned>(mlir::TF::AttrKind::SHAPE):
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::TF::ShapeAttr>(), &value));
         break;
       // AffineMap kind is not implemented.
       case mlir::StandardAttributes::AffineMap:
@@ -481,6 +518,11 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
 bool IsLegacyCallInstruction(mlir::Operation* inst) {
   return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
          inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
+}
+
+Status AddTensorFlowOpPrefix(std::string prefix) {
+  GlobalOpPrefixes()->insert(prefix);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

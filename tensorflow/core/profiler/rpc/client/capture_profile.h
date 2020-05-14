@@ -17,9 +17,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -56,13 +56,14 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core as core_tf_types
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
@@ -213,53 +214,11 @@ def _as_graph_element(obj):
   return None
 
 
-_TENSOR_LIKE_TYPES = tuple()
-
-
+# Deprecated - do not use.
+# This API to avoid breaking estimator and tensorflow-mesh which depend on this
+# internal API. The stub should be safe to use after TF 2.3 is released.
 def is_dense_tensor_like(t):
-  """EXPERIMENTAL: Returns true if `t` implements the tensor interface.
-
-  See `register_dense_tensor_like_type()` for the current definition of a
-  "tensor-like type".
-
-  Args:
-    t: An object.
-
-  Returns:
-    True iff `t` is an instance of one of the registered "tensor-like" types.
-  """
-  return isinstance(t, _TENSOR_LIKE_TYPES)
-
-
-def register_dense_tensor_like_type(tensor_type):
-  """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
-
-  A "tensor-like type" can represent a single dense tensor, and implements
-  the `name`, `dtype` and `shape` properties.
-
-  Args:
-    tensor_type: A type implementing the tensor interface.
-
-  Raises:
-    TypeError: If `tensor_type` does not implement the tensor interface.
-  """
-  if not (hasattr(tensor_type, "name") and
-          isinstance(tensor_type.name, property)):
-    raise TypeError("Type %s does not define a `name` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "dtype") and
-          isinstance(tensor_type.dtype, property)):
-    raise TypeError("Type %s does not define a `dtype` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "shape") and
-          isinstance(tensor_type.shape, property)):
-    raise TypeError("Type %s does not define a `shape` property" %
-                    tensor_type.__name__)
-  # We expect this list to be small, so choose quadratic complexity
-  # for registration, so that we have a tuple that can be used for
-  # more efficient `isinstance` checks later.
-  global _TENSOR_LIKE_TYPES
-  _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
+  return isinstance(t, core_tf_types.Tensor)
 
 
 def uid():
@@ -302,8 +261,9 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
+# TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(tensor_like.TensorLike):
+class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -518,8 +478,8 @@ class Tensor(tensor_like.TensorLike):
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did not convert this function. Try"
-        " decorating it directly with @tf.function.".format(task))
+        "{} is not allowed: AutoGraph did convert this function. This might"
+        " indicate you are trying to use an unsupported feature.".format(task))
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -1007,6 +967,7 @@ class Tensor(tensor_like.TensorLike):
 
 
 # TODO(agarwal): consider getting rid of this.
+# TODO(mdan): This object should not subclass ops.Tensor.
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
@@ -1065,15 +1026,17 @@ class _EagerTensorBase(Tensor):
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
 
+  def __array__(self):
+    return self._numpy()
+
   def _numpy_internal(self):
     raise NotImplementedError()
 
   def _numpy(self):
-    # pylint: disable=protected-access
     try:
       return self._numpy_internal()
-    except core._NotOkStatusException as e:
-      six.raise_from(core._status_to_exception(e.code, e.message), None)
+    except core._NotOkStatusException as e:  # pylint: disable=protected-access
+      six.raise_from(core._status_to_exception(e.code, e.message), None)  # pylint: disable=protected-access
 
   @property
   def dtype(self):
@@ -1299,9 +1262,6 @@ class _EagerTensorBase(Tensor):
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
 EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
-
-
-register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
@@ -1746,8 +1706,8 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
+_VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
@@ -5295,6 +5255,11 @@ def control_dependencies(control_inputs):
   See `tf.Graph.control_dependencies`
   for more details.
 
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as code executes in the expected order.* Only use
+  `tf.control_dependencies` when working with v1-style code or in a graph
+  context such as inside `Dataset.map`.
+
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
 
@@ -6057,7 +6022,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
+    if (isinstance(op_input, (Operation, internal.NativeObject)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
     else:
@@ -6252,10 +6217,12 @@ def add_to_collection(name, value):
   Args:
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
-    value: The value to add to the collection.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -6270,10 +6237,12 @@ def add_to_collections(names, value):
   Args:
     names: The key for the collections. The `GraphKeys` class contains many
       standard names for collections.
-    value: The value to add to the collections.  @compatibility(eager)
-      Collections are only supported in eager when variables are created inside
-      an EagerVariableStore (e.g. as part of a layer or template).
-      @end_compatibility
+    value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are only supported in eager when variables are created inside
+  an EagerVariableStore (e.g. as part of a layer or template).
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 

@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 # This test is tailored to reproduce b/141617294. In particular, the function
 # library contains "foo1", "foo2", ..., "foo20", from which "foo1" and "foo11"

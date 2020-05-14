@@ -38,17 +38,19 @@ class GrpcMasterImpl : public MasterService::Service {
                           const std::string& protocol);
   ~GrpcMasterImpl() override {}
 
- private:
 #define HANDLER(method)                               \
   grpc::Status method(grpc::ServerContext* context,   \
                       const method##Request* request, \
                       method##Response* response) override;
   HANDLER(RegisterWorker);
+  HANDLER(WorkerUpdate);
   HANDLER(GetOrRegisterDataset);
   HANDLER(CreateJob);
+  HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);
 #undef HANDLER
 
+ private:
   DataServiceMasterImpl impl_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterImpl);

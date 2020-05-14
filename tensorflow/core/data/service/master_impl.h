@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -48,48 +49,146 @@ class DataServiceMasterImpl {
   /// Worker-facing API.
   Status RegisterWorker(const RegisterWorkerRequest* request,
                         RegisterWorkerResponse* response);
+  Status WorkerUpdate(const WorkerUpdateRequest* request,
+                      WorkerUpdateResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
   Status CreateJob(const CreateJobRequest* request,
                    CreateJobResponse* response);
+  Status GetOrCreateJob(const GetOrCreateJobRequest* request,
+                        GetOrCreateJobResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
 
  private:
-  typedef struct WorkerInfo {
-    std::string address;
-    int64 id;
-    std::unique_ptr<WorkerService::Stub> stub;
+  class Worker {
+   public:
+    Worker(int64 worker_id, const std::string address)
+        : worker_id_(worker_id), address_(address) {}
+
+    int64 worker_id() { return worker_id_; }
+    std::string address() { return address_; }
+    WorkerService::Stub* stub() { return stub_.get(); }
+    void set_stub(std::unique_ptr<WorkerService::Stub> stub) {
+      stub_ = std::move(stub);
+    }
 
     std::string DebugString() {
-      return absl::StrCat("id: ", id, "address: ", address);
+      return absl::StrCat("id: ", worker_id_, " address: ", address_);
     }
-  } WorkerInfo;
 
-  typedef struct Dataset {
-    int64 id;
-    int64 fingerprint;
-    DatasetDef dataset_def;
-  } Dataset;
+   private:
+    const int64 worker_id_;
+    const std::string address_;
+    std::unique_ptr<WorkerService::Stub> stub_;
+  };
 
-  typedef struct Job {
-    int64 id;
-    int64 dataset_id;
-    std::vector<int64> task_ids;
-  } Job;
+  class Dataset {
+   public:
+    Dataset(int64 dataset_id, int64 fingerprint, const DatasetDef& dataset_def)
+        : dataset_id_(dataset_id),
+          fingerprint_(fingerprint),
+          dataset_def_(dataset_def) {}
 
-  typedef struct Task {
-    int64 id;
-    int64 dataset_id;
-    std::string worker_address;
-  } Task;
+    int64 dataset_id() const { return dataset_id_; }
+    int64 fingerprint() const { return fingerprint_; }
+    const DatasetDef& dataset_def() { return dataset_def_; }
+
+   private:
+    const int64 dataset_id_;
+    const int64 fingerprint_;
+    const DatasetDef dataset_def_;
+  };
+
+  class Job {
+   public:
+    Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+        absl::optional<absl::string_view> job_name)
+        : job_id_(job_id),
+          dataset_id_(dataset_id),
+          processing_mode_(processing_mode),
+          job_name_(job_name) {}
+
+    int64 job_id() const { return job_id_; }
+    int64 dataset_id() const { return dataset_id_; }
+    ProcessingMode processing_mode() const { return processing_mode_; }
+    absl::optional<std::string> name() const { return job_name_; }
+    const std::vector<int64>& task_ids() const { return task_ids_; }
+    void add_task_id(int64 task_id) { task_ids_.push_back(task_id); }
+    void task_finished(int64 task_id) {
+      finished_tasks_.push_back(task_id);
+      if (finished_tasks_.size() == task_ids_.size()) {
+        finished_ = true;
+      }
+    }
+    bool finished() const { return finished_; }
+
+   private:
+    const int64 job_id_;
+    const int64 dataset_id_;
+    const ProcessingMode processing_mode_;
+    const absl::optional<std::string> job_name_;
+    std::vector<int64> task_ids_;
+    std::vector<int64> finished_tasks_;
+    bool finished_ = false;
+  };
+
+  class NamedJobKey {
+   public:
+    NamedJobKey(absl::string_view name, int64 index)
+        : name_(name), index_(index) {}
+
+    friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
+      return lhs.name_ == rhs.name_ && lhs.index_ == rhs.index_;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const NamedJobKey& k) {
+      return H::combine(std::move(h), k.name_, k.index_);
+    }
+
+   private:
+    const std::string name_;
+    const int64 index_;
+  };
+
+  class Task {
+   public:
+    Task(int64 task_id, int64 job_id, int64 dataset_id,
+         const std::string& worker_address)
+        : task_id_(task_id),
+          job_id_(job_id),
+          dataset_id_(dataset_id),
+          worker_address_(worker_address) {}
+
+    int64 task_id() const { return task_id_; }
+    int64 job_id() const { return job_id_; }
+    int64 dataset_id() const { return dataset_id_; }
+    std::string worker_address() const { return worker_address_; }
+
+   private:
+    const int64 task_id_;
+    const int64 job_id_;
+    const int64 dataset_id_;
+    const std::string worker_address_;
+  };
 
   // Registers a dataset with the given fingerprint, returning a new dataset id.
   int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset);
+  // Initializes a workers stub, if it hasn't been initialized already.
+  Status EnsureWorkerStubInitialized(Worker* worker);
   // Instructs a worker to begin processing a task.
-  Status AllocateTaskToWorker(const Task& task_id, WorkerInfo* worker);
-
+  Status AllocateTaskToWorker(const Task& task_id, Worker* worker);
+  // Creates a job and stores its job_id in `*job_id`.
+  Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
+                   absl::optional<std::string> job_name, int64* out_job_id);
+  // Creates a new task for a job, returning the new task's id.
+  int64 CreateTask(Job* job, const std::string& worker_address);
+  // Validates that an existing job matches the given processing_mode and
+  // dataset_id, returning an error status describing any difference.
+  Status ValidateMatchingJob(const Job& job, ProcessingMode processing_mode,
+                             int64 dataset_id);
   // Protocol to use for communicating with workers.
   const std::string protocol_;
 
@@ -101,7 +200,7 @@ class DataServiceMasterImpl {
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
   // Registered workers.
-  std::vector<WorkerInfo> workers_ TF_GUARDED_BY(mu_);
+  std::vector<Worker> workers_ TF_GUARDED_BY(mu_);
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_
       TF_GUARDED_BY(mu_);
@@ -109,9 +208,13 @@ class DataServiceMasterImpl {
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>> datasets_by_fingerprint_
       TF_GUARDED_BY(mu_);
   // Information about jobs, keyed by job ids.
-  absl::flat_hash_map<int64, Job> jobs_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_ TF_GUARDED_BY(mu_);
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
+  // Named jobs, keyed by their names and indices. Not all jobs have names, so
+  // this is a subset of the jobs stored in `jobs_`.
+  absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceMasterImpl);
 };

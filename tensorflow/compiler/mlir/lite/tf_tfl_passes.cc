@@ -48,7 +48,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.default_ranges.second.hasValue()) {
     pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
         quant_specs.default_ranges.first.getValueOr(0.0),
-        quant_specs.default_ranges.second.getValueOr(0.0)));
+        quant_specs.default_ranges.second.getValueOr(0.0),
+        quant_specs.IsSignedInferenceType()));
     pass_manager->addPass(mlir::TFL::CreateQuantizePass());
     pass_manager->addPass(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
@@ -73,6 +74,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   }
 
+  if (pass_config.shape_inference) {
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
+  // Keep this pass after the shape inference pass, which couldn't do shape
+  // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
     pass_manager->addPass(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
@@ -80,26 +86,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   }
 
   // The conversion pipeline has to follow the following orders:
-  // 1) Try to convert ophint nodes if present first like ophint lstm.
-  // 2) Saved model related optimization like decompose resource ops
-  // 3) Convert composite functions like lstm/rnns, along with proper function
+  // 1) Saved model related optimization like decompose resource ops
+  // 2) Convert composite functions like lstm/rnns, along with proper function
   // inlining & dce.
-  // 4) Lower static tensor list pass.
-
-  // The ophint extractions happen before lots of other passes:
-  // The assumption of ophint-extraction is each ophinted region is a black-box
-  // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
-  // black-box.
-  // Some passes may merge nodes together (such as const nodes), however, this
-  // will break the ophint-extraction assumption. (The nodes within the black
-  // box is not isolated anymore).
-  // So ophint extraction and legalization needs to happen before
-  // the canonicalization pass.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
-    // Convert composite op pass will happen after ophint extraction pass.
-    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
-  }
+  // 3) Lower static tensor list pass.
 
   // This decomposes resource ops like ResourceGather into read-variable op
   // followed by gather. This is used when the saved model import path is used

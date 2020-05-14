@@ -40,6 +40,10 @@ class CompatTest(test.TestCase):
     self.assertTrue(compat.forward_compatible(*one_day_before))
     self.assertFalse(compat.forward_compatible(*compatibility_date))
 
+  def test_past(self):
+    with compat.forward_compatibility_horizon(2018, 9, 18):
+      self.assertTrue(compat.forward_compatible(2020, 4, 4))
+
   def test_decorator(self):
     compatibility_date = self._compatibility_date()
     one_day_after = self._n_days_after(1)
