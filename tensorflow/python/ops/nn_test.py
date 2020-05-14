@@ -303,6 +303,19 @@ class L2NormalizeTest(test_lib.TestCase):
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (np.random.random_sample(x_shape).astype(dtype) +
+              np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
+
 
 class DropoutTest(test_lib.TestCase):
 
