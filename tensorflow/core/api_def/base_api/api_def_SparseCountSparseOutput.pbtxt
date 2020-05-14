@@ -4,74 +4,73 @@ op {
   in_arg {
     name: "indices"
     description: <<END
-Tensor containing the indices of the sparse tensor to count.
+int64; Tensor containing the indices of the sparse tensor to count.
 END
   }
 in_arg {
     name: "values"
     description: <<END
-Tensor containing values of the sparse tensor to count.
+int32 or int64; Tensor containing values of the sparse tensor to count.
 END
   }
 in_arg {
     name: "dense_shape"
     description: <<END
-Tensor containing the dense shape of the sparse tensor to count.
+int64; Tensor containing the dense shape of the sparse tensor to count.
 END
   }
- in_arg {
+  in_arg {
     name: "weights"
     description: <<END
-A Tensor of the same shape as indices containing per-index weight values.
-May also be the empty tensor if no weights are used.
+float32; Optional rank 1 Tensor (shape=[max_values]) with weights for each count value.
 END
   }
   out_arg {
     name: "output_indices"
     description: <<END
-Indices tensor for the resulting sparse tensor object.
+int64; indices tensor for the resulting sparse tensor object.
 END
   }
   out_arg {
       name: "output_values"
       description: <<END
-Values tensor for the resulting sparse tensor object.
+int64 or float32; values tensor for the resulting sparse tensor object.
 END
   }
   out_arg {
       name: "output_dense_shape"
       description: <<END
-Shape tensor for the resulting sparse tensor object.
+int64; shape tensor for the resulting sparse tensor object.
 END
   }
   attr {
     name: "T"
     description: <<END
-Dtype of the input values tensor.
+dtype; dtype of the input values tensor.
 END
   }
   attr {
     name: "minlength"
     description: <<END
-Minimum value to count. Can be set to -1 for no minimum.
+int32; minimum value to count. Can be set to -1 for no minimum.
 END
   }
   attr {
     name: "maxlength"
     description: <<END
-Maximum value to count. Can be set to -1 for no maximum.
+int32; maximum value to count. Can be set to -1 for no maximum.
 END
   }
   attr {
-    name: "binary_output"
+    name: "binary_count"
     description: <<END
-Whether to output the number of occurrences of each value or 1.
+bool; whether to output the number of occurrences of each value or 1.
 END
   }
   attr {
     name: "output_type"
     description: <<END
-Dtype of the output values tensor.
+dtype; dtype of the output values tensor.
 END
   }
   summary: "Performs sparse-output bin counting for a sparse tensor input."

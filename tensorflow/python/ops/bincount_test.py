@@ -21,8 +21,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import bincount
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -67,7 +65,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5]],
           "expected_values": [1, 1, 1, 1, 1],
           "expected_shape": [2, 6],
-          "binary_output": True,
+          "binary_count": True,
       }, {
           "testcase_name": "_maxlength_binary",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
@@ -75,7 +73,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 0], [1, 4]],
           "expected_values": [1, 1, 1, 1, 1],
           "expected_shape": [2, 7],
-          "binary_output": True,
+          "binary_count": True,
       }, {
           "testcase_name": "_minlength_binary",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
@@ -84,7 +82,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [1, 7]],
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
           "expected_shape": [2, 9],
-          "binary_output": True,
+          "binary_count": True,
       }, {
           "testcase_name": "_minlength_larger_values_binary",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
@@ -93,40 +91,40 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [1, 7]],
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
           "expected_shape": [2, 8],
-          "binary_output": True,
+          "binary_count": True,
       }, {
           "testcase_name": "_no_maxlength_weights",
           "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
           "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5]],
-          "expected_values": [2, 1, 0.5, 9, 3],
+          "expected_values": [1, 2, 3, 8, 5],
           "expected_shape": [2, 6],
-          "weights": [[0.5, 1, 2], [3, 4, 5]]
+          "weights": [0.5, 1, 2, 3, 4, 5]
       }, {
           "testcase_name": "_maxlength_weights",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
           "maxlength": 7,
           "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 0], [1, 4]],
-          "expected_values": [2, 1, 0.5, 3, 9],
+          "expected_values": [1, 2, 3, 0.5, 8],
           "expected_shape": [2, 7],
-          "weights": [[0.5, 1, 2, 11], [7, 3, 4, 5]]
+          "weights": [0.5, 1, 2, 3, 4, 5, 6]
       }, {
           "testcase_name": "_minlength_weights",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
           "minlength": 9,
           "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
                                [1, 7]],
-          "expected_values": [2, 1, 0.5, 3, 5, 13, 4],
+          "expected_values": [1, 2, 3, 7, 0.5, 8, 7],
           "expected_shape": [2, 9],
-          "weights": [[0.5, 1, 2, 3], [4, 5, 6, 7]]
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       }, {
           "testcase_name": "_minlength_larger_values_weights",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
           "minlength": 3,
           "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
                                [1, 7]],
-          "expected_values": [2, 1, 0.5, 3, 5, 13, 4],
+          "expected_values": [1, 2, 3, 7, 0.5, 8, 7],
           "expected_shape": [2, 8],
-          "weights": [[0.5, 1, 2, 3], [4, 5, 6, 7]]
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       }, {
           "testcase_name": "_1d",
           "x": np.array([3, 2, 1, 1], dtype=np.int32),
@@ -148,7 +146,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                        expected_shape,
                        minlength=None,
                        maxlength=None,
-                       binary_output=False,
+                       binary_count=False,
                        weights=None,
                        axis=-1):
     y = bincount.sparse_bincount(
@@ -156,7 +154,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
         weights=weights,
         minlength=minlength,
         maxlength=maxlength,
-        binary_output=binary_output,
+        binary_count=binary_count,
         axis=axis)
     self.assertAllEqual(expected_indices, y.indices)
     self.assertAllEqual(expected_values, y.values)
@@ -218,7 +216,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
           "expected_values": [1, 1, 1, 1],
           "expected_shape": [3, 6],
-          "binary_output":
+          "binary_count":
               True,
       },
       {
@@ -232,7 +230,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 7],
           "maxlength":
               7,
-          "binary_output":
+          "binary_count":
               True,
       },
       {
@@ -246,7 +244,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 9],
           "minlength":
               9,
-          "binary_output":
+          "binary_count":
               True,
       },
       {
@@ -260,7 +258,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 8],
           "minlength":
               3,
-          "binary_output":
+          "binary_count":
               True,
       },
       {
@@ -270,10 +268,9 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]],
                        dtype=np.int32),
           "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 7, 10],
+          "expected_values": [1, 3, 8, 5],
           "expected_shape": [3, 6],
-          "weights":
-              np.array([[6, 0, 2, 0], [0, 0, 0, 0], [10, 0, 3.5, 3.5]]),
+          "weights": [0.5, 1, 2, 3, 4, 5]
       },
       {
           "testcase_name":
@@ -282,12 +279,11 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               np.array([[3, 0, 1, 0], [0, 0, 7, 0], [5, 0, 4, 4]],
                        dtype=np.int32),
           "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 7, 10],
+          "expected_values": [1, 3, 8, 5],
           "expected_shape": [3, 7],
           "maxlength":
               7,
-          "weights":
-              np.array([[6, 0, 2, 0], [0, 0, 14, 0], [10, 0, 3.5, 3.5]]),
+          "weights": [0.5, 1, 2, 3, 4, 5, 6]
       },
       {
           "testcase_name":
@@ -296,12 +292,11 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
                        dtype=np.int32),
           "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 14, 6.5, 10],
+          "expected_values": [1, 3, 7, 8, 5],
           "expected_shape": [3, 9],
           "minlength":
               9,
-          "weights":
-              np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       },
       {
           "testcase_name":
@@ -310,12 +305,11 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
                        dtype=np.int32),
           "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 14, 6.5, 10],
+          "expected_values": [1, 3, 7, 8, 5],
           "expected_shape": [3, 8],
           "minlength":
               3,
-          "weights":
-              np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       },
       {
           "testcase_name": "_1d",
@@ -344,17 +338,16 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                         expected_shape,
                         maxlength=None,
                         minlength=None,
-                        binary_output=False,
+                        binary_count=False,
                         weights=None,
                         axis=-1):
     x_sparse = sparse_ops.from_dense(x)
-    w_sparse = sparse_ops.from_dense(weights) if weights is not None else None
     y = bincount.sparse_bincount(
         x_sparse,
-        weights=w_sparse,
+        weights=weights,
         minlength=minlength,
         maxlength=maxlength,
-        binary_output=binary_output,
+        binary_count=binary_count,
         axis=axis)
     self.assertAllEqual(expected_indices, y.indices)
     self.assertAllEqual(expected_values, y.values)
@@ -400,7 +393,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 6],
-          "binary_output": True,
+          "binary_count": True,
       },
       {
           "testcase_name": "_maxlength_binary",
@@ -409,7 +402,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 7],
-          "binary_output": True,
+          "binary_count": True,
       },
       {
           "testcase_name": "_minlength_binary",
@@ -419,13 +412,13 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 9],
-          "binary_output": True,
+          "binary_count": True,
       },
       {
           "testcase_name": "_minlength_larger_values_binary",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 3,
-          "binary_output": True,
+          "binary_count": True,
           "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
                                [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
@@ -435,18 +428,18 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "testcase_name": "_no_maxlength_weights",
           "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [0.5, 2, 6, 0.25, 8, 10],
+          "expected_values": [0.5, 1, 3, 0.5, 8, 5],
           "expected_shape": [5, 6],
-          "weights": [[], [], [6, 0.5, 2], [], [10, 0.25, 5, 3]],
+          "weights": [0.5, 1, 2, 3, 4, 5]
       },
       {
           "testcase_name": "_maxlength_weights",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "maxlength": 7,
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [0.5, 2, 6, 0.25, 8, 10],
+          "expected_values": [0.5, 1, 3, 0.5, 8, 5],
           "expected_shape": [5, 7],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
+          "weights": [0.5, 1, 2, 3, 4, 5, 6]
       },
       {
           "testcase_name": "_minlength_weights",
@@ -454,9 +447,9 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "minlength": 9,
           "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
                                [4, 5]],
-          "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
+          "expected_values": [0.5, 1, 3, 7, 0.5, 8, 5],
           "expected_shape": [5, 9],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       },
       {
           "testcase_name": "_minlength_larger_values_weights",
@@ -464,9 +457,9 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "minlength": 3,
           "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
                                [4, 5]],
-          "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
+          "expected_values": [0.5, 1, 3, 7, 0.5, 8, 5],
           "expected_shape": [5, 8],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
+          "weights": [0.5, 1, 2, 3, 4, 5, 6, 7, 8]
       },
       {
           "testcase_name": "_1d",
@@ -491,113 +484,20 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                         expected_shape,
                         maxlength=None,
                         minlength=None,
-                        binary_output=False,
+                        binary_count=False,
                         weights=None,
                         axis=-1):
     x_ragged = ragged_factory_ops.constant(x)
-    w = ragged_factory_ops.constant(weights) if weights is not None else None
     y = bincount.sparse_bincount(
         x_ragged,
-        weights=w,
+        weights=weights,
         minlength=minlength,
         maxlength=maxlength,
-        binary_output=binary_output,
+        binary_count=binary_count,
         axis=axis)
     self.assertAllEqual(expected_indices, y.indices)
     self.assertAllEqual(expected_values, y.values)
     self.assertAllEqual(expected_shape, y.dense_shape)
-
-
-class TestSparseCountFailureModes(test.TestCase):
-
-  def test_dense_input_sparse_weights_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_dense_input_ragged_weights_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_dense_input_wrong_shape_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = np.array([[3, 2], [5, 4], [4, 3]])
-    # Note: Eager mode and graph mode throw different errors here. Graph mode
-    # will fail with a ValueError from the shape checking logic, while Eager
-    # will fail with an InvalidArgumentError from the kernel itself.
-    if context.executing_eagerly():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "must have the same shape"):
-        self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-    else:
-      with self.assertRaisesRegexp(ValueError, "both shapes must be equal"):
-        self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_dense_weights_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_ragged_weights_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_wrong_indices_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 1, 0, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same indices"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_too_many_indices_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 1, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Incompatible shapes"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_wrong_shape_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4], [0, 0, 0, 0]],
-                 dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same dense shape"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_dense_weights_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_sparse_weights_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_different_shape_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same row splits"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
 
 
 if __name__ == "__main__":
