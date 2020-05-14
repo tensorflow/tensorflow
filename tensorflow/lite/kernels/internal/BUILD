@@ -654,7 +654,6 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
-        "@ruy//ruy:detect_arm",
     ],
 )
 
@@ -1039,6 +1038,7 @@ cc_test(
 
 cc_library(
     name = "cpu_check",
+    srcs = ["optimized/cpu_check.cc"],
     hdrs = [
         "optimized/cpu_check.h",
         "optimized/neon_check.h",
@@ -1058,9 +1058,6 @@ cc_library(
         ":windows": tflite_deps_intel,
         "//conditions:default": [],
     },
-    deps = [
-        "@ruy//ruy:detect_arm",  # safe to use regardless of arch.
-    ],
 )
 
 cc_test(
