@@ -424,7 +424,8 @@ def test_frozen_graph_quant(filename,
 
   # Convert and load the quantized model.
   converter = _lite.TFLiteConverter.from_frozen_graph(filename, input_arrays,
-                                                      output_arrays)
+                                                      output_arrays,
+                                                      input_shapes)
   tflite_model_quant = _convert(
       converter, post_training_quantize=True, **kwargs)
 

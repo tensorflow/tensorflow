@@ -83,7 +83,6 @@ load(
     "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_lite_protos",
-    "tf_opts_nortti_if_mobile",
     "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
@@ -101,27 +100,22 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
-# Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_deps")
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
     "tf_additional_lib_deps",
     "tf_additional_test_deps",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
+    "tf_portable_proto_lib",
     "tf_proto_library",
-    "tf_proto_library_cc",
     "tf_protos_all_impl",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
-    "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -184,18 +178,18 @@ package_group(name = "friends")
 # filegroup; e.g.  ones with individual proto_library targets.
 # LINT.IfChange
 COMMON_PROTO_SRCS = [
-    "protobuf/bfc_memory_map.proto",
-    "protobuf/config.proto",
-    "protobuf/cluster.proto",
-    "protobuf/debug.proto",
-    "protobuf/device_filters.proto",
-    "protobuf/device_properties.proto",
-    "protobuf/graph_debug_info.proto",
-    "protobuf/queue_runner.proto",
-    "protobuf/rewriter_config.proto",
-    "protobuf/tensor_bundle.proto",
-    "protobuf/saver.proto",
-    "protobuf/verifier_config.proto",
+    "//tensorflow/core/protobuf:bfc_memory_map.proto",
+    "//tensorflow/core/protobuf:config.proto",
+    "//tensorflow/core/protobuf:cluster.proto",
+    "//tensorflow/core/protobuf:debug.proto",
+    "//tensorflow/core/protobuf:device_filters.proto",
+    "//tensorflow/core/protobuf:device_properties.proto",
+    "//tensorflow/core/protobuf:graph_debug_info.proto",
+    "//tensorflow/core/protobuf:queue_runner.proto",
+    "//tensorflow/core/protobuf:rewriter_config.proto",
+    "//tensorflow/core/protobuf:tensor_bundle.proto",
+    "//tensorflow/core/protobuf:saver.proto",
+    "//tensorflow/core/protobuf:verifier_config.proto",
 ]
 
 EXAMPLE_PROTO_SRCS = [
@@ -242,7 +236,7 @@ PROFILER_PROTO_SRCS = [
 ]
 
 ERROR_CODES_PROTO_SRCS = [
-    "protobuf/error_codes.proto",
+    "//tensorflow/core/protobuf:error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
 # LINT.ThenChange(//tensorflow/core/portable_proto_config.asciipb)
@@ -255,11 +249,13 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        ":core_protos",
-        ":error_codes_proto_impl",
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
+        "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/core/profiler:profiler_options_proto",
+        "//tensorflow/core/protobuf:error_codes_proto_impl",
+        "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
     ],
@@ -1274,7 +1270,7 @@ filegroup(
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
-        "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/ctc:mobile_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -1304,12 +1300,12 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/framework:mobile_srcs_only_runtime",
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
-        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
-        "//tensorflow/core/util/tensor_bundle:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:mobile_srcs",
         "//tensorflow/core/util:mobile_srcs_only_runtime",
 
         # Sources for which we already have granular targets.
@@ -1374,10 +1370,7 @@ cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + tf_portable_full_lite_protos(
-        full = [],
-        lite = ["TENSORFLOW_LITE_PROTOS"],
-    ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
@@ -1385,10 +1378,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_all_cc_impl",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core:mobile_additional_lib_deps",
-    ] + tf_portable_deps_no_runtime(),
+    ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
@@ -1420,52 +1412,10 @@ cc_library(
     ],
 )
 
-# Native library support for iOS applications.
-#
-# bazel  build --config=ios_x86_64 \
-# :ios_tensorflow_lib
-cc_library(
-    name = "ios_tensorflow_lib",
-    srcs = if_ios([
-        ":portable_op_registrations_and_gradients",
-        "//tensorflow/core/kernels:android_core_ops",
-        "//tensorflow/core/kernels:android_extended_ops",
-    ]),
-    copts = tf_copts() + tf_opts_nortti_if_lite_protos() + ["-Os"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
-        "//third_party/eigen3",
-        "//third_party/fft2d:fft2d_headers",
-        "@com_google_protobuf//:protobuf",
-        "@fft2d",
-        "@gemmlowp",
-    ],
-    alwayslink = 1,
-)
-
 alias(
     name = "ios_tensorflow_lib_lite",
     actual = ":portable_tensorflow_lib_lite",
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "ios_tensorflow_test_lib",
-    testonly = 1,
-    srcs = if_ios([":android_test_srcs"]),
-    copts = tf_copts() + ["-Os"],
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":ios_tensorflow_lib",
-        "//tensorflow/core/platform/default/build_config:gtest",
-        "//third_party/eigen3",
-    ],
 )
 
 # Full TensorFlow library with operator support. Use this unless reducing
@@ -1476,10 +1426,16 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "ios_tensorflow_lib",
+    actual = ":portable_tensorflow_lib",
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "portable_tensorflow_lib",
     srcs = if_mobile([":portable_op_registrations_and_gradients"]),
-    copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     features = tf_features_nomodules_if_mobile(),
     tags = [
         "manual",
@@ -1562,6 +1518,12 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "ios_tensorflow_test_lib",
+    actual = ":portable_tensorflow_test_lib",
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "portable_tensorflow_test_lib",
     testonly = 1,
@@ -1572,7 +1534,7 @@ cc_library(
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/util:android_test_hdrs",
     ],
-    copts = tf_copts(android_optimization_level_override = None),
+    copts = tf_copts(android_optimization_level_override = None) + if_ios(["-Os"]),
     features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos(),
     tags = [
         "manual",
@@ -1640,20 +1602,13 @@ alias(
     [
         alias(
             name = "protobuf_%s_pyclif%s" % (proto_name, target_suffix),
-            actual = ":protobuf/%s_pyclif%s" % (proto_name, target_suffix),
+            actual = "//tensorflow/core/protobuf:%s_pyclif%s" % (proto_name, target_suffix),
             visibility = ["//visibility:public"],
         )
         for target_suffix in [
             "",
             "_pb2",
         ]
-    ] + [
-        tf_pyclif_proto_library(
-            name = "protobuf/%s_pyclif" % proto_name,
-            proto_lib = ":protos_all",
-            proto_srcfile = "protobuf/%s.proto" % proto_name,
-            visibility = ["//visibility:public"],
-        ),
     ]
     for proto_name in [
         "config",
@@ -1667,77 +1622,74 @@ alias(
 # -----------------------------------------------------------------------------
 # Internal targets
 
-tf_proto_library(
+alias(
     name = "autotuning_proto",
-    srcs = ["protobuf/autotuning.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
+    actual = "//tensorflow/core/protobuf:autotuning_proto",
     visibility = [
         "//tensorflow:internal",
     ],
 )
 
-tf_proto_library(
+alias(
+    name = "autotuning_proto_cc",
+    actual = "//tensorflow/core/protobuf:autotuning_proto_cc",
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+alias(
     name = "conv_autotuning_proto",
-    srcs = ["protobuf/conv_autotuning.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [
-        "//tensorflow/stream_executor:dnn_proto",
-    ],
+    actual = "//tensorflow/core/protobuf:conv_autotuning_proto",
     visibility = [
         "//tensorflow:internal",
     ],
 )
 
-tf_proto_library_cc(
-    name = "worker_proto",
-    srcs = ["protobuf/worker.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_cc(
-    name = "worker_service_proto",
-    srcs = ["protobuf/worker_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
-    protodeps = [":worker_proto"],
+alias(
+    name = "conv_autotuning_proto_cc",
+    actual = "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
     visibility = [
         "//tensorflow:internal",
     ],
 )
 
-tf_proto_library_cc(
-    name = "master_proto",
-    srcs = ["protobuf/master.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//tensorflow:internal"],
-)
-
-tf_proto_library_cc(
-    name = "master_service_proto",
-    srcs = ["protobuf/master_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
-    protodeps = [":master_proto"],
+alias(
+    name = "worker_proto_cc",
+    actual = "//tensorflow/core/protobuf:worker_proto_cc",
     visibility = [
         "//tensorflow:internal",
     ],
 )
 
-tf_proto_library_cc(
-    name = "eager_service_proto",
-    srcs = ["protobuf/eager_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_grpc_version = 1,
-    cc_stubby_versions = ["2"],
-    protodeps = tf_additional_all_protos(),
+alias(
+    name = "worker_service_proto_cc",
+    actual = "//tensorflow/core/protobuf:worker_service_proto_cc",
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+alias(
+    name = "master_proto_cc",
+    actual = "//tensorflow/core/protobuf:master_proto_cc",
+    visibility = [
+        "//learning/brain/frameworks/uptc:__subpackages__",
+        "//tensorflow:internal",
+    ],
+)
+
+alias(
+    name = "master_service_proto_cc",
+    actual = "//tensorflow/core/protobuf:master_service_proto_cc",
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+alias(
+    name = "eager_service_proto_cc",
+    actual = "//tensorflow/core/protobuf:eager_service_proto_cc",
     visibility = [
         "//tensorflow:internal",
     ],
@@ -2149,49 +2101,14 @@ cc_library(
     ],
 )
 
-tf_proto_library(
+alias(
     name = "error_codes_proto_impl",
-    srcs = ["protobuf/error_codes.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
+    actual = "//tensorflow/core/protobuf:error_codes_proto_impl",
 )
 
-tf_proto_library(
-    name = "core_protos",
-    srcs = COMMON_PROTO_SRCS + [
-        # Protos which are not needed on mobile builds, but should be included
-        # in protos_all.
-        #
-        # Note that some protos are in neither core_proto_srcs nor this
-        # filegroup; e.g. ones with individual proto_library targets.
-        "protobuf/control_flow.proto",
-        # TODO(ebrevdo): Re-enable once CriticalSection is in core.
-        # "protobuf/critical_section.proto",
-        "protobuf/data/experimental/snapshot.proto",
-        "protobuf/debug_event.proto",
-        "protobuf/meta_graph.proto",
-        "protobuf/named_tensor.proto",
-        "protobuf/remote_tensor_handle.proto",
-        "protobuf/saved_model.proto",
-        "protobuf/saved_object_graph.proto",
-        "protobuf/struct.proto",
-        "protobuf/tensorflow_server.proto",
-        "protobuf/trackable_object_graph.proto",
-        "protobuf/transport_options.proto",
-    ],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [
-        ":error_codes_proto_impl",
-        "//tensorflow/core/example:protos_all",
-        "//tensorflow/core/framework:protos_all",
-        "//tensorflow/core/lib/core:error_codes_proto",
-        "//tensorflow/core/profiler/protobuf:xplane_proto",
-        "//tensorflow/core/profiler:profiler_options_proto",
-        "//tensorflow/core/util:protos_all",
-        "//tensorflow/core/util:test_log_proto_impl",
-    ],
-    visibility = ["//visibility:private"],
+alias(
+    name = "error_codes_proto_impl_cc",
+    actual = "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
 )
 
 alias(
@@ -2400,10 +2317,6 @@ alias(
 
 # Library containing all of the graph construction code that is
 # independent of the runtime.
-#
-# TODO(mrry): Refactor graph_constructor.cc so that it does not depend on code
-# in "common_runtime/", and then the entire "graph/" directory can be included
-# in this library.
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
@@ -2487,13 +2400,9 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
-    name = "replay_log_proto",
-    srcs = ["protobuf/replay_log.proto"],
-    cc_api_version = 2,
-    protodeps = [
-        ":master_proto",
-    ] + tf_additional_all_protos(),
+alias(
+    name = "replay_log_proto_cc",
+    actual = "//tensorflow/core/protobuf:replay_log_proto_cc",
     visibility = [
         "//tensorflow:internal",
     ],
@@ -2746,42 +2655,6 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_tests(
-    name = "higher_level_tests_needing_kernels",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/graph:higher_level_tests_needing_kernels",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":all_kernels",
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
     ],
 )
 
@@ -3160,6 +3033,11 @@ alias(
     actual = "//tensorflow/core/platform:cuda_libdevice_path",
 )
 
+# Normalize CORE_PROTO_SRCS to generate valid output file names.
+PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
+    "//google/protobuf/any.proto.h",
+]
+
 transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
@@ -3172,8 +3050,3 @@ transitive_hdrs(
         "//tensorflow/core/platform:platform_strings",
     ],
 )
-
-# Normalize CORE_PROTO_SRCS to generate valid output file names.
-PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
-    "//google/protobuf/any.proto.h",
-]

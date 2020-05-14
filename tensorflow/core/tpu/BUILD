@@ -1,6 +1,10 @@
 # Description: Utilities for TPU Operations
 
 package(
+    default_visibility = [
+        "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/stream_executor/tpu:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -30,5 +34,28 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_defs",
+    srcs = ["tpu_defs.cc"],
+    hdrs = ["tpu_defs.h"],
+)
+
+cc_library(
+    name = "tpu_init_mode",
+    srcs = ["tpu_init_mode.cc"],
+    hdrs = ["tpu_init_mode.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "tpu_config_c_api",
+    hdrs = ["tpu_config_c_api.h"],
+    deps = [
+        "//tensorflow/c:tf_status",
     ],
 )

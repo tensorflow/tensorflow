@@ -35,6 +35,7 @@ public final class CoreMLDelegate: Delegate {
     self.options = options
     var delegateOptions = TfLiteCoreMlDelegateOptions()
     delegateOptions.enabled_devices = options.enabledDevices.cEnabledDevices
+    delegateOptions.coreml_version = Int32(options.coreMLVersion)
     delegateOptions.max_delegated_partitions = Int32(options.maxDelegatedPartitions)
     delegateOptions.min_nodes_per_partition = Int32(options.minNodesPerPartition)
     guard let delegate = TfLiteCoreMlDelegateCreate(&delegateOptions) else { return nil }
@@ -72,6 +73,9 @@ extension CoreMLDelegate {
     /// value is `.neuralEngine` indicating that the delegate is enabled for Neural Engine devices
     /// only.
     public var enabledDevices: EnabledDevices = .neuralEngine
+    /// Target Core ML version for the model conversion. When it's not set, Core ML version will
+    /// be set to highest available version for the platform.
+    public var coreMLVersion = 0
     /// The maximum number of Core ML delegate partitions created. Each graph corresponds to one
     /// delegated node subset in the TFLite model. The default value is `0` indicating that all
     /// possible partitions are delegated.

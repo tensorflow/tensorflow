@@ -174,7 +174,12 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
-    if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
+    resizeInput(idx, dims, false);
+  }
+
+  /** Resizes dimensions of a specific input. */
+  void resizeInput(int idx, int[] dims, boolean strict) {
+    if (resizeInput(interpreterHandle, errorHandle, idx, dims, strict)) {
       // Tensor allocation is deferred until either an explicit `allocateTensors()` call or
       // `invoke()` avoiding redundant allocations if multiple tensors are simultaneosly resized.
       isMemoryAllocated = false;
@@ -185,7 +190,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   private static native boolean resizeInput(
-      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
+      long interpreterHandle, long errorHandle, int inputIdx, int[] dims, boolean strict);
 
   /** Triggers explicit allocation of tensors. */
   void allocateTensors() {

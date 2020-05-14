@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/op_utils.h"
 
+#include <algorithm>
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -69,9 +75,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
   if (op_metrics->category().empty())
     op_metrics->set_category(category == kUnknownOp ? "unknown"
-                                                    : string(category));
+                                                    : std::string(category));
   if (op_metrics->provenance().empty())
-    op_metrics->set_provenance(string(provenance));
+    op_metrics->set_provenance(std::string(provenance));
   op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);

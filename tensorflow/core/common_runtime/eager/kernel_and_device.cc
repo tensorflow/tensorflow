@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -49,13 +50,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status EagerKernelArgs::GetLocalArg(const int index, Tensor* val) const {
-  Tensor* arg = tensor_args_.at(index).tensor;
+Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
+                                    Tensor* val) const {
+  if (index.sub_index >= 0) {
+    return errors::InvalidArgument("Got unexpected sub_index ", index.sub_index,
+                                   " for argument ", index.index);
+  }
+  Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
     return Status::OK();
   } else {
-    return errors::NotFound("Argument ", index, " has no local tensor.");
+    return errors::NotFound("Argument ", index.index, " has no local tensor.");
   }
 }
 
@@ -152,6 +158,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
@@ -419,7 +426,9 @@ Device* KernelAndDeviceOp::InputDevice(int i) const {
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
-  if (input_dtypes_[i] == DT_RESOURCE) {
+  if ((input_dtypes_[i] == DT_RESOURCE) &&
+      (composite_devices_.find(input_devices_[i]->name()) ==
+       composite_devices_.end())) {
     return host_cpu_device_;
   } else {
     return input_devices_[i];

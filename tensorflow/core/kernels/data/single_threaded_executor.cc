@@ -329,17 +329,36 @@ class SingleThreadedExecutorImpl : public Executor {
     for (size_t i = 0; i < arg_output_locations_.size(); ++i) {
       const size_t num_destinations = arg_output_locations_[i].size();
       if (num_destinations > 0) {
-        const Tensor* arg;
-        TF_CHECK_OK(args.call_frame->GetArg(i, &arg));
-        for (size_t j = 0; j < num_destinations; ++j) {
-          Entry& input = inputs[arg_output_locations_[i][j]];
-          // NOTE: We must make at least one shallow copy of the argument tensor
-          // that remains live until all consuming kernels have executed, to
-          // keep the reference count > 1, and inhibit buffer forwarding.
-          // For simplicity, we shallow copy into the input entry for each
-          // consuming kernel.
-          input.state = Entry::State::HAS_VALUE;
-          input.val.Init(*arg);
+        if (args.call_frame->CanConsumeArg(i)) {
+          // The first destination input can consume the argument.
+          Entry& first_input = inputs[arg_output_locations_[i][0]];
+          first_input.state = Entry::State::HAS_VALUE;
+          first_input.val.Init();
+          args.call_frame->ConsumeArg(i, first_input.val.get());
+          // All subsequent destination inputs get a shallow copy of the first
+          // destination input.
+          //
+          // NOTE: If we had metadata about which kernels might attempt to
+          // forward their input, we could arrange the kernel order so that
+          // one of those kernels was executed last.
+          for (size_t j = 1; j < num_destinations; ++j) {
+            Entry& input = inputs[arg_output_locations_[i][j]];
+            input.state = Entry::State::HAS_VALUE;
+            input.val.Init(*first_input.val);
+          }
+        } else {
+          const Tensor* arg;
+          TF_CHECK_OK(args.call_frame->GetArg(i, &arg));
+          for (size_t j = 0; j < num_destinations; ++j) {
+            Entry& input = inputs[arg_output_locations_[i][j]];
+            // NOTE: We must make at least one shallow copy of the argument
+            // tensor that remains live until all consuming kernels have
+            // executed, to keep the reference count > 1, and inhibit buffer
+            // forwarding. For simplicity, we shallow copy into the input entry
+            // for each consuming kernel.
+            input.state = Entry::State::HAS_VALUE;
+            input.val.Init(*arg);
+          }
         }
       }
     }

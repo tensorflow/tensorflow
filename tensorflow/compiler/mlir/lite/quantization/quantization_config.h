@@ -46,6 +46,12 @@ struct QuantizationSpecs {
   // post-training quantization. We need to deprecate the `weight_quantization`.
   bool post_training_quantization = false;
 
+  // When set to true, quantization will be done per-tensor. Currently, this
+  // option is only valid when the quantization parameters need to be created by
+  // scanning the constant content (post-training quantization or QAT without
+  // weight FakeQuant).
+  bool disable_per_channel = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,

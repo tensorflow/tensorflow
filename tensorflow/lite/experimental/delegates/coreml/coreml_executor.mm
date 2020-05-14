@@ -39,17 +39,22 @@ NSURL* createTemporaryFile() {
   NSSet* _featureNames;
 }
 
-- (instancetype)initWithInputs:(const std::vector<TensorData>*)inputs;
+- (instancetype)initWithInputs:(const std::vector<TensorData>*)inputs
+                 coreMlVersion:(int)coreMlVersion;
 - (MLFeatureValue*)featureValueForName:(NSString*)featureName API_AVAILABLE(ios(11));
 - (NSSet<NSString*>*)featureNames;
+
+@property(nonatomic, readonly) int coreMlVersion;
 
 @end
 
 @implementation MultiArrayFeatureProvider
 
-- (instancetype)initWithInputs:(const std::vector<TensorData>*)inputs {
+- (instancetype)initWithInputs:(const std::vector<TensorData>*)inputs
+                 coreMlVersion:(int)coreMlVersion {
   self = [super init];
   _inputs = inputs;
+  _coreMlVersion = coreMlVersion;
   for (auto& input : *_inputs) {
     if (input.name.empty()) {
       return nil;
@@ -74,8 +79,31 @@ NSURL* createTemporaryFile() {
   for (auto& input : *_inputs) {
     if ([featureName cStringUsingEncoding:NSUTF8StringEncoding] == input.name) {
       // TODO(b/141492326): Update shape handling for higher ranks
-      NSArray* shape = @[ @(input.shape[0]), @(input.shape[1]), @(input.shape[2]) ];
-      NSArray* strides = @[ @(input.shape[1] * input.shape[2]), @(input.shape[2]), @1 ];
+      NSArray* shape = @[
+        @(input.shape[0]),
+        @(input.shape[1]),
+        @(input.shape[2]),
+      ];
+      NSArray* strides = @[
+        @(input.shape[1] * input.shape[2]),
+        @(input.shape[2]),
+        @1,
+      ];
+
+      if ([self coreMlVersion] >= 3) {
+        shape = @[
+          @(input.shape[0]),
+          @(input.shape[1]),
+          @(input.shape[2]),
+          @(input.shape[3]),
+        ];
+        strides = @[
+          @(input.shape[1] * input.shape[2] * input.shape[3]),
+          @(input.shape[2] * input.shape[3]),
+          @(input.shape[3]),
+          @1,
+        ];
+      };
       NSError* error = nil;
       MLMultiArray* mlArray = [[MLMultiArray alloc] initWithDataPointer:(float*)input.data.data()
                                                                   shape:shape
@@ -106,7 +134,7 @@ NSURL* createTemporaryFile() {
   }
   NSError* error = nil;
   MultiArrayFeatureProvider* inputFeature =
-      [[MultiArrayFeatureProvider alloc] initWithInputs:&inputs];
+      [[MultiArrayFeatureProvider alloc] initWithInputs:&inputs coreMlVersion:[self coreMlVersion]];
   if (inputFeature == nil) {
     NSLog(@"inputFeature is not initialized.");
     return NO;
@@ -153,6 +181,14 @@ NSURL* createTemporaryFile() {
 - (NSURL*)saveModel:(CoreML::Specification::Model*)model {
   NSURL* modelUrl = createTemporaryFile();
   NSString* modelPath = [modelUrl path];
+  if (model->specificationversion() == 3) {
+    _coreMlVersion = 2;
+  } else if (model->specificationversion() == 4) {
+    _coreMlVersion = 3;
+  } else {
+    NSLog(@"Only Core ML models with specification version 3 or 4 are supported");
+    return nil;
+  }
   // Flush data to file.
   // TODO(karimnosseir): Can we mmap this instead of actual writing it to phone ?
   std::ofstream file_stream([modelPath UTF8String], std::ios::out | std::ios::binary);

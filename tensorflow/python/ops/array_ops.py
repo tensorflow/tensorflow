@@ -39,6 +39,7 @@ from tensorflow.python.ops import gen_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -1381,13 +1382,13 @@ def _autopacking_helper(list_or_tuple, dtype, name):
   if context.executing_eagerly():
     # NOTE: Fast path when all the items are tensors, this doesn't do any type
     # checking.
-    if all(ops.is_dense_tensor_like(elem) for elem in list_or_tuple):
+    if all(isinstance(elem, core.Tensor) for elem in list_or_tuple):
       return gen_array_ops.pack(list_or_tuple, name=name)
   must_pack = False
   converted_elems = []
   with ops.name_scope(name) as scope:
     for i, elem in enumerate(list_or_tuple):
-      if ops.is_dense_tensor_like(elem):
+      if isinstance(elem, core.Tensor):
         if dtype is not None and elem.dtype.base_dtype != dtype:
           raise TypeError("Cannot convert a list containing a tensor of dtype "
                           "%s to %s (Tensor is: %r)" %
@@ -1396,7 +1397,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
         must_pack = True
       elif isinstance(elem, (list, tuple)):
         converted_elem = _autopacking_helper(elem, dtype, str(i))
-        if ops.is_dense_tensor_like(converted_elem):
+        if isinstance(converted_elem, core.Tensor):
           must_pack = True
         converted_elems.append(converted_elem)
       else:
@@ -1404,7 +1405,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
     if must_pack:
       elems_as_tensors = []
       for i, elem in enumerate(converted_elems):
-        if ops.is_dense_tensor_like(elem):
+        if isinstance(elem, core.Tensor):
           elems_as_tensors.append(elem)
         else:
           # NOTE(mrry): This is inefficient, but it enables us to
@@ -1429,7 +1430,7 @@ def _get_dtype_from_nested_lists(list_or_tuple):
     such object exists.
   """
   for elem in list_or_tuple:
-    if ops.is_dense_tensor_like(elem):
+    if isinstance(elem, core.Tensor):
       return elem.dtype.base_dtype
     elif isinstance(elem, (list, tuple)):
       maybe_dtype = _get_dtype_from_nested_lists(elem)
@@ -1441,7 +1442,7 @@ def _get_dtype_from_nested_lists(list_or_tuple):
 def _cast_nested_seqs_to_dtype(dtype):
 
   def _maybe_cast(elem):
-    if ops.is_dense_tensor_like(elem):
+    if isinstance(elem, core.Tensor):
       if dtype != elem.dtype.base_dtype:
         elem = gen_math_ops.cast(elem, dtype)
     return elem
@@ -1455,7 +1456,7 @@ _NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 def _should_not_autopack(v):
   # The condition we really want is
-  #    ops.is_dense_tensor_like(...)
+  #    any(isinstance(elem, core.Tensor))
   # but it is >5x slower due to abc.ABCMeta.__instancecheck__.
   # pylint: disable=unidiomatic-typecheck
   # TODO(slebedev): add nest.all?
@@ -1699,7 +1700,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
-    shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
+    axis_value = tensor_util.constant_value(axis)
+    if axis_value is not None:
+      axis = axis_value
+      shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
     leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(
@@ -1708,10 +1712,15 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
             shape(tensor)[:axis], [leading_size],
             shape(tensor)[axis + ndims_mask:]
         ], 0))
-    first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
-    tensor.set_shape(
-        tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
-            [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
+    # TODO(yongtang): tf.reshape in C++ kernel might have set the shape
+    # correctly, so the following may not be needed? It still might ben
+    # possible that there are some edge case where tensor_util.constant_value
+    # resolves more case than ShapeInference of tf.reshape in C++ kernel.
+    if axis_value is not None:
+      first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
+      tensor.set_shape(
+          tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
+              [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)

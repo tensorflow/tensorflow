@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -47,6 +51,7 @@ const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
 const absl::string_view kMemoryProfile = "memory_profile";
+const absl::string_view kXPlane = "xplane";
 
 HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
   if (run_env.device_type() == "GPU") return HardwareType::GPU;
@@ -62,9 +67,27 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
   tool_output.SerializeToString(tool_data->mutable_data());
 }
 
+template <typename Proto>
+Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
+  protobuf::util::JsonPrintOptions json_options;
+  json_options.always_print_primitive_fields = true;
+  auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
+                                                    json_options);
+  if (!status.ok()) {
+    // Convert error_msg google::protobuf::StringPiece (or absl::string_view) to
+    // tensorflow::StringPiece.
+    auto error_msg = status.message();
+    return errors::Internal(
+        strings::StrCat("Could not convert proto to JSON string: ",
+                        StringPiece(error_msg.data(), error_msg.length())));
+  }
+  return Status::OK();
+}
+
 // Returns the tool name with extension.
 string ToolName(absl::string_view tool) {
   if (tool == kTraceViewer) return "trace.json.gz";
+  if (tool == kMemoryProfile) return "memory_profile.json.gz";
   return absl::StrCat(tool, ".pb");
 }
 
@@ -75,6 +98,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                       ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
+  AddToolData(ToolName(kXPlane), xspace, response);
   if (tools.empty()) return Status::OK();
   if (tools.contains(kTraceViewer)) {
     Trace trace;
@@ -115,7 +139,11 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   if (tools.contains(kMemoryProfile)) {
     if (const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreads)) {
       MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
-      AddToolData(ToolName(kMemoryProfile), memory_profile, response);
+      std::string json_output;
+      TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, &json_output));
+      TF_RETURN_IF_ERROR(SaveGzippedToolDataToTensorboardProfile(
+          req.repository_root(), req.session_id(), req.host_name(),
+          ToolName(kMemoryProfile), json_output));
     }
   }
   return Status::OK();

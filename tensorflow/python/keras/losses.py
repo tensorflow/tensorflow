@@ -22,6 +22,8 @@ import abc
 
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
@@ -142,7 +144,8 @@ class Loss(object):
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
     with K.name_scope(self._name_scope), graph_ctx:
-      losses = self.call(y_true, y_pred)
+      ag_call = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
+      losses = ag_call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
 
@@ -245,7 +248,8 @@ class LossFunctionWrapper(Loss):
     if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
       y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
           y_pred, y_true)
-    return self.fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
+    return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):
     config = {}
@@ -1428,6 +1432,7 @@ def huber(y_true, y_pred, delta=1.0):
   """
   y_pred = math_ops.cast(y_pred, dtype=K.floatx())
   y_true = math_ops.cast(y_true, dtype=K.floatx())
+  delta = math_ops.cast(delta, dtype=K.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
   quadratic = math_ops.minimum(abs_error, delta)
@@ -1876,8 +1881,8 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'loss function identifier:', identifier)
+    raise ValueError(
+        'Could not interpret loss function identifier: {}'.format(identifier))
 
 
 LABEL_DTYPES_FOR_LOSSES = {

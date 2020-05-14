@@ -681,6 +681,12 @@ class _TextVectorizationCombiner(Combiner):
     if accumulator is None:
       accumulator = self._create_accumulator()
 
+    # If we are being passed raw strings or bytestrings, we need to wrap them
+    # in an array so we don't accidentally iterate over the bytes instead of
+    # treating the string as one object.
+    if isinstance(values, (str, bytes)):
+      values = [values]
+
     # TODO(momernick): Benchmark improvements to this algorithm.
     for document in values:
       current_doc_id = accumulator.metadata[0]

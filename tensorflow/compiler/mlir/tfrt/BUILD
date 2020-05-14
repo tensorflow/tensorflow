@@ -13,6 +13,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/runtime_fallback/...",
+        "//tensorflow/core/tfrt/experimental/saved_model/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
@@ -39,7 +40,7 @@ filegroup(
     srcs = [
         "runtime_fallback/runtime_fallback_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@tf_runtime//:OpBaseTdFiles",
     ],
 )
@@ -125,6 +126,33 @@ cc_library(
         "@tf_runtime//:core_runtime_opdefs_alwayslink",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "saved_model",
+    srcs = [
+        "saved_model/saved_model.cc",
+    ],
+    hdrs = [
+        "saved_model/saved_model.h",
+    ],
+    deps = [
+        ":tf_to_corert",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef",
+        "@tf_runtime//:support",
+        "@tf_runtime//:tensor",
+    ],
 )
 
 cc_library(

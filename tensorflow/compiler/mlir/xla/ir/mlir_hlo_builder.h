@@ -101,8 +101,24 @@ class MlirHloBuilder : public XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
+  // Creates the given op at the current location.
+  template <typename OpTy, typename... Args>
+  OpTy create(Args&&... args) {
+    return builder_.create<OpTy>(loc_, std::forward<Args>(args)...);
+  }
+
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
+
+  StatusOr<XlaOp> ConvGeneralDilatedInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config) override;
 
   StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand,
@@ -112,6 +128,10 @@ class MlirHloBuilder : public XlaBuilder {
       const Shape& shape, XlaOp input, XlaOp start_indices,
       const GatherDimensionNumbers& dimension_numbers,
       absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
+
+  StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
+                                absl::Span<const XlaOp> parameters,
+                                const Shape& shape) override;
 
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
@@ -163,9 +183,10 @@ class MlirHloBuilder : public XlaBuilder {
                                 absl::Span<const XlaOp> elements) override;
 
   // Creates HLO dialect op and returns the result as an XlaOp.
-  StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
-                           llvm::ArrayRef<XlaOp> operands,
-                           llvm::ArrayRef<mlir::NamedAttribute> attributes);
+  StatusOr<XlaOp> CreateOp(
+      const std::string& op_name, const Shape& shape,
+      llvm::ArrayRef<XlaOp> operands,
+      llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

@@ -50,12 +50,6 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 template <typename SrcOp>
 bool CreateStaticBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
                                        Value *out_lhs, Value *out_rhs) {
-  if (!op.broadcast_dimensions().hasValue()) {
-    // Note: the op may still have an implicit broadcast on it, such as
-    // for (tensor<1xf32>, tensor<4xf32>).
-    return false;
-  }
-
   // Insert BroadcastInDimOps for the left-hand-side and right-hand-side args,
   // replacing the original LHS and RHS args in the source op with the results
   // of the broadcasts.
@@ -79,25 +73,7 @@ bool CreateStaticBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
 
   auto lhs_rank = lhs_ranked_type.getRank();
   auto rhs_rank = rhs_ranked_type.getRank();
-
-  // Set broadcast_dimensions to [0, ..., rank] for the higher rank arg.
-  // Use the original op.broadcast_dimensions for the lower rank arg.
-  auto higher_rank_broadcast_dims =
-      GetI64ElementsAttrForSeq(0, std::max(lhs_rank, rhs_rank), rewriter);
-  DenseIntElementsAttr lhs_broadcast_dims;
-  DenseIntElementsAttr rhs_broadcast_dims;
-  if (lhs_rank > rhs_rank) {
-    lhs_broadcast_dims = higher_rank_broadcast_dims;
-    rhs_broadcast_dims = op.broadcast_dimensions().getValue();
-  } else if (lhs_rank < rhs_rank) {
-    lhs_broadcast_dims = op.broadcast_dimensions().getValue();
-    rhs_broadcast_dims = higher_rank_broadcast_dims;
-  } else {
-    // This shouldn't happen for legal ops. If the broadcast_dimensions
-    // attribute is set, the ranks should be different.
-    // TODO(scotttodd): Add a custom verification for ops and assert here.
-    return false;
-  }
+  ArrayRef<int64_t> op_shape = op_ranked_type.getShape();
 
   // BroadcastInDimOp must have the same element type for operands and results,
   // so preserve the original output shape and the original input element type.
@@ -105,16 +81,32 @@ bool CreateStaticBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
   //   broadcast_in_dim (tensor<1x4xf32>) -> tensor<1x4xf32>
   //   broadcast_in_dim (tensor<4xf32>) -> tensor<1x4xf32>
   //   SrcOp (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xi1>
-  ArrayRef<int64_t> op_shape = op_ranked_type.getShape();
-  auto lhs_type =
-      RankedTensorType::get(op_shape, lhs_ranked_type.getElementType());
-  auto rhs_type =
-      RankedTensorType::get(op_shape, rhs_ranked_type.getElementType());
+  if (lhs_ranked_type.getShape() != op_ranked_type.getShape()) {
+    auto type =
+        RankedTensorType::get(op_shape, lhs_ranked_type.getElementType());
+    DenseIntElementsAttr attr = GetI64ElementsAttrForSeq(0, lhs_rank, rewriter);
+    if (lhs_rank < rhs_rank) {
+      attr = op.broadcast_dimensions().getValue();
+    }
 
-  *out_lhs = rewriter->createOrFold<BroadcastInDimOp>(op.getLoc(), lhs_type,
-                                                      lhs, lhs_broadcast_dims);
-  *out_rhs = rewriter->createOrFold<BroadcastInDimOp>(op.getLoc(), rhs_type,
-                                                      rhs, rhs_broadcast_dims);
+    lhs =
+        rewriter->createOrFold<BroadcastInDimOp>(op.getLoc(), type, lhs, attr);
+  }
+
+  if (rhs_ranked_type.getShape() != op_ranked_type.getShape()) {
+    auto type =
+        RankedTensorType::get(op_shape, rhs_ranked_type.getElementType());
+    DenseIntElementsAttr attr = GetI64ElementsAttrForSeq(0, rhs_rank, rewriter);
+    if (rhs_rank < lhs_rank) {
+      attr = op.broadcast_dimensions().getValue();
+    }
+
+    rhs =
+        rewriter->createOrFold<BroadcastInDimOp>(op.getLoc(), type, rhs, attr);
+  }
+
+  *out_lhs = lhs;
+  *out_rhs = rhs;
   return true;
 }
 
@@ -359,9 +351,15 @@ struct CompareWithBroadcastConvert : public OpRewritePattern<CompareOp> {
 
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
                                         ConversionTarget *conversionTarget) {
-#define ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST(OpType) \
-  conversionTarget->addDynamicallyLegalOp<OpType>(      \
-      [](OpType op) { return !op.broadcast_dimensions().hasValue(); });
+#define ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST(OpType)           \
+  conversionTarget->addDynamicallyLegalOp<OpType>([](OpType op) { \
+    if (op.broadcast_dimensions().hasValue()) return false;       \
+    auto l = op.lhs().getType().cast<ShapedType>();               \
+    auto r = op.rhs().getType().cast<ShapedType>();               \
+    if (!l.hasRank() || !r.hasRank()) return false;               \
+    return l.getShape() == r.getShape();                          \
+  });
+
   // Binary elementwise ops.
   ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST(AddOp);
   ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST(Atan2Op);

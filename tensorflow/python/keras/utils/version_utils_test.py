@@ -53,12 +53,12 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     inputs = keras.Input(10)
     outputs = keras.layers.Dense(1)(inputs)
     model = keras.Model(inputs, outputs)
-    self._check_model_class(model.__class__)
+    self._check_model_class(model.__class__.__bases__[0])
     self._check_layer_class(model)
 
   def test_sequential_model(self):
     model = keras.Sequential([keras.layers.Dense(1)])
-    model_class = model.__class__.__bases__[0]
+    model_class = model.__class__.__bases__[0].__bases__[0]
     self._check_model_class(model_class)
     self._check_layer_class(model)
 

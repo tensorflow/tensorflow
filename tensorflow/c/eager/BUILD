@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -247,6 +246,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
@@ -608,7 +608,6 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
-            "*c_api_tfrt*",
             "*test*",
             "*dlpack*",
         ],

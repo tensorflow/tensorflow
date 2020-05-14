@@ -71,7 +71,7 @@ Status CompileSerializedMlirToXlaHlo(
 
 // Same as the above but takes input as TensorFlow Graph.
 Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<TensorShape> arg_shapes,
+    const Graph& graph, llvm::ArrayRef<const XlaCompiler::Argument> args,
     llvm::StringRef device_type, bool use_tuple_args,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,

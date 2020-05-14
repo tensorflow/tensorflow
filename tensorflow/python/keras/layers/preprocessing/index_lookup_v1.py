@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import index_lookup
-from tensorflow.python.ops.ragged import ragged_tensor_value
 
 
 class IndexLookup(index_lookup.IndexLookup,
@@ -59,37 +56,5 @@ class IndexLookup(index_lookup.IndexLookup,
       this option is set, reserve_zero must also be set. Defaults to False.
   """
 
-  def _get_table_data(self):
-    keys, values = self._table.export()
-    np_keys = K.get_session().run(keys)
-    np_values = K.get_session().run(values)
-    return (np_keys, np_values)
-
-  def vocab_size(self):
-    return K.get_session().run(self._table.size())
-
-  def _clear_table(self):
-    keys, _ = self._table.export()
-    K.get_session().run(self._table.remove(keys))
-    if self._inverse_table:
-      keys, _ = self._inverse_table.export()
-      K.get_session().run(self._inverse_table.remove(keys))
-
-  def _insert_table_data(self, keys, values):
-    K.get_session().run(self._table.insert(keys, values))
-    if self._inverse_table:
-      K.get_session().run(self._inverse_table.insert(values, keys))
-
-  def _initialize_inverse_table(self):
-    keys, values = self._table.export()
-    K.get_session().run(self._inverse_table.insert(values, keys))
-
-  def _to_numpy(self, data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(data, np.ndarray):
-      return data
-    session = K.get_session()
-    data = session.run(data)
-    if isinstance(data, ragged_tensor_value.RaggedTensorValue):
-      data = np.array(data.to_list())
-    return data
+  def _use_v1_apis(self):
+    return True

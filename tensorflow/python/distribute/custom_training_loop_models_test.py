@@ -380,6 +380,46 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def test_nested_tf_functions_with_control_flow(self, distribution):
+    inputs = np.random.random((10, 3)).astype(np.float32)
+    targets = np.ones((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).repeat()
+    dataset = dataset.batch(10, drop_remainder=True)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    def get_model():
+      x = keras.layers.Input(shape=(3,), name="input")
+      y = keras.layers.Dense(4, name="dense")(x)
+      model = keras.Model(x, y)
+      return model
+
+    with distribution.scope():
+      model = get_model()
+      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1, momentum=0.01)
+
+    @def_function.function
+    def train_step(iterator):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+
+      distribution.run(step_fn, args=(next(iterator),))
+
+    @def_function.function
+    def train_steps(iterator):
+      for _ in math_ops.range(10):
+        train_step(iterator)
+
+    train_steps(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))

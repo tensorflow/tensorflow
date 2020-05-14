@@ -263,12 +263,12 @@ class DelegateKernel {
 
     input_refs->clear();
     output_refs->clear();
-    const auto& inputs = graph->inputs();
+    const auto inputs = graph->inputs();
     input_refs->reserve(inputs.size());
     for (const auto& input : inputs) {
       input_refs->push_back(input->tensor.ref);
     }
-    const auto& outputs = graph->outputs();
+    const auto outputs = graph->outputs();
     output_refs->reserve(outputs.size());
     for (const auto& output : outputs) {
       output_refs->push_back(output->tensor.ref);
