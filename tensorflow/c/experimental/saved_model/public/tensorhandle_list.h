@@ -36,10 +36,6 @@ TF_CAPI_EXPORT extern size_t TF_TensorHandleListSize(
 TF_CAPI_EXPORT extern TFE_TensorHandle* TF_TensorHandleListGet(
     const TF_TensorHandleList* list, int i);
 
-// Deletes `list`.
-TF_CAPI_EXPORT extern void TF_DeleteTensorHandleList(
-    const TF_TensorHandleList* list);
-
 #ifdef __cplusplus
 }  // end extern "C"
 #endif  // __cplusplus

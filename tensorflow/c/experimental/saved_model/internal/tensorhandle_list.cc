@@ -32,8 +32,5 @@ TFE_TensorHandle* TF_TensorHandleListGet(const TF_TensorHandleList* list,
   return tensorflow::wrap((*tensorflow::unwrap(list))[i]);
 }
 
-void TF_DeleteTensorHandleList(const TF_TensorHandleList* list) {
-  delete tensorflow::unwrap(list);
-}
 
 }  // end extern "C"
