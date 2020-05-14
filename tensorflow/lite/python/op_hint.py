@@ -1166,8 +1166,6 @@ def _get_correct_mapping(original_index, nodes):
     node_indices = nodes.keys()
     node_indices = sorted(node_indices)
     return node_indices[-1]
-  else:
-    return original_index
   return original_index
 
 
