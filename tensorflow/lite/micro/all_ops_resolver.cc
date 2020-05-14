@@ -63,6 +63,7 @@ AllOpsResolver::AllOpsResolver() {
   AddPadV2();
   AddPrelu();
   AddQuantize();
+  AddReduceMax();
   AddRelu();
   AddRelu6();
   AddReshape();
