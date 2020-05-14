@@ -33,6 +33,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 
 
 VAR_OP_TYPES = [
@@ -503,7 +504,8 @@ def recompute_grad(f):
         kw_vars = list(variables)
       grads = t.gradient(result,
                          list(id_args) + kw_vars,
-                         output_gradients=dresult)
+                         output_gradients=dresult,
+                         unconnected_gradients=UnconnectedGradients.ZERO)
 
       def transpose(*t_args, **t_kwargs):
         """Gradient function calculation for forward mode autodiff."""
@@ -513,8 +515,6 @@ def recompute_grad(f):
             "Consider not using recompute_grad in forward mode autodiff".format(
                 f.__name__))
 
-      if len(grads) == 1 and None in grads:
-        return 0, transpose
       return (grads[:len(id_args)], grads[len(id_args):]), transpose
 
     return result, grad

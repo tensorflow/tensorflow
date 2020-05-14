@@ -19,7 +19,6 @@ from __future__ import print_function
 import tensorflow as tf
 from tensorflow.keras import layers, optimizers
 
-
 def _get_big_cnn_model(img_dim, n_channels, num_partitions,
                        blocks_per_partition):
   """Creates a test model whose activations are significantly larger than model size."""
@@ -67,7 +66,6 @@ def _compute_loss(logits, labels):
       tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                      labels=labels))
 
-
 def _limit_gpu_memory():
   """Helper function to limit GPU memory for testing  """
   gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -80,6 +78,8 @@ def _limit_gpu_memory():
           ])
     except RuntimeError as e:
       print(e)
+    return True
+  return False
 
 
 def _get_dummy_data(img_dim, n_channels, batch_size):
@@ -90,7 +90,6 @@ def _get_dummy_data(img_dim, n_channels, batch_size):
 
 def _train_no_recompute(n_steps):
   """Trains a single large model without gradient checkpointing."""
-  _limit_gpu_memory()
   img_dim, n_channels, batch_size = 256, 1, 4
   x, y = _get_dummy_data(img_dim, n_channels, batch_size)
   model = _get_big_cnn_model(img_dim,
@@ -113,7 +112,6 @@ def _train_no_recompute(n_steps):
 
 def _train_with_recompute(n_steps):
   """Trains a single large model with gradient checkpointing using tf.recompute_grad."""
-  _limit_gpu_memory()
   img_dim, n_channels, batch_size = 256, 1, 4
   x, y = _get_dummy_data(img_dim, n_channels, batch_size)
   # This model is the same model as _get_big_cnn_model but split into 3 parts.
@@ -146,12 +144,16 @@ def _train_with_recompute(n_steps):
 class GradientCheckpointTest(tf.test.TestCase):
 
   def test_raises_oom_exception(self):
+    if not _limit_gpu_memory():
+      self.skipTest("No virtual GPUs found")
     with self.assertRaises(Exception) as context:
       _train_no_recompute(1)
     self.assertTrue(
         context.exception.__class__.__name__ == 'ResourceExhaustedError')
 
   def test_does_not_raise_oom_exception(self):
+    if not _limit_gpu_memory():
+      self.skipTest("No virtual GPUs found")
     n_step = 2
     losses = _train_with_recompute(n_step)
     self.assertTrue(len(losses) == n_step)

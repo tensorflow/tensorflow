@@ -350,7 +350,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
   # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly fails around this test?
-  def testCustomGradientRecomputeGrad(self):
+  def testExceptionCustomGradientRecomputeGradForward(self):
 
     @custom_gradient.recompute_grad
     def f(x):
@@ -358,7 +358,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(NotImplementedError,
                                  "recompute_grad tried to transpose"):
-      _test_gradients(self, f, [constant_op.constant([1.])], order=3)
+      primals = [constant_op.constant([1.])]
+      sym_jac_fwd = _jacfwd(f, primals)
 
   def testExceptionInCustomGradientNotSwallowed(self):
 

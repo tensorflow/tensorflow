@@ -59,7 +59,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
-
+from tensorflow.python.ops import gradient_checker_v2
 
 class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -1340,6 +1340,45 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
 
     return grads_re, grads
 
+  def _grad(self, f, argnums=0):
+    """Return a function which computes the gradient of `f`."""
+
+    def _f(*params):
+      with backprop.GradientTape() as tape:
+        tape.watch(params)
+        outputs = f(*params)
+      return tape.gradient(
+          outputs,
+          params[argnums],
+          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO)
+
+    return _f
+
+  def _test_gradients(self, f, inputs, order, delta=1e-3, rtol=1e-2, atol=1e-6):
+    """Tests backward jacobians of `f`'s [0, `order`)-order gradients."""
+    if order < 1:
+      raise ValueError(
+          "`order` should be a positive integer, got '{}'.".format(order))
+    if order > 1:
+      self._test_gradients(f=self._grad(f),
+                           inputs=inputs,
+                           order=order - 1,
+                           delta=delta,
+                           rtol=rtol,
+                           atol=atol)
+    sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(f,
+                                                                 inputs,
+                                                                 delta=delta)
+    testcase.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
+  
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomGradientRecomputeGradHigherOrder(self):
+
+    @custom_gradient.recompute_grad
+    def f(x):
+      return math_ops.reduce_prod(math_ops.tanh(x)**2)
+    self._test_gradients(f, [constant_op.constant([1.])], order=3)
+  
   @test_util.run_in_graph_and_eager_modes
   def testFnRecompute(self):
     """Checks that recompute_grad works grads of function args."""
