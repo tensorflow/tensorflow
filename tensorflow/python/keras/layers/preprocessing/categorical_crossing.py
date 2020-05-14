@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import itertools
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -110,9 +109,6 @@ class CategoryCrossing(Layer):
       self._depth_tuple = depth
     elif depth is not None:
       self._depth_tuple = tuple([i for i in range(1, depth + 1)])
-    strategy = ds_context.get_strategy()
-    if strategy.__class__.__name__.startswith('TPUStrategy'):
-      raise ValueError('TPU strategy is not support for this layer yet.')
 
   def partial_crossing(self, partial_inputs, ragged_out, sparse_out):
     """Gets the crossed output from a partial list/tuple of inputs."""
