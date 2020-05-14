@@ -85,7 +85,7 @@ tf_cuda_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:chromiumos": [
             ":tf_attrtype",
@@ -182,7 +182,7 @@ tf_cuda_library(
         ":tf_status_internal",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":tf_status",
@@ -219,7 +219,7 @@ tf_cuda_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -234,7 +234,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":tf_status_internal",
@@ -272,7 +272,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -288,7 +288,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":tensor_interface",
@@ -313,7 +313,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":tensor_interface",
@@ -426,7 +426,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -457,7 +457,7 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
@@ -484,7 +484,7 @@ tf_cuda_library(
         ":tf_status_helper",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",

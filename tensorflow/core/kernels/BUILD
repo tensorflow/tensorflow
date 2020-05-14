@@ -4021,7 +4021,7 @@ cc_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//third_party/eigen3",
@@ -4046,7 +4046,7 @@ cc_library(
         ":eigen_spatial_convolutions-inl",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -4062,7 +4062,7 @@ cc_library(
     deps = select({
         "//tensorflow:android": [
             ":conv_3d_mobile",
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             ":conv_3d",
@@ -7270,8 +7270,8 @@ tf_cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":quantized_ops",
@@ -7331,8 +7331,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7416,8 +7416,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_testutil",
@@ -7603,8 +7603,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7829,8 +7829,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",

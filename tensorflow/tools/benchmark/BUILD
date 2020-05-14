@@ -28,8 +28,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",

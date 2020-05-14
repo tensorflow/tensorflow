@@ -35,7 +35,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":context_interface",
@@ -412,7 +412,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
