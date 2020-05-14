@@ -74,20 +74,22 @@ class ModuleTest(test.TestCase):
     tf.summary.image
     # If we use v2 API, check for create_file_writer,
     # otherwise check for FileWriter.
-    if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
-      tf.summary.create_file_writer
-    else:
-      tf.summary.FileWriter
+    if hasattr(tf, '_major_api_version'):
+      if tf._major_api_version == 2:
+        tf.summary.create_file_writer
+      else:
+        tf.summary.FileWriter
     # pylint: enable=pointless-statement
 
   def testInternalKerasImport(self):
     normalization_parent = layers.BatchNormalization.__module__.split('.')[-1]
-    if tf._major_api_version == 2:
-      self.assertEqual('normalization_v2', normalization_parent)
-      self.assertTrue(layers.BatchNormalization._USE_V2_BEHAVIOR)
-    else:
-      self.assertEqual('normalization', normalization_parent)
-      self.assertFalse(layers.BatchNormalization._USE_V2_BEHAVIOR)
+    if hasattr(tf, '_major_api_version'):
+      if tf._major_api_version == 2:
+        self.assertEqual('normalization_v2', normalization_parent)
+        self.assertTrue(layers.BatchNormalization._USE_V2_BEHAVIOR)
+      else:
+        self.assertEqual('normalization', normalization_parent)
+        self.assertFalse(layers.BatchNormalization._USE_V2_BEHAVIOR)
 
 
 if __name__ == '__main__':
