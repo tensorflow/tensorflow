@@ -127,6 +127,10 @@ int TF_OutputListNumOutputs(TF_OutputList* o) {
 TF_AbstractTensor* TF_OutputListGet(TF_OutputList* o, int i) {
   return wrap(unwrap(o)->outputs[i]);
 }
+void TF_OutputListPushBack(TF_OutputList* o, TF_AbstractTensor* tensor,
+                           TF_Status* s) {
+  unwrap(o)->outputs.push_back(unwrap(tensor));
+}
 
 void TF_AbstractOpSetOpType(TF_AbstractOp* op, const char* const op_type,
                             TF_Status* s) {

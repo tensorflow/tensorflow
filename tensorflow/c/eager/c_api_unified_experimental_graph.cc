@@ -139,6 +139,10 @@ class GraphContext : public ExecutionContext {
       return;
     }
     auto* tf_opdesc = graph_op->op_.release();
+    if (tf_opdesc == nullptr) {
+      TF_SetStatus(s, TF_INVALID_ARGUMENT, "AbstractOp is incomplete.");
+      return;
+    }
     for (int i = 0; i < num_inputs; ++i) {
       auto* graph_tensor = dyncast<GraphTensor>(inputs[i]);
       if (!graph_tensor) {

@@ -88,19 +88,21 @@ void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
 void TF_DeleteAbstractTensor(TF_AbstractTensor*);
 
 // TF_OutputList holds the list of TF_AbstractTensor that results from executing
-// an operation.
-// It just lets us not specify the number of outputs of an operation
-// beforehand. This forces a memory allocation in the runtime, which is bad, but
-// it allows for generic code.
-// TODO(aminim): the description above isn't clear with respect to
-// TF_OutputListNumOutputs and the current eager implementation which requires
-// the number of outputs to be set by the client.
+// an operation, or provided to create a function.
+// When executing an operation in an eager context, the expected number of
+// outputs must be set beforehand with `TF_OutputListSetNumOutputs`.
 typedef struct TF_OutputList TF_OutputList;
 TF_OutputList* TF_NewOutputList();
 void TF_DeleteOutputList(TF_OutputList* o);
-void TF_OutputListSetNumOutputs(TF_OutputList* o, int, TF_Status*);
+// Prepare tracing to the expected number of output for an operation.
+void TF_OutputListSetNumOutputs(TF_OutputList* o, int num_outputs, TF_Status*);
+// Return the number of outputs in the list.
 int TF_OutputListNumOutputs(TF_OutputList* o);
+// Return the `i`th output in the list.
 TF_AbstractTensor* TF_OutputListGet(TF_OutputList* o, int i);
+// Append a tensor at the end of the output list, growing its size by one.
+void TF_OutputListPushBack(TF_OutputList* o, TF_AbstractTensor* tensor,
+                           TF_Status*);
 
 // TF_ExecuteOperation will, if in eager mode, execute, if in graph mode, maybe
 // capture some inputs and then add a node in the graph. The output tensors are
