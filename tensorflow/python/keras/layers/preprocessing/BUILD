@@ -334,13 +334,7 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    tags = [
-        "no_rocm",
-    ],
-=======
     tags = ["no_rocm"],
->>>>>>> google_upstream/master
     deps = [
         ":discretization",
         ":preprocessing_test_utils",

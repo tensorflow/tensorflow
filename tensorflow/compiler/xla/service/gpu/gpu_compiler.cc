@@ -415,14 +415,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<TransposeFolding>(
       [](const HloInstruction& dot,
          const TransposeFolding::OperandIndices& candidate_operands) {
-<<<<<<< HEAD
-        return IsMatrixMultiplication(dot)
-                   ? candidate_operands
-                   : TransposeFolding::OperandIndices{};
-=======
         return IsMatrixMultiplication(dot) ? candidate_operands
                                            : TransposeFolding::OperandIndices{};
->>>>>>> google_upstream/master
       },
       TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.

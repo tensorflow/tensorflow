@@ -1185,17 +1185,16 @@ tf_module {
     argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-<<<<<<< HEAD
     name: "Dropout"
     argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DropoutGrad"
     argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-=======
+  }
+  member_method {
     name: "DummyIterationCounter"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
->>>>>>> google_upstream/master
   }
   member_method {
     name: "DummyMemoryCache"
