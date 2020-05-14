@@ -1680,7 +1680,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool FusedBatchNormExRewrite(const Node* n) {
-    CHECK_NOTNULL(n);
+    DCHECK(n);
 
     int num_side_inputs;
     TF_CHECK_OK(GetNodeAttr(n->def(), "num_side_inputs", &num_side_inputs));

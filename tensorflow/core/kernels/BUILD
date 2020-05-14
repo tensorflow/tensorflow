@@ -8225,10 +8225,6 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    hdrs = [
-        "fused_batch_norm_op.h",
-        "no_op.h",
-    ],
     deps = NN_DEPS + [
         ":fused_batch_norm_op",
         ":no_op",

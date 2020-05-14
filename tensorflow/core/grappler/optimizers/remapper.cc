@@ -796,8 +796,9 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
       [&](const utils::MutableNodeView& fused_batch_norm) -> bool {
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
-// We fuse FusedBatchNorm on GPU or MKL CPU.
+
 #ifndef ENABLE_MKLDNN_V1
+    // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #endif
 
@@ -868,8 +869,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
   // Input to a Relu can be an Add node with FusedBatchNorm as one of the inputs
   if (IsAdd(*relu_fanin_0_node_def)) {
-// Currently no CPU implementation for "FusedBatchNorm + SideInput +
-// <Activation>""
+    // Currently no CPU implementation for "FusedBatchNorm + SideInput +
+    // <Activation>""
 #ifdef ENABLE_MKLDNN_V1
     return false;
 #endif
@@ -959,10 +960,10 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
   if (fused_batch_norm.op() != "FusedBatchNorm") {
-    (*attr)["U"] = src_attr.at("U");
+    SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
   } else {
 #ifndef ENABLE_MKLDNN_V1
-    (*attr)["U"] = src_attr.at("T");
+    SetAttrValue(src_attr.at("T"), &(*attr)["U"]);
 #else
     SetAttrValue(DT_FLOAT, &(*attr)["U"]);
 #endif

@@ -3216,18 +3216,17 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
             "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
 
+// clang-format off
 #ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
-    InitGraph("node { name: 'A' op: '" #INPUT                                \
-              "'}"                                                           \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
               "node { name: 'B' op: 'Input'}"                                \
               "node { name: 'C' op: 'Input'}"                                \
               "node { name: 'D' op: 'Input'}"                                \
               "node { name: 'E' op: 'Input'}"                                \
               "node { name: 'F' op: '_FusedBatchNormEx'"                     \
-              " attr { key: 'T'               value { type: " #T             \
-              " } }"                                                         \
+              " attr { key: 'T'               value { type: " #T " } }"      \
               " attr { key: 'U'               value { type: DT_FLOAT } }"    \
               " attr { key: 'data_format'     value { s: 'NCHW' } }"         \
               " attr { key: 'epsilon'         value { f: 0.0001 } }"         \
@@ -3236,12 +3235,10 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
               " attr { key: 'activation_mode' value { s: 'Relu' } }"         \
               " input: ['A', 'B', 'C', 'D', 'E'] }"                          \
               "node { name: 'G' op: 'Zeta'"                                  \
-              " attr { key: 'T' value { type: " #T                           \
-              " } }"                                                         \
+              " attr { key: 'T' value { type: " #T " } }"                    \
               " input: ['A', 'F'] }");                                       \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-              "A(" #INPUT                                                    \
-              ");B(Input);C(Input);D(Input);"                                \
+              "A(" #INPUT ");B(Input);C(Input);D(Input);"                    \
               "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"     \
               "DMT/_4(Const);E(Input);"                                      \
               "F(_MklFusedBatchNormEx);G(Zeta)|A->F;A->G;"                   \
@@ -3257,17 +3254,14 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Positive);
 // Rewrite test for _FusedBatchNormEx Op with side input
 #define REGISTER_TEST(NAME, T, INPUT)                                     \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                 \
-    InitGraph("node { name: 'A' op: '" #INPUT                             \
-              "'}"                                                        \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                        \
               "node { name: 'B' op: 'Input'}"                             \
               "node { name: 'C' op: 'Input'}"                             \
               "node { name: 'D' op: 'Input'}"                             \
               "node { name: 'E' op: 'Input'}"                             \
-              "node { name: 'F' op: '" #INPUT                             \
-              "'}"                                                        \
+              "node { name: 'F' op: '" #INPUT "'}"                        \
               "node { name: 'G' op: '_FusedBatchNormEx'"                  \
-              " attr { key: 'T'               value { type: " #T          \
-              " } }"                                                      \
+              " attr { key: 'T'               value { type: " #T " } }"   \
               " attr { key: 'U'               value { type: DT_FLOAT } }" \
               " attr { key: 'data_format'     value { s: 'NCHW' } }"      \
               " attr { key: 'epsilon'         value { f: 0.0001 } }"      \
@@ -3276,14 +3270,11 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Positive);
               " attr { key: 'activation_mode' value { s: 'Relu' } }"      \
               " input: ['A', 'B', 'C', 'D', 'E', 'F'] }"                  \
               "node { name: 'H' op: 'Zeta'"                               \
-              " attr { key: 'T' value { type: " #T                        \
-              " } }"                                                      \
+              " attr { key: 'T' value { type: " #T " } }"                 \
               " input: ['A', 'G'] }");                                    \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                              \
-              "A(" #INPUT                                                 \
-              ");B(Input);C(Input);D(Input);E(Input);"                    \
-              "F(" #INPUT                                                 \
-              ");G(_FusedBatchNormEx);H(Zeta)|A->G;A->H;"                 \
+              "A(" #INPUT ");B(Input);C(Input);D(Input);E(Input);"        \
+              "F(" #INPUT ");G(_FusedBatchNormEx);H(Zeta)|A->G;A->H;"     \
               "B->G:1;C->G:2;D->G:3;E->G:4;F->G:5;G->H:1");               \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
@@ -3292,15 +3283,13 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
 // Rewrite test for _FusedBatchNormEx Op with Identity activation
 #define REGISTER_TEST(NAME, T, INPUT)                                     \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                 \
-    InitGraph("node { name: 'A' op: '" #INPUT                             \
-              "'}"                                                        \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                        \
               "node { name: 'B' op: 'Input'}"                             \
               "node { name: 'C' op: 'Input'}"                             \
               "node { name: 'D' op: 'Input'}"                             \
               "node { name: 'E' op: 'Input'}"                             \
               "node { name: 'G' op: '_FusedBatchNormEx'"                  \
-              " attr { key: 'T'               value { type: " #T          \
-              " } }"                                                      \
+              " attr { key: 'T'               value { type: " #T " } }"   \
               " attr { key: 'U'               value { type: DT_FLOAT } }" \
               " attr { key: 'data_format'     value { s: 'NCHW' } }"      \
               " attr { key: 'epsilon'         value { f: 0.0001 } }"      \
@@ -3309,18 +3298,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
               " attr { key: 'activation_mode' value { s: 'Identity' } }"  \
               " input: ['A', 'B', 'C', 'D', 'E'] }"                       \
               "node { name: 'H' op: 'Zeta'"                               \
-              " attr { key: 'T' value { type: " #T                        \
-              " } }"                                                      \
+              " attr { key: 'T' value { type: " #T " } }"                 \
               " input: ['A', 'G'] }");                                    \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                              \
-              "A(" #INPUT                                                 \
-              ");B(Input);C(Input);D(Input);E(Input);"                    \
+              "A(" #INPUT ");B(Input);C(Input);D(Input);E(Input);"        \
               "G(_FusedBatchNormEx);H(Zeta)|A->G;A->H;"                   \
               "B->G:1;C->G:2;D->G:3;E->G:4;G->H:1");                      \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative2);
 #undef REGISTER_TEST
 #endif  // ENABLE_MKLDNN_V1
+// clang-format on
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
