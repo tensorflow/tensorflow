@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -570,25 +571,9 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
   PrimitiveType keys_type = keys_shape.element_type();
-  switch (keys_type) {
-    case PRED:
-    case S8:
-    case U8:
-    case S16:
-    case U16:
-    case BF16:
-    case F16:
-    case S32:
-    case U32:
-    case F32:
-    case S64:
-    case U64:
-    case F64:
-      break;
-    default:
-      return Unimplemented(
-          "Element type %s not supported in the Sort op on CPU.",
-          PrimitiveType_Name(keys_type));
+  if (!primitive_util::IsArrayType(keys_type)) {
+    return Unimplemented("Element type %s not supported in the Sort op on CPU.",
+                         PrimitiveType_Name(keys_type));
   }
   std::vector<llvm::Value*> destination_addresses(sort->operand_count());
   for (int64 i = 0; i < sort->operand_count(); ++i) {
