@@ -198,7 +198,7 @@ class MapFnTest(test.TestCase):
 
     @tf.function
     def map_call(x):
-      tf.map_fn(test_function, x)
+      return tf.map_fn(test_function, x)
 
     x = constant_op.constant([1])
     y = map_call(x)
