@@ -28,7 +28,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
-from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -141,9 +140,6 @@ class TPUStrategyTest(test.TestCase):
     # for non-local TPU.
     if FLAGS.tpu:
       self.skipTest("Recovery fails for non-local TPU, see b/148150981")
-
-    # Disable automatic outside compilation.
-    config.set_soft_device_placement(False)
     strategy = get_tpu_strategy()
 
     @def_function.function
@@ -167,28 +163,6 @@ class TPUStrategyTest(test.TestCase):
       return strategy.run(computation)
 
     good_run()
-
-  def test_dynamic_shape_with_outside_compilation_failure(self):
-    # Enable automatic outside compilation.
-    config.set_soft_device_placement(True)
-    strategy = get_tpu_strategy()
-    dataset = dataset_ops.Dataset.from_tensors(("string", 1.0)).repeat().batch(
-        2, drop_remainder=False)
-    dataset = strategy.experimental_distribute_dataset(dataset)
-    iterator = iter(dataset)
-
-    @def_function.function
-    def train_fn(iterator):
-
-      def step_fn(inputs):
-        _, inputs = inputs
-        return math_ops.reduce_sum(inputs)
-
-      return strategy.experimental_local_results(
-          strategy.run(step_fn, args=(next(iterator),)))
-
-    with self.assertRaisesRegex(errors.InternalError, "Compilation failure"):
-      logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self):
     resolver = get_tpu_cluster_resolver()
