@@ -1,6 +1,6 @@
 """Generates cubin headers for TF dialect ops."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -87,8 +87,8 @@ _gen_kernel_image_hdr = rule(
 
 def gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
     """Generates a C header with fatbin data from a Tensorflow op."""
-    if_cuda(
-        if_true = [_gen_kernel_image_hdr(
+    if cuda_gpu_architectures():
+        _gen_kernel_image_hdr(
             name = name,
             op = op,
             tile_size = tile_size,
@@ -97,5 +97,4 @@ def gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
             symbol = "k%s" % name.replace("_", " ").title().replace(" ", ""),
             gpu_archs = cuda_gpu_architectures(),
             tags = tags,
-        )],
-    )
+        )
