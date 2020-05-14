@@ -79,8 +79,10 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinConcatenation:
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
+    case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMaxPool2d:
     case kTfLiteBuiltinMean:
+    case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
@@ -365,6 +367,16 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     case kTfLiteBuiltinQuantize: {
       return InputsWithCorrectTypes(node, context,
                                     {{kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMinimum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMaximum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
     }
     default:
       return false;

@@ -30,6 +30,7 @@ hexagon_op_tests(
         "conv_test.cc",
         "l2_norm_test.cc",
         "matmul_test.cc",
+        "min_max_builder_test.cc",
         "mirror_pad_test.cc",
         "mul_test.cc",
         "neg_test.cc",

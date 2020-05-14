@@ -93,6 +93,10 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateQuantizeBuilder(this, OP_Requantize_8to8);
     case kTfLiteBuiltinHardSwish:
       return CreateHardSwishBuilder(this, OP_QuantizedHardSwish_8);
+    case kTfLiteBuiltinMinimum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMinimum_8);
+    case kTfLiteBuiltinMaximum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMaximum_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
