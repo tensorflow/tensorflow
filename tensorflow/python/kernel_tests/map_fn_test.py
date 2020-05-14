@@ -187,6 +187,24 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(nums, received[2])
 
   @test_util.run_in_graph_and_eager_modes
+  def testMap_autograph_indirect():
+    def test_function(x):
+      cond = tf.constant(-1)
+      if cond == 0:
+        result = x
+      else:
+        result = x
+      return result
+
+    @tf.function
+    def map_call(x):
+      tf.map_fn(test_function, x)
+
+    x = constant_op.constant([1])
+    y = map_call(x)
+    self.assertAllEqual([1], self.evaluate(y))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
     x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
     y = map_fn.map_fn(lambda e: e, x)
