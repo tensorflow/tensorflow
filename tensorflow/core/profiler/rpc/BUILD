@@ -19,9 +19,7 @@ cc_library(
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
     ],
 )

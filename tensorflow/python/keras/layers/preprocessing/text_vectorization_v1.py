@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
-from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
+from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import keras_export
@@ -84,7 +84,7 @@ class TextVectorization(text_vectorization.TextVectorization,
     return categorical_encoding_v1.CategoricalEncoding
 
   def _get_index_lookup_class(self):
-    return index_lookup_v1.IndexLookup
+    return string_lookup_v1.StringLookup
 
   def _to_numpy(self, data):
     """Converts preprocessed inputs into numpy arrays."""

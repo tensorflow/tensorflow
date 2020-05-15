@@ -32,6 +32,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_dispatch
@@ -232,6 +233,10 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           {'op': array_ops.check_numerics,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'message': 'check-numerics'},
+          {'op': nn_ops.dropout,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'rate': 0.5,
+           'seed': 1},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
@@ -820,7 +825,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
+        'nn.dropout',
     ]
 
     # Ops that should be listed as supported in v1 only.

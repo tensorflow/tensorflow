@@ -601,8 +601,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
+  @test_util.disable_mlir_bridge("TODO(b/156135423): Fix ConvertSigmoidOp")
   def testComplexOps(self):
     for dtype in self.complex_types:
 

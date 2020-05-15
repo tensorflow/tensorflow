@@ -54,6 +54,7 @@ from tensorflow.python.ops.gen_control_flow_ops import *
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -110,6 +111,7 @@ def _summarize_eager(tensor, summarize=None):
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
+@dispatch.add_dispatch_support
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -1095,6 +1097,7 @@ def _UnpackIfSingleton(res):
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
 @tf_export(v1=["cond"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(
     None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
     "fn1", "fn2")
@@ -1318,6 +1321,7 @@ def _cast_indexed_slice_indices(a, b):
 
 
 @tf_export("cond", v1=[])
+@dispatch.add_dispatch_support
 def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
@@ -2942,6 +2946,7 @@ def group(*inputs, **kwargs):
 
 
 @tf_export("tuple", v1=[])
+@dispatch.add_dispatch_support
 def tuple_v2(tensors, control_inputs=None, name=None):
   """Group tensors together.
 
@@ -2978,6 +2983,7 @@ def tuple_v2(tensors, control_inputs=None, name=None):
 
 
 @tf_export(v1=["tuple"])
+@dispatch.add_dispatch_support
 def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 
@@ -3312,6 +3318,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
 
 
 @tf_export("case", v1=[])
+@dispatch.add_dispatch_support
 def case_v2(pred_fn_pairs,
             default=None,
             exclusive=False,
@@ -3416,6 +3423,7 @@ def case_v2(pred_fn_pairs,
 
 
 @tf_export(v1=["case"])
+@dispatch.add_dispatch_support
 def case(pred_fn_pairs,
          default=None,
          exclusive=False,

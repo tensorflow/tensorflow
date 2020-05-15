@@ -245,10 +245,9 @@ class Subgraph {
         *flags = 0;
         return kTfLiteOk;
       default:
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context, "invalid padding mode (%d) in node #%d",
-                             static_cast<int>(padding), node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(context,
+                                 "invalid padding mode (%d) in node #%d",
+                                 static_cast<int>(padding), node_index);
         return kTfLiteError;
     }
   }
@@ -274,32 +273,24 @@ class Subgraph {
         *output_max = 6.0f;
         return kTfLiteOk;
       case kTfLiteActTanh:
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "unsupported fused activation (Tanh) in node #%d",
-                             node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Tanh) in node #%d",
+            node_index);
         return kTfLiteError;
       case kTfLiteActSignBit:
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "unsupported fused activation (Sign) in node #%d",
-                             node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Sign) in node #%d",
+            node_index);
         return kTfLiteError;
       case kTfLiteActSigmoid:
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(
-              context, "unsupported fused activation (Sigmoid) in node #%d",
-              node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported fused activation (Sigmoid) in node #%d",
+            node_index);
         return kTfLiteError;
       default:
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "invalid fused activation (%d) in node #%d",
-                             static_cast<int>(activation), node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(context,
+                                 "invalid fused activation (%d) in node #%d",
+                                 static_cast<int>(activation), node_index);
         return kTfLiteError;
     }
   }
@@ -308,34 +299,26 @@ class Subgraph {
                                              const TfLiteConvParams* params,
                                              int node_index) {
     if (params->stride_width <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
-                           params->stride_width, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                               params->stride_width, node_index);
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
-                           params->stride_height, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                               params->stride_height, node_index);
       return kTfLiteError;
     }
 
     if (params->dilation_width_factor <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid dilation width factor %d in node #%d",
-                           params->dilation_width_factor, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "invalid dilation width factor %d in node #%d",
+                               params->dilation_width_factor, node_index);
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid dilation height factor %d in node #%d",
-                           params->dilation_height_factor, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "invalid dilation height factor %d in node #%d",
+                               params->dilation_height_factor, node_index);
       return kTfLiteError;
     }
 
@@ -346,52 +329,41 @@ class Subgraph {
       TfLiteContext* context, const TfLiteDepthwiseConvParams* params,
       int output_channels, int node_index) {
     if (params->stride_width <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
-                           params->stride_width, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                               params->stride_width, node_index);
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
-                           params->stride_height, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                               params->stride_height, node_index);
       return kTfLiteError;
     }
 
     if (params->depth_multiplier <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid depth multiplier %d in node #%d",
-                           params->depth_multiplier, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "invalid depth multiplier %d in node #%d",
+                               params->depth_multiplier, node_index);
       return kTfLiteError;
     }
     if (output_channels % params->depth_multiplier != 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "depth multiplier %d is incompatible with "
-                           "number of output channels %d in node #%d",
-                           params->depth_multiplier, output_channels,
-                           node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "depth multiplier %d is incompatible with "
+                               "number of output channels %d in node #%d",
+                               params->depth_multiplier, output_channels,
+                               node_index);
       return kTfLiteError;
     }
 
     if (params->dilation_width_factor <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid dilation width factor %d in node #%d",
-                           params->dilation_width_factor, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "invalid dilation width factor %d in node #%d",
+                               params->dilation_width_factor, node_index);
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid dilation height factor %d in node #%d",
-                           params->dilation_height_factor, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "invalid dilation height factor %d in node #%d",
+                               params->dilation_height_factor, node_index);
       return kTfLiteError;
     }
 
@@ -402,17 +374,13 @@ class Subgraph {
       TfLiteContext* context, const TfLiteTransposeConvParams* params,
       int node_index) {
     if (params->stride_width <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
-                           params->stride_width, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                               params->stride_width, node_index);
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
-                           params->stride_height, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                               params->stride_height, node_index);
       return kTfLiteError;
     }
 
@@ -502,11 +470,9 @@ class Subgraph {
       TfLiteContext* context, const TfLiteFullyConnectedParams* params,
       int node_index) {
     if (params->weights_format != kTfLiteFullyConnectedWeightsFormatDefault) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "unsupported non-default weights format in node #%d",
-                           node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unsupported non-default weights format in node #%d",
+          node_index);
       return kTfLiteError;
     }
 
@@ -517,39 +483,29 @@ class Subgraph {
                                          const TfLitePoolParams* params,
                                          int node_index) {
     if (params->stride_width <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
-                           params->stride_width, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                               params->stride_width, node_index);
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
-                           params->stride_height, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                               params->stride_height, node_index);
       return kTfLiteError;
     }
 
     if (params->filter_width <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid filter width %d in node #%d",
-                           params->filter_width, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid filter width %d in node #%d",
+                               params->filter_width, node_index);
       return kTfLiteError;
     }
     if (params->filter_height <= 0) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "invalid filter height %d in node #%d",
-                           params->filter_height, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "invalid filter height %d in node #%d",
+                               params->filter_height, node_index);
       return kTfLiteError;
     }
     if (params->filter_width == 1 && params->filter_height == 1) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context, "meaningless 1x1 pooling in node #%d",
-                           node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context, "meaningless 1x1 pooling in node #%d",
+                               node_index);
       return kTfLiteError;
     }
 
@@ -562,19 +518,15 @@ class Subgraph {
                                                int expected_num_outputs,
                                                int node_index) {
     if (node->inputs->size != expected_num_inputs) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "unexpected number of inputs (%d != %d) in node #%d",
-                           node->inputs->size, expected_num_inputs, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unexpected number of inputs (%d != %d) in node #%d",
+          node->inputs->size, expected_num_inputs, node_index);
       return kTfLiteError;
     }
     if (node->outputs->size != expected_num_outputs) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(
-            context, "unexpected number of output (%d != %d) in node #%d",
-            node->outputs->size, expected_num_outputs, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unexpected number of output (%d != %d) in node #%d",
+          node->outputs->size, expected_num_outputs, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -584,11 +536,9 @@ class Subgraph {
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
     if (tensor.type != kTfLiteFloat32) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(
-            context, "unsupported type %s in tensor #%d in node #%d",
-            TfLiteTypeGetName(tensor.type), tensor_index, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unsupported type %s in tensor #%d in node #%d",
+          TfLiteTypeGetName(tensor.type), tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -599,21 +549,17 @@ class Subgraph {
                                        int expected_num_dims,
                                        int tensor_index) {
     if (tensor.dims->size != expected_num_dims) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(
-            context,
-            "unexpected number of shape dimensions (%d != %d) in tensor #%d",
-            tensor.dims->size, expected_num_dims, tensor_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "unexpected number of shape dimensions (%d != %d) in tensor #%d",
+          tensor.dims->size, expected_num_dims, tensor_index);
       return kTfLiteError;
     }
     for (int i = 0; i < tensor.dims->size; i++) {
       if (tensor.dims->data[i] <= 0) {
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "invalid dimension #%d (%d) in tensor #%d", i,
-                             tensor.dims->data[i], tensor_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(context,
+                                 "invalid dimension #%d (%d) in tensor #%d", i,
+                                 tensor.dims->data[i], tensor_index);
         return kTfLiteError;
       }
     }
@@ -624,25 +570,22 @@ class Subgraph {
                                             const TfLiteTensor& tensor,
                                             int tensor_index, int node_index) {
     if (tensor.dims->size < 1) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "unexpected number of shape dimensions (%d) in "
-                           "tensor #%d in node #%d: "
-                           "expected at least a 1D tensor",
-                           tensor.dims->size, tensor_index, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of shape dimensions (%d) in "
+                               "tensor #%d in node #%d: "
+                               "expected at least a 1D tensor",
+                               tensor.dims->size, tensor_index, node_index);
       return kTfLiteError;
     }
     // Validate that all non-channel dimensions (if any) are exactly 1.
     for (int i = 0; i < tensor.dims->size - 1; i++) {
       if (tensor.dims->data[i] != 1) {
-        if (context != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "unexpected value %d of shape dimension #%d in "
-                             "tensor #%d in node #%d: "
-                             "expected 1 for non-channel dimensions",
-                             tensor.dims[i], i, tensor_index, node_index);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context,
+            "unexpected value %d of shape dimension #%d in "
+            "tensor #%d in node #%d: "
+            "expected 1 for non-channel dimensions",
+            tensor.dims[i], i, tensor_index, node_index);
         return kTfLiteError;
       }
     }
@@ -654,12 +597,11 @@ class Subgraph {
       int node_index) {
     // TODO(b/149120844): remove checks once dynamic tensors are supported
     if (tensor.allocation_type == kTfLiteDynamic) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid allocation type in tensor #%d in node #%d: "
-                           "expected non-dynamic tensor",
-                           tensor_index, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "invalid allocation type in tensor #%d in node #%d: "
+          "expected non-dynamic tensor",
+          tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -671,12 +613,11 @@ class Subgraph {
                                                   int node_index) {
     if (tensor.allocation_type != kTfLiteMmapRo ||
         tensor.data.raw_const == nullptr) {
-      if (context != nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "invalid allocation type in tensor #%d in node #%d: "
-                           "expected static read-only tensor",
-                           tensor_index, node_index);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "invalid allocation type in tensor #%d in node #%d: "
+          "expected static read-only tensor",
+          tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -1134,23 +1075,19 @@ class Subgraph {
     const int32_t input_channels = filter_tensor.dims->data[1];
 
     if (input_tensor.dims->size == 0) {
-      if (logging_context != nullptr) {
-        TF_LITE_KERNEL_LOG(
-            logging_context,
-            "unexpected number of shape dimensions %d in tensor #%d",
-            input_tensor.dims->size, node->inputs->data[0]);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unexpected number of shape dimensions %d in tensor #%d",
+          input_tensor.dims->size, node->inputs->data[0]);
       return kTfLiteError;
     }
 
     int32_t num_input_elements = 1;
     for (int i = 0; i < input_tensor.dims->size; i++) {
       if (input_tensor.dims->data[i] <= 0) {
-        if (logging_context != nullptr) {
-          TF_LITE_KERNEL_LOG(logging_context,
-                             "invalid dimension #%d (%d) in tensor #%d", i,
-                             input_tensor.dims->data[i], node->inputs->data[0]);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context, "invalid dimension #%d (%d) in tensor #%d", i,
+            input_tensor.dims->data[i], node->inputs->data[0]);
         return kTfLiteError;
       }
       num_input_elements *= input_tensor.dims->data[i];
@@ -1163,55 +1100,47 @@ class Subgraph {
 
       for (int i = 0; i < input_tensor.dims->size - 1; i++) {
         if (input_tensor.dims->data[i] != output_tensor.dims->data[i]) {
-          if (logging_context != nullptr) {
-            TF_LITE_KERNEL_LOG(
-                logging_context,
-                "mismatch in shape dimension %d (%d != %d) in input and output "
-                "tensors of FULLY_CONNECTED operator #%d",
-                i, input_tensor.dims->data[i], output_tensor.dims->data[i],
-                node_index);
-          }
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "mismatch in shape dimension %d (%d != %d) in input and output "
+              "tensors of FULLY_CONNECTED operator #%d",
+              i, input_tensor.dims->data[i], output_tensor.dims->data[i],
+              node_index);
           return kTfLiteError;
         }
       }
     } else {
       if (num_input_elements % input_channels != 0) {
-        if (logging_context != nullptr) {
-          TF_LITE_KERNEL_LOG(
-              logging_context,
-              "number of elements in input tensor #%d in FULLY_CONNECTED "
-              "operator is not divisible by input channels (%d)",
-              node->inputs->data[0], input_channels);
-          return kTfLiteError;
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "number of elements in input tensor #%d in FULLY_CONNECTED "
+            "operator is not divisible by input channels (%d)",
+            node->inputs->data[0], input_channels);
+        return kTfLiteError;
       }
 
       TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 2,
                                              node->outputs->data[0]));
 
       if (output_tensor.dims->data[0] != num_input_elements / input_channels) {
-        if (logging_context != nullptr) {
-          TF_LITE_KERNEL_LOG(
-              logging_context,
-              "batch size %d in output tensor #%d in FULLY_CONNECTED operator "
-              "does not match batch size %d in reshaped input tensor #%d",
-              output_tensor.dims->data[0], node->outputs->data[0],
-              num_input_elements / input_channels, node->inputs->data[0]);
-        }
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "batch size %d in output tensor #%d in FULLY_CONNECTED operator "
+            "does not match batch size %d in reshaped input tensor #%d",
+            output_tensor.dims->data[0], node->outputs->data[0],
+            num_input_elements / input_channels, node->inputs->data[0]);
         return kTfLiteError;
       }
     }
 
     if (output_tensor.dims->data[output_tensor.dims->size - 1] !=
         output_channels) {
-      if (logging_context != nullptr) {
-        TF_LITE_KERNEL_LOG(
-            logging_context,
-            "number of channels %d in output tensor #%d does not match output "
-            "channels %d in filter tensor #%d",
-            output_tensor.dims->data[output_tensor.dims->size - 1],
-            node->outputs->data[0], output_channels, node->inputs->data[1]);
-      }
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "number of channels %d in output tensor #%d does not match output "
+          "channels %d in filter tensor #%d",
+          output_tensor.dims->data[output_tensor.dims->size - 1],
+          node->outputs->data[0], output_channels, node->inputs->data[1]);
       return kTfLiteError;
     }
 

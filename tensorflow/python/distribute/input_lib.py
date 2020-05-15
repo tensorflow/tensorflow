@@ -823,14 +823,15 @@ class DistributedDatasetsFromFunction(_IterableInput):
           "input_contexts (%d)" %
           (input_workers.num_workers, len(input_contexts)))
 
-    self._dataset_fn = dataset_fn
     self._input_workers = input_workers
     self._input_contexts = input_contexts
     self._strategy = strategy
-    self._element_spec = None
-
-    super(DistributedDatasetsFromFunction, self).__init__(
-        input_workers=input_workers)
+    self._datasets, element_spec = (
+        _create_datasets_per_worker_with_input_context(self._input_contexts,
+                                                       self._input_workers,
+                                                       dataset_fn))
+    self._element_spec = _create_distributed_tensor_spec(
+        self._strategy, element_spec)
 
   def __iter__(self):
     if (ops.executing_eagerly_outside_functions() or
@@ -842,9 +843,9 @@ class DistributedDatasetsFromFunction(_IterableInput):
       enable_legacy_iterators = getattr(self._strategy,
                                         "_enable_legacy_iterators", False)
 
-      iterators, element_spec = _create_iterators_per_worker_with_input_context(
-          self._input_contexts, self._input_workers, self._dataset_fn,
-          enable_legacy_iterators)
+      iterators = _create_iterators_per_worker(self._datasets,
+                                               self._input_workers,
+                                               enable_legacy_iterators)
 
       if enable_legacy_iterators:
         iterator = DistributedIteratorV1(self._input_workers, iterators,
@@ -852,8 +853,6 @@ class DistributedDatasetsFromFunction(_IterableInput):
       else:
         iterator = DistributedIterator(self._input_workers, iterators,
                                        self._strategy)
-      self._element_spec = _create_distributed_tensor_spec(self._strategy,
-                                                           element_spec)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
       return iterator
 
@@ -896,13 +895,10 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     return self._get_iterator()
 
   def _get_iterator(self):
-    iterators, element_spec = _create_iterators_per_worker_with_input_context(
-        self._input_contexts, self._input_workers, self._dataset_fn,
-        True)
+    iterators = _create_iterators_per_worker(self._datasets,
+                                             self._input_workers, True)
     iterator = DistributedIteratorV1(self._input_workers, iterators,
                                      self._strategy)
-    self._element_spec = _create_distributed_tensor_spec(self._strategy,
-                                                         element_spec)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
     return iterator
 
@@ -1375,27 +1371,16 @@ def _create_iterators_per_worker(worker_datasets, input_workers,
   return iterators
 
 
-def _create_iterators_per_worker_with_input_context(input_contexts,
-                                                    input_workers,
-                                                    dataset_fn,
-                                                    enable_legacy_iterators):
-  """Create a multidevice iterator per workers given a dataset function."""
-  iterators = []
-  element_specs = []
+def _create_datasets_per_worker_with_input_context(input_contexts,
+                                                   input_workers, dataset_fn):
+  """Create device datasets per worker given a dataset function."""
+  datasets = []
   for i, ctx in enumerate(input_contexts):
     worker = input_workers.worker_devices[i]
     with ops.device(worker):
       dataset = dataset_fn(ctx)
-      element_specs.append(dataset.element_spec)
-      devices = input_workers.compute_devices_for_worker(i)
-      if tf2.enabled() and not enable_legacy_iterators:
-        iterator = _SingleWorkerOwnedDatasetIterator(dataset, worker,
-                                                     devices)
-      else:
-        iterator = _SingleWorkerDatasetIterator(dataset, worker,
-                                                devices)
-      iterators.append(iterator)
-  return iterators, dataset.element_spec
+      datasets.append(dataset)
+  return datasets, dataset.element_spec
 
 
 # TODO(sourabhbajaj): Remove this in lieu of distributed datasets

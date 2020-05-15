@@ -23,10 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("signal.overlap_and_add")
+@dispatch.add_dispatch_support
 def overlap_and_add(signal, frame_step, name=None):
   """Reconstructs a signal from a framed representation.
 

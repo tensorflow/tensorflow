@@ -29,6 +29,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
@@ -285,6 +286,57 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
           validate_training=False,
           adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
+
+  def test_list_inputs_1d(self):
+    vocab_data = ["two two two", "two three three", "three four four five"]
+    input_data = ["two three", "four five"]
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_tensor_inputs(self):
+    vocab_data = constant_op.constant(
+        ["two two two", "two three three", "three four four five"])
+    input_data = constant_op.constant(["two three", "four five"])
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_list_inputs_2d(self):
+    vocab_data = [
+        ["two two two"], ["two three three"], ["three four four five"]]
+    input_data = [["two three"], ["four five"]]
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_dataset_of_single_strings(self):
+    vocab_data = ["two two two", "two three three", "three four four five"]
+    input_data = ["two three", "four five"]
+    vocab_ds = dataset_ops.Dataset.from_tensor_slices(vocab_data)  # unbatched
+    layer = get_layer_class()()
+    layer.adapt(vocab_ds)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
 
 
 @keras_parameterized.run_all_keras_modes
@@ -618,25 +670,6 @@ class TextVectorizationOutputTest(
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
-
-  def test_vocab_appending(self):
-    vocab_data = [["earth", "wind"], ["and", "fire"]]
-    input_array = np.array([["earth", "wind", "and", "fire"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT)
-    layer.set_vocabulary(vocab_data[0])
-    layer.set_vocabulary(vocab_data[1], append=True)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(expected_output, output_dataset)
 
   def test_int_output_densifies_with_zeros(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -1046,7 +1079,10 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.TFIDF,
         pad_to_max_tokens=True)
-    layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
+    layer.set_vocabulary(
+        vocab_data,
+        df_data=tfidf_data,
+        oov_df_value=.05)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -1080,60 +1116,6 @@ class TextVectorizationOutputTest(
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(expected_output, output_dataset)
-
-  def test_tfidf_appending(self):
-    vocab_data = [["earth", "wind"], ["and", "fire"]]
-    tfidf_data = [[.5, .25], [.2, .125]]
-    input_array = np.array([["earth", "wind", "and", "earth"],
-                            ["ohio", "fire", "earth", "michigan"]])
-
-    # pyformat: disable
-    # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [.1, .5,   0,  0, .125]]
-    # pylint: enable=bad-whitespace
-    # pyformat: enable
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.TFIDF)
-    layer.set_vocabulary(vocab_data[0], df_data=tfidf_data[0], oov_df_value=.05)
-    layer.set_vocabulary(vocab_data[1], df_data=tfidf_data[1], append=True)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(expected_output, output_dataset)
-
-  def test_tfidf_appending_with_oov_replacement(self):
-    vocab_data = [["earth", "wind"], ["and", "fire"]]
-    tfidf_data = [[.5, .25], [.2, .125]]
-    input_array = np.array([["earth", "wind", "and", "earth"],
-                            ["ohio", "fire", "earth", "michigan"]])
-
-    # pyformat: disable
-    # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [1.5, .5,   0,  0, .125]]
-    # pylint: enable=bad-whitespace
-    # pyformat: enable
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.TFIDF)
-    layer.set_vocabulary(vocab_data[0], df_data=tfidf_data[0], oov_df_value=.05)
-    # Note that here we've replaced the OOV vaue.
-    layer.set_vocabulary(
-        vocab_data[1], df_data=tfidf_data[1], oov_df_value=.75, append=True)
-    int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
@@ -1274,22 +1256,6 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                 "vocabulary larger than the maximum vocab.*"):
       layer.set_vocabulary(vocab_data)
 
-  def test_too_long_vocab_fails_in_multiple_settings(self):
-    vocab_data = [["earth", "wind"], ["and", "fire"]]
-
-    layer = get_layer_class()(
-        max_tokens=4,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT)
-
-    # The first time we call set_vocabulary, we're under the max_tokens limit
-    # so it should be fine.
-    layer.set_vocabulary(vocab_data[0])
-    with self.assertRaisesRegex(ValueError,
-                                "vocabulary larger than the maximum vocab.*"):
-      layer.set_vocabulary(vocab_data[1], append=True)
-
   def test_setting_vocab_without_tfidf_data_fails_in_tfidf_mode(self):
     vocab_data = ["earth", "wind", "and", "fire"]
 
@@ -1325,18 +1291,6 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
     with self.assertRaisesRegex(ValueError,
                                 "You must pass an oov_df_value.*"):
       layer.set_vocabulary(vocab_data, df_data)
-
-  def test_tfidf_set_vocab_with_no_oov_fails_with_append_set(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-    df_data = [1, 2, 3, 4]
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.TFIDF)
-    with self.assertRaisesRegex(ValueError,
-                                "You must pass an oov_df_value.*"):
-      layer.set_vocabulary(vocab_data, df_data, append=True)
 
   def test_set_tfidf_in_non_tfidf_fails(self):
     vocab_data = ["earth", "wind", "and", "fire"]

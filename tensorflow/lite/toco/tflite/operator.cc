@@ -487,6 +487,7 @@ class FullyConnected
     op_sig.options.fully_connected.keep_num_dims = fc_op.keep_num_dims;
     op_sig.options.fully_connected.weights_format =
         GetWeightFormat(fc_op.weights_format);
+    op_sig.options.fully_connected.sparse_weight = false;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1118,6 +1119,7 @@ class ResizeBilinear
         GetVersioningOpSig(builtin_op(), op_signature);
     op_sig.options.resize.half_pixel_centers =
         resize_bilinear_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_bilinear_op.align_corners;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1147,6 +1149,7 @@ class ResizeNearestNeighbor
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
     op_sig.options.resize.half_pixel_centers = resize_nn_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_nn_op.align_corners;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

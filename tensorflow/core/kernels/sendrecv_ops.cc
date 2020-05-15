@@ -92,14 +92,16 @@ void SendOp::Compute(OpKernelContext* ctx) {
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
     // Use the cached rendezvous key.
-    VLOG(2) << "Send " << parsed_key_.buf_;
+    VLOG(2) << "Send " << parsed_key_.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     ctx->SetStatus(ctx->rendezvous()->Send(parsed_key_, args, ctx->input(0),
                                            ctx->is_input_dead()));
     return;
   } else {
     Rendezvous::ParsedKey in_loop_parsed;
     GetRendezvousKey(key_prefix_, frame_iter, &in_loop_parsed.buf_);
-    VLOG(2) << "Send " << in_loop_parsed.buf_;
+    VLOG(2) << "Send " << in_loop_parsed.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     OP_REQUIRES_OK(ctx,
                    Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed));
 
@@ -200,13 +202,15 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
-    VLOG(2) << "Recv " << parsed_key_.buf_;
+    VLOG(2) << "Recv " << parsed_key_.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     ctx->rendezvous()->RecvAsync(parsed_key_, args,
                                  make_recv_callback(ctx, std::move(done)));
   } else {
     Rendezvous::ParsedKey in_loop_parsed;
     GetRendezvousKey(key_prefix_, frame_iter, &in_loop_parsed.buf_);
-    VLOG(2) << "Recv " << in_loop_parsed.buf_;
+    VLOG(2) << "Recv " << in_loop_parsed.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     OP_REQUIRES_OK_ASYNC(
         ctx, Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed), done);
     ctx->rendezvous()->RecvAsync(in_loop_parsed, args,

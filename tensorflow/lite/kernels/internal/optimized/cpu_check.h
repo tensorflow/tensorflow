@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
-#include "ruy/detect_arm.h"  // from @ruy
-
 // This include is superfluous. However, it's been here for a while, and a
 // number of files have been relying on it to include neon_check.h for them.
 // This should be removed, but with a global run of presubmits to catch
@@ -25,12 +23,16 @@ limitations under the License.
 
 namespace tflite {
 
+// On A64, returns true if the dotprod extension is present.
+// On other architectures, returns false unconditionally.
+bool DetectArmNeonDotprod();
+
 struct CpuFlags {
   bool neon_dotprod = false;
 };
 
 inline void GetCpuFlags(CpuFlags* cpu_flags) {
-  cpu_flags->neon_dotprod = ruy::DetectDotprod();
+  cpu_flags->neon_dotprod = DetectArmNeonDotprod();
 }
 
 }  // namespace tflite

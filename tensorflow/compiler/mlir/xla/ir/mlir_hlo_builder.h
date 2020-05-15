@@ -110,6 +110,16 @@ class MlirHloBuilder : public XlaBuilder {
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
 
+  StatusOr<XlaOp> ConvGeneralDilatedInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config) override;
+
   StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> permutation) override;
@@ -164,6 +174,14 @@ class MlirHloBuilder : public XlaBuilder {
                                 absl::Span<const int64> start_indices,
                                 absl::Span<const int64> limit_indices,
                                 absl::Span<const int64> strides) override;
+
+  StatusOr<XlaOp> DynamicSliceInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
+      absl::Span<const int64> slice_sizes) override;
+
+  StatusOr<XlaOp> DynamicUpdateSliceInternal(
+      const Shape& shape, XlaOp operand, XlaOp update,
+      absl::Span<const XlaOp> start_indices) override;
 
   StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
                               XlaOp padding_value,

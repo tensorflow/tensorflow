@@ -156,9 +156,9 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 //   }) {device = "/DEVICE:3"} : () -> tensor<i1>
 //   tf_executor.yield %a1, %b1 : tensor<i1>, tensor<i1>
 // }
-LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
-                                         tf_executor::IslandOp island_op,
-                                         tf_device::ReplicateOp replicate_op) {
+void CreateIslandsFromReplicate(const Dialect* tf_dialect,
+                                tf_executor::IslandOp island_op,
+                                tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.n().getLimitedValue();
 
@@ -199,21 +199,17 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   }
 
   island_op.erase();
-  return success();
 }
 
 // Finds islands with a single `tf_device.replicate` and create individual
 // islands per replica of the replicate.
-LogicalResult LowerSingleIslandReplicateToIslands(
-    const Dialect* tf_dialect, tf_executor::IslandOp island_op) {
-  if (!hasSingleElement(island_op.GetBody().without_terminator()))
-    return success();
+void LowerSingleIslandReplicateToIslands(const Dialect* tf_dialect,
+                                         tf_executor::IslandOp island_op) {
+  if (!island_op.WrapsSingleOp()) return;
 
   if (auto replicate_op =
           llvm::dyn_cast<tf_device::ReplicateOp>(&island_op.GetBody().front()))
-    return CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
-
-  return success();
+    CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
 }
 
 void ReplicateToIslandPass::runOnFunction() {
@@ -223,13 +219,9 @@ void ReplicateToIslandPass::runOnFunction() {
     getFunction().emitError() << "'tf' dialect is not registered";
   }
 
-  auto result = getFunction().walk([&](tf_executor::IslandOp island_op) {
-    if (failed(LowerSingleIslandReplicateToIslands(tf_dialect, island_op)))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
+  getFunction().walk([&](tf_executor::IslandOp island_op) {
+    LowerSingleIslandReplicateToIslands(tf_dialect, island_op);
   });
-
-  if (result.wasInterrupted()) return signalPassFailure();
 }
 }  // anonymous namespace
 

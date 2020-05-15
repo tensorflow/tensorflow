@@ -19,12 +19,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 Status DenseCountSparseOutputShapeFn(InferenceContext *c) {
-  int32 rank = c->Rank(c->input(0));
-  DimensionHandle nvals = c->UnknownDim();
+  auto values = c->input(0);
+  auto weights = c->input(1);
+  ShapeHandle output;
+  auto num_weights = c->NumElements(weights);
+  if (c->ValueKnown(num_weights) && c->Value(num_weights) == 0) {
+    output = values;
+  } else {
+    TF_RETURN_IF_ERROR(c->Merge(weights, values, &output));
+  }
+  auto rank = c->Rank(output);
+  auto nvals = c->UnknownDim();
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
@@ -32,8 +41,8 @@ Status DenseCountSparseOutputShapeFn(InferenceContext *c) {
 }
 
 Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
-  DimensionHandle rank = c->Dim(c->input(0), 1);
-  DimensionHandle nvals = c->UnknownDim();
+  auto rank = c->Dim(c->input(0), 1);
+  auto nvals = c->UnknownDim();
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
@@ -45,7 +54,7 @@ Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
   if (rank != c->kUnknownRank) {
     ++rank;  // Add the ragged dimension
   }
-  DimensionHandle nvals = c->UnknownDim();
+  auto nvals = c->UnknownDim();
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
@@ -54,12 +63,12 @@ Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
 
 REGISTER_OP("DenseCountSparseOutput")
     .Input("values: T")
-    .Input("weights: float")
+    .Input("weights: output_type")
     .Attr("T: {int32, int64}")
     .Attr("minlength: int >= -1 = -1")
     .Attr("maxlength: int >= -1 = -1")
-    .Attr("binary_count: bool")
-    .Attr("output_type: {int64, float}")
+    .Attr("binary_output: bool")
+    .Attr("output_type: {int32, int64, float, double}")
     .SetShapeFn(DenseCountSparseOutputShapeFn)
     .Output("output_indices: int64")
     .Output("output_values: output_type")
@@ -69,12 +78,12 @@ REGISTER_OP("SparseCountSparseOutput")
     .Input("indices: int64")
     .Input("values: T")
     .Input("dense_shape: int64")
-    .Input("weights: float")
+    .Input("weights: output_type")
     .Attr("T: {int32, int64}")
     .Attr("minlength: int >= -1 = -1")
     .Attr("maxlength: int >= -1 = -1")
-    .Attr("binary_count: bool")
-    .Attr("output_type: {int64, float}")
+    .Attr("binary_output: bool")
+    .Attr("output_type: {int32, int64, float, double}")
     .SetShapeFn(SparseCountSparseOutputShapeFn)
     .Output("output_indices: int64")
     .Output("output_values: output_type")
@@ -83,12 +92,12 @@ REGISTER_OP("SparseCountSparseOutput")
 REGISTER_OP("RaggedCountSparseOutput")
     .Input("splits: int64")
     .Input("values: T")
-    .Input("weights: float")
+    .Input("weights: output_type")
     .Attr("T: {int32, int64}")
     .Attr("minlength: int >= -1 = -1")
     .Attr("maxlength: int >= -1 = -1")
-    .Attr("binary_count: bool")
-    .Attr("output_type: {int64, float}")
+    .Attr("binary_output: bool")
+    .Attr("output_type: {int32, int64, float, double}")
     .SetShapeFn(RaggedCountSparseOutputShapeFn)
     .Output("output_indices: int64")
     .Output("output_values: output_type")

@@ -18,8 +18,8 @@ limitations under the License.
 namespace tflite {
 using testing::ElementsAreArray;
 
-// TODO(b/148390890): All tests are disabled, enable after fix is availabel
-// and op is enabled.
+// TODO(b/148390890): Reduce Sum tests are disabled, enable after fix is
+// available and op is enabled.
 class ReduceOpModel : public SingleOpModelWithHexagon {
  public:
   ReduceOpModel(BuiltinOperator type, const TensorData& input,
@@ -49,32 +49,52 @@ class ReduceOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-TEST(ReduceOpModel, DISABLED_MeanNotKeepDims) {
+template <TensorType Tensor_Type, typename input_type>
+void TestMeanImpl() {
   float kQuantizedTolerance = 2.0 / 255;
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  ReduceOpModel m(BuiltinOperator_MEAN,
-                  {TensorType_UINT8, {1, 1, 3, 2}, -1.0, 1.0},
-                  {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {2}, false);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
+                  {Tensor_Type, {2}, -1.0, 1.0}, {1}, {2}, false);
+  m.QuantizeAndPopulate<input_type>(m.Input(), data);
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 2}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.4, 0.4}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<input_type>(),
+      ElementsAreArray(ArrayFloatNear(reference_output, kQuantizedTolerance)));
 }
 
-TEST(ReduceOpModel, DISABLED_MeanKeepDims) {
+TEST(ReduceOpModel, MeanNotKeepDims_Uint8) {
+  TestMeanImpl<TensorType_UINT8, uint8_t>();
+}
+
+TEST(ReduceOpModel, MeanNotKeepDims_Int8) {
+  TestMeanImpl<TensorType_INT8, int8_t>();
+}
+
+template <TensorType Tensor_Type, typename input_type>
+void TestMeanKeppDimsImpl() {
   float kQuantizedTolerance = 2.0 / 255;
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  ReduceOpModel m(BuiltinOperator_MEAN,
-                  {TensorType_UINT8, {1, 1, 3, 2}, -1.0, 1.0},
-                  {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {3}, true);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
+                  {Tensor_Type, {3}, -1.0, 1.0}, {1}, {3}, true);
+  m.QuantizeAndPopulate<input_type>(m.Input(), data);
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 1}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<input_type>(),
+      ElementsAreArray(ArrayFloatNear(reference_output, kQuantizedTolerance)));
+}
+
+TEST(ReduceOpModel, MeanKeepDims_Int8) {
+  TestMeanKeppDimsImpl<TensorType_INT8, int8_t>();
+}
+
+TEST(ReduceOpModel, MeanKeepDims_Uint8) {
+  TestMeanKeppDimsImpl<TensorType_UINT8, uint8_t>();
 }
 
 TEST(ReduceOpModel, DISABLED_SumNotKeepDims) {

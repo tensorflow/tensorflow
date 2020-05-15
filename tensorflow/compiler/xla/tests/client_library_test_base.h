@@ -76,6 +76,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   void SetFastMathDisabled(bool disabled) {
     auto* opts = execution_options_.mutable_debug_options();
     opts->set_xla_cpu_enable_fast_math(!disabled);
+    opts->set_xla_cpu_enable_fast_min_max(!disabled);
     opts->set_xla_gpu_enable_fast_min_max(!disabled);
   }
 

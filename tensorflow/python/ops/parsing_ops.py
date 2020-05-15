@@ -30,6 +30,7 @@ from tensorflow.python.ops import parsing_config
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -77,6 +78,7 @@ def _prepend_none_dimension(features):
 
 
 @tf_export("io.parse_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_example_v2(serialized, features, example_names=None, name=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -314,6 +316,7 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
 
 
 @tf_export(v1=["io.parse_example", "parse_example"])
+@dispatch.add_dispatch_support
 def parse_example(serialized, features, name=None, example_names=None):
   return parse_example_v2(serialized, features, example_names, name)
 
@@ -373,6 +376,7 @@ def _parse_example_raw(serialized, names, params, name):
 
 
 @tf_export(v1=["io.parse_single_example", "parse_single_example"])
+@dispatch.add_dispatch_support
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
@@ -407,6 +411,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
 
 
 @tf_export("io.parse_single_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_single_example_v2(
     serialized, features, example_names=None, name=None
     ):
@@ -448,6 +453,7 @@ def parse_single_example_v2(
 
 
 @tf_export("io.parse_sequence_example")
+@dispatch.add_dispatch_support
 def parse_sequence_example(serialized,
                            context_features=None,
                            sequence_features=None,
@@ -692,6 +698,7 @@ def _parse_sequence_example_raw(serialized,
 @tf_export("io.parse_single_sequence_example",
            v1=["io.parse_single_sequence_example",
                "parse_single_sequence_example"])
+@dispatch.add_dispatch_support
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -835,6 +842,7 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 @tf_export("io.decode_raw", v1=[])
+@dispatch.add_dispatch_support
 def decode_raw(input_bytes,
                out_type,
                little_endian=True,
@@ -877,6 +885,7 @@ def decode_raw(input_bytes,
 
 
 @tf_export(v1=["decode_raw", "io.decode_raw"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "bytes is deprecated, use input_bytes instead",
                              "bytes")
@@ -921,6 +930,7 @@ def decode_raw_v1(
 
 # Swap `name` and `na_value` for backward compatibility.
 @tf_export(v1=["io.decode_csv", "decode_csv"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,
@@ -970,6 +980,7 @@ def decode_csv(records,
 
 
 @tf_export("io.decode_csv", v1=[])
+@dispatch.add_dispatch_support
 def decode_csv_v2(records,
                   record_defaults,
                   field_delim=",",

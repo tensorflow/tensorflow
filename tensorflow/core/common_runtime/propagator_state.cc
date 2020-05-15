@@ -26,10 +26,10 @@ limitations under the License.
 namespace tensorflow {
 
 PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
-                                 int64 step_id)
+                                 int64 step_id, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),
-      vlog_(VLOG_IS_ON(1)) {
+      vlog_(vlog || VLOG_IS_ON(1)) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().

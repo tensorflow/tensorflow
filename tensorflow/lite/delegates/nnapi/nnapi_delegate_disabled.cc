@@ -27,7 +27,8 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options /* options */)
     : StatefulNnApiDelegate() {}
 
 StatefulNnApiDelegate::StatefulNnApiDelegate()
-    : TfLiteDelegate(TfLiteDelegateCreate()) {
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(/*nnapi=*/nullptr) {
   Prepare = DoPrepare;
 }
 
@@ -45,6 +46,8 @@ TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
 int StatefulNnApiDelegate::GetNnApiErrno() const { return 0; }
 
 using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
+
+StatefulNnApiDelegate::Data::Data(const NnApi* nnapi) : nnapi(nnapi) {}
 
 StatefulNnApiDelegate::Data::~Data() {}
 

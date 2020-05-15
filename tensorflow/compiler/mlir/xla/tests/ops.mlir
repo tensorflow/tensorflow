@@ -461,6 +461,14 @@ func @scalars_to_dimension_tensor(%arg0: i32, %arg1: i32) -> tensor<2xi32> {
 
 // -----
 
+// CHECK-LABEL: @scalars_to_dimension_tensor_index
+func @scalars_to_dimension_tensor_index(%arg0: index, %arg1: index) -> tensor<2xindex> {
+  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (index, index) -> tensor<2xindex>
+  return %0 : tensor<2xindex>
+}
+
+// -----
+
 // CHECK-LABEL: func @select
 func @select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>

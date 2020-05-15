@@ -58,7 +58,7 @@ ENTRY while3 {
 
   CompileAndVerifyIr(hlo_string, R"(
 ; CHECK-LABEL: @body(i8* %retval
-; CHECK: %[[add_result:.*]] = fadd fast float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
+; CHECK: %[[add_result:.*]] = fadd reassoc nsz contract  float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
 ; CHECK: store float %[[add_result]], float* %[[store_dest:.*]], align 4, !alias.scope ![[alias_scope_md_for_store:[0-9]+]]
 ;
 ; CHECK-LABEL: @condition(i8* %retval, i8* noalias %run_options, i8** noalias %params

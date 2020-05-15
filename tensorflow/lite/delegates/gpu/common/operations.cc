@@ -506,6 +506,14 @@ BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
               attr.appended.c + attr.prepended.c + input.c);
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr) {
+  return BHWDC(attr.appended.b + attr.prepended.b + input.b,
+               attr.appended.h + attr.prepended.h + input.h,
+               attr.appended.w + attr.prepended.w + input.w,
+               attr.appended.d + attr.prepended.d + input.d,
+               attr.appended.c + attr.prepended.c + input.c);
+}
+
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr) {
   return BHWC(input.b, 1, 1, attr.weights.shape.o);

@@ -29,70 +29,132 @@ namespace micro {
 namespace activations {
 namespace {
 
-// TODO(b/141176180): This code is currently a strict subset of the portable
-// implementation (softmax.cc one directory up). When TFLM implements
-// registrations for selective types (e.g. compile without float support), this
-// can be removed. Otherwise, any HiFi specific optimizations should land here.
+struct OpData {
+  uint16_t* exp_lut;
+};
 
-// This size will work for both the hotword (1) and ambient music (0):
-static SoftmaxParams kStaticOpData;
+// Number of unique int8 and int16 values.  Used in exponent lookup table
+// conputation.
+constexpr int kInt8Range =
+    std::numeric_limits<int8_t>::max() - std::numeric_limits<int8>::min() + 1;
+constexpr int kInt16Range =
+    std::numeric_limits<int16_t>::max() - std::numeric_limits<int16>::min() + 1;
+// Each 16-bit precalculated exponent is expressed as a Q0.16 fixedpoint
+// value. We special-case e^0 since 1.0 requires 1 integer bit to
+// express.
+constexpr int kExpFractionalBits = 16;
+// e^0 expressed as Q1.15 exceeds the int16_t range, so it must be handled
+// specially.
+constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
+
+// Quantized softmax with int8 input and int16 output.
+// TODO(b/155656675): Investigate removing const ref params.
+inline TfLiteStatus Softmax(const OpData& op_data,
+                            const RuntimeShape& input_shape,
+                            const int8_t* input_data,
+                            const RuntimeShape& output_shape,
+                            int16_t* output_data) {
+  // The last dimension is depth.  Outer size is the the total input size
+  // divided by depth.
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+  for (int i = 0; i < outer_size; ++i) {
+    int8_t max_in_row = std::numeric_limits<int8_t>::min();
+    for (int c = 0; c < depth; ++c) {
+      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
+    }
+
+    uint32_t sum_of_exps = 0;
+    for (int c = 0; c < depth; ++c) {
+      TFLITE_DCHECK(max_in_row >= input_data[i * depth + c]);
+      uint8_t input_diff = max_in_row - input_data[i * depth + c];
+
+      sum_of_exps +=
+          input_diff == 0 ? kMaxExponentValue : op_data.exp_lut[input_diff];
+    }
+
+    // Ensure we cannnot overflow the full_range_output value.  We need to
+    // guarantee that kInt16Range * max(input_data) / sum_of_exps < kInt16Range.
+    TFLITE_DCHECK(sum_of_exps >= kMaxExponentValue);
+
+    for (int c = 0; c < depth; ++c) {
+      uint8_t input_diff = max_in_row - input_data[i * depth + c];
+      // Special case for diff == 0
+      uint32_t unscaled_output =
+          input_diff == 0 ? kMaxExponentValue : op_data.exp_lut[input_diff];
+      int64_t scaled_output = static_cast<int64_t>(unscaled_output) *
+                              static_cast<int64_t>(kInt16Range);
+      int32_t full_range_output =
+          scaled_output / sum_of_exps + std::numeric_limits<int16_t>::min();
+      // Round up if remainder exceeds half of the divider value.
+      uint32_t remainder = scaled_output % sum_of_exps;
+      if (remainder * 2 >= sum_of_exps) {
+        full_range_output++;
+      }
+      output_data[i * depth + c] = static_cast<int16_t>(std::max(
+          std::min(full_range_output,
+                   static_cast<int32>(std::numeric_limits<int16_t>::max())),
+          static_cast<int32_t>(std::numeric_limits<int16_t>::min())));
+    }
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace
 
 TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     const TfLiteTensor* input,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
-                                    SoftmaxParams* op_data) {
+                                    OpData* op_data) {
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       if (output->type == kTfLiteInt16) {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                          std::numeric_limits<int16_t>::min());
         // NOTE: Current int16 softmax output does not require symmetric scaling
         // - so no need to verify scale here.
       } else {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                          std::numeric_limits<int8_t>::min());
         TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
       }
     }
 
-    static const int kScaledDiffIntegerBits = 5;
+    // Precompute e^(-x * input_scale * beta) for every possible int8 input.
+    // This computation is used for every iteration of Softmax.  We must compute
+    // using pre-scaled inputs to avoid introducing additional error, while
+    // restricting our input range to the int8 range. This is valid since beta
+    // and input scale are constant for a given op in the graph. Skip index 0
+    // since that is a special case which requires 1 integer bit instead of 0.
+    for (int i = 1; i <= kInt8Range; i++) {
+      float scaled_input = i * input->params.scale;
+      float exp_value =
+          std::exp((-scaled_input) * static_cast<float>(params->beta));
 
-    int input_left_shift;
-    tflite::PreprocessSoftmaxScaling(
-        static_cast<double>(params->beta),
-        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
-        &op_data->input_multiplier, &input_left_shift);
-    op_data->input_left_shift = input_left_shift;
-    op_data->diff_min =
-        -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
-                                            op_data->input_left_shift);
+      float exponent_scaled =
+          std::round(exp_value * static_cast<float>(1 << kExpFractionalBits));
+      op_data->exp_lut[i] = static_cast<uint16_t>(exponent_scaled);
+    }
   }
   return kTfLiteOk;
 }
 
-TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
-                              TfLiteTensor* output,
-                              const SoftmaxParams& op_params) {
-  switch (output->type) {
-    case kTfLiteInt16:
-      tflite::reference_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
-      return kTfLiteOk;
-    case kTfLiteInt8:
-      tflite::reference_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
-      return kTfLiteOk;
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(output->type), output->type);
-      return kTfLiteError;
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
   }
+  return data;
 }
-
-}  // namespace
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
@@ -103,36 +165,45 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  // TODO(b/132070898): Use statically slotted SoftmaxParams structures until a
-  // scratch memory API is ready.
-  SoftmaxParams* op_params = &kStaticOpData;
-  node->user_data = op_params;
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
+
+  // Allocate an array to precompute exponents over all int8 inputs, applying
+  // the scale and beta before calculating exp. It is mandatory to apply beta
+  // and scale here, since each softmax op may have different beta and scale
+  // values. Beta and scale will remain constant for a given softmax op.
+  void* allocated_ptr;
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, kInt8Range * sizeof(int16_t), &allocated_ptr));
+  op_data->exp_lut = static_cast<uint16_t*>(allocated_ptr);
 
   TF_LITE_ENSURE_STATUS(
-      CalculateSoftmaxOpData(context, input, output, params, op_params));
+      CalculateSoftmaxOpData(context, input, output, params, op_data));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_params = static_cast<SoftmaxParams*>(node->user_data);
+  auto* op_data = static_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  switch (input->type) {
-    case kTfLiteInt8:
-      return SoftmaxQuantized(context, input, output, *op_params);
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
-      return kTfLiteError;
+  if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
+    // TODO(b/155656675): Const ref params can be slow on xtensa.
+    return Softmax(*op_data, GetTensorShape(input),
+                   GetTensorData<int8_t>(input), GetTensorShape(output),
+                   GetTensorData<int16_t>(output));
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
+    return kTfLiteError;
   }
 }
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
+  static TfLiteRegistration r = {/*init=*/activations::SoftmaxInit,
                                  /*free=*/nullptr,
                                  /*prepare=*/activations::SoftmaxPrepare,
                                  /*invoke=*/activations::SoftmaxEval,

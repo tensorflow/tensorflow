@@ -49,6 +49,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+int64 GetRemoteDeviceIncarnation(Device* device) {
+  if (device == nullptr || device->IsLocal()) return 0;
+  return device->attributes().incarnation();
+}
+}  // namespace
+
 TensorHandle::PackedTensorHandleData::PackedTensorHandleData(
     std::vector<TensorHandle*>&& handles, const TensorShape& shape)
     : handles_(std::move(handles)), shape_(shape) {
@@ -124,6 +131,10 @@ string TensorHandle::PackedTensorHandleData::DebugString() const {
   return debug_str;
 }
 
+int TensorHandle::PackedTensorHandleData::NumPackedHandles() const {
+  return handles_.size();
+}
+
 Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
     const int index, TensorHandle** handle) const {
   if (index < 0 || index >= handles_.size()) {
@@ -185,6 +196,13 @@ Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
   return GetResourceHandleInfoImpl(get_resource_info);
 }
 
+int TensorHandle::NumPackedHandles() const {
+  if (Type() != PACKED) {
+    return 0;
+  }
+  return absl::get<PackedTensorHandleData>(data_).NumPackedHandles();
+}
+
 Status TensorHandle::ExtractPackedHandle(const int index,
                                          TensorHandle** handle) const {
   if (Type() != PACKED) {
@@ -233,6 +251,8 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       device_((!ctx || d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
       resource_device_(resource_device),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
@@ -247,6 +267,8 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       op_device_(op_device),
       resource_device_(
           GetResourceDevice(t.flat<class ResourceHandle>()(0), ctx)),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       resource_handle_info_(
           {t.flat<class ResourceHandle>()(0).dtypes_and_shapes(),
@@ -263,6 +285,7 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
       device_(d),
       op_device_(nullptr),
       resource_device_(nullptr),
+      resource_remote_device_incarnation_(0),
       ctx_(ctx),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   // TODO(allenl): Figure out a better op_device story for custom devices,
@@ -286,6 +309,8 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
       device_((d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
       resource_device_(resource_device),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<LocalTensorHandleData>) {
   DVLOG(3) << "Creating empty Local TensorHandle: " << this
@@ -293,17 +318,14 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 }
 
 Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                        const tensorflow::DataType dtype,
+                                        const tensorflow::TensorShape& shape,
                                         EagerContext* ctx,
                                         TensorHandle** packed_handle) {
   if (handles.empty()) {
     return errors::InvalidArgument("Handles should not be empty.");
   }
 
-  // Get the dtype and shape from the fisrt handle since all handles have the
-  // same dtype and shape.
-  tensorflow::DataType dtype = handles.at(0)->dtype;
-  tensorflow::TensorShape shape;
-  TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
   ResourceHandleInfo resource_handle_info;
   if (dtype == DT_RESOURCE) {
     TF_RETURN_IF_ERROR(
@@ -315,8 +337,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
       return errors::InvalidArgument(
           "CustomDevice is not supported for packing.");
     } else {
-      devices.push_back(
-          absl::get<Device*>(handle->DeviceOrHostCPU(*ctx))->name());
+      devices.push_back(handle->op_device() ? handle->op_device()->name()
+                                            : ctx->HostCPU()->name());
     }
   }
 
@@ -335,6 +357,22 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   return Status::OK();
 }
 
+Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                        EagerContext* ctx,
+                                        TensorHandle** packed_handle) {
+  if (handles.empty()) {
+    return errors::InvalidArgument("Handles should not be empty.");
+  }
+
+  // Get the dtype and shape from the fisrt handle since all handles have the
+  // same dtype and shape.
+  tensorflow::DataType dtype = handles.at(0)->dtype;
+  tensorflow::TensorShape shape;
+  TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
+  return CreatePackedHandle(std::move(handles), dtype, shape, ctx,
+                            packed_handle);
+}
+
 TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
                            const tensorflow::DataType dtype,
                            const tensorflow::TensorShape& shape,
@@ -343,6 +381,8 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
       device_(device),
       op_device_(device),
       resource_device_(dtype == DT_RESOURCE ? device : nullptr),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<PackedTensorHandleData>, std::move(handles),
             shape) {
@@ -365,6 +405,8 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       device_(d),
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             remote_task, ctx) {
@@ -387,6 +429,8 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       device_(d),
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
+      resource_remote_device_incarnation_(
+          GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             ctx->GetContextViewId()) {
@@ -661,8 +705,8 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
-                                             int32* output_num) const {
+Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
+                                   int64* op_id, int32* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -670,7 +714,8 @@ Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      return mirror->second.OpIdAndOutputNumUntilReady(op_id, output_num);
+      return mirror->second.OpIdAndOutputNum(wait_until_ready, op_id,
+                                             output_num);
     }
 
     return errors::FailedPrecondition(
@@ -682,7 +727,7 @@ Status TensorHandle::RemoteAddressUntilReady(const Device* d, int64* op_id,
   }
 
   auto& data = absl::get<RemoteTensorHandleData>(data_);
-  return data.OpIdAndOutputNumUntilReady(op_id, output_num);
+  return data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
 }
 
 bool TensorHandle::HasRemoteMirror(const Device* d,

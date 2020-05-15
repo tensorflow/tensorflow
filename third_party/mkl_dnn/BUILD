@@ -27,6 +27,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "build_with_mkldnn_threadpool",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_mkldnn_threadpool": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],

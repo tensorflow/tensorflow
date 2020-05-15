@@ -134,14 +134,7 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out) {
   obj->Ref();
-  out->Clear();
-  // Defines a lambda to unref "obj" when Cord deletes this piece of
-  // memory. +[] converts the lambda to a C style function pointer.
-  auto cleanup = +[](absl::string_view donotcare, void* obj) {
-    reinterpret_cast<core::RefCounted*>(obj)->Unref();
-  };
-  out->AppendExternalMemory(absl::string_view(src.data(), src.size()), obj,
-                            cleanup);
+  *out = absl::MakeCordFromExternal(src, [obj] { obj->Unref(); });
 }
 
 void EncodeStringList(const tstring* strings, int64 n, absl::Cord* out) {

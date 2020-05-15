@@ -15,9 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 
-#include <stddef.h>
-
 #include <atomic>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -54,13 +53,13 @@ class TraceMeRecorder {
   // Times are in ns since the Unix epoch.
   struct Event {
     uint64 activity_id;
-    string name;
+    std::string name;
     uint64 start_time;  // 0 = missing
     uint64 end_time;    // 0 = missing
   };
   struct ThreadInfo {
     uint32 tid;
-    string name;
+    std::string name;
   };
   struct ThreadEvents {
     ThreadInfo thread;

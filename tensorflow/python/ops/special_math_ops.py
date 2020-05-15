@@ -42,11 +42,13 @@ from tensorflow.python.ops import gen_special_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
 @tf_export('math.lbeta', v1=['math.lbeta', 'lbeta'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('lbeta')
 def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
@@ -102,6 +104,7 @@ def lbeta(x, name=None):
 
 
 @tf_export('math.special.dawsn')
+@dispatch.add_dispatch_support
 def dawsn(x, name=None):
   """Computes Dawson's integral of `x` element-wise.
 
@@ -131,6 +134,7 @@ def dawsn(x, name=None):
 
 
 @tf_export('math.special.expint')
+@dispatch.add_dispatch_support
 def expint(x, name=None):
   """Computes the Exponential integral of `x` element-wise.
 
@@ -159,6 +163,7 @@ def expint(x, name=None):
 
 
 @tf_export('math.special.fresnel_cos')
+@dispatch.add_dispatch_support
 def fresnel_cos(x, name=None):
   """Computes Fresnel's cosine integral of `x` element-wise.
 
@@ -188,6 +193,7 @@ def fresnel_cos(x, name=None):
 
 
 @tf_export('math.special.fresnel_sin')
+@dispatch.add_dispatch_support
 def fresnel_sin(x, name=None):
   """Computes Fresnel's sine integral of `x` element-wise.
 
@@ -216,6 +222,7 @@ def fresnel_sin(x, name=None):
 
 
 @tf_export('math.special.spence')
+@dispatch.add_dispatch_support
 def spence(x, name=None):
   """Computes Spence's integral of `x` element-wise.
 
@@ -244,6 +251,7 @@ def spence(x, name=None):
 
 
 @tf_export('math.bessel_i0')
+@dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
 
@@ -268,6 +276,7 @@ def bessel_i0(x, name=None):
 
 
 @tf_export('math.bessel_i1')
+@dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
 
@@ -325,6 +334,7 @@ def _enclosing_tpu_context():
 
 
 @tf_export('einsum', 'linalg.einsum')
+@dispatch.add_dispatch_support
 def einsum(equation, *inputs, **kwargs):
   """Tensor contraction over specified indices and outer product.
 

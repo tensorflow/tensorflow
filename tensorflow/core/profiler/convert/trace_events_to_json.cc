@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
 
+#include <algorithm>
+#include <map>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "include/json/json.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 
 namespace tensorflow {

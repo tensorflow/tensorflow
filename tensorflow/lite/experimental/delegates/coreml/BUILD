@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 package(default_visibility = [
     "//visibility:public",
 ])
@@ -46,6 +45,11 @@ objc_library(
     name = "coreml_delegate",
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
+    module_name = "TensorFlowLiteCCoreML",
+    # By setting CoreML as weak_framework, the TensorFlow Lite can be built for older iOS versions.
+    weak_sdk_frameworks = [
+        "CoreML",
+    ],
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",

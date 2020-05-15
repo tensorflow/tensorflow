@@ -38,7 +38,8 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     SmallVector<ShapedTypeComponents, 4> components;
     if (failed(defining_op_int.inferReturnTypeComponents(
             op->getContext(), op->getLoc(), defining_op->getOperands(),
-            defining_op->getAttrs(), defining_op->getRegions(), components))) {
+            defining_op->getAttrDictionary(), defining_op->getRegions(),
+            components))) {
       return failure();
     }
 
