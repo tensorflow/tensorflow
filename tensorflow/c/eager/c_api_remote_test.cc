@@ -447,6 +447,9 @@ void VarIsInitialized(TFE_Context* ctx, TFE_TensorHandle* var_handle) {
   bool initialized = false;
   memcpy(&initialized, TF_TensorData(t), TF_TensorByteSize(t));
   EXPECT_EQ(initialized, true);
+  TF_DeleteTensor(t);
+  TFE_DeleteTensorHandle(is_initialized[0]);
+  TFE_DeleteOp(op);
   delete status;
 }
 
