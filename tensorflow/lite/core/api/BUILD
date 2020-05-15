@@ -26,6 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
