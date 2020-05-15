@@ -340,11 +340,27 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "interpreter_test_fixtures",
+    testonly = True,
+    hdrs = ["interpreter_test.h"],
+    deps = [
+        ":framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Test main interpreter
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
@@ -352,6 +368,7 @@ cc_test(
     deps = [
         ":external_cpu_backend_context",
         ":framework",
+        ":interpreter_test_fixtures",
         ":string_util",
         ":version",
         "//tensorflow/lite/core/api",

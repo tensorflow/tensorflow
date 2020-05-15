@@ -533,6 +533,11 @@ void Subgraph::SetCancellationFunction(void* data,
   check_cancelled_func_ = check_cancelled_func;
 }
 
+bool Subgraph::IsCancelled() {
+  return (check_cancelled_func_ != nullptr) &&
+         (*check_cancelled_func_)(cancellation_data_);
+}
+
 void Subgraph::ReserveNodes(int count) {
   nodes_and_registration_.reserve(count);
 }
@@ -1315,6 +1320,8 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
   TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
   return kTfLiteOk;
 }
+
+bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
 
 TfLiteStatus Subgraph::EnsureMemoryAllocations() {
   if (memory_planner_) {

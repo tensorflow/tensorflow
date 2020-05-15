@@ -553,6 +553,9 @@ class Subgraph {
   // afterwards.
   TfLiteStatus RemoveAllDelegates();
 
+  // Returns true if the subgraph has delegates applied.
+  bool HasDelegates();
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -577,6 +580,9 @@ class Subgraph {
 
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
 
   // The state of the Interpreter.
   enum State {
