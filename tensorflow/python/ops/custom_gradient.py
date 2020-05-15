@@ -28,12 +28,12 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 
 
 VAR_OP_TYPES = [
@@ -487,7 +487,7 @@ def recompute_grad(f):
       result = f(*args, **kwargs)
 
     @custom_gradient
-    def grad(*dresult, **grad_kwargs):
+    def inner_recompute_grad(*dresult, **grad_kwargs):
       """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
       # Gradient calculation for reverse mode autodiff.
       variables = grad_kwargs.get("variables")
@@ -517,7 +517,7 @@ def recompute_grad(f):
 
       return (grads[:len(id_args)], grads[len(id_args):]), transpose
 
-    return result, grad
+    return result, inner_recompute_grad
 
   return inner
 
