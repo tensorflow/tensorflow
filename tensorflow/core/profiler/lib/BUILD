@@ -103,6 +103,16 @@ cc_library(
 )
 
 cc_library(
+    name = "traceme_encode",
+    hdrs = ["traceme_encode.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "annotated_traceme",
     hdrs = ["annotated_traceme.h"],
     visibility = ["//visibility:public"],
