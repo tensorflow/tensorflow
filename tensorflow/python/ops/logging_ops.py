@@ -38,6 +38,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -71,6 +72,7 @@ except NameError:
             "only a concern in graph mode. Below is an example "
             "of how to ensure tf.print executes in graph mode:\n")
 @tf_export(v1=["Print"])
+@dispatch.add_dispatch_support
 def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   """Prints a list of tensors.
 
@@ -136,6 +138,7 @@ def _is_filepath(output_stream):
 # function definition.
 # pylint: disable=g-doc-args
 @tf_export("print")
+@dispatch.add_dispatch_support
 def print_v2(*inputs, **kwargs):
   """Print the specified inputs.
 

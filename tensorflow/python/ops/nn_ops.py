@@ -239,6 +239,7 @@ class _NonAtrousConvolution(object):
 
 
 @tf_export("nn.dilation2d", v1=[])
+@dispatch.add_dispatch_support
 def dilation2d_v2(
     input,   # pylint: disable=redefined-builtin
     filters,  # pylint: disable=redefined-builtin
@@ -306,6 +307,7 @@ def dilation2d_v2(
 
 
 @tf_export(v1=["nn.dilation2d"])
+@dispatch.add_dispatch_support
 def dilation2d_v1(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin
     filter=None,  # pylint: disable=redefined-builtin
@@ -324,6 +326,7 @@ dilation2d_v1.__doc__ = gen_nn_ops.dilation2d.__doc__
 
 
 @tf_export("nn.with_space_to_batch")
+@dispatch.add_dispatch_support
 def with_space_to_batch(
     input,  # pylint: disable=redefined-builtin
     dilation_rate,
@@ -772,6 +775,7 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
 
 
 @tf_export(v1=["nn.convolution"])
+@dispatch.add_dispatch_support
 def convolution(
     input,  # pylint: disable=redefined-builtin
     filter,  # pylint: disable=redefined-builtin
@@ -907,7 +911,8 @@ def convolution(
 
 
 @tf_export("nn.convolution", v1=[])
-def convolution_v2(
+@dispatch.add_dispatch_support
+def convolution_v2(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin
     filters,
     strides=None,
@@ -1116,6 +1121,7 @@ class Convolution(object):
 
 
 @tf_export(v1=["nn.pool"])
+@dispatch.add_dispatch_support
 def pool(
     input,  # pylint: disable=redefined-builtin
     window_shape,
@@ -1290,6 +1296,7 @@ def pool(
 
 
 @tf_export("nn.pool", v1=[])
+@dispatch.add_dispatch_support
 def pool_v2(
     input,  # pylint: disable=redefined-builtin
     window_shape,
@@ -1389,6 +1396,7 @@ def pool_v2(
 
 
 @tf_export("nn.atrous_conv2d")
+@dispatch.add_dispatch_support
 def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
@@ -1576,6 +1584,7 @@ def convert_padding(padding):
 
 
 @tf_export(v1=["nn.conv1d"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_arg_values(
     None,
     "`NCHW` for data_format is deprecated, use `NCW` instead",
@@ -1674,6 +1683,7 @@ def conv1d(
 
 
 @tf_export("nn.conv1d", v1=[])
+@dispatch.add_dispatch_support
 def conv1d_v2(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -1739,6 +1749,7 @@ def conv1d_v2(
 
 
 @tf_export("nn.conv1d_transpose")
+@dispatch.add_dispatch_support
 def conv1d_transpose(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -1827,6 +1838,7 @@ def conv1d_transpose(
 
 
 @tf_export("nn.conv2d", v1=[])
+@dispatch.add_dispatch_support
 def conv2d_v2(input,  # pylint: disable=redefined-builtin
               filters,
               strides,
@@ -1927,6 +1939,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
 
 
 @tf_export(v1=["nn.conv2d"])
+@dispatch.add_dispatch_support
 def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
     filter=None,
@@ -2024,6 +2037,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
 
 
 @tf_export(v1=["nn.conv2d_backprop_filter"])
+@dispatch.add_dispatch_support
 def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
     filter_sizes,
@@ -2084,6 +2098,7 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
 
 
 @tf_export(v1=["nn.conv2d_backprop_input"])
+@dispatch.add_dispatch_support
 def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-default-value
     input_sizes,
     filter=None,
@@ -2148,6 +2163,7 @@ def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-defaul
 
 
 @tf_export(v1=["nn.conv2d_transpose"])
+@dispatch.add_dispatch_support
 def conv2d_transpose(
     value=None,
     filter=None,  # pylint: disable=redefined-builtin
@@ -2224,6 +2240,7 @@ def conv2d_transpose(
 
 
 @tf_export("nn.conv2d_transpose", v1=[])
+@dispatch.add_dispatch_support
 def conv2d_transpose_v2(
     input,  # pylint: disable=redefined-builtin
     filters,  # pylint: disable=redefined-builtin
@@ -2301,6 +2318,7 @@ def conv2d_transpose_v2(
 
 
 @tf_export("nn.atrous_conv2d_transpose")
+@dispatch.add_dispatch_support
 def atrous_conv2d_transpose(value,
                             filters,
                             output_shape,
@@ -2459,6 +2477,7 @@ def atrous_conv2d_transpose(value,
 
 
 @tf_export(v1=["nn.depthwise_conv2d_native"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("nn.depthwise_conv2d_native")
 def depthwise_conv2d_native(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
@@ -2538,6 +2557,7 @@ def depthwise_conv2d_native(  # pylint: disable=redefined-builtin,dangerous-defa
         "nn.depthwise_conv2d_native_backprop_input",
         "nn.depthwise_conv2d_backprop_input"
     ])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("nn.depthwise_conv2d_native_backprop_input")
 def depthwise_conv2d_native_backprop_input(  # pylint: disable=redefined-builtin,dangerous-default-value
     input_sizes,
@@ -2607,6 +2627,7 @@ def depthwise_conv2d_native_backprop_input(  # pylint: disable=redefined-builtin
         "nn.depthwise_conv2d_native_backprop_filter",
         "nn.depthwise_conv2d_backprop_filter"
     ])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("nn.depthwise_conv2d_native_backprop_filter")
 def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
@@ -2672,6 +2693,7 @@ def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builti
 
 
 @tf_export("nn.conv3d", v1=[])
+@dispatch.add_dispatch_support
 def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
               filters,
               strides,
@@ -2691,6 +2713,7 @@ def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
 
 
 @tf_export(v1=["nn.conv3d"])
+@dispatch.add_dispatch_support
 def conv3d_v1(  # pylint: disable=missing-docstring,dangerous-default-value
     input,  # pylint: disable=redefined-builtin
     filter=None,  # pylint: disable=redefined-builtin
@@ -2711,6 +2734,7 @@ conv3d_v1.__doc__ = gen_nn_ops.conv3d.__doc__
 
 
 @tf_export(v1=["nn.conv3d_transpose"])
+@dispatch.add_dispatch_support
 def conv3d_transpose(
     value,
     filter=None,  # pylint: disable=redefined-builtin
@@ -2782,6 +2806,7 @@ def conv3d_transpose(
 
 
 @tf_export("nn.conv3d_transpose", v1=[])
+@dispatch.add_dispatch_support
 def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
                         filters,
                         output_shape,
@@ -2861,6 +2886,7 @@ CONV_TRANSPOSE_OPS = (
 
 
 @tf_export("nn.conv_transpose")
+@dispatch.add_dispatch_support
 def conv_transpose(input,  # pylint: disable=redefined-builtin
                    filters,
                    output_shape,
@@ -2958,6 +2984,7 @@ _tf_deterministic_ops.value = None
 
 
 @tf_export("nn.bias_add")
+@dispatch.add_dispatch_support
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
 
@@ -3047,6 +3074,7 @@ def bias_add_v1(value, bias, name=None):
 
 
 @tf_export(v1=["nn.crelu"])
+@dispatch.add_dispatch_support
 def crelu(features, name=None, axis=-1):
   """Computes Concatenated ReLU.
 
@@ -3079,12 +3107,14 @@ def crelu(features, name=None, axis=-1):
 
 
 @tf_export("nn.crelu", v1=[])
+@dispatch.add_dispatch_support
 def crelu_v2(features, axis=-1, name=None):
   return crelu(features, name=name, axis=axis)
 crelu_v2.__doc__ = crelu.__doc__
 
 
 @tf_export("nn.relu6")
+@dispatch.add_dispatch_support
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 
@@ -3107,6 +3137,7 @@ def relu6(features, name=None):
 
 
 @tf_export("nn.leaky_relu")
+@dispatch.add_dispatch_support
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
@@ -3245,6 +3276,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
 
 @tf_export(v1=["nn.softmax", "math.softmax"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
@@ -3289,6 +3321,7 @@ def softmax(logits, axis=None, name=None, dim=None):
 
 
 @tf_export("nn.softmax", "math.softmax", v1=[])
+@dispatch.add_dispatch_support
 def softmax_v2(logits, axis=None, name=None):
   """Computes softmax activations.
 
@@ -3316,6 +3349,7 @@ def softmax_v2(logits, axis=None, name=None):
 
 
 @tf_export(v1=["nn.log_softmax", "math.log_softmax"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
@@ -3346,6 +3380,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
 
 
 @tf_export("nn.log_softmax", "math.log_softmax", v1=[])
+@dispatch.add_dispatch_support
 def log_softmax_v2(logits, axis=None, name=None):
   """Computes log softmax activations.
 
@@ -3382,6 +3417,7 @@ def _ensure_xent_args(name, sentinel, labels, logits):
 
 
 @tf_export("nn.softmax_cross_entropy_with_logits", v1=[])
+@dispatch.add_dispatch_support
 def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
@@ -3444,6 +3480,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
 
 
 @tf_export(v1=["nn.softmax_cross_entropy_with_logits_v2"])
+@dispatch.add_dispatch_support
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax_cross_entropy_with_logits_v2_helper(
     labels, logits, axis=None, name=None, dim=None):
@@ -3571,6 +3608,7 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 
 
 @tf_export(v1=["nn.softmax_cross_entropy_with_logits"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
@@ -3639,6 +3677,7 @@ def softmax_cross_entropy_with_logits(
 
 
 @tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
+@dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
@@ -3764,6 +3803,7 @@ def sparse_softmax_cross_entropy_with_logits(
 
 
 @tf_export("nn.sparse_softmax_cross_entropy_with_logits", v1=[])
+@dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
   """Computes sparse softmax cross entropy between `logits` and `labels`.
 
@@ -3816,6 +3856,7 @@ def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
 
 
 @tf_export("nn.avg_pool", v1=["nn.avg_pool_v2"])
+@dispatch.add_dispatch_support
 def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  # pylint: disable=redefined-builtin
   """Performs the avg pooling on the input.
 
@@ -3878,6 +3919,7 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
 
 
 @tf_export(v1=["nn.avg_pool", "nn.avg_pool2d"])
+@dispatch.add_dispatch_support
 def avg_pool(value, ksize, strides, padding, data_format="NHWC",
              name=None, input=None):  # pylint: disable=redefined-builtin
   """Performs the average pooling on the input.
@@ -3922,6 +3964,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC",
 
 
 @tf_export("nn.avg_pool2d", v1=[])
+@dispatch.add_dispatch_support
 def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  # pylint: disable=redefined-builtin
   """Performs the average pooling on the input.
 
@@ -3961,6 +4004,7 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
 
 
 @tf_export("nn.avg_pool1d")
+@dispatch.add_dispatch_support
 def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  # pylint: disable=redefined-builtin
   """Performs the average pooling on the input.
 
@@ -4006,6 +4050,7 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
 
 
 @tf_export("nn.avg_pool3d")
+@dispatch.add_dispatch_support
 def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):  # pylint: disable=redefined-builtin
   """Performs the average pooling on the input.
 
@@ -4046,6 +4091,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
 
 # pylint: disable=redefined-builtin
 @tf_export("nn.max_pool", v1=["nn.max_pool_v2"])
+@dispatch.add_dispatch_support
 def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   """Performs the max pooling on the input.
 
@@ -4106,6 +4152,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
 
 
 @tf_export(v1=["nn.max_pool"])
+@dispatch.add_dispatch_support
 def max_pool(value,
              ksize,
              strides,
@@ -4155,6 +4202,7 @@ def max_pool(value,
 
 # pylint: disable=redefined-builtin
 @tf_export("nn.max_pool1d")
+@dispatch.add_dispatch_support
 def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
   """Performs the max pooling on the input.
 
@@ -4199,6 +4247,7 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
 
 # pylint: disable=redefined-builtin
 @tf_export("nn.max_pool2d")
+@dispatch.add_dispatch_support
 def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
@@ -4237,6 +4286,7 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
 
 # pylint: disable=redefined-builtin
 @tf_export("nn.max_pool3d")
+@dispatch.add_dispatch_support
 def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
   """Performs the max pooling on the input.
 
@@ -4279,6 +4329,7 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
 
 
 @tf_export("nn.max_pool_with_argmax", v1=[])
+@dispatch.add_dispatch_support
 def max_pool_with_argmax_v2(
     input,  # pylint: disable=redefined-builtin
     ksize,
@@ -4348,6 +4399,7 @@ def max_pool_with_argmax_v2(
 
 
 @tf_export(v1=["nn.max_pool_with_argmax"])
+@dispatch.add_dispatch_support
 def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
     input,  # pylint: disable=redefined-builtin
     ksize,
@@ -4442,6 +4494,7 @@ def _calc_bias_add_flops(graph, node):
 
 
 @tf_export(v1=["nn.xw_plus_b"])
+@dispatch.add_dispatch_support
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
   """Computes matmul(x, weights) + biases.
 
@@ -4691,6 +4744,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
 
 @tf_export("math.top_k", "nn.top_k")
+@dispatch.add_dispatch_support
 def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
   """Finds values and indices of the `k` largest entries for the last dimension.
 
@@ -4751,6 +4805,7 @@ def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefine
 
 
 @tf_export(v1=["nn.fractional_max_pool"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(date=None, instructions="`seed2` and `deterministic` "
                         "args are deprecated.  Use fractional_max_pool_v2.")
 def fractional_max_pool(value,
@@ -4837,6 +4892,7 @@ def fractional_max_pool(value,
 
 
 @tf_export("nn.fractional_max_pool", v1=[])
+@dispatch.add_dispatch_support
 def fractional_max_pool_v2(value,
                            pooling_ratio,
                            pseudo_random=False,
@@ -4922,6 +4978,7 @@ def fractional_max_pool_v2(value,
 
 
 @tf_export(v1=["nn.fractional_avg_pool"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(date=None, instructions="`seed2` and `deterministic` "
                         "args are deprecated.  Use fractional_avg_pool_v2.")
 def fractional_avg_pool(value,
@@ -4987,6 +5044,7 @@ def fractional_avg_pool(value,
 
 
 @tf_export("nn.fractional_avg_pool", v1=[])
+@dispatch.add_dispatch_support
 def fractional_avg_pool_v2(value,
                            pooling_ratio,
                            pseudo_random=False,
@@ -5065,6 +5123,7 @@ def _calc_dilation2d_flops(graph, node):
 
 
 @tf_export(v1=["nn.erosion2d"])
+@dispatch.add_dispatch_support
 def erosion2d(value, kernel, strides, rates, padding, name=None):
   """Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
 
@@ -5124,6 +5183,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
 
 
 @tf_export("nn.erosion2d", v1=[])
+@dispatch.add_dispatch_support
 def erosion2d_v2(value,
                  filters,
                  strides,
@@ -5193,6 +5253,7 @@ def erosion2d_v2(value,
 
 
 @tf_export(v1=["math.in_top_k", "nn.in_top_k"])
+@dispatch.add_dispatch_support
 def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
@@ -5227,6 +5288,7 @@ def in_top_k(predictions, targets, k, name=None):
 
 
 @tf_export("math.in_top_k", "nn.in_top_k", v1=[])
+@dispatch.add_dispatch_support
 def in_top_k_v2(targets, predictions, k, name=None):
   return in_top_k(predictions, targets, k, name)
 
@@ -5234,7 +5296,11 @@ def in_top_k_v2(targets, predictions, k, name=None):
 in_top_k_v2.__doc__ = in_top_k.__doc__
 
 
-tf_export(v1=["nn.quantized_avg_pool"])(gen_nn_ops.quantized_avg_pool)
-tf_export(v1=["nn.quantized_conv2d"])(gen_nn_ops.quantized_conv2d)
-tf_export(v1=["nn.quantized_relu_x"])(gen_nn_ops.quantized_relu_x)
-tf_export(v1=["nn.quantized_max_pool"])(gen_nn_ops.quantized_max_pool)
+tf_export(v1=["nn.quantized_avg_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool))
+tf_export(v1=["nn.quantized_conv2d"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d))
+tf_export(v1=["nn.quantized_relu_x"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x))
+tf_export(v1=["nn.quantized_max_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool))

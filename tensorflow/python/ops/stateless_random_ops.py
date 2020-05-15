@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("StatelessMultinomial")
@@ -40,6 +41,7 @@ ops.NotDifferentiable("StatelessTruncatedNormal")
 
 
 @tf_export("random.experimental.stateless_split")
+@dispatch.add_dispatch_support
 def split(seed, num=2):
   """Splits an RNG seed into `num` new seeds by adding a leading axis.
 
@@ -73,6 +75,7 @@ def split(seed, num=2):
 
 
 @tf_export("random.experimental.stateless_fold_in")
+@dispatch.add_dispatch_support
 def fold_in(seed, data):
   """Folds in data to an RNG seed to form a new RNG seed.
 
@@ -111,6 +114,7 @@ def fold_in(seed, data):
 
 
 @tf_export("random.stateless_uniform")
+@dispatch.add_dispatch_support
 def stateless_random_uniform(shape,
                              seed,
                              minval=0,
@@ -205,6 +209,7 @@ def stateless_random_uniform(shape,
 
 
 @tf_export("random.stateless_binomial")
+@dispatch.add_dispatch_support
 def stateless_random_binomial(shape,
                               seed,
                               counts,
@@ -274,6 +279,7 @@ def stateless_random_binomial(shape,
 
 
 @tf_export("random.stateless_gamma")
+@dispatch.add_dispatch_support
 def stateless_random_gamma(shape,
                            seed,
                            alpha,
@@ -372,6 +378,7 @@ def stateless_random_gamma(shape,
 
 
 @tf_export("random.stateless_poisson")
+@dispatch.add_dispatch_support
 def stateless_random_poisson(shape,
                              seed,
                              lam,
@@ -434,6 +441,7 @@ def stateless_random_poisson(shape,
 
 
 @tf_export("random.stateless_normal")
+@dispatch.add_dispatch_support
 def stateless_random_normal(shape,
                             seed,
                             mean=0.0,
@@ -474,6 +482,7 @@ def stateless_random_normal(shape,
 
 
 @tf_export("random.stateless_truncated_normal")
+@dispatch.add_dispatch_support
 def stateless_truncated_normal(shape,
                                seed,
                                mean=0.0,
@@ -520,6 +529,7 @@ def stateless_truncated_normal(shape,
 
 
 @tf_export(v1=["random.stateless_multinomial"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None, instructions="Use `tf.random.stateless_categorical` instead.")
 def stateless_multinomial(logits,
@@ -562,6 +572,7 @@ def stateless_multinomial(logits,
 
 
 @tf_export("random.stateless_categorical")
+@dispatch.add_dispatch_support
 def stateless_categorical(logits,
                           num_samples,
                           seed,

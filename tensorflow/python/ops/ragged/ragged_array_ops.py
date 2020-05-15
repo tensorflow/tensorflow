@@ -32,6 +32,7 @@ from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 #===============================================================================
@@ -40,6 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('ragged.boolean_mask')
+@dispatch.add_dispatch_support
 def boolean_mask(data, mask, name=None):
   """Applies a boolean mask to `data` without flattening the mask dimensions.
 
@@ -538,6 +540,7 @@ def ragged_one_hot(indices,
 # ragged.stack_dynamic_partitions
 #===============================================================================
 @tf_export('ragged.stack_dynamic_partitions')
+@dispatch.add_dispatch_support
 def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
   """Stacks dynamic partitions of a Tensor or RaggedTensor.
 
@@ -699,6 +702,7 @@ def reverse(tensor, axis, name=None):
 
 
 @tf_export('ragged.cross')
+@dispatch.add_dispatch_support
 def cross(inputs, name=None):
   """Generates feature cross from a list of tensors.
 
@@ -725,6 +729,7 @@ def cross(inputs, name=None):
 
 
 @tf_export('ragged.cross_hashed')
+@dispatch.add_dispatch_support
 def cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
   """Generates hashed feature cross from a list of tensors.
 

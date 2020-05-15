@@ -26,10 +26,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('histogram_fixed_width_bins')
+@dispatch.add_dispatch_support
 def histogram_fixed_width_bins(values,
                                value_range,
                                nbins=100,
@@ -101,6 +103,7 @@ def histogram_fixed_width_bins(values,
 
 
 @tf_export('histogram_fixed_width')
+@dispatch.add_dispatch_support
 def histogram_fixed_width(values,
                           value_range,
                           nbins=100,
