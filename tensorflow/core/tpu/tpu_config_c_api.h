@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_CONFIG_C_API_H_
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/c/tf_status.h"
 
@@ -26,29 +27,33 @@ extern "C" {
 
 bool TPUHostInitialized();
 
-// TODO(frankchn): Modify API to take in raw values instead of Tensors.
-void ConfigureDistributedTpuOp_DoWork(size_t input_size,
-                                      TpuSerializedProto** inputs,
-                                      TpuSerializedProto* output,
+void ConfigureDistributedTpuOp_DoWork(const size_t num_cores_per_host_size,
+                                      const int32_t* num_cores_per_host,
+                                      size_t* host_config_output_size,
+                                      char** host_config_output,
                                       TF_Status* status);
 
-void WaitForDistributedTpuOp_DoWork(size_t input_size,
-                                    TpuSerializedProto** inputs,
-                                    TpuSerializedProto* output,
-                                    TF_Status* status);
+void WaitForDistributedTpuOp_DoWork(
+    const size_t num_hosts, const size_t num_cores_per_host,
+    const int32_t** host_ordinal_to_global_core_id_map,
+    size_t* tpu_topology_output_size, char** tpu_topology_output,
+    TF_Status* status);
 
 void ShutdownDistributedTpuOp_DoWork(TF_Status* status);
 
 void InitializeHostForDistributedTpuOp_DoWork(
-    size_t input_size, TpuSerializedProto** inputs,
-    bool enable_whole_mesh_compilations, TpuSerializedProto* output,
-    TF_Status* status);
+    const size_t tpu_host_config_size, const char* tpu_host_config,
+    const bool enable_whole_mesh_compilations, size_t* core_id_output_size,
+    int32_t** core_id_output, TF_Status* status);
 
-void SetGlobalTPUArrayOp_DoWork(size_t input_size, TpuSerializedProto** inputs,
-                                TF_Status* status);
+void SetGlobalTPUArrayOp_DoWork(const size_t tpu_topology_size,
+                                const char* tpu_topology, TF_Status* status);
 
-void DisconnectDistributedTpuChipsOp_DoWork(TpuSerializedProto* output,
+void DisconnectDistributedTpuChipsOp_DoWork(int32_t* number_of_chips_output,
                                             TF_Status* status);
+
+void TpuConfigurationApi_FreeCharArray(char* output);
+void TpuConfigurationApi_FreeInt32Array(int32_t* output);
 }
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_CONFIG_C_API_H_
