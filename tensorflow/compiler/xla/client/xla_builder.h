@@ -423,9 +423,15 @@ class XlaBuilder {
 
   XlaOp DynamicSlice(XlaOp operand, absl::Span<const XlaOp> start_indices,
                      absl::Span<const int64> slice_sizes);
+  virtual StatusOr<XlaOp> DynamicSliceInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
+      absl::Span<const int64> slice_sizes);
 
   XlaOp DynamicUpdateSlice(XlaOp operand, XlaOp update,
                            absl::Span<const XlaOp> start_indices);
+  virtual StatusOr<XlaOp> DynamicUpdateSliceInternal(
+      const Shape& shape, XlaOp operand, XlaOp update,
+      absl::Span<const XlaOp> start_indices);
 
   XlaOp ConcatInDim(absl::Span<const XlaOp> operands, int64 dimension);
   virtual StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,

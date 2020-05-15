@@ -282,6 +282,28 @@ StatusOr<XlaOp> MlirHloBuilder::SliceInternal(
       GetI64ElementsAttr(strides, &builder_)));
 }
 
+StatusOr<XlaOp> MlirHloBuilder::DynamicSliceInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
+    absl::Span<const int64> slice_sizes) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::DynamicSliceOp>(
+      loc_, result_ty, GetValue(operand), GetValues(start_indices),
+      GetI64ElementsAttr(slice_sizes, &builder_)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::DynamicUpdateSliceInternal(
+    const Shape& shape, XlaOp operand, XlaOp update,
+    absl::Span<const XlaOp> start_indices) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::DynamicUpdateSliceOp>(
+      loc_, result_ty, GetValue(operand), GetValue(update),
+      GetValues(start_indices)));
+}
+
 StatusOr<XlaOp> MlirHloBuilder::PadInternal(
     const Shape& shape, XlaOp operand, XlaOp padding_value,
     const PaddingConfig& padding_config) {

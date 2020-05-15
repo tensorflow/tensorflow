@@ -304,7 +304,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(
           lambda x: xla.transpose(x, [1, 0]), args=(v,), expected=v.T)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSlice(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -317,7 +316,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -331,7 +330,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
