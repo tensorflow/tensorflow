@@ -1058,7 +1058,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_StaticShapeTensor);
   let hasFolder = 1;
 
   let hasCustomHLOConverter = 1;
