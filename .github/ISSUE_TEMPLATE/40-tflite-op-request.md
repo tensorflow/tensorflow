@@ -1,7 +1,9 @@
 ---
 name: TensorFlow Lite Op Request
 about: Use this template for reporting Lite ops you are using or missing
-labels: 'comp:lite'
+title: ''
+labels: ''
+assignees: ''
 
 ---
 

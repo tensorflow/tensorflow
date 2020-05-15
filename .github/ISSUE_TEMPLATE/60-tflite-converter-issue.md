@@ -1,10 +1,11 @@
 ---
 name: TensorFlow Lite New Converter Issue
 about: Use this template for reporting issues during model conversion to TFLite
-labels: 'TFLiteConverter'
+title: ''
+labels: ''
+assignees: ''
 
 ---
-
 
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):
