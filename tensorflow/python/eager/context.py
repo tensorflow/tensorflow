@@ -2027,6 +2027,8 @@ def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
   if mode is None:
     yield
+  elif (mode == ASYNC) == context().executor.is_async():
+    yield
   else:
     ctx = context()
     executor_new = executor.new_executor(mode == ASYNC)
