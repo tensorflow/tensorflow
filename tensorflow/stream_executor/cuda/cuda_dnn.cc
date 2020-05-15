@@ -603,31 +603,6 @@ class CudnnFilterDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnFilterDescriptor);
 };
 
-// A helper function to decide whether to enable the TENSOR_OP_MATH math type
-bool TensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
-// A helper function to decide whether to enable the TENSOR_OP_MATH math type
-// for RNNs.
-bool RnnTensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
 // A helper function to decide whether to use
 // CUDNN_BATCHNORM_SPATIAL_PERSISTENT in batchnorm. This mode can be faster in
 // some tasks because an optimized path may be selected for CUDNN_DATA_FLOAT
@@ -751,9 +726,7 @@ class CudnnConvolutionDescriptor {
 #if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
-    if (TensorOpMathEnabled()) {
-      CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
-    }
+    CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
 #endif
   }
 
@@ -1157,21 +1130,19 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // in profile mode, which is run with algorithms returned from
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
     // use tensor ops). CuDNN 7.2.1 fixed this issue
-    if (RnnTensorOpMathEnabled()) {
-      cudnnMathType_t math_type;
-      if (algorithm_config.algorithm().has_value()) {
-        math_type = algorithm_config.algorithm()->tensor_ops_enabled()
-                        ? CUDNN_TENSOR_OP_MATH
-                        : CUDNN_DEFAULT_MATH;
-      } else {
+    cudnnMathType_t math_type;
+    if (algorithm_config.algorithm().has_value()) {
+      math_type = algorithm_config.algorithm()->tensor_ops_enabled()
+                      ? CUDNN_TENSOR_OP_MATH
+                      : CUDNN_DEFAULT_MATH;
+    } else {
 #if CUDNN_VERSION >= 7201
-        math_type = CUDNN_TENSOR_OP_MATH;
+      math_type = CUDNN_TENSOR_OP_MATH;
 #else
-        math_type = CUDNN_DEFAULT_MATH;
+      math_type = CUDNN_DEFAULT_MATH;
 #endif  // CUDNN_VERSION >= 7201
-      }
-      CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
     }
+    CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
 #endif  // CUDNN_VERSION >= 7000
 
     return CudnnRnnDescriptor(cudnn, std::move(rnn_desc), std::move(rnn_plan),
@@ -2605,7 +2576,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 }
 
 static bool TensorOpMathAvailable(int cc_major) {
-  return cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled();
+  return cc_major >= 7 && CUDNN_VERSION >= 7000;
 }
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
@@ -3399,9 +3370,7 @@ bool CudnnSupport::GetRnnAlgorithms(
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
 #if CUDNN_VERSION >= 7100
-    if (RnnTensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-    }
+    out_algorithms->push_back({i, /*use_tensor_ops=*/true});
 #endif
   }
   return true;

@@ -101,18 +101,6 @@ static std::string ToString(cublasStatus_t status) {
   }
 }
 
-// Decide whether to enable TENSOR_OP_MATH
-static bool TensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUBLAS_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
 // which address space those pointers are in with cublasSetPointerMode.
@@ -1640,7 +1628,7 @@ bool CUDABlas::DoBlasGemm(
                                                                    &cc_minor);
 
   // GPUs < sm_70 don't support tensor ops.
-  if (cc_major >= 7 && TensorOpMathEnabled()) {
+  if (cc_major >= 7) {
     use_tensor_ops = true;
   }
 #endif
@@ -1921,8 +1909,7 @@ static bool TensorOpsAvailable(int cc_major) {
   // strictly correct.  We can't simply enable it, though, as that would change
   // clients' behavior significantly: Using tensor ops on fp32 inputs cause them
   // to be rounded to fp16.
-  if (cc_major >= 7 && TensorOpMathEnabled() &&
-      std::is_same<InType, Eigen::half>::value) {
+  if (cc_major >= 7 && std::is_same<InType, Eigen::half>::value) {
     return true;
   }
 #endif
@@ -2270,7 +2257,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
       cc_major >= 5) {
-    bool use_tensor_ops = TensorOpMathEnabled() && data_type == CUDA_R_16F;
+    bool use_tensor_ops = data_type == CUDA_R_16F;
     cublasGemmAlgo_t algo =
         (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
     cudaDataType_t compute_type =
@@ -2425,7 +2412,7 @@ bool CUDABlas::DoBlasGemmStridedBatched(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor)) {
     // GPUs < sm_70 don't support tensor ops.
-    if (cc_major >= 7 && TensorOpMathEnabled()) {
+    if (cc_major >= 7) {
       use_tensor_ops = true;
     }
 #if CUDA_VERSION >= 9010
