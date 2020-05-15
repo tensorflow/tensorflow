@@ -20,17 +20,22 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -188,6 +193,82 @@ llvm::Optional<tf_device::LaunchOp> IsolateHeadExtractedOpsToLaunchOp(
   return host_launch_op;
 }
 
+// Parses TPU compilation and execution device form tpu cluster and assigns
+// host device to `host_launch` device attribute.
+LogicalResult SetCompilationDeviceToHostLaunch(
+    OpBuilder* builder, mlir::TF::RuntimeDevices devices,
+    tf_device::ClusterOp tpu_cluster, tf_device::LaunchOp host_launch) {
+  auto num_cores_per_replica_attr = tpu_cluster.getAttrOfType<IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return tpu_cluster.emitOpError(
+        "cluster op missing `num_cores_per_replica` attribute");
+
+  if (num_cores_per_replica_attr.getInt() != 1)
+    return tpu_cluster.emitOpError(
+        "outside compilation is not supported with model parallelism.");
+
+  auto topology_attr =
+      tpu_cluster.getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
+  if (!topology_attr)
+    return tpu_cluster.emitOpError("cluster op missing `topology` attribute");
+
+  auto device_assignment_attr = tpu_cluster.getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return tpu_cluster.emitOpError(
+        llvm::formatv("requires attribute '{0}'",
+                      tensorflow::kDeviceAssignmentAttr)
+            .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+
+  if (!status_or_device_coodinates.ok())
+    return tpu_cluster.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().error_message();
+
+  // Determine compilation and execution devices.
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), /*num_replicas=*/1,
+          /*num_cores_per_replica=*/1, topology_attr.getValue(),
+          status_or_device_coodinates.ConsumeValueOrDie());
+  if (!status_or_tpu_device_assignment.ok())
+    return tpu_cluster.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().error_message();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+  host_launch.deviceAttr(
+      builder->getStringAttr(tpu_device_assignment.tpu_devices[0][0].host));
+
+  return success();
+}
+
+// Assigns host device attribute to host launch op or enclosing
+// tf_device.replicate op if TPU computation is replicated.
+LogicalResult HandleHostLaunchDeviceAssignment(
+    OpBuilder* builder, mlir::TF::RuntimeDevices devices,
+    tf_device::ClusterOp tpu_cluster, tf_device::LaunchOp host_launch) {
+  auto parent_replicate_op =
+      llvm::dyn_cast_or_null<tf_device::ReplicateOp>(host_launch.getParentOp());
+  // If computation is replicated, then add TPU_REPLICATED_HOST device alias
+  // to the host launch op. This device alias would later be a reference to
+  // host device string in the device map of tf_device.replicate op
+  // during tpu_rewrite pass.
+  if (parent_replicate_op) {
+    host_launch.deviceAttr(
+        builder->getStringAttr(tensorflow::kTPUReplicatedHost));
+  } else {
+    if (failed(SetCompilationDeviceToHostLaunch(builder, devices, tpu_cluster,
+                                                host_launch)))
+      return failure();
+  }
+
+  return success();
+}
+
 struct TPUExtractHeadTailOutsideCompilation
     : public PassWrapper<TPUExtractHeadTailOutsideCompilation,
                          OperationPass<ModuleOp>> {
@@ -202,17 +283,22 @@ void TPUExtractHeadTailOutsideCompilation::runOnOperation() {
     return signalPassFailure();
 
   OpBuilder builder(&getContext());
-  module.walk([&](tf_device::ClusterOp cluster) {
+  auto result = module.walk([&](tf_device::ClusterOp cluster) {
     auto head_outside_compiled_ops = IdentifyOutsideCompiledOpsAtHead(cluster);
-    IsolateHeadExtractedOpsToLaunchOp(&builder, cluster,
-                                      head_outside_compiled_ops);
-
-    // TODO(b/156030523): Update device attribute of newly created host launch
-    // op as well as enclosing Replicate op (if TPU computation is replicated)
-    // with host device names.
+    auto host_launch_op = IsolateHeadExtractedOpsToLaunchOp(
+        &builder, cluster, head_outside_compiled_ops);
+    if (host_launch_op) {
+      if (failed(HandleHostLaunchDeviceAssignment(&builder, devices, cluster,
+                                                  *host_launch_op))) {
+        return WalkResult::interrupt();
+      }
+    }
 
     // TODO(b/155115766): Implement tail outside compiled op extraction.
+    return WalkResult::advance();
   });
+
+  if (result.wasInterrupted()) signalPassFailure();
 }
 
 }  // anonymous namespace
