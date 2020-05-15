@@ -785,7 +785,7 @@ def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
     compute shape arguments to dynamic operations.
   }];
 
-  let arguments = (ins Variadic<AnySignlessInteger>:$scalars);
+  let arguments = (ins Variadic<HLO_DimensionValue>:$scalars);
   let results = (outs HLO_DimensionTensor);
 
   // Cannot be exported to legacy formats.

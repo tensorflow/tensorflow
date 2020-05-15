@@ -143,28 +143,23 @@ std::vector<Value> ComputeBroadcastedShape(SrcOp op, Value small, Value large,
   // either be the same in that dimension or it can be 1, in which case the
   // shape of the other operand is used.
   for (int i = 0; i < output_rank; ++i) {
-    Value index_value;
     if (indexes[i] == kExpandShape) {
       // The smaller shape gets expanded to the larger one in this case.
-      index_value = rewriter->create<mlir::DimOp>(loc, large, i);
-    } else {
-      // Compute the result shape depending on whether the rank of smaller is 1.
-      // This does not check that the broadcast operation actualy is correct.
-      // In particular, we do not check that both shapes are the same if the
-      // smaller ranked shape is not 1.
-      ConstantOp one = rewriter->create<mlir::ConstantOp>(
-          loc, rewriter->getIntegerAttr(rewriter->getIndexType(), 1));
-      DimOp lrg_dim = rewriter->create<mlir::DimOp>(loc, large, i);
-      DimOp sml_dim = rewriter->create<mlir::DimOp>(loc, small, indexes[i]);
-      CmpIOp compare =
-          rewriter->create<mlir::CmpIOp>(loc, CmpIPredicate::eq, lrg_dim, one);
-      index_value =
-          rewriter->create<mlir::SelectOp>(loc, compare, lrg_dim, sml_dim);
+      shape_values.push_back(rewriter->create<mlir::DimOp>(loc, large, i));
+      continue;
     }
-    // Ideally, we would like to keep this on index but MLIR does not allow
-    // this.
-    shape_values.push_back(rewriter->create<mlir::IndexCastOp>(
-        loc, index_value, rewriter->getIntegerType(32)));
+    // Compute the result shape depending on whether the rank of smaller is 1.
+    // This does not check that the broadcast operation actualy is correct.
+    // In particular, we do not check that both shapes are the same if the
+    // smaller ranked shape is not 1.
+    ConstantOp one = rewriter->create<mlir::ConstantOp>(
+        loc, rewriter->getIntegerAttr(rewriter->getIndexType(), 1));
+    DimOp lrg_dim = rewriter->create<mlir::DimOp>(loc, large, i);
+    DimOp sml_dim = rewriter->create<mlir::DimOp>(loc, small, indexes[i]);
+    CmpIOp compare =
+        rewriter->create<mlir::CmpIOp>(loc, CmpIPredicate::eq, lrg_dim, one);
+    shape_values.push_back(
+        rewriter->create<mlir::SelectOp>(loc, compare, lrg_dim, sml_dim));
   }
 
   return shape_values;
