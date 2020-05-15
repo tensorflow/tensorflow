@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import TensorFlowLiteC
+import TensorFlowLiteCCoreML
 
 /// A delegate that uses the `Core ML` framework for performing TensorFlow Lite graph operations.
 ///
