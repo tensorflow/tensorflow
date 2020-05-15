@@ -2458,6 +2458,7 @@ cc_library(
         ":LLVMTransforms",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
+        ":LinalgToStandard",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
@@ -2543,6 +2544,7 @@ cc_library(
         ":LinalgPassIncGen",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
+        ":LinalgToStandard",
         ":LinalgTransforms",
         ":LoopPassIncGen",
         ":LoopsToGPUPass",
@@ -3116,6 +3118,31 @@ cc_library(
         ":Transforms",
         ":VectorToLLVM",
         ":VectorToLoops",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
+    name = "LinalgToStandard",
+    srcs = glob([
+        "lib/Conversion/LinalgToStandard/*.cpp",
+        "lib/Conversion/LinalgToStandard/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/LinalgToStandard/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LinalgOps",
+        ":Pass",
+        ":SCFDialect",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
