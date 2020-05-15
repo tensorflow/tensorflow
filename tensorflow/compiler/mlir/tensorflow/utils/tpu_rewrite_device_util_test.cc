@@ -19,6 +19,8 @@ limitations under the License.
 #include <tuple>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -594,6 +596,30 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   EXPECT_EQ(computation_device_1.replica_device_ids(1), 0);
   EXPECT_EQ(computation_device_2.replica_device_ids(0), 2);
   EXPECT_EQ(computation_device_2.replica_device_ids(1), 3);
+}
+
+TEST(TPURewriteDeviceUtilTest, TestGetDeviceCoordinates) {
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  auto device_assignment_attr = builder.getI64ArrayAttr({1, 2, 3});
+  auto status_or_device_coodinates =
+      GetDeviceCoordinates(device_assignment_attr);
+  ASSERT_TRUE(status_or_device_coodinates.ok());
+  auto device_coordinates = status_or_device_coodinates.ConsumeValueOrDie();
+  EXPECT_EQ(device_coordinates[0], 1);
+  EXPECT_EQ(device_coordinates[1], 2);
+  EXPECT_EQ(device_coordinates[2], 3);
+}
+
+TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  auto device_assignment_attr = builder.getF32ArrayAttr({1.0, 2.0, 3.0});
+  auto status_or_device_coodinates =
+      GetDeviceCoordinates(device_assignment_attr);
+  ASSERT_TRUE(!status_or_device_coodinates.ok());
+  EXPECT_EQ(status_or_device_coodinates.status().error_message(),
+            "bad 'device_assignment' attribute at index 0, not an int");
 }
 
 }  // anonymous namespace
