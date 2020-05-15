@@ -437,6 +437,18 @@ void AssignDevicesToReplicate(
                               builder->getStrArrayAttr(devices_by_core)));
   }
 
+  // For data parallelism, also add replicated host devices, as these are
+  // necessary for outside compilation.
+  if (num_cores_per_replica == 1) {
+    llvm::SmallVector<StringRef, 8> hosts;
+    hosts.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica)
+      hosts.push_back(tpu_devices[replica][0].host);
+
+    device_attrs.push_back(builder->getNamedAttr(
+        tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
+  }
+
   replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }
 
