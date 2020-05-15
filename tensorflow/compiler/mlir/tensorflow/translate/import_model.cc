@@ -978,7 +978,6 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
     if (dtype == DT_RESOURCE) {
       const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
       const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
-      LOG(INFO) << dtype_attr << " " << shape_attr;
       if (dtype_attr && shape_attr) {
         if (dtype_attr->list().type().empty()) {
           return errors::InvalidArgument(
