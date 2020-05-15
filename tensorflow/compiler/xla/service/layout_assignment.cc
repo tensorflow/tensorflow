@@ -951,7 +951,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                 if (!Shape::Equal()
                          .IgnoreDynamicDimension()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
-                                                     buffer->shape())) {
+                                                     buffer->shape()) &&
+                    instruction->opcode() != HloOpcode::kBitcast) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -1798,13 +1799,6 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   // potential bugs in the layout assignment pass that may accidentally use the
   // existing layout.
   for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kBitcast) {
-      // bitcasts are inherently layout sensitive and so a bitcast instruction
-      // present in the IR before layout assignment is a bug.
-      return InternalError(
-          "Unexpected bitcast operation seen during layout assignment: %s.",
-          instruction->ToString());
-    }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
@@ -2179,6 +2173,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:

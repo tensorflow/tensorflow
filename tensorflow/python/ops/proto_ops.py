@@ -22,10 +22,11 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.gen_decode_proto_ops import decode_proto_v2 as decode_proto
 from tensorflow.python.ops.gen_encode_proto_ops import encode_proto
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-tf_export("io.decode_proto")(decode_proto)
-tf_export("io.encode_proto")(encode_proto)
+tf_export("io.decode_proto")(dispatch.add_dispatch_support(decode_proto))
+tf_export("io.encode_proto")(dispatch.add_dispatch_support(encode_proto))
 
 ops.NotDifferentiable("DecodeProtoV2")
 ops.NotDifferentiable("EncodeProto")

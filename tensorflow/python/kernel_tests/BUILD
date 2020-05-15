@@ -3468,7 +3468,7 @@ cuda_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
-    shard_count = 20,
+    shard_count = 30,
     tags = [
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.

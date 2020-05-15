@@ -152,6 +152,7 @@ def _clip_by_value_grad(op, grad):
 
 
 @tf_export("clip_by_norm")
+@dispatch.add_dispatch_support
 def clip_by_norm(t, clip_norm, axes=None, name=None):
   """Clips tensor values to a maximum L2-norm.
 
@@ -235,6 +236,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
 
 @tf_export("linalg.global_norm", v1=["linalg.global_norm", "global_norm"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("global_norm")
 def global_norm(t_list, name=None):
   """Computes the global norm of multiple tensors.
@@ -285,6 +287,7 @@ def global_norm(t_list, name=None):
 
 
 @tf_export("clip_by_global_norm")
+@dispatch.add_dispatch_support
 def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   """Clips values of multiple tensors by the ratio of the sum of their norms.
 
@@ -382,6 +385,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     "use clip_by_norm(t, clip_norm * tf.cast(tf.size(t), tf.float32), name) "
     "instead.")
 @tf_export(v1=["clip_by_average_norm"])
+@dispatch.add_dispatch_support
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 

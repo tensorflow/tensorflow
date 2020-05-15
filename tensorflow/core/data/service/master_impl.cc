@@ -169,7 +169,11 @@ Status DataServiceMasterImpl::GetOrCreateJob(
   if (job != nullptr) {
     TF_RETURN_IF_ERROR(ValidateMatchingJob(**job, requested_processing_mode,
                                            request->dataset_id()));
-    response->set_job_id((*job)->job_id());
+    int64 job_id = (*job)->job_id();
+    response->set_job_id(job_id);
+    VLOG(3) << "Found existing job for name=" << request->job_name()
+            << ", index=" << request->job_name_index()
+            << ". job_id: " << job_id;
     return Status::OK();
   }
   int64 job_id;
@@ -177,6 +181,8 @@ Status DataServiceMasterImpl::GetOrCreateJob(
                                request->job_name(), &job_id));
   named_jobs_[key] = jobs_[job_id];
   response->set_job_id(job_id);
+  VLOG(3) << "Created job " << job_id << " for dataset "
+          << request->dataset_id() << " and name " << request->job_name();
   return Status::OK();
 }
 

@@ -29,10 +29,12 @@ from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat as util_compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("strings.bytes_split")
+@dispatch.add_dispatch_support
 def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
   """Split string elements of `input` into bytes.
 
@@ -80,6 +82,7 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin
 @tf_export("strings.unicode_encode")
+@dispatch.add_dispatch_support
 def unicode_encode(input,
                    output_encoding,
                    errors="replace",
@@ -177,6 +180,7 @@ def unicode_encode(input,
 
 # pylint: disable=redefined-builtin
 @tf_export("strings.unicode_decode")
+@dispatch.add_dispatch_support
 def unicode_decode(input,
                    input_encoding,
                    errors="replace",
@@ -222,6 +226,7 @@ def unicode_decode(input,
 
 
 @tf_export("strings.unicode_decode_with_offsets")
+@dispatch.add_dispatch_support
 def unicode_decode_with_offsets(input,
                                 input_encoding,
                                 errors="replace",
@@ -283,6 +288,7 @@ def unicode_decode_with_offsets(input,
 
 
 @tf_export("strings.unicode_split")
+@dispatch.add_dispatch_support
 def unicode_split(input,
                   input_encoding,
                   errors="replace",
@@ -330,6 +336,7 @@ def unicode_split(input,
 
 
 @tf_export("strings.unicode_split_with_offsets")
+@dispatch.add_dispatch_support
 def unicode_split_with_offsets(input,
                                input_encoding,
                                errors="replace",
@@ -453,6 +460,7 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
 
 
 @tf_export("strings.split", v1=[])
+@dispatch.add_dispatch_support
 def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable=redefined-builtin
   """Split elements of `input` based on `sep` into a `RaggedTensor`.
 
@@ -514,6 +522,7 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
 
 
 @tf_export(v1=["string_split"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "delimiter is deprecated, please use sep instead.",
                              "delimiter")
@@ -578,6 +587,7 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None,
 # In TensorFlow 1.x, "tf.strings.split" uses the new signature (with maxsplit),
 # but we need to add the result_type argument.
 @tf_export(v1=["strings.split"])
+@dispatch.add_dispatch_support
 def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redefined-builtin
                      result_type="SparseTensor", source=None, name=None):
   """Split elements of `input` based on `sep`.
@@ -651,6 +661,7 @@ def reduce_join(inputs, axis=None, keepdims=None, separator="", name=None):
 
 
 @tf_export("strings.ngrams")
+@dispatch.add_dispatch_support
 def ngrams(data,
            ngram_width,
            separator=" ",

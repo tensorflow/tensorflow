@@ -45,7 +45,8 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // adding them to a `TaggedNodeSeq`.
 class PropagatorState {
  public:
-  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id);
+  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id,
+                  bool vlog);
   ~PropagatorState();
 
  private:

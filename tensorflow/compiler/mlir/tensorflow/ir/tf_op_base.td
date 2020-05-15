@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -69,6 +69,16 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     CPred<"mlir::TF::BroadcastCompatible("
               "$_op.getOperand(" # opId # ").getType(), "
               "$_op.getResult(" # resId # ").getType())">]>;
+
+
+class TF_AllTypesMatchPred<list<string> values> :
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class TF_AllTypesMatch<list<string> names> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        TF_AllTypesMatchPred<
+            !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions

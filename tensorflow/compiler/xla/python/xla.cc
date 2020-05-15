@@ -872,11 +872,7 @@ PYBIND11_MODULE(xla_extension, m) {
         DebugOptions* debug_options =
             options.executable_build_options.mutable_debug_options();
         // Sets fast-math-disabling default options expected by JAX.
-        // TODO(phawkins): make these XLA-wide defaults.
-        debug_options->set_xla_cpu_fast_math_honor_infs(true);
-        debug_options->set_xla_cpu_fast_math_honor_nans(true);
-        debug_options->set_xla_cpu_fast_math_honor_division(true);
-        debug_options->set_xla_cpu_fast_math_honor_functions(true);
+        debug_options->set_xla_cpu_enable_fast_min_max(false);
         debug_options->set_xla_gpu_enable_fast_min_max(false);
         return options;
       }))
@@ -1406,7 +1402,10 @@ PYBIND11_MODULE(xla_extension, m) {
                              options.device_assignment())
                        : absl::nullopt;
           },
-          &ExecutableBuildOptions::set_device_assignment);
+          &ExecutableBuildOptions::set_device_assignment)
+      .def_property("use_spmd_partitioning",
+                    &ExecutableBuildOptions::use_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_spmd_partitioning);
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)

@@ -86,7 +86,7 @@ patch_kissfft() {
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
   xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
-  sed -i "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
 }
 
 build_embarc_mli() {
@@ -136,6 +136,9 @@ download_and_extract() {
     echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
+
+  # delete anything after the '?' in a url that may mask true file extension
+  url=$(echo "${url}" | sed "s/\?.*//")
 
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}

@@ -28,8 +28,7 @@ REGISTER_OP("_XlaSendFromHost")
     .SetIsStateful()
     .SetShapeFn(::tensorflow::shape_inference::NoOutputs)
     .Doc(R"doc(
-A placeholder op for multiple values that will be sent from TensorFlow to a
-running XLA computation.
+A placeholder op to send values to a running XLA computation.
 
 inputs: A list of tensors that will be sent to the XLA computation.
 dynamic_key: The key sent at runtime by the compile node to identify which
@@ -49,8 +48,7 @@ REGISTER_OP("_XlaRecvAtHost")
     .SetIsStateful()
     .SetShapeFn(::tensorflow::shape_inference::UnknownShape)
     .Doc(R"doc(
-A placeholder op for multiple values that will be sent to TensorFlow from a
-running XLA computation.
+A placeholder op to receive values from a running XLA computation.
 
 dynamic_key: The key sent at runtime by the compile node to identify which
 execution the transfer corresponds to.

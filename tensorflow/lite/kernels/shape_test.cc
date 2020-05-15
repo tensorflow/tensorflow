@@ -45,6 +45,9 @@ class ShapeOpModel : public SingleOpModel {
   int32_t GetOutputSize() { return GetTensorSize(output_); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+  TfLiteAllocationType GetOutputAllocationType() const {
+    return interpreter_->tensor(interpreter_->outputs()[0])->allocation_type;
+  }
 
  private:
   int input_;
@@ -54,6 +57,13 @@ class ShapeOpModel : public SingleOpModel {
 TEST(ShapeOpTest, OutTypeInt) {
   ShapeOpModel<int32_t> model({1, 3, 1, 3, 5}, TensorType_FLOAT32,
                               TensorType_INT32);
+  ASSERT_EQ(model.GetOutputAllocationType(), kTfLitePersistentRo);
+
+  // Unlike most ops, Rank populates outputs in Prepare().
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 1, 3, 5}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({5}));
+
+  // Invoke is superfluous and shouldn't change the output.
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 1, 3, 5}));
@@ -63,7 +73,6 @@ TEST(ShapeOpTest, OutTypeInt) {
 TEST(ShapeOpTest, OutTypeInt64) {
   ShapeOpModel<int64_t> model({1, 3, 1, 3, 5}, TensorType_FLOAT32,
                               TensorType_INT64);
-  model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 1, 3, 5}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({5}));
@@ -71,7 +80,6 @@ TEST(ShapeOpTest, OutTypeInt64) {
 
 TEST(ShapeOpTest, ScalarTensor) {
   ShapeOpModel<int32_t> model({}, TensorType_FLOAT32, TensorType_INT32);
-  model.Invoke();
 
   EXPECT_EQ(model.GetOutputSize(), 0);
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({0}));
@@ -79,7 +87,6 @@ TEST(ShapeOpTest, ScalarTensor) {
 
 TEST(ShapeOpTest, EmptyTensor) {
   ShapeOpModel<int32_t> model({1, 0}, TensorType_FLOAT32, TensorType_INT32);
-  model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));

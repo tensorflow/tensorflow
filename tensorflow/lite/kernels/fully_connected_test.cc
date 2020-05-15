@@ -361,11 +361,6 @@ const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
-const auto kKernelMapSparse = new std::map<string, TfLiteRegistration*>({
-    {"SparseReference", ops::builtin::Register_FULLY_CONNECTED_SPARSE_REF()},
-    {"SparseOptimized", ops::builtin::Register_FULLY_CONNECTED_SPARSE_OPT()},
-});
-
 class QuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
@@ -1187,7 +1182,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
 class SparseFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapSparse;
+    return *kKernelMapNoPie;
   }
 };
 
@@ -1277,7 +1272,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4Test) {
 
 INSTANTIATE_TEST_SUITE_P(
     SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapSparse)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
 
 }  // namespace
 }  // namespace tflite

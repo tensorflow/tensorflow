@@ -19,6 +19,8 @@ limitations under the License.
 #include <tuple>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -323,30 +325,46 @@ TEST(TPURewriteDeviceUtilTest, ValidFullMeshDeviceAssignment) {
 
   TF_ASSERT_OK(status_or.status());
 
-  auto& tpu_device_assignment = status_or.ValueOrDie();
+  const auto& tpu_device_assignment = status_or.ValueOrDie();
   EXPECT_EQ(tpu_device_assignment.compilation_device,
             "/job:worker/replica:0/task:0/device:CPU:0");
-  auto& execution_devices = tpu_device_assignment.execution_devices;
-  ASSERT_EQ(execution_devices.size(), 8);
-  for (const auto& replica_execution_device : execution_devices)
-    ASSERT_EQ(replica_execution_device.size(), 1);
+  const auto& tpu_devices = tpu_device_assignment.tpu_devices;
+  ASSERT_EQ(tpu_devices.size(), 8);
+  for (const auto& replica_tpu_devices : tpu_devices)
+    ASSERT_EQ(replica_tpu_devices.size(), 1);
 
-  EXPECT_EQ(execution_devices[0][0],
+  EXPECT_EQ(tpu_devices[0][0].device,
             "/job:worker/replica:0/task:0/device:TPU:0");
-  EXPECT_EQ(execution_devices[1][0],
+  EXPECT_EQ(tpu_devices[0][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][0].device,
             "/job:worker/replica:0/task:0/device:TPU:1");
-  EXPECT_EQ(execution_devices[2][0],
+  EXPECT_EQ(tpu_devices[1][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[2][0].device,
             "/job:worker/replica:0/task:0/device:TPU:2");
-  EXPECT_EQ(execution_devices[3][0],
+  EXPECT_EQ(tpu_devices[2][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[3][0].device,
             "/job:worker/replica:0/task:0/device:TPU:3");
-  EXPECT_EQ(execution_devices[4][0],
+  EXPECT_EQ(tpu_devices[3][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[4][0].device,
             "/job:worker/replica:0/task:1/device:TPU:0");
-  EXPECT_EQ(execution_devices[5][0],
+  EXPECT_EQ(tpu_devices[4][0].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[5][0].device,
             "/job:worker/replica:0/task:1/device:TPU:1");
-  EXPECT_EQ(execution_devices[6][0],
+  EXPECT_EQ(tpu_devices[5][0].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[6][0].device,
             "/job:worker/replica:0/task:1/device:TPU:2");
-  EXPECT_EQ(execution_devices[7][0],
+  EXPECT_EQ(tpu_devices[6][0].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[7][0].device,
             "/job:worker/replica:0/task:1/device:TPU:3");
+  EXPECT_EQ(tpu_devices[7][0].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
 
   EXPECT_FALSE(tpu_device_assignment.xla_device_assignment.hasValue());
 }
@@ -410,30 +428,46 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh2x2x2) {
 
   TF_ASSERT_OK(status_or.status());
 
-  auto& tpu_device_assignment = status_or.ValueOrDie();
+  const auto& tpu_device_assignment = status_or.ValueOrDie();
   EXPECT_EQ(tpu_device_assignment.compilation_device,
             "/job:worker/replica:0/task:0/device:CPU:0");
-  auto& execution_devices = tpu_device_assignment.execution_devices;
-  ASSERT_EQ(execution_devices.size(), 4);
-  for (const auto& replica_execution_device : execution_devices)
-    ASSERT_EQ(replica_execution_device.size(), 2);
+  const auto& tpu_devices = tpu_device_assignment.tpu_devices;
+  ASSERT_EQ(tpu_devices.size(), 4);
+  for (const auto& replica_tpu_devices : tpu_devices)
+    ASSERT_EQ(replica_tpu_devices.size(), 2);
 
-  EXPECT_EQ(execution_devices[0][0],
+  EXPECT_EQ(tpu_devices[0][0].device,
             "/job:worker/replica:0/task:0/device:TPU:0");
-  EXPECT_EQ(execution_devices[0][1],
+  EXPECT_EQ(tpu_devices[0][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[0][1].device,
             "/job:worker/replica:0/task:1/device:TPU:3");
-  EXPECT_EQ(execution_devices[1][0],
+  EXPECT_EQ(tpu_devices[0][1].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][0].device,
             "/job:worker/replica:0/task:0/device:TPU:1");
-  EXPECT_EQ(execution_devices[1][1],
+  EXPECT_EQ(tpu_devices[1][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][1].device,
             "/job:worker/replica:0/task:1/device:TPU:2");
-  EXPECT_EQ(execution_devices[2][0],
+  EXPECT_EQ(tpu_devices[1][1].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[2][0].device,
             "/job:worker/replica:0/task:0/device:TPU:3");
-  EXPECT_EQ(execution_devices[2][1],
+  EXPECT_EQ(tpu_devices[2][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[2][1].device,
             "/job:worker/replica:0/task:1/device:TPU:0");
-  EXPECT_EQ(execution_devices[3][0],
+  EXPECT_EQ(tpu_devices[2][1].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[3][0].device,
             "/job:worker/replica:0/task:0/device:TPU:2");
-  EXPECT_EQ(execution_devices[3][1],
+  EXPECT_EQ(tpu_devices[3][0].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[3][1].device,
             "/job:worker/replica:0/task:1/device:TPU:1");
+  EXPECT_EQ(tpu_devices[3][1].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
 
   auto& xla_device_assignment = tpu_device_assignment.xla_device_assignment;
   ASSERT_TRUE(xla_device_assignment.hasValue());
@@ -511,23 +545,35 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   EXPECT_EQ(tpu_device_assignment.compilation_device,
             "/job:worker/replica:0/task:0/device:CPU:0");
 
-  auto& execution_devices = tpu_device_assignment.execution_devices;
-  ASSERT_EQ(execution_devices.size(), 2);
-  for (const auto& replica_execution_device : execution_devices)
-    ASSERT_EQ(replica_execution_device.size(), 3);
+  auto& tpu_devices = tpu_device_assignment.tpu_devices;
+  ASSERT_EQ(tpu_devices.size(), 2);
+  for (const auto& replica_tpu_devices : tpu_devices)
+    ASSERT_EQ(replica_tpu_devices.size(), 3);
 
-  EXPECT_EQ(execution_devices[0][0],
+  EXPECT_EQ(tpu_devices[0][0].device,
             "/job:worker/replica:0/task:1/device:TPU:1");
-  EXPECT_EQ(execution_devices[0][1],
+  EXPECT_EQ(tpu_devices[0][0].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[0][1].device,
             "/job:worker/replica:0/task:1/device:TPU:0");
-  EXPECT_EQ(execution_devices[0][2],
+  EXPECT_EQ(tpu_devices[0][1].host,
+            "/job:worker/replica:0/task:1/device:CPU:0");
+  EXPECT_EQ(tpu_devices[0][2].device,
             "/job:worker/replica:0/task:2/device:TPU:0");
-  EXPECT_EQ(execution_devices[1][0],
+  EXPECT_EQ(tpu_devices[0][2].host,
+            "/job:worker/replica:0/task:2/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][0].device,
             "/job:worker/replica:0/task:2/device:TPU:1");
-  EXPECT_EQ(execution_devices[1][1],
+  EXPECT_EQ(tpu_devices[1][0].host,
+            "/job:worker/replica:0/task:2/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][1].device,
             "/job:worker/replica:0/task:0/device:TPU:0");
-  EXPECT_EQ(execution_devices[1][2],
+  EXPECT_EQ(tpu_devices[1][1].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(tpu_devices[1][2].device,
             "/job:worker/replica:0/task:0/device:TPU:1");
+  EXPECT_EQ(tpu_devices[1][2].host,
+            "/job:worker/replica:0/task:0/device:CPU:0");
 
   auto& xla_device_assignment = tpu_device_assignment.xla_device_assignment;
   ASSERT_TRUE(xla_device_assignment.hasValue());
@@ -552,43 +598,28 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   EXPECT_EQ(computation_device_2.replica_device_ids(1), 3);
 }
 
-struct ParameterizedCPUHostForTPUDeviceTest
-    : ::testing::TestWithParam<std::tuple<std::string, std::string>> {};
-
-TEST_P(ParameterizedCPUHostForTPUDeviceTest, CPUHostForTPUDevice) {
-  auto status_or_device = GetCPUHostForTPUDevice(std::get<0>(GetParam()));
-  TF_ASSERT_OK(status_or_device.status());
-  EXPECT_EQ(status_or_device.ValueOrDie(), std::get<1>(GetParam()));
+TEST(TPURewriteDeviceUtilTest, TestGetDeviceCoordinates) {
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  auto device_assignment_attr = builder.getI64ArrayAttr({1, 2, 3});
+  auto status_or_device_coodinates =
+      GetDeviceCoordinates(device_assignment_attr);
+  ASSERT_TRUE(status_or_device_coodinates.ok());
+  auto device_coordinates = status_or_device_coodinates.ConsumeValueOrDie();
+  EXPECT_EQ(device_coordinates[0], 1);
+  EXPECT_EQ(device_coordinates[1], 2);
+  EXPECT_EQ(device_coordinates[2], 3);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    CPUHostForTPUDevice, ParameterizedCPUHostForTPUDeviceTest,
-    ::testing::Values(
-        std::make_tuple("/job:worker/replica:0/task:0/device:TPU:0",
-                        "/job:worker/replica:0/task:0/device:CPU:0"),
-        std::make_tuple("/job:worker/replica:0/task:1/device:TPU:1",
-                        "/job:worker/replica:0/task:1/device:CPU:0")));
-
-TEST(TPURewriteDeviceUtilTest, CPUHostForTPUDeviceInvalidDevice) {
-  auto status_or_device = GetCPUHostForTPUDevice("bad_device");
-  ASSERT_FALSE(status_or_device.ok());
-}
-
-TEST(TPURewriteDeviceUtilTest, CPUHostsForTPUDevices) {
-  auto status_or_devices =
-      GetCPUHostsForTPUDevices({"/job:worker/replica:0/task:0/device:TPU:0",
-                                "/job:worker/replica:0/task:1/device:TPU:1"});
-  TF_ASSERT_OK(status_or_devices.status());
-  const auto& devices = status_or_devices.ValueOrDie();
-  ASSERT_EQ(devices.size(), 2);
-  EXPECT_EQ(devices[0], "/job:worker/replica:0/task:0/device:CPU:0");
-  EXPECT_EQ(devices[1], "/job:worker/replica:0/task:1/device:CPU:0");
-}
-
-TEST(TPURewriteDeviceUtilTest, CPUHostsForTPUDevicesInvalidDevice) {
-  auto status_or_devices = GetCPUHostsForTPUDevices(
-      {"/job:worker/replica:0/task:0/device:TPU:0", "bad_device"});
-  ASSERT_FALSE(status_or_devices.ok());
+TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  auto device_assignment_attr = builder.getF32ArrayAttr({1.0, 2.0, 3.0});
+  auto status_or_device_coodinates =
+      GetDeviceCoordinates(device_assignment_attr);
+  ASSERT_TRUE(!status_or_device_coodinates.ok());
+  EXPECT_EQ(status_or_device_coodinates.status().error_message(),
+            "bad 'device_assignment' attribute at index 0, not an int");
 }
 
 }  // anonymous namespace

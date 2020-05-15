@@ -144,6 +144,20 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
       recv_done();
     };
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
+
+    // NOTE: Check if the rendezvous was aborted after sending out the RPC. The
+    // ordering is important because `StartAbort` could be called right before
+    // the `RecvTensorAsync` request registers its RPC cancellation to `opts_`.
+    // In that case, the previous `StartAbort` would not trigger the
+    // cancellation of this call.
+    Status s;
+    {
+      mutex_lock l(mu_);
+      s = status_;
+    }
+    if (!s.ok()) {
+      opts_.StartCancel();
+    }
   }
 
   string src_worker_;

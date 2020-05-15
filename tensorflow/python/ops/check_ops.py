@@ -35,6 +35,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 NUMERIC_TYPES = frozenset(
@@ -375,6 +376,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
 @tf_export(
     'debugging.assert_proper_iterable',
     v1=['debugging.assert_proper_iterable', 'assert_proper_iterable'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_proper_iterable')
 def assert_proper_iterable(values):
   """Static assert that values is a "proper" iterable.
@@ -404,6 +406,7 @@ def assert_proper_iterable(values):
 
 
 @tf_export('debugging.assert_negative', v1=[])
+@dispatch.add_dispatch_support
 def assert_negative_v2(x, message=None, summarize=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
 
@@ -436,6 +439,7 @@ def assert_negative_v2(x, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_negative', 'assert_negative'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_negative')
 @_unary_assert_doc('< 0', 'negative')
 def assert_negative(x, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -456,6 +460,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):  # p
 
 
 @tf_export('debugging.assert_positive', v1=[])
+@dispatch.add_dispatch_support
 def assert_positive_v2(x, message=None, summarize=None, name=None):
   """Assert the condition `x > 0` holds element-wise.
 
@@ -488,6 +493,7 @@ def assert_positive_v2(x, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_positive', 'assert_positive'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_positive')
 @_unary_assert_doc('> 0', 'positive')
 def assert_positive(x, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -507,6 +513,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):  # p
 
 
 @tf_export('debugging.assert_non_negative', v1=[])
+@dispatch.add_dispatch_support
 def assert_non_negative_v2(x, message=None, summarize=None, name=None):
   """Assert the condition `x >= 0` holds element-wise.
 
@@ -541,6 +548,7 @@ def assert_non_negative_v2(x, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_non_negative', 'assert_non_negative'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_non_negative')
 @_unary_assert_doc('>= 0', 'non-negative')
 def assert_non_negative(x, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -561,6 +569,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None): 
 
 
 @tf_export('debugging.assert_non_positive', v1=[])
+@dispatch.add_dispatch_support
 def assert_non_positive_v2(x, message=None, summarize=None, name=None):
   """Assert the condition `x <= 0` holds element-wise.
 
@@ -595,6 +604,7 @@ def assert_non_positive_v2(x, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_non_positive', 'assert_non_positive'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_non_positive')
 @_unary_assert_doc('<= 0', 'non-positive')
 def assert_non_positive(x, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -615,6 +625,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
 
 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
+@dispatch.add_dispatch_support
 def assert_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x == y` holds element-wise.
 
@@ -649,6 +660,7 @@ def assert_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_equal', 'assert_equal'])
+@dispatch.add_dispatch_support
 @_binary_assert_doc('==')
 def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
   with ops.name_scope(name, 'assert_equal', [x, y, data]):
@@ -660,6 +672,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
 
 
 @tf_export('debugging.assert_none_equal', v1=[])
+@dispatch.add_dispatch_support
 def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
   """Assert the condition `x != y` holds for all elements.
 
@@ -698,6 +711,7 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_none_equal', 'assert_none_equal'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_none_equal')
 @_binary_assert_doc('!=')
 def assert_none_equal(
@@ -707,6 +721,7 @@ def assert_none_equal(
 
 
 @tf_export('debugging.assert_near', v1=[])
+@dispatch.add_dispatch_support
 def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
                    name=None):
   """Assert the condition `x` and `y` are close element-wise.
@@ -760,6 +775,7 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
 
 
 @tf_export(v1=['debugging.assert_near', 'assert_near'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_near')
 def assert_near(
     x, y, rtol=None, atol=None, data=None, summarize=None, message=None,
@@ -839,6 +855,7 @@ def assert_near(
 
 
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
+@dispatch.add_dispatch_support
 def assert_less_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x < y` holds element-wise.
 
@@ -874,6 +891,7 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
+@dispatch.add_dispatch_support
 @_binary_assert_doc('<')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('<', 'assert_less', math_ops.less, np.less, x, y, data,
@@ -881,6 +899,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_less_equal', v1=[])
+@dispatch.add_dispatch_support
 def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
 
@@ -917,6 +936,7 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less_equal', 'assert_less_equal'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_less_equal')
 @_binary_assert_doc('<=')
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
@@ -925,6 +945,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
+@dispatch.add_dispatch_support
 def assert_greater_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x > y` holds element-wise.
 
@@ -961,6 +982,7 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
+@dispatch.add_dispatch_support
 @_binary_assert_doc('>')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
   return _binary_assert('>', 'assert_greater', math_ops.greater, np.greater, x,
@@ -968,6 +990,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  #
 
 
 @tf_export('debugging.assert_greater_equal', v1=[])
+@dispatch.add_dispatch_support
 def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x >= y` holds element-wise.
 
@@ -1005,6 +1028,7 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_greater_equal')
 @_binary_assert_doc('>=')
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
@@ -1062,6 +1086,7 @@ def _assert_rank_condition(
 
 
 @tf_export('debugging.assert_rank', 'assert_rank', v1=[])
+@dispatch.add_dispatch_support
 def assert_rank_v2(x, rank, message=None, name=None):
   """Assert that `x` has rank equal to `rank`.
 
@@ -1095,6 +1120,7 @@ def assert_rank_v2(x, rank, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_rank', 'assert_rank'])
+@dispatch.add_dispatch_support
 def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   """Assert `x` has rank equal to `rank`.
 
@@ -1157,6 +1183,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_rank_at_least', v1=[])
+@dispatch.add_dispatch_support
 def assert_rank_at_least_v2(x, rank, message=None, name=None):
   """Assert that `x` has rank of at least `rank`.
 
@@ -1190,6 +1217,7 @@ def assert_rank_at_least_v2(x, rank, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_rank_at_least', 'assert_rank_at_least'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_rank_at_least')
 def assert_rank_at_least(
     x, rank, data=None, summarize=None, message=None, name=None):
@@ -1322,6 +1350,7 @@ def _assert_ranks_condition(
 
 
 @tf_export('debugging.assert_rank_in', v1=[])
+@dispatch.add_dispatch_support
 def assert_rank_in_v2(x, ranks, message=None, name=None):
   """Assert that `x` has a rank in `ranks`.
 
@@ -1354,6 +1383,7 @@ def assert_rank_in_v2(x, ranks, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_rank_in', 'assert_rank_in'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_rank_in')
 def assert_rank_in(
     x, ranks, data=None, summarize=None, message=None, name=None):
@@ -1417,6 +1447,7 @@ def assert_rank_in(
 
 
 @tf_export('debugging.assert_integer', v1=[])
+@dispatch.add_dispatch_support
 def assert_integer_v2(x, message=None, name=None):
   """Assert that `x` is of integer dtype.
 
@@ -1437,6 +1468,7 @@ def assert_integer_v2(x, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_integer', 'assert_integer'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_integer')
 def assert_integer(x, message=None, name=None):
   """Assert that `x` is of integer dtype.
@@ -1476,6 +1508,7 @@ def assert_integer(x, message=None, name=None):
 
 
 @tf_export('debugging.assert_type', v1=[])
+@dispatch.add_dispatch_support
 def assert_type_v2(tensor, tf_type, message=None, name=None):
   """Asserts that the given `Tensor` is of the specified type.
 
@@ -1495,6 +1528,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_type', 'assert_type'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_type')
 def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
@@ -1584,6 +1618,7 @@ _TensorDimSizes = collections.namedtuple(
 
 
 @tf_export('debugging.assert_shapes', v1=[])
+@dispatch.add_dispatch_support
 def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
                      name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
@@ -1650,6 +1685,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
 
 
 @tf_export(v1=['debugging.assert_shapes'])
+@dispatch.add_dispatch_support
 def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
 
@@ -1939,6 +1975,7 @@ def is_numeric_tensor(tensor):
         'math.is_non_decreasing', 'debugging.is_non_decreasing',
         'is_non_decreasing'
     ])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('debugging.is_non_decreasing',
                                   'is_non_decreasing')
 def is_non_decreasing(x, name=None):
@@ -1980,6 +2017,7 @@ def is_non_decreasing(x, name=None):
         'math.is_strictly_increasing', 'debugging.is_strictly_increasing',
         'is_strictly_increasing'
     ])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('debugging.is_strictly_increasing',
                                   'is_strictly_increasing')
 def is_strictly_increasing(x, name=None):
@@ -2066,6 +2104,7 @@ def _assert_same_base_type(items, expected_type=None):
 @tf_export(
     'debugging.assert_same_float_dtype',
     v1=['debugging.assert_same_float_dtype', 'assert_same_float_dtype'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_same_float_dtype')
 def assert_same_float_dtype(tensors=None, dtype=None):
   """Validate and return float type based on `tensors` and `dtype`.
@@ -2098,6 +2137,7 @@ def assert_same_float_dtype(tensors=None, dtype=None):
 
 
 @tf_export('debugging.assert_scalar', v1=[])
+@dispatch.add_dispatch_support
 def assert_scalar_v2(tensor, message=None, name=None):
   """Asserts that the given `tensor` is a scalar.
 
@@ -2120,6 +2160,7 @@ def assert_scalar_v2(tensor, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_scalar', 'assert_scalar'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_scalar')
 def assert_scalar(tensor, name=None, message=None):
   """Asserts that the given `tensor` is a scalar (i.e. zero-dimensional).
@@ -2154,6 +2195,7 @@ def assert_scalar(tensor, name=None, message=None):
 
 
 @tf_export('ensure_shape')
+@dispatch.add_dispatch_support
 def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 

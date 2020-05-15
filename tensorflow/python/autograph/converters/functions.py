@@ -38,15 +38,6 @@ class _Function(object):
 class FunctionTransformer(converter.Base):
   """Wraps function bodies around autograph-specific boilerplate."""
 
-  def visit_Return(self, node):
-    if node.value is None:
-      return node
-    node = self.generic_visit(node)
-    return templates.replace(
-        'return function_context_name.mark_return_value(value)',
-        function_context_name=self.state[_Function].context_name,
-        value=node.value)
-
   def _function_scope_options(self, fn_scope):
     """Returns the options with which to create function scopes."""
     # Top-level function receive the options that were directly requested.

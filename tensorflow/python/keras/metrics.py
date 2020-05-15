@@ -69,6 +69,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -3212,6 +3213,7 @@ def accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.binary_accuracy')
+@dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   """Calculates how often predictions matches binary labels.
 
@@ -3239,6 +3241,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 
 
 @keras_export('keras.metrics.categorical_accuracy')
+@dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches one-hot labels.
 
@@ -3267,6 +3270,7 @@ def categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches integer labels.
 
@@ -3307,6 +3311,7 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often targets are in the top `K` predictions.
 
@@ -3332,6 +3337,7 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often integer targets are in the top `K` predictions.
 

@@ -2485,6 +2485,37 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
   }
 };
 
+class Landmarks2TransformMatrixV2OperationParser
+    : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
+                              /*outputs=*/1);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // landmarks
+    RETURN_IF_ERROR(reader->AddOutputs(node));   // transform matrix
+
+    const std::string op_name = "landmarks_to_transform_matrix_v2";
+    node->operation.type = op_name;
+    BHWC output_shape;
+    RETURN_IF_ERROR(
+        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
+                              tflite_node->custom_initial_data_size,
+                              &(node->operation.attributes), &output_shape));
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape = output_shape;
+    return absl::OkStatus();
+  }
+};
+
 class AlignmentPointsToTransformMatrixOperationParser
     : public TFLiteOperationParser {
  public:
@@ -2711,6 +2742,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "Landmarks2TransformMatrix") {
         return std::make_unique<Landmarks2TransformMatrixOperationParser>();
+      }
+      if (custom_name == "Landmarks2TransformMatrixV2") {
+        return std::make_unique<Landmarks2TransformMatrixV2OperationParser>();
       }
       if (custom_name == "AlignmentPointsToTransformMatrix") {
         return std::make_unique<

@@ -29,7 +29,9 @@ import tensorflow as tf
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
+from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
@@ -189,6 +191,40 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
     quantized_converter._experimental_new_quantizer = mlir_quantizer
     quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  def testCalibrateAndQuantizeBuiltinInt16(self):
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    # TODO(b/156309549): We should add INT16 to the builtin types.
+    converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    converter.representative_dataset = calibration_gen
+    converter._experimental_calibrate_only = True
+    calibrated_tflite = converter.convert()
+    quantized_tflite = mlir_quantize(calibrated_tflite,
+                                     inference_type=_types_pb2.QUANTIZED_INT16)
+
     self.assertTrue(quantized_tflite)
 
     # The default input and output types should be float.

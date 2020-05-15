@@ -143,6 +143,11 @@ build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
 
+# config to build OneDNN backend with a user specified threadpool.
+build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
+build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
+build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
+build:mkl_threadpool -c opt
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
 build:using_cuda --define=using_cuda=true
@@ -163,6 +168,8 @@ build:cuda_clang --action_env TF_CUDA_CLANG=1
 build:dbg --config=opt -c dbg
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
+# AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
+build:dbg --copt -DDEBUG_BUILD
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
@@ -233,10 +240,15 @@ build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
 
-# Enable using platform specific build settings
+# Enable using platform specific build settings, except when cross-compiling for
+# mobile platforms.
 build --enable_platform_specific_config
+build:android --noenable_platform_specific_config
+build:ios --noenable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
+build:android --copt=-w
+build:ios --copt=-w
 build:linux --copt=-w
 build:macos --copt=-w
 build:windows --copt=/w
@@ -256,6 +268,10 @@ build:macos --define=INCLUDEDIR=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 14 mode.
+build:android --cxxopt=-std=c++14
+build:android --host_cxxopt=-std=c++14
+build:ios --cxxopt=-std=c++14
+build:ios --host_cxxopt=-std=c++14
 build:linux --cxxopt=-std=c++14
 build:linux --host_cxxopt=-std=c++14
 build:macos --cxxopt=-std=c++14

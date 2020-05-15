@@ -58,9 +58,7 @@ Value CalculateShapeValue(Location loc, Value operand,
   int64_t rank = result_type.getRank();
   shape_values.reserve(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    auto index_value = rewriter.create<mlir::DimOp>(loc, operand, i);
-    shape_values.push_back(rewriter.create<mlir::IndexCastOp>(
-        loc, index_value, rewriter.getIntegerType(32)));
+    shape_values.push_back(rewriter.create<mlir::DimOp>(loc, operand, i));
   }
   Type shape_element_type = shape_values.front().getType();
   return rewriter.create<ScalarsToDimensionTensorOp>(

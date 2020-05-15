@@ -44,7 +44,7 @@ PyObject* TocoGetPotentiallySupportedOps();
 // is specified by the calibration data are not sufficient to quantize the
 // model.
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
-                            bool fully_quantize);
+                            bool fully_quantize, int inference_type);
 
 // Sparsifies model to encode sparse tensors with proper format. Throws error if
 // sparsification fails.

@@ -38,6 +38,7 @@ inline static void Log(BridgeLoggerConfig::PrintCallbackFn print_callback,
   std::unique_ptr<llvm::raw_ostream> os;
   std::string filepath;
   if (CreateFileForDumping(name, &os, &filepath).ok()) print_callback(*os);
+  VLOG(1) << "Dumped MLIR module to " << filepath;
 }
 
 void BridgeLoggerConfig::printBeforeIfEnabled(mlir::Pass* pass,

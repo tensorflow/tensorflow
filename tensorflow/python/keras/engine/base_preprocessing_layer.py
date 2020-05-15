@@ -143,9 +143,12 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = self._combiner.restore(self._restore_updates())
 
     if not isinstance(data,
-                      (dataset_ops.DatasetV2, np.ndarray, ops.EagerTensor)):
+                      (dataset_ops.DatasetV2,
+                       np.ndarray,
+                       ops.Tensor,
+                       ragged_tensor.RaggedTensor)):
       raise ValueError(
-          '`adapt()` requires a batched Dataset, an EagerTensor, '
+          '`adapt()` requires a batched Dataset, a Tensor, '
           'or a Numpy array as input, '
           'got {}'.format(type(data)))
 
@@ -158,9 +161,14 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
             'elements. Please use `dataset.take(...)` to make the number '
             'of elements finite.')
       next_data = self._get_dataset_iterator(data)
+      # TODO(fchollet): consider checking if the dataset is already batched
+      # and otherwise batching it.
+    elif isinstance(data, (ops.Tensor, ragged_tensor.RaggedTensor)):
+      next_data = self._get_dataset_iterator(
+          dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
       generator, _ = training_generator.convert_to_generator_like(
-          data, batch_size=len(data))
+          data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.
       next_data = lambda: next(generator)

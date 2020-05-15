@@ -491,6 +491,11 @@ public final class Interpreter implements AutoCloseable {
     wrapper.resetVariableTensors();
   }
 
+  int getExecutionPlanLength() {
+    checkNotClosed();
+    return wrapper.getExecutionPlanLength();
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {

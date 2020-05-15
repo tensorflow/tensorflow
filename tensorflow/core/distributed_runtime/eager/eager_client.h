@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
@@ -38,11 +39,14 @@ class EagerClient : public core::RefCounted {
   CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
-  CLIENT_METHOD(RunComponentFunction);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 
 #undef CLIENT_METHOD
+
+  virtual void RunComponentFunctionAsync(
+      CallOptions* call_opts, const RunComponentFunctionRequest* request,
+      RunComponentFunctionResponse* response, StatusCallback done) = 0;
 
   // Feeds `request` into the request stream of EagerService::StreamingEnqueue.
   // `response` will be filled with the response for this `request`. The

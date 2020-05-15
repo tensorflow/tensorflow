@@ -47,7 +47,7 @@ namespace tensorflow {
 class SimplePropagatorState {
  public:
   SimplePropagatorState(const ImmutableExecutorState& immutable_state,
-                        int64 step_id);
+                        int64 step_id, bool vlog);
   ~SimplePropagatorState();
 
   // A `TaggedNode` corresponds to a single invocation of a node's kernel,
@@ -157,7 +157,8 @@ class SimplePropagatorState {
  private:
   SimplePropagatorState(const ImmutableExecutorState& immutable_state_,
                         int64 step_id,
-                        const ImmutableExecutorState::FrameInfo& finfo);
+                        const ImmutableExecutorState::FrameInfo& finfo,
+                        bool vlog);
 
   const ImmutableExecutorState& immutable_state_;
   const int64 step_id_;

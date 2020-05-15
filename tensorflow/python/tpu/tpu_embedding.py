@@ -828,7 +828,7 @@ class TPUEmbedding(object):
   ...     end_learning_rate=0.0)
   >>> wordpiece_table_config = TableConfig(
   ...   vocabulary_size=119547,
-  ...   dimension=768,
+  ...   dimension=256,
   ...   learning_rate_fn=learning_rate_fn)
   >>> wordpiece_feature_config = FeatureConfig(
   ...   table_id='bert/embeddings/word_embeddings',
@@ -846,11 +846,11 @@ class TPUEmbedding(object):
   ...  batch_size=128,
   ...  mode=TRAINING,
   ...  optimization_parameters=optimization_parameters,
-  ...  device_config=DeviceConfig(
-  ...    num_cores=64, num_hosts=4, job_name='tpu_worker'))
+  ...  master='')
   >>> with tf.Graph().as_default():
   ...   init_tpu_op = tf.compat.v1.tpu.initialize_system(
-  ...     embedding_config=tpu_embedding.config_proto, job='tpu_worker')
+  ...     embedding_config=tpu_embedding.config_proto)
+  ...   tf.compat.v1.Session().run(init_tpu_op)
   """
 
   # TODO(shizhiw): Consider adding a field to FeatureConfig that indicates that

@@ -74,6 +74,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 }
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
+                                        const bool wait_until_ready,
                                         int64* op_id, int32* output_num) {
   // TODO(allenl): Consider supporting remote handles on custom devices.
   VariantDevice device = handle->device();
@@ -82,8 +83,8 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
         "Custom devices and remote execution are currently not supported "
         "together.");
   }
-  TF_RETURN_IF_ERROR(handle->RemoteAddressUntilReady(absl::get<Device*>(device),
-                                                     op_id, output_num));
+  TF_RETURN_IF_ERROR(handle->RemoteAddress(
+      absl::get<Device*>(device), wait_until_ready, op_id, output_num));
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
       GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
@@ -120,13 +121,15 @@ Status RemoteMgr::DeleteTensorHandle(
 }
 
 Status RemoteMgr::SerializeRemoteTensorHandle(
-    TensorHandle* in, RemoteTensorHandle* out, Device* device,
-    const string& device_name, const bool serialize_resource_dtype_and_shape) {
+    TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
+    Device* device, const string& device_name,
+    const bool serialize_resource_dtype_and_shape) {
   int64 op_id;
   int32 output_num;
-  if (!in->RemoteAddressUntilReady(device, &op_id, &output_num).ok()) {
+  if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
     tf_shared_lock l(remote_tensor_handle_mu_);
-    TF_RETURN_IF_ERROR(GetRemoteTensorHandle(in, &op_id, &output_num));
+    TF_RETURN_IF_ERROR(
+        GetRemoteTensorHandle(in, wait_until_ready, &op_id, &output_num));
   }
   out->Clear();
   out->set_op_id(op_id);

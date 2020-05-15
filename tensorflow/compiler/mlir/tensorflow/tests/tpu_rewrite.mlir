@@ -1222,6 +1222,41 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 // -----
 
+// Tests simple case of `tf_device.cluster_func` on TPU with replication and parallel_execute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  // CHECK-LABEL: func @replicated_parallel_tpu_cluster_func
+  func @replicated_parallel_tpu_cluster_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      // CHECK: "tf._TPUCompileMlir"
+      // CHECK: "tf.TPUCompileSucceededAssert"
+      // CHECK: "tf_device.parallel_execute"
+      // CHECK:    "tf.TPUExecute"
+      %3 = "tf_device.parallel_execute"() ( {
+        "tf.D"() : () -> ()
+        tf_device.return
+      }, {
+        %4 = "tf_device.cluster_func"(%ri_0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+
+        tf_device.return %4 : tensor<?xi32>
+      }) : () -> (tensor<?xi32>)
+      tf_device.return %3 : tensor<?xi32>
+    }
+    %2 = "tf.C"(%1#1) : (tensor<?xi32>) -> tensor<?xi32>
+    return %2 : tensor<?xi32>
+  }
+
+  func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %0 : tensor<?xi32>
+  }
+}
+
+// -----
+
 // Tests devices are set properly for non replicated model parallelism.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {

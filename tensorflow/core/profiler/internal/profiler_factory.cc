@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -69,6 +69,13 @@ class CpuVectorizationTest
     return absl::StrCat(opcode, "_On_", triple,
                         (features.empty() ? "" : "_With"), features);
   }
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    return debug_options;
+  }
 };
 
 TEST_P(CpuVectorizationTest, DoIt) {

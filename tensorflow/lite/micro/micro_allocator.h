@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -135,8 +139,6 @@ class MicroAllocator {
   size_t scratch_buffer_count_ = 0;
 
   const SubGraph* subgraph_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
 };
 
 }  // namespace tflite

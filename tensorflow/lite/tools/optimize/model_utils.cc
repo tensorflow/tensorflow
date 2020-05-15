@@ -134,8 +134,10 @@ void SetOperatorCodeVersion(ModelT* model) {
       OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
       operator_property::OperatorProperty property =
           operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
-      if (property.quantizable) {
-        // Only update the versions of quantizable operations.
+      if (property.quantizable && op_code->version < property.version) {
+        // Only update the versions of quantizable operations if the original
+        // version is lesser than minimum quantized one mentioned by
+        // OperatorProperty.
         op_code->version = property.version;
       }
     }

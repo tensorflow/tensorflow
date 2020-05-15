@@ -49,6 +49,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -330,7 +331,7 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-class BaseResourceVariable(variables.VariableV1):
+class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
@@ -1830,7 +1831,6 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(BaseResourceVariable,
                                         _dense_var_to_tensor)
-ops.register_dense_tensor_like_type(BaseResourceVariable)
 
 
 class _UnreadVariable(BaseResourceVariable):
@@ -1953,9 +1953,6 @@ class _UnreadVariable(BaseResourceVariable):
   def op(self):
     """The op for this variable."""
     return self._parent_op
-
-
-ops.register_dense_tensor_like_type(_UnreadVariable)
 
 
 @ops.RegisterGradient("ReadVariableOp")

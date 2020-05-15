@@ -585,22 +585,34 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
   // definition_time: int. Logical time this value was defined in the schedule.
   // use_times: string. This is a semicolon-separated list of integers for all
   // the use times.
+  // use_names: string. This is a semicolon-separated list of string
+  // representation of uses.
   if (debug_str->empty()) {
     // Append the column names.
     absl::StrAppend(debug_str,
-                    "buffer_id,buffer_name,alt_mem_benefit,size,definition_"
-                    "time,use_times\n");
+                    "buffer_id,buffer_name,alt_mem_benefit,size,"
+                    "definition_time,use_times,use_names\n");
   }
   const HloBuffer& buffer =
       alias_analysis_.GetBufferContainingValue(*interval.buffer);
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   int64 definition_time =
       instruction_schedule.at(interval.buffer->defining_position().instruction);
-  std::set<int64> use_times;
+  std::vector<std::pair<int64, std::string>> uses;
   for (const HloValue* value : buffer.values()) {
     for (const HloUse& use : value->uses()) {
-      use_times.insert(instruction_schedule.at(use.instruction));
+      uses.push_back(
+          {instruction_schedule.at(use.instruction), use.ToString()});
     }
+  }
+  absl::c_sort(uses);
+  std::vector<int64> use_times;
+  std::vector<std::string> use_names;
+  use_times.reserve(uses.size());
+  use_names.reserve(uses.size());
+  for (auto use : uses) {
+    use_times.push_back(use.first);
+    use_names.push_back(use.second);
   }
 
   absl::StrAppend(debug_str, buffer.id(), ",");
@@ -612,7 +624,8 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
       debug_str, alternate_memory_benefit ? *alternate_memory_benefit : 0, ",");
   absl::StrAppend(debug_str, interval.size, ",");
   absl::StrAppend(debug_str, definition_time, ",");
-  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\"");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\",");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\"");
   absl::StrAppend(debug_str, "\n");
 }
 
