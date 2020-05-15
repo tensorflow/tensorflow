@@ -189,20 +189,18 @@ class MapFnTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMap_autograph_indirect(self):
     def test_function(x):
-      cond = tf.constant(-1)
+      cond = constant_op.constant(-1)
       if cond == 0:
         result = x
       else:
         result = x
       return result
-
-    @tf.function
     def map_call(x):
-      return tf.map_fn(test_function, x)
+      return map_fn.map_fn(test_function, x)
 
     x = constant_op.constant([1])
     y = map_call(x)
-    self.assertAllEqual([1], self.evaluate(y))
+    self.assertAllEqual([1], self.evaluate(y)) 
 
   @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
