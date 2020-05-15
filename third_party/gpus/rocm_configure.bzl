@@ -615,8 +615,7 @@ def _create_local_rocm_repository(repository_ctx):
             name = "rocm-include",
             src_dir = rocm_toolkit_path + "/include",
             out_dir = "rocm/include",
-            exceptions = [rocm_toolkit_path + "/include/gtest", 
-              rocm_toolkit_path + "/include/gmock"],
+            exceptions = ["gtest", "gmock"],
         ),
         make_copy_dir_rule(
             repository_ctx,
