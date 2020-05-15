@@ -38,6 +38,9 @@ final class ModelMetadataInfo {
   /** Metadata array of output tensors. */
   private final List</* @Nullable */ TensorMetadata> outputsMetadata;
 
+  /** The minimum parser version required to fully understand the metadata flatbuffer. */
+  private final String /* @Nullable */ minVersion;
+
   /**
    * Creates a {@link ModelMetadataInfo} with the metadata FlatBuffer, {@code buffer}.
    *
@@ -56,6 +59,7 @@ final class ModelMetadataInfo {
 
     inputsMetadata = getInputsMetadata(modelMetadata);
     outputsMetadata = getOutputsMetadata(modelMetadata);
+    minVersion = modelMetadata.minParserVersion();
   }
 
   /** Gets the count of input tensors with metadata in the metadata FlatBuffer. */
@@ -75,6 +79,15 @@ final class ModelMetadataInfo {
         inputIndex >= 0 && inputIndex < inputsMetadata.size(),
         "The inputIndex specified is invalid.");
     return inputsMetadata.get(inputIndex);
+  }
+
+  /**
+   * Gets the minimum parser version of the metadata. It can be {@code null} if the version is not
+   * populated.
+   */
+  @Nullable
+  String getMininumParserVersion() {
+    return minVersion;
   }
 
   /** Gets the root handler for the model metadata. */

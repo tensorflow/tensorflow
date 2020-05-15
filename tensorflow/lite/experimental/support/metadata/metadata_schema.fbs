@@ -29,11 +29,31 @@ namespace tflite;
 // generate the model interface. It is recommended to fill in at least those
 // enties to boost the codegen performance.
 
-// This corresponds to the schema version.
+// LINT.IfChange
+
+// The Metadata schema is versioned by the Semantic versioning number, which
+// tracks the schema changes according to the Semantic versioning rules.
+//
+// ModelMetadata.min_parser_version indicates the minimum necessary metadata
+// parser version to fully understand all fields in a given metadata flatbuffer.
+//
+// New fields and types will have associated comments with the schema version for
+// which they were added.
+//
+// Schema Semantic version: 1.0.0
+
+// This indicates the flatbuffer compatibility. The number will bump up when a
+// break change is applied to the schema, such as removing fields or adding new
+// fields to the middle of a table.
 file_identifier "M001";
 // File extension of any written files.
 file_extension "tflitemeta";
 
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     /supportmetadata/java/src/java/org/tensorflow/lite/support/metadata/\
+//     MetadataExtractor.java)
+
+// LINT.IfChange
 enum AssociatedFileType : byte {
   UNKNOWN = 0,
   // Files such as readme.txt
@@ -498,6 +518,17 @@ table ModelMetadata {
 
   // A list of associated files of this model.
   associated_files:[AssociatedFile];
+
+  // The minimum metadata parser version that can fully understand the fields in
+  // the metadata flatbuffer. The version is effectively the largest version
+  // number among the versions of all the fields populated and the smallest
+  // compatible version indicated by the file identifier.
+  //
+  // This field is automaticaly populated by the MetadataPopulator when
+  // the metadata is populated into a TFLite model.
+  min_parser_version:string;
 }
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     support/metadata/cc/metadata_version.cc)
 
 root_type ModelMetadata;
