@@ -161,7 +161,9 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/arc/arc_
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/arc/%.tpl
 	@cp $$< $$@
 
-$(foreach var,$(ARC_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+$(foreach var,$(ARC_TARGET_COPY_FILES), $(eval $(call path_changing_copy_file,\
+    $(PRJDIR)$(3)/$(1)/$(word 1, $(subst !, ,$(var))),\
+    $(word 2, $(subst !, ,$(var))))))
 
 endif
 endef

@@ -59,9 +59,7 @@ include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
    ARC_EXTRA_EXECUTE_RULES = 
 
   MAKE_PROJECT_FILES += $(UBOOT_FILE_NAME)
-ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(UBOOT_FILE))),)
-  ARC_TARGET_FILES_DIRS += $(dir $(UBOOT_FILE))
-endif
+  ARC_TARGET_COPY_FILES += $(notdir $(UBOOT_FILE))!$(UBOOT_FILE)
 
   MAKE_PROJECT_FILES := $(filter-out README_MAKE.md, $(MAKE_PROJECT_FILES)) README_ARC_EMSDP.md
 
