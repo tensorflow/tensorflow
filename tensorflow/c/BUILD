@@ -394,8 +394,14 @@ tf_cuda_library(
     deps = [
         ":tf_status",
         ":tf_status_internal",
-        "//tensorflow/core:lib",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cc_test(
