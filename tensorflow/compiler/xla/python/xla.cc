@@ -1406,7 +1406,10 @@ PYBIND11_MODULE(xla_extension, m) {
                              options.device_assignment())
                        : absl::nullopt;
           },
-          &ExecutableBuildOptions::set_device_assignment);
+          &ExecutableBuildOptions::set_device_assignment)
+      .def_property("use_spmd_partitioning",
+                    &ExecutableBuildOptions::use_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_spmd_partitioning);
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
