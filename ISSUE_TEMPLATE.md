@@ -1,42 +1,17 @@
-Please go to Stack Overflow for help and support:
+### TinyML: Tensorflow lite for microcontroller 이슈
+이곳은 텐서플로우 라이트 한글화 프로젝트의 Issue 공간입니다. 텐서플로우 자체에 이슈가 있다면 아래의 Github 링크나 Stack Overflow를 참조하시기 바랍니다. 
 
-https://stackoverflow.com/questions/tagged/tensorflow
+ - 이슈내용: 
+ - 재현과정: 
+ - 재현환경: 
+ - 에러로그
+ ```
+ log
+ ```
 
-If you open a GitHub issue, here is our policy:
+### Tensorflow Github
+- https://github.com/tensorflow/tensorflow
 
-1. It must be a bug, a feature request, or a significant problem with documentation (for small docs fixes please send a PR instead).
-2. The form below must be filled out.
-3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
+### Stack Overflow
+- https://stackoverflow.com/questions/tagged/tensorflow
 
-**Here's why we have that policy**: TensorFlow developers respond to issues. We want to focus on work that benefits the whole community, e.g., fixing bugs and adding features. Support only helps individuals. GitHub also notifies thousands of people when issues are filed. We want them to see you communicating an interesting problem, rather than being redirected to Stack Overflow.
-
-------------------------
-
-### System information
-- **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
-- **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
-- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on mobile device**:
-- **TensorFlow installed from (source or binary)**:
-- **TensorFlow version (use command below)**:
-- **Python version**:
-- **Bazel version (if compiling from source)**:
-- **GCC/Compiler version (if compiling from source)**:
-- **CUDA/cuDNN version**:
-- **GPU model and memory**:
-- **Exact command to reproduce**:
-
-You can collect some of this information using our environment capture script:
-
-https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
-
-You can obtain the TensorFlow version with:
-
-```bash
-python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"
-```
-
-### Describe the problem
-Describe the problem clearly here. Be sure to convey here why it's a bug in TensorFlow or a feature request.
-
-### Source code / logs
-Include any logs or source code that would be helpful to diagnose the problem. If including tracebacks, please include the full traceback. Large logs and files should be attached. Try to provide a reproducible test case that is the bare minimum necessary to generate the problem.
