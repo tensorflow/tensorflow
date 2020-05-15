@@ -937,6 +937,13 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "tf32_utils",
+    srcs = ["tf32_utils.cc"],
+    hdrs = ["tf32_utils.h"],
+    copts = tf_copts(),
+)
+
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
