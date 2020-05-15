@@ -899,9 +899,7 @@ TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::Status::OK();
 #else   // !defined(IS_MOBILE_PLATFORM)
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->SyncExecutors();
+  status->status = tensorflow::unwrap(ctx)->AsyncWait();
 #endif  // !IS_MOBILE_PLATFORM
 }
 
