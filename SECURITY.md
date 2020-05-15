@@ -64,7 +64,7 @@ your model, and we recommend you run the TensorFlow process in a sandbox.
 
 It is possible to write models that are secure in a sense that they can safely
 process untrusted inputs assuming there are no bugs. There are two main reasons
-to not rely on this: first, it is easy to write models which must not be exposed
+to not rely on this: First, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
 bugs either in TensorFlow or in dependent libraries.
@@ -149,7 +149,7 @@ attack (or worse). Because TensorFlow behaves correctly, this is not a
 vulnerability in TensorFlow (although it would be a vulnerability of this
 hypothetical system).
 
-As a general rule, it is incorrect behavior for Tensorflow to access memory it
+As a general rule, it is incorrect behavior for TensorFlow to access memory it
 does not own, or to terminate in an unclean way. Bugs in TensorFlow that lead to
 such behaviors constitute a vulnerability.
 
