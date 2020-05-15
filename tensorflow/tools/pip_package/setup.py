@@ -43,8 +43,6 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-DOCLINES = __doc__.split('\n')
-
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
@@ -92,6 +90,16 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
+
+DOCLINES = __doc__.split('\n')
+if project_name.endswith('-gpu'):
+  project_name_no_gpu = project_name[:-len('-gpu')]
+  _GPU_PACKAGE_NOTE = 'Note that %s package by default supports both CPU and '\
+      'GPU. %s has the same content and exists solely for backward '\
+      'compatiblity. Please migrate to %s for GPU support.'\
+      % (project_name_no_gpu, project_name, project_name_no_gpu)
+  DOCLINES.append(_GPU_PACKAGE_NOTE)
+
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
