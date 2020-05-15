@@ -18,10 +18,36 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import _pywrap_tf32_execution
 from tensorflow.python.eager import context
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
+def tensor_float32_execution_allowed():
+  """Get if TensorFloat-32 operations are enabled on supported hardware.
+
+  Returns:
+    True if TensorFloat-32 execution is enabled and False otherwise.
+  """
+  return _pywrap_tf32_execution.is_allowed()
+
+def allow_tensor_float_32_execution(allow):
+  """Allow use of TensorFloat-32 with float32 ops on supported hardware.
+
+  TensorFloat-32 is a math mode introduced with the NVIDIA Ampere architecture.
+  TensorFloat-32 kernels take float32 inputs and produce float32 outputs.
+  Internally, the inputs are cast to a custom representation with 10-bit
+  mantissa (similar to float16) and 8-bit exponent (similar to float32) and are
+  executed using TensorCores with float32 accumulation. For more information,
+  see https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/.
+
+  TensorFloat-32 execution is disabled by default, but this may change in a
+  future version.
+  
+  Args:
+    allow: whether to allow TensorFloat-32 execution
+  """
+  _pywrap_tf32_execution.allow(allow)
 
 @tf_export('config.threading.get_intra_op_parallelism_threads')
 def get_intra_op_parallelism_threads():
