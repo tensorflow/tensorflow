@@ -479,7 +479,8 @@ def map_fn(fn,
       elems_value_flat = _elems_value_batchable_to_flat(elems_value_batchable,
                                                         elems_flat_signature)
       elems_value = elems_unflatten(elems_value_flat)
-      autographed_fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
+      ag_ctx = autograph_ctx.control_status_ctx()
+      autographed_fn = autograph.tf_convert(fn, ag_ctx)
       result_value = autographed_fn(elems_value)
       nest.assert_same_structure(fn_output_signature or elems, result_value)
       result_value_flat = nest.flatten(result_value)
