@@ -346,11 +346,16 @@ class TextVectorization(CombinerPreprocessingLayer):
       return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
 
     if self._output_mode == INT and self._split is None:
-      return input_shape
+      if len(input_shape) == 1:
+        input_shape = tuple(input_shape) + (1,)
+      return tensor_shape.TensorShape(input_shape)
 
     if self._output_mode == INT and self._split is not None:
       input_shape = list(input_shape)
-      input_shape[1] = self._output_sequence_length
+      if len(input_shape) == 1:
+        input_shape = input_shape + [self._output_sequence_length]
+      else:
+        input_shape[1] = self._output_sequence_length
       return tensor_shape.TensorShape(input_shape)
 
   def compute_output_signature(self, input_spec):
@@ -366,7 +371,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
     Arguments:
       data: The data to train on. It can be passed either as a tf.data Dataset,
-        or as a numpy array.
+        as a NumPy array, a string tensor, or as a list of texts.
       reset_state: Optional argument specifying whether to clear the state of
         the layer at the start of the call to `adapt`. This must be True for
         this layer, which does not support repeated calls to `adapt`.
@@ -377,24 +382,30 @@ class TextVectorization(CombinerPreprocessingLayer):
     # Build the layer explicitly with the original data shape instead of relying
     # on an implicit call to `build` in the base layer's `adapt`, since
     # preprocessing changes the input shape.
-    if isinstance(data, np.ndarray):
-      if data.ndim == 1:
-        data = np.expand_dims(data, axis=-1)
+    if isinstance(data, (list, tuple, np.ndarray)):
+      data = ops.convert_to_tensor(data)
+
+    if isinstance(data, ops.Tensor):
+      if data.shape.rank == 1:
+        data = array_ops.expand_dims(data, axis=-1)
       self.build(data.shape)
-      preprocessed_inputs = self._to_numpy(self._preprocess(data))
+      preprocessed_inputs = self._preprocess(data)
     elif isinstance(data, dataset_ops.DatasetV2):
       # TODO(momernick): Replace this with a more V2-friendly API.
       shape = dataset_ops.get_legacy_output_shapes(data)
       if not isinstance(shape, tensor_shape.TensorShape):
         raise ValueError("The dataset passed to 'adapt' must contain a single "
                          "tensor value.")
+      if shape.rank == 0:
+        data = data.map(lambda tensor: array_ops.expand_dims(tensor, 0))
+        shape = dataset_ops.get_legacy_output_shapes(data)
       if shape.rank == 1:
         data = data.map(lambda tensor: array_ops.expand_dims(tensor, -1))
       self.build(dataset_ops.get_legacy_output_shapes(data))
       preprocessed_inputs = data.map(self._preprocess)
     else:
       raise ValueError(
-          "adapt() requires a Dataset or a Numpy array as input, got {}".format(
+          "adapt() requires a Dataset or an array as input, got {}".format(
               type(data)))
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
@@ -561,6 +572,8 @@ class TextVectorization(CombinerPreprocessingLayer):
     return inputs
 
   def call(self, inputs):
+    if isinstance(inputs, (list, tuple, np.ndarray)):
+      inputs = ops.convert_to_tensor(inputs)
     if inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, axis=-1)
 

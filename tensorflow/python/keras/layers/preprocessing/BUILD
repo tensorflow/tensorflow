@@ -521,6 +521,7 @@ tf_py_test(
     size = "medium",
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",

@@ -29,6 +29,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
@@ -285,6 +286,57 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
           validate_training=False,
           adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
+
+  def test_list_inputs_1d(self):
+    vocab_data = ["two two two", "two three three", "three four four five"]
+    input_data = ["two three", "four five"]
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_tensor_inputs(self):
+    vocab_data = constant_op.constant(
+        ["two two two", "two three three", "three four four five"])
+    input_data = constant_op.constant(["two three", "four five"])
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_list_inputs_2d(self):
+    vocab_data = [
+        ["two two two"], ["two three three"], ["three four four five"]]
+    input_data = [["two three"], ["four five"]]
+    layer = get_layer_class()()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+    layer.set_vocabulary(["two", "three", "four", "five"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  def test_dataset_of_single_strings(self):
+    vocab_data = ["two two two", "two three three", "three four four five"]
+    input_data = ["two three", "four five"]
+    vocab_ds = dataset_ops.Dataset.from_tensor_slices(vocab_data)  # unbatched
+    layer = get_layer_class()()
+    layer.adapt(vocab_ds)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
 
 
 @keras_parameterized.run_all_keras_modes
