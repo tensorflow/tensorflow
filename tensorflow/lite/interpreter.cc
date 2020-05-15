@@ -310,8 +310,6 @@ void Interpreter::SetCancellationFunction(void* data,
   }
 }
 
-bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
-
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
@@ -341,8 +339,6 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
   }
   return kTfLiteOk;
 }
-
-bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,

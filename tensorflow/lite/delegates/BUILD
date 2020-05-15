@@ -43,26 +43,3 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
-cc_library(
-    name = "interpreter_utils",
-    srcs = ["interpreter_utils.cc"],
-    hdrs = ["interpreter_utils.h"],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite:framework",
-    ],
-)
-
-cc_test(
-    name = "interpreter_utils_test",
-    srcs = ["interpreter_utils_test.cc"],
-    linkopts = tflite_linkopts(),
-    linkstatic = 1,
-    deps = [
-        ":interpreter_utils",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:interpreter_test_fixtures",
-        "@com_google_googletest//:gtest_main",
-    ],
-)

@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_H_
 
-// Utility functions and classes for implementing delegates.
-
 #include <functional>
 #include <limits>
 #include <set>
