@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -477,6 +479,8 @@ def map_fn(fn,
       elems_value_flat = _elems_value_batchable_to_flat(elems_value_batchable,
                                                         elems_flat_signature)
       elems_value = elems_unflatten(elems_value_flat)
+      autographed_fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
+      result_value = autographed_fn(elems_value)
       result_value = fn(elems_value)
       nest.assert_same_structure(fn_output_signature or elems, result_value)
       result_value_flat = nest.flatten(result_value)
