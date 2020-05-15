@@ -2005,9 +2005,9 @@ cc_library(
 )
 
 cc_library(
-    name = "LoopsToGPU",
-    srcs = ["lib/Conversion/LoopsToGPU/LoopsToGPU.cpp"],
-    hdrs = ["include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h"],
+    name = "SCFToGPU",
+    srcs = ["lib/Conversion/SCFToGPU/SCFToGPU.cpp"],
+    hdrs = ["include/mlir/Conversion/SCFToGPU/SCFToGPU.h"],
     includes = ["include"],
     deps = [
         ":Affine",
@@ -2027,22 +2027,22 @@ cc_library(
 )
 
 cc_library(
-    name = "LoopsToGPUPass",
+    name = "SCFToGPUPass",
     srcs = [
-        "lib/Conversion/LoopsToGPU/LoopsToGPUPass.cpp",
         "lib/Conversion/PassDetail.h",
+        "lib/Conversion/SCFToGPU/SCFToGPUPass.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h",
+        "include/mlir/Conversion/SCFToGPU/SCFToGPUPass.h",
     ],
     includes = ["include"],
     deps = [
         ":Affine",
         ":ConversionPassIncGen",
         ":GPUDialect",
-        ":LoopsToGPU",
         ":Pass",
         ":SCFDialect",
+        ":SCFToGPU",
         ":StandardOps",
         ":Support",
         ":Transforms",
@@ -2053,11 +2053,11 @@ cc_library(
 cc_library(
     name = "CFGTransforms",
     srcs = [
-        "lib/Conversion/LoopToStandard/LoopToStandard.cpp",
         "lib/Conversion/PassDetail.h",
+        "lib/Conversion/SCFToStandard/SCFToStandard.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h",
+        "include/mlir/Conversion/SCFToStandard/SCFToStandard.h",
     ],
     includes = ["include"],
     deps = [
@@ -2468,7 +2468,7 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
-        ":VectorToLoops",
+        ":VectorToSCF",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestDialect",
@@ -2547,13 +2547,13 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":LoopPassIncGen",
-        ":LoopsToGPUPass",
         ":NVVMDialect",
         ":OpenMPDialect",
         ":QuantOps",
         ":QuantPassIncGen",
         ":ROCDLDialect",
         ":SCFDialect",
+        ":SCFToGPUPass",
         ":SCFTransforms",
         ":SDBM",
         ":SPIRVDialect",
@@ -2602,11 +2602,11 @@ cc_binary(
     deps = [
         ":Analysis",
         ":IR",
-        ":LoopsToGPUPass",
         ":MlirOptLib",
         ":MlirOptMain",
         ":OpenMPDialect",
         ":QuantOps",
+        ":SCFToGPUPass",
         ":Transforms",
         "@llvm-project//llvm:all_targets",
         "@llvm-project//llvm:support",
@@ -3117,7 +3117,7 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
-        ":VectorToLoops",
+        ":VectorToSCF",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
@@ -3355,13 +3355,13 @@ cc_library(
 )
 
 cc_library(
-    name = "VectorToLoops",
+    name = "VectorToSCF",
     srcs = glob([
-        "lib/Conversion/VectorToLoops/*.cpp",
-        "lib/Conversion/VectorToLoops/*.h",
+        "lib/Conversion/VectorToSCF/*.cpp",
+        "lib/Conversion/VectorToSCF/*.h",
     ]),
     hdrs = glob([
-        "include/mlir/Conversion/VectorToLoops/*.h",
+        "include/mlir/Conversion/VectorToSCF/*.h",
     ]),
     includes = ["include"],
     deps = [

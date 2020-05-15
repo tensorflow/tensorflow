@@ -171,7 +171,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
         "@llvm-project//mlir:VectorToLLVM",
-        "@llvm-project//mlir:VectorToLoops",
+        "@llvm-project//mlir:VectorToSCF",
     ],
 )
 
