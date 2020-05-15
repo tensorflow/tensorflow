@@ -189,4 +189,3 @@ def convert_to_ndarray(x, dtype=None):
     if np.can_cast(array.dtype, np_dtype):
       array = array.astype(np_dtype, casting="safe")
   return array
-
