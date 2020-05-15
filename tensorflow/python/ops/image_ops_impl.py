@@ -1231,8 +1231,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
                                    name='size')
 
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape.dims[0].value
-    new_width_const = size_const_as_shape.dims[1].value
+    new_height_const = tensor_shape.dimension_at_index(size_const_as_shape,
+                                                       0).value
+    new_width_const = tensor_shape.dimension_at_index(size_const_as_shape,
+                                                      1).value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
