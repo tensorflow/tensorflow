@@ -235,10 +235,15 @@ build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
 
-# Enable using platform specific build settings
+# Enable using platform specific build settings, except when cross-compiling for
+# mobile platforms.
 build --enable_platform_specific_config
+build:android --noenable_platform_specific_config
+build:ios --noenable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
+build:android --copt=-w
+build:ios --copt=-w
 build:linux --copt=-w
 build:macos --copt=-w
 build:windows --copt=/w
@@ -258,6 +263,10 @@ build:macos --define=INCLUDEDIR=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 14 mode.
+build:android --cxxopt=-std=c++14
+build:android --host_cxxopt=-std=c++14
+build:ios --cxxopt=-std=c++14
+build:ios --host_cxxopt=-std=c++14
 build:linux --cxxopt=-std=c++14
 build:linux --host_cxxopt=-std=c++14
 build:macos --cxxopt=-std=c++14

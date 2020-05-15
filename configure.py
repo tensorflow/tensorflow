@@ -1387,7 +1387,6 @@ def main():
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
-    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
