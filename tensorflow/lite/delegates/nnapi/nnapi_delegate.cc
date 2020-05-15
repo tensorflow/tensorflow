@@ -4019,6 +4019,8 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
 
 using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
 
+StatefulNnApiDelegate::Data::Data(const NnApi* nnapi) : nnapi(nnapi) {}
+
 StatefulNnApiDelegate::Data::~Data() {
   std::for_each(std::begin(delegate_state_cache),
                 std::end(delegate_state_cache),
@@ -4056,9 +4058,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
 
 StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
                                              Options options)
-    : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(Data{.execution_preference = options.execution_preference,
-                          .nnapi = nnapi}) {
+    : TfLiteDelegate(TfLiteDelegateCreate()), delegate_data_(nnapi) {
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
@@ -4068,6 +4068,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   if (options.model_token) {
     delegate_data_.model_token = options.model_token;
   }
+  delegate_data_.execution_preference = options.execution_preference;
   delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;

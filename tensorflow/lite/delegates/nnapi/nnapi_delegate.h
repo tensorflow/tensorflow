@@ -181,8 +181,6 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
  private:
   // Encapsulates all delegate data.
   struct Data {
-    // Preferred Power/perf trade-off.
-    Options::ExecutionPreference execution_preference;
     // Pointer to NNAPI implementation to be used by this delegate as
     // set when building the StatefulNnApiDelegate instance.
     // Will generally be the NnApiInstance() singleton but can be overridden
@@ -190,6 +188,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // The ownership of the nnapi instance is left to the caller of
     // the StatefulNnApiDelegate constructor.
     const NnApi* nnapi;
+    // Preferred Power/perf trade-off.
+    Options::ExecutionPreference execution_preference;
     // Selected NNAPI accelerator name.
     std::string accelerator_name;
     // The cache dir for NNAPI model.
@@ -202,7 +202,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::vector<MemoryRegistration> tensor_memory_map;
     // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
-    int nnapi_errno;
+    int nnapi_errno = ANEURALNETWORKS_NO_ERROR;
     // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
     // when trying to understand if all nodes are supported by the target
     // accelerators.
@@ -226,6 +226,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // the execution
     uint64_t max_execution_loop_timeout_duration_ns = 0;
 
+    explicit Data(const NnApi* nnapi);
     ~Data();
 
     // Caches an initialised NNAPIDelegateKernel.
