@@ -145,6 +145,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCholesky:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
@@ -175,6 +176,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kTriangularSolve:

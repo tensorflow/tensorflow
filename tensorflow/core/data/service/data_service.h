@@ -33,12 +33,19 @@ enum class ProcessingMode : int64 {
   ONE_EPOCH = 1,
 };
 
+// Parses a string representing a processing mode and stores the result in
+// *mode. Returns an InvalidArgument status if the string is not recognized.
+Status ParseProcessingMode(const std::string& s, ProcessingMode* mode);
+
+// Converts a processing mode to its corresponding string.
+std::string ProcessingModeToString(ProcessingMode mode);
+
 // Base class for data service clients. Data service clients are
 // thread-compatible, requiring external synchronization when used from multiple
 // threads.
 class DataServiceClientBase {
  public:
-  DataServiceClientBase(absl::string_view address, absl::string_view protocol)
+  DataServiceClientBase(const std::string& address, const std::string& protocol)
       : address_(address), protocol_(protocol) {}
 
   virtual ~DataServiceClientBase() = default;
@@ -63,7 +70,8 @@ class DataServiceClientBase {
 // Client for communicating with the tf.data service master.
 class DataServiceMasterClient : public DataServiceClientBase {
  public:
-  DataServiceMasterClient(absl::string_view address, absl::string_view protocol)
+  DataServiceMasterClient(const std::string& address,
+                          const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
   // Registers a dataset with the tf.data service, and stores the generated
@@ -74,6 +82,13 @@ class DataServiceMasterClient : public DataServiceClientBase {
   // created job will be stored in `*job_id`.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
                    int64* job_id);
+
+  // Gets the job id for the job represented by the tuple
+  // (job_name, job_name_index), and stores the id in *job_id. If the
+  // job doesn't exist yet, it will be created.
+  Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
+                        const std::string& job_name, int job_name_index,
+                        int64* job_id);
 
   // Queries the master for the tasks associated with the specified job.
   // The tasks will be stored in *tasks, and whether the job is finished will
@@ -91,7 +106,8 @@ class DataServiceMasterClient : public DataServiceClientBase {
 // Client for communicating with the tf.data service worker.
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
-  DataServiceWorkerClient(absl::string_view address, absl::string_view protocol)
+  DataServiceWorkerClient(const std::string& address,
+                          const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
   // Fetches the next element for the specified task_id. The element's
@@ -109,12 +125,12 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 
 // Creates and initializes a new tf.data service master client.
 Status CreateDataServiceMasterClient(
-    absl::string_view address, absl::string_view protocol,
+    const std::string& address, const std::string& protocol,
     std::unique_ptr<DataServiceMasterClient>* out);
 
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(
-    absl::string_view address, absl::string_view protocol,
+    const std::string& address, const std::string& protocol,
     std::unique_ptr<DataServiceWorkerClient>* out);
 
 }  // namespace data

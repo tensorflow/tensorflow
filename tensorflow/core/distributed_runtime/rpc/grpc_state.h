@@ -45,7 +45,7 @@ class RPCState : public GrpcClientCQTag {
            const ::grpc::string& method, const protobuf::Message& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
            thread::ThreadPool* threadpool, int32 max_retries = 0,
-           bool fail_fast = true)
+           bool fail_fast = true, const string* target = nullptr)
       : RPCState(
             stub, cq, method, request, response, std::move(done), call_opts,
             threadpool,
@@ -63,7 +63,7 @@ class RPCState : public GrpcClientCQTag {
 #endif  // PLATFORM_GOOGLE
               return x;
             }(),
-            /*timeout_in_ms=*/0, max_retries) {
+            /*timeout_in_ms=*/0, max_retries, target) {
   }
 
   template <typename Request>
@@ -71,7 +71,7 @@ class RPCState : public GrpcClientCQTag {
            const ::grpc::string& method, const Request& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
            thread::ThreadPool* threadpool, bool fail_fast, int64 timeout_in_ms,
-           int32 max_retries)
+           int32 max_retries, const string* target)
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),
@@ -80,7 +80,8 @@ class RPCState : public GrpcClientCQTag {
         cq_(cq),
         stub_(stub),
         method_(method),
-        fail_fast_(fail_fast) {
+        fail_fast_(fail_fast),
+        target_(target) {
     response_ = response;
     ::grpc::Status s = GrpcMaybeUnparseProto(request, &request_buf_);
     if (!s.ok()) {
@@ -152,10 +153,13 @@ class RPCState : public GrpcClientCQTag {
       StartCall();
     } else {
       // Attach additional GRPC error information if any to the final status
-      s = Status(s.code(),
-                 strings::StrCat(s.error_message(),
-                                 "\nAdditional GRPC error information:\n",
-                                 context_->debug_error_string()));
+      string error_msg = s.error_message();
+      strings::StrAppend(&error_msg, "\nAdditional GRPC error information");
+      if (target_) {
+        strings::StrAppend(&error_msg, " from remote target ", *target_);
+      }
+      strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
+      s = Status(s.code(), error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that
       // other error types are preferred during status aggregation. (gRPC
       // cancellation messages do not contain the original status message).
@@ -196,6 +200,7 @@ class RPCState : public GrpcClientCQTag {
   ::grpc::GenericStub* stub_;
   ::grpc::string method_;
   bool fail_fast_;
+  const string* target_;
 };
 
 // Represents state associated with one streaming RPC call.

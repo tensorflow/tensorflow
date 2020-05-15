@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/APFloat.h"
@@ -842,6 +843,51 @@ void ConcatenateOp::getCanonicalizationPatterns(
   results.insert<ConcatenateOperandRemoval>(context);
 }
 
+template <typename T>
+static Attribute foldConcatenateHelper(ConcatenateOp* op,
+                                       ArrayRef<Attribute> operands) {
+  auto axis = op->dimension().getLimitedValue();
+  auto type = op->getType().cast<ShapedType>();
+
+  SmallVector<T, 6> values;
+  auto shape = type.getShape();
+
+  size_t top_size = 1;
+  for (int i = 0; i < axis; i++) {
+    top_size = top_size * shape[i];
+  }
+
+  for (size_t i = 0; i < top_size; i++) {
+    for (auto operand : operands) {
+      DenseElementsAttr attr = operand.cast<DenseElementsAttr>();
+      size_t bottom_size = attr.getNumElements() / top_size;
+      auto iter = attr.getValues<T>().begin() + i * bottom_size;
+      values.append(iter, iter + bottom_size);
+    }
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+static Attribute foldConcatenate(ConcatenateOp* op,
+                                 ArrayRef<Attribute> operands) {
+  for (auto operand : operands) {
+    if (!operand) return {};
+  }
+
+  auto type = op->getResult().getType().cast<ShapedType>();
+  auto etype = type.getElementType();
+  if (etype.isa<IntegerType>()) {
+    return foldConcatenateHelper<APInt>(op, operands);
+  }
+
+  if (etype.isa<FloatType>()) {
+    return foldConcatenateHelper<APFloat>(op, operands);
+  }
+
+  return {};
+}
+
 OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (getNumOperands() == 1) return getOperand(0);
 
@@ -849,6 +895,10 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (!type.hasStaticShape()) return {};
 
   auto axis = dimension().getLimitedValue();
+  if (auto attr = foldConcatenate(this, operands)) {
+    return attr;
+  }
+
   llvm::SmallVector<Value, 6> new_operands;
   for (auto operand : getOperands()) {
     auto ty = operand.getType().cast<ShapedType>();
@@ -1120,9 +1170,22 @@ OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+  auto input = operand();
+
   // No dimensions to reverse.
-  if (dimensions().getNumElements() == 0) return operand();
-  return nullptr;
+  if (dimensions().getNumElements() == 0) return input;
+
+  llvm::SmallVector<APInt, 5> new_dims;
+  new_dims.reserve(dimensions().getNumElements());
+
+  auto shaped_type = input.getType().cast<ShapedType>();
+  for (auto dim : dimensions().getValues<APInt>()) {
+    if (shaped_type.getDimSize(dim.getLimitedValue()) != 1) {
+      return nullptr;
+    }
+  }
+
+  return input;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1190,7 +1253,7 @@ static LogicalResult Verify(SelectOp op) {
 // the return type based on operand type.
 LogicalResult SelectOp::inferReturnTypes(
     MLIRContext*, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   auto x_type = operands[1].getType();
   auto y_type = operands[2].getType();
@@ -1411,6 +1474,53 @@ BINARY_BUILDER(SubOp);
 BINARY_BUILDER(XorOp);
 
 #undef BINARY_BUILDER
+
+template <typename Op, typename ElementType = Type, typename ValType,
+          typename Convert>
+static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
+  if (!attrs[0] || !attrs[1]) return {};
+  if (op->broadcast_dimensions().hasValue()) return {};
+
+  DenseElementsAttr lhs = attrs[0].dyn_cast<DenseElementsAttr>();
+  DenseElementsAttr rhs = attrs[1].dyn_cast<DenseElementsAttr>();
+  if (!lhs || !rhs) return {};
+
+  ShapedType type = op->getType().template cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return {};
+  }
+
+  Type etype = type.getElementType();
+
+  // Evaluate for integer values.
+  if (!etype.isa<ElementType>()) {
+    return {};
+  }
+
+  SmallVector<ValType, 6> values;
+  values.reserve(lhs.getNumElements());
+  for (const auto zip :
+       llvm::zip(lhs.getValues<ValType>(), rhs.getValues<ValType>())) {
+    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+  }
+
+  return DenseElementsAttr::get(type, values);
+}
+
+#define BINARY_FOLDER(Op, Func)                                                \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
+      return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
+      return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return {};                                                                 \
+  }
+
+BINARY_FOLDER(AddOp, std::plus);
+BINARY_FOLDER(SubOp, std::minus);
+BINARY_FOLDER(MulOp, std::multiplies);
+
+#undef BINARY_FOLDER
 
 //===----------------------------------------------------------------------===//
 // SliceOp

@@ -259,42 +259,7 @@ ro.board.platform`).
     *   This is tentatively planned for a future release, though there is no
         concrete timeline.
 *   Which ops are supported by the delegate?
-    *   Initial list of supported ops:
-        *   Add
-        *   ArgMax
-        *   ArgMin
-        *   AveragePool2D (without any activation)
-        *   Concat
-        *   Conv2D with following constraints:
-            *   stride width/height <= 3
-        *   DepthToSpace
-        *   DepthwiseConv2D with following constraints:
-            *   Filter width == 3
-            *   depth_multiplier == 1
-            *   dilation only supported when stride == 1
-            *   Otherwise, stride height/width <= 3
-        *   FullyConnected (without any activation)
-        *   L2Normalization (without any activation)
-        *   Logistic (aka Sigmoid)
-        *   MaxPool2D (without any activation)
-        *   Mul (without any activation)
-        *   Neg
-        *   Pad: Only supports 0 padding
-        *   Relu
-        *   Relu6
-        *   Reshape
-        *   Resize Bilinear with following constraints:
-            *   Requested size <= 65
-        *   Resize Nearest Neighbor
-        *   SoftMax
-        *   SpaceToDepth
-        *   Split
-        *   Sub
-        *   Tanh
-        *   Transpose
-        *   TransposeConv2D with following constraints:
-            *   stride height/width <= 3
-            *   dilation height/width == 1
+    *   See the current list of [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   Two log messages will be printed when you enable the delegate - one to
         indicate if the delegate was created and another to indicate how many

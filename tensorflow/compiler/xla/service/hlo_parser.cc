@@ -784,6 +784,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -847,6 +848,35 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
+      break;
+    }
+    case HloOpcode::kAllGather: {
+      optional<std::vector<std::vector<int64>>> tmp_groups;
+      optional<std::vector<int64>> replica_group_ids;
+      optional<int64> channel_id;
+      optional<std::vector<int64>> dimensions;
+      optional<bool> constrain_layout;
+      optional<bool> use_global_device_ids;
+      attrs["replica_groups"] = {/*required=*/false,
+                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
+      attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
+                                        &use_global_device_ids};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      std::vector<ReplicaGroup> replica_groups;
+      if (tmp_groups) {
+        replica_groups = CreateReplicaGroups(*tmp_groups);
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
+          shape, operands[0], dimensions->at(0), replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          use_global_device_ids ? *use_global_device_ids : false));
       break;
     }
     case HloOpcode::kAllReduce: {

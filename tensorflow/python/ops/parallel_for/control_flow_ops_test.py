@@ -36,11 +36,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients as gradient_ops
@@ -79,7 +81,7 @@ class PForTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       return nn.top_k(x_i)
 
-    with self.assertRaisesRegexp(ValueError, "No converter defined"):
+    with self.assertRaisesRegexp(ValueError, "No pfor vectorization"):
       self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
@@ -987,8 +989,9 @@ class WhileV1Test(PForTestCase):
 
     def loop_fn(_):
       return control_flow_ops.while_loop(
-          lambda j, x: j < 4, lambda j, x:
-          (j + 1, x + random_ops.random_uniform([])), [0, 0.])[0]
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + random_ops.random_uniform([])),
+          [0, 0.])[0]
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -996,8 +999,9 @@ class WhileV1Test(PForTestCase):
   def test_while_unstacked_condition(self):
 
     def loop_fn(i):
-      return control_flow_ops.while_loop(lambda j, x: j < 4, lambda j, x:
-                                         (j + 1, x + i), [0, 0])
+      return control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + i), [0, 0])
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -1011,8 +1015,8 @@ class WhileV1Test(PForTestCase):
       lengths_i = array_ops.gather(lengths, i)
 
       _, total = control_flow_ops.while_loop(
-          lambda j, _: j < lengths_i, lambda j, t:
-          (j + 1, t + array_ops.gather(x_i, j)), [0, 0.])
+          lambda j, _: j < lengths_i,
+          lambda j, t: (j + 1, t + array_ops.gather(x_i, j)), [0, 0.])
       return total
 
     self._test_loop_fn(loop_fn, 3)
@@ -1203,6 +1207,143 @@ def create_dynamic_lstm(cell_fn, batch_size, state_size, max_steps):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class WhileV2Test(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    super(WhileV2Test, self).setUp()
+
+  def tearDown(self):
+    if not self._enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+    super(WhileV2Test, self).tearDown()
+
+  def test_while_outside_loop(self):
+    def _f():
+      return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1, [0])
+
+    def loop_fn(i):
+      return _f() + i
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_invariant_while(self):
+
+    def loop_fn(_):
+      return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1, [0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_invariant_while_with_control_dependency(self):
+
+    def loop_fn(i):
+      with ops.control_dependencies([i]):
+        return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1,
+                                           [0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_with_stateful_ops(self):
+
+    def loop_fn(_):
+      j, _ = control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + random_ops.random_uniform([])),
+          [0, 0.])
+      return j
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_with_variable(self):
+    v = resource_variable_ops.ResourceVariable(5.)
+
+    def loop_fn(_):
+      _, output = control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + v), [0, 0.])
+      return output
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_unstacked_condition(self):
+
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, x: j < 4,
+          lambda j, x: (j + 1, x + i), [0, 0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while(self):
+    x = random_ops.random_uniform([3, 5])
+    lengths = constant_op.constant([4, 0, 2])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      lengths_i = array_ops.gather(lengths, i)
+
+      return control_flow_ops.while_loop(
+          lambda j, _: j < lengths_i,
+          lambda j, t: (j + 1, t + array_ops.gather(x_i, j)), [0, 0.])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_change_input_invariance(self):
+    # This tests cases where a loop invariant input to while has loop dependent
+    # operations applied to it inside the while body.
+    # It also test inputs that are passed through.
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, *_: j < i,
+          lambda j, x, y, z, w: (j + 1, x + i, y + x, z, w),
+          [0,
+           constant_op.constant(0),
+           constant_op.constant(1),
+           i,
+           constant_op.constant(2)])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_shape_invariants(self):
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, *_: j < 4,
+          lambda j, x, y: (j + 1, x + i, y + 1),
+          [0, constant_op.constant([0, 1]), constant_op.constant([2, 3])],
+          shape_invariants=[None,
+                            tensor_shape.TensorShape([2]),
+                            tensor_shape.TensorShape([2])])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_jacobian(self):
+    # Note that we wrap the code below in a tf.function since we don't want the
+    # while_loop call to be evaluated eagerly using a python loop.
+    @def_function.function
+    def _f(x, y, use_pfor):
+      # out = x @ y @ y @ y @ y, where @ is matmul operator.
+      _, out = control_flow_ops.while_loop(
+          lambda i, _: i < 4, lambda i, out: (i + 1, math_ops.matmul(out, y)),
+          [0, x])
+
+      def loop_fn(i):
+        out_i = array_ops.gather(out, i, axis=1)
+        grad = gradient_ops.gradients(out_i, x)
+        return array_ops.reshape(grad[0], [-1])
+
+      if use_pfor:
+        return pfor_control_flow_ops.pfor(loop_fn, iters=3)
+      else:
+        return pfor_control_flow_ops.for_loop(loop_fn, iters=3,
+                                              loop_fn_dtypes=out.dtype)
+
+    x = constant_op.constant(np.random.uniform(size=(1, 3)))
+    y = constant_op.constant(np.random.uniform(size=(3, 3)))
+    self.assertAllClose(_f(x, y, True), _f(x, y, False))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 @test_util.with_control_flow_v2
 class StatelessIfTest(PForTestCase):
 
@@ -1259,6 +1400,8 @@ class StatelessIfTest(PForTestCase):
 class IfTest(PForTestCase):
 
   def test_read_var(self):
+    self.skipTest("b/156438918")  # Flaky
+
     x = [1, 2, 3, 4, 5.]
     y = 2.5
     z = resource_variable_ops.ResourceVariable(5.)
@@ -1383,8 +1526,9 @@ class Benchmarks(test.Benchmark):
     with ops.Graph().as_default():
 
       def loop_fn(i):
-        _, s = control_flow_ops.while_loop(lambda t, x: t < i, lambda t, x:
-                                           (t + 1, x + i), [0, 0])
+        _, s = control_flow_ops.while_loop(lambda t, x: t < i,
+                                           lambda t, x: (t + 1, x + i),
+                                           [0, 0])
         return s
 
       iters = 50

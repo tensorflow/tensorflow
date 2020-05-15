@@ -68,8 +68,8 @@ exports_files([
             "//tensorflow/core:test",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
 ) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
@@ -326,10 +326,10 @@ cc_library(
             "//tensorflow/core:tensorflow",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -365,10 +365,10 @@ cc_library(
             "//tensorflow/core:framework",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -405,10 +405,10 @@ cc_library(
             "//tensorflow/core:lib",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -440,10 +440,10 @@ cc_library(
             "//tensorflow/core:lib",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )

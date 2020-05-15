@@ -529,11 +529,9 @@ class Converter {
 
   // Helper function to add a squeeze op to the network.
   //
-  // The trt_axes argument lists those axes that need to be squeezed. Each axis
-  // in the list is numbered according to TRT convention (see ConvertAxis for
-  // details).
-  Status SqueezeTensor(nvinfer1::ITensor* input,
-                       const std::vector<int>& trt_axes,
+  // The input_dims argument stores the TRT dimensions of the input tensor,
+  // where the dimensions to be squeezed are replaced by 0.
+  Status SqueezeTensor(nvinfer1::ITensor* input, std::vector<int>* input_dims,
                        nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by

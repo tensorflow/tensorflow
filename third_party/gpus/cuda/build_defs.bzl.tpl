@@ -51,6 +51,10 @@ def cuda_is_configured():
     """Returns true if CUDA was enabled during the configure process."""
     return %{cuda_is_configured}
 
+def cuda_gpu_architectures():
+    """Returns a list of supported GPU architectures."""
+    return %{cuda_gpu_architectures}
+
 def if_cuda_is_configured(x):
     """Tests if the CUDA was enabled during the configure process.
 

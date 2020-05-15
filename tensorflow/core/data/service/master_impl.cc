@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -65,17 +66,17 @@ Status DataServiceMasterImpl::RegisterWorker(
 
   // Allocate tasks to the worker.
   for (auto& entry : jobs_) {
-    Job& job = entry.second;
-    if (job.finished()) {
+    std::shared_ptr<Job> job = entry.second;
+    if (job->finished()) {
       continue;
     }
-    int64 task_id = CreateTask(&job, request->worker_address());
+    int64 task_id = CreateTask(job.get(), request->worker_address());
 
     TaskDef* task_def = response->add_tasks();
     *task_def->mutable_dataset() =
-        datasets_by_id_[job.dataset_id()]->dataset_def();
-    task_def->set_dataset_id(job.dataset_id());
-    task_def->set_job_id(job.job_id());
+        datasets_by_id_[job->dataset_id()]->dataset_def();
+    task_def->set_dataset_id(job->dataset_id());
+    task_def->set_job_id(job->job_id());
     task_def->set_task_id(task_id);
   }
 
@@ -96,7 +97,7 @@ Status DataServiceMasterImpl::WorkerUpdate(const WorkerUpdateRequest* request,
     if (update.completed()) {
       int64 job_id = tasks_.at(task_id).job_id();
       DCHECK(jobs_.contains(job_id));
-      jobs_.at(job_id).task_finished(task_id);
+      jobs_.at(job_id)->task_finished(task_id);
       VLOG(3) << "Task " << task_id << " from job " << job_id << " completed";
     }
   }
@@ -135,49 +136,115 @@ int64 DataServiceMasterImpl::RegisterDataset(uint64 fingerprint,
   DCHECK(!datasets_by_id_.contains(dataset_id));
   datasets_by_id_[dataset_id] = new_dataset;
   DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
-  datasets_by_fingerprint_[dataset_id] = new_dataset;
+  datasets_by_fingerprint_[fingerprint] = new_dataset;
   return dataset_id;
 }
 
 Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
                                         CreateJobResponse* response) {
-  VLOG(3) << "Received begin job request for dataset id "
+  VLOG(3) << "Received create job request for dataset id "
           << request->dataset_id();
-  switch (request->processing_mode()) {
-    case PARALLEL_EPOCHS:
+  ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
+  mutex_lock l(mu_);
+  int64 job_id;
+  TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
+                               absl::optional<std::string>(), &job_id));
+  response->set_job_id(job_id);
+
+  VLOG(3) << "Creating job " << job_id << " for dataset "
+          << request->dataset_id();
+  return Status::OK();
+}
+
+Status DataServiceMasterImpl::GetOrCreateJob(
+    const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
+  VLOG(3) << "Received get or create job request for dataset id "
+          << request->dataset_id() << " with name " << request->job_name()
+          << " and index " << request->job_name_index();
+  mutex_lock l(mu_);
+  NamedJobKey key(request->job_name(), request->job_name_index());
+  ProcessingMode requested_processing_mode =
+      ProcessingMode(request->processing_mode());
+  std::shared_ptr<Job>* job = gtl::FindOrNull(named_jobs_, key);
+  if (job != nullptr) {
+    TF_RETURN_IF_ERROR(ValidateMatchingJob(**job, requested_processing_mode,
+                                           request->dataset_id()));
+    int64 job_id = (*job)->job_id();
+    response->set_job_id(job_id);
+    VLOG(3) << "Found existing job for name=" << request->job_name()
+            << ", index=" << request->job_name_index()
+            << ". job_id: " << job_id;
+    return Status::OK();
+  }
+  int64 job_id;
+  TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), requested_processing_mode,
+                               request->job_name(), &job_id));
+  named_jobs_[key] = jobs_[job_id];
+  response->set_job_id(job_id);
+  VLOG(3) << "Created job " << job_id << " for dataset "
+          << request->dataset_id() << " and name " << request->job_name();
+  return Status::OK();
+}
+
+// Validates that the job matches the given processing_mode and dataset_id.
+Status DataServiceMasterImpl::ValidateMatchingJob(
+    const Job& job, ProcessingMode processing_mode, int64 dataset_id) {
+  DCHECK(job.name().has_value());
+  std::string job_name = job.name().value();
+  if (job.processing_mode() != processing_mode) {
+    std::string requested = ProcessingModeToString(processing_mode);
+    std::string actual = ProcessingModeToString(job.processing_mode());
+    return errors::FailedPrecondition(
+        "Found a job with name ", job_name, ", but the processing mode <",
+        actual, "> doesn't match the requested processing mode <", requested,
+        ">.");
+  }
+  if (job.dataset_id() != dataset_id) {
+    return errors::FailedPrecondition(
+        "Found a job with name ", job_name, ", but the dataset id <",
+        job.dataset_id(), "> doesn't match the requested dataset id <",
+        dataset_id, ">.");
+  }
+  return Status::OK();
+}
+
+Status DataServiceMasterImpl::CreateJob(int64 dataset_id,
+                                        ProcessingMode processing_mode,
+                                        absl::optional<std::string> job_name,
+                                        int64* out_job_id)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  switch (processing_mode) {
+    case ProcessingMode::PARALLEL_EPOCHS:
       break;
-    case ONE_EPOCH:
+    case ProcessingMode::ONE_EPOCH:
       return errors::Unimplemented(
           "CreateJob only supports the PARALLEL_EPOCHS job mode. "
           "ONE_EPOCH is not currently supported.");
     default:
-      return errors::Unimplemented(
-          "ProcessingMode ", request->processing_mode(), " not recognized");
+      return errors::Unimplemented("ProcessingMode ",
+                                   ProcessingModeToString(processing_mode),
+                                   " not recognized");
   }
-  mutex_lock l(mu_);
-  if (!datasets_by_id_.contains(request->dataset_id())) {
-    return errors::NotFound("CreateJob failed. Dataset id: <",
-                            request->dataset_id(), "> not found.");
+  if (!datasets_by_id_.contains(dataset_id)) {
+    return errors::NotFound("Dataset id: <", dataset_id, "> not found.");
   }
 
   int64 job_id = next_job_id_++;
   DCHECK(!jobs_.contains(job_id));
-  auto result =
-      jobs_.emplace(std::piecewise_construct, std::forward_as_tuple(job_id),
-                    std::forward_as_tuple(job_id, request->dataset_id()));
-  DCHECK(result.second);
-  Job& job = result.first->second;
-  response->set_job_id(job_id);
+  auto job =
+      std::make_shared<Job>(job_id, dataset_id, processing_mode, job_name);
+  jobs_[job_id] = job;
 
   for (auto& worker : workers_) {
-    int64 task_id = CreateTask(&job, worker.address());
+    int64 task_id = CreateTask(job.get(), worker.address());
 
     // TODO(aaudibert): perform these calls asynchronously.
+    // TODO(aaudibert): clean up in case some calls succeed, but later calls
+    // fail
     TF_RETURN_IF_ERROR(AllocateTaskToWorker(tasks_.at(task_id), &worker));
   }
 
-  VLOG(3) << "Beginning job " << job_id << " for dataset "
-          << request->dataset_id();
+  *out_job_id = job_id;
   return Status::OK();
 }
 
@@ -233,8 +300,8 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
     return errors::NotFound("GetTasks failed. Job id <", request->job_id(),
                             "> not found.");
   }
-  Job& job = it->second;
-  for (const auto& task_id : job.task_ids()) {
+  std::shared_ptr<Job> job = it->second;
+  for (const auto& task_id : job->task_ids()) {
     auto task_iter = tasks_.find(task_id);
     DCHECK(task_iter != tasks_.end());
     Task& task = task_iter->second;
@@ -242,7 +309,7 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
     task_info->set_worker_address(task.worker_address());
     task_info->set_id(task.task_id());
   }
-  response->set_job_finished(job.finished());
+  response->set_job_finished(job->finished());
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
   return Status::OK();

@@ -464,7 +464,7 @@ REGISTER_OP("MulNoNan")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {bfloat16, half, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -1648,6 +1648,116 @@ REGISTER_OP("Bincount")
                                        ") must be non-negative");
       }
       c->set_output(0, c->MakeShape({size_val}));
+      return Status::OK();
+    });
+
+REGISTER_OP("DenseBincount")
+    .Input("input: Tidx")
+    .Input("size: Tidx")
+    .Input("weights: T")
+    .Attr("Tidx: {int32, int64}")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("binary_output: bool = false")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      // The input `input` must be at most matrix.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 2, &unused));
+      // The input `size` must be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      const Tensor* size_tensor = c->input_tensor(1);
+      if (size_tensor == nullptr) {
+        // Return unknown shape if size is not known.
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      int64 size_val;
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
+      if (dtype == DT_INT32) {
+        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+      } else if (dtype == DT_INT64) {
+        size_val = size_tensor->scalar<int64>()();
+      } else {
+        return errors::InvalidArgument("size dtype must be int32 or int64");
+      }
+      // Return `[size]` shape if size is known.
+      if (size_val < 0) {
+        return errors::InvalidArgument("size (", size_val,
+                                       ") must be non-negative");
+      }
+      if (c->Rank(c->input(0)) == 1) {
+        c->set_output(0, c->MakeShape({size_val}));
+      } else if (c->Rank(c->input(0)) == 2) {
+        c->set_output(0, c->MakeShape({c->Dim(c->input(0), 0), size_val}));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("SparseBincount")
+    .Input("indices: int64")
+    .Input("values: Tidx")
+    .Input("dense_shape: int64")
+    .Input("size: Tidx")
+    .Input("weights: T")
+    .Attr("Tidx: {int32, int64}")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("binary_output: bool = false")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      const Tensor* size_tensor = c->input_tensor(3);
+      if (size_tensor == nullptr) {
+        // Return unknown shape if size is not known.
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      int64 size_val;
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
+      if (dtype == DT_INT32) {
+        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+      } else if (dtype == DT_INT64) {
+        size_val = size_tensor->scalar<int64>()();
+      } else {
+        return errors::InvalidArgument("size dtype must be int32 or int64");
+      }
+      // Return `[size]` shape if size is known.
+      if (size_val < 0) {
+        return errors::InvalidArgument("size (", size_val,
+                                       ") must be non-negative");
+      }
+
+      const Tensor* shape_tensor = c->input_tensor(2);
+      if (shape_tensor == nullptr) {
+        // Return unknown shape if size is not known.
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+      if (shape_tensor->NumElements() == 1) {
+        c->set_output(0, c->MakeShape({size_val}));
+      } else if (shape_tensor->NumElements() == 2) {
+        c->set_output(0,
+                      c->MakeShape({shape_tensor->flat<int64>()(0), size_val}));
+      } else {
+        return errors::InvalidArgument("Input must be less than rank 2");
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("RaggedBincount")
+    .Input("splits: int64")
+    .Input("values: Tidx")
+    .Input("size: Tidx")
+    .Input("weights: T")
+    .Attr("Tidx: {int32, int64}")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("binary_output: bool = false")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
       return Status::OK();
     });
 

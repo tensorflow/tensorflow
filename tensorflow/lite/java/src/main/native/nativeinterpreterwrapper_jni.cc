@@ -242,6 +242,15 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
 }
 
 JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getExecutionPlanLength(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return 0;
+  return static_cast<jint>(interpreter->execution_plan().size());
+}
+
+JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputCount(JNIEnv* env,
                                                                 jclass clazz,
                                                                 jlong handle) {
@@ -461,7 +470,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
 JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jint input_idx, jintArray dims) {
+    jint input_idx, jintArray dims, jboolean strict) {
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return JNI_FALSE;
@@ -480,8 +489,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   TfLiteTensor* target = interpreter->tensor(tensor_idx);
   bool is_changed = AreDimsDifferent(env, target, dims);
   if (is_changed) {
-    TfLiteStatus status = interpreter->ResizeInputTensor(
-        tensor_idx, convertJIntArrayToVector(env, dims));
+    TfLiteStatus status;
+    if (strict) {
+      status = interpreter->ResizeInputTensorStrict(
+          tensor_idx, convertJIntArrayToVector(env, dims));
+    } else {
+      status = interpreter->ResizeInputTensor(
+          tensor_idx, convertJIntArrayToVector(env, dims));
+    }
     if (status != kTfLiteOk) {
       ThrowException(env, kIllegalArgumentException,
                      "Internal error: Failed to resize %d-th input: %s",

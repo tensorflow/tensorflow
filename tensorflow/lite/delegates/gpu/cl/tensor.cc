@@ -29,7 +29,7 @@ namespace cl {
 namespace {
 
 absl::Status CreateImageBufferFromBuffer(const CLContext& context,
-                                         cl_mem memory, enum DataType data_type,
+                                         cl_mem memory, DataType data_type,
                                          int width, cl_mem* result) {
   cl_image_format format;
   cl_image_desc desc;

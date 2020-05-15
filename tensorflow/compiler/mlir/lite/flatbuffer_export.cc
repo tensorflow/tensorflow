@@ -1020,7 +1020,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       if (!inst->getMutableAttrDict().getAttrs().empty()) {
         os << " {";
         bool first = true;
-        for (auto& named_attr : inst->getMutableAttrDict().getDictionary()) {
+        for (auto& named_attr : inst->getAttrDictionary()) {
           os << (!first ? ", " : "");
           first = false;
           named_attr.first.print(os);

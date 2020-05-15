@@ -109,7 +109,7 @@ class _FrequentTracingDetector(object):
             "retracing. Tracing is expensive and the excessive number of "
             "tracings could be due to (1) creating @tf.function repeatedly in "
             "a loop, (2) passing tensors with different shapes, (3) passing "
-            "Python objects instead of tensors. For (1), please  define your "
+            "Python objects instead of tensors. For (1), please define your "
             "@tf.function outside of the loop. For (2), @tf.function has "
             "experimental_relax_shapes=True option that relaxes argument "
             "shapes that can avoid unnecessary retracing. For (3), please "
@@ -632,10 +632,14 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
+        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
+        # check.
         if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError("Attempting to use experimental_compile, "
-                           "but XLA support is not linked in. "
-                           "Rebuild with --define=with_xla_support=true.")
+          raise ValueError(
+              "Attempting to use experimental_compile, "
+              "but XLA support is not linked in. "
+              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
+              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(

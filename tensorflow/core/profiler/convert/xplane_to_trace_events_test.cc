@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {

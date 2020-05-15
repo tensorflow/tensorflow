@@ -2078,6 +2078,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaSend",
                                      "XlaSharding",
                                      "XlaSort",
+                                     "XlaSpmdFullToShardShape",
+                                     "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaWhile",
                                      "_Arg",

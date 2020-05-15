@@ -96,34 +96,33 @@ def validate_run_function(fn):
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
 class TPUStrategy(distribute_lib.Strategy):
-  """TPU distribution strategy implementation."""
+  """TPU distribution strategy implementation.
+
+  To construct a TPUStrategy object, you need to run the
+  initialization code as below:
+
+  >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  >>> tf.config.experimental_connect_to_cluster(resolver)
+  >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+  >>> strategy = tf.distribute.experimental.TPUStrategy(resolver)
+
+  While using distribution strategies, the variables created within strategy's
+  scope will be replicated across all the replicas and can be kept in sync
+  using all-reduce algorithms.
+
+  To run TF2 programs on TPUs, you can either use `.compile` and
+  `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
+  training loop by calling `strategy.run` directly. Note that
+  TPUStrategy doesn't support pure eager execution, so please make sure the
+  function passed into `strategy.run` is a `tf.function` or
+  `strategy.run` is called inside a `tf.function` if eager
+  behavior is enabled.
+  """
 
   def __init__(self,
                tpu_cluster_resolver=None,
                device_assignment=None):
     """Synchronous training in TPU donuts or Pods.
-
-    To construct a TPUStrategy object, you need to run the
-    initialization code as below:
-
-    ```python
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=FLAGS.tpu)
-    tf.config.experimental_connect_to_cluster(resolver)
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.experimental.TPUStrategy(resolver)
-    ```
-
-    While using distribution strategies, the variables created within strategy's
-    scope will be replicated across all the replicas and can be kept in sync
-    using all-reduce algorithms.
-
-    To run TF2 programs on TPUs, you can either use `.compile` and
-    `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
-    training loop by calling `strategy.run` directly. Note that
-    TPUStrategy doesn't support pure eager execution, so please make sure the
-    function passed into `strategy.run` is a `tf.function` or
-    `strategy.run` is called inside a `tf.function` if eager
-    behavior is enabled.
 
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
@@ -209,26 +208,26 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     Users can pass strategy specific options to `options` argument. An example
     to enable bucketizing dynamic shapes in `TPUStrategy.run`
     is:
-    ```python
 
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    tf.config.experimental_connect_to_cluster(resolver)
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.experimental.TPUStrategy(tpu='')
+    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    >>> tf.config.experimental_connect_to_cluster(resolver)
+    >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+    >>> strategy = tf.distribute.experimental.TPUStrategy(resolver)
 
-    options = tf.distribute.RunOptions()
-    options.experimental_bucketizing_dynamic_shape = True
+    >>> options = tf.distribute.RunOptions(
+    ...     experimental_bucketizing_dynamic_shape=True)
 
-    iterator = iter(inputs)
+    >>> dataset = tf.data.Dataset.range(
+    ...    strategy.num_replicas_in_sync, output_type=dtypes.float32).batch(
+    ...        strategy.num_replicas_in_sync, drop_remainder=True)
+    >>> input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
 
-    @tf.function()
-    def step_fn(inputs):
-      output = tf.reduce_sum(inputs)
-      return output
+    >>> @tf.function()
+    ... def step_fn(inputs):
+    ...  output = tf.reduce_sum(inputs)
+    ...  return output
 
-      strategy.run(step_fn, args=(next(iterator),),
-                                   options=options)
-    ```
+    >>> strategy.run(step_fn, args=(next(input_iterator),), options=options)
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.

@@ -20,8 +20,20 @@ Pod::Spec.new do |s|
 
   tfl_dir = 'tensorflow/lite/'
   swift_dir = tfl_dir + 'experimental/swift/'
-  s.source_files = swift_dir + 'Sources/*.swift'
-  s.dependency 'TensorFlowLiteC', "~> #{s.version}"
+
+  s.default_subspec = 'Core'
+
+  s.subspec 'Core' do |core|
+    core.dependency 'TensorFlowLiteC', "#{s.version}"
+    core.source_files = swift_dir + 'Sources/*.swift'
+    core.exclude_files = swift_dir + 'Sources/CoreMLDelegate.swift'
+  end
+
+  s.subspec 'CoreML' do |coreml|
+    coreml.source_files = swift_dir + 'Sources/CoreMLDelegate.swift'
+    coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
+    coreml.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
+  end
 
   s.test_spec 'Tests' do |ts|
     ts.source_files = swift_dir + 'Tests/*.swift'

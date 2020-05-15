@@ -81,7 +81,7 @@ tf_portable_proto_library(
     name = "portable_tf2xla_proto",
     config_string = "allow_all:true",
     header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:portable_proto_lib_full_runtime"],
+    portable_deps = ["//tensorflow/core:portable_proto_lib"],
     proto_deps = [
         ":tf2xla_proto",
         "//tensorflow/core:protos_all",
@@ -182,6 +182,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
     ],
 )
@@ -703,12 +704,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
-        "//tensorflow/compiler/mlir/tensorflow:device_util",
-        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:support",
     ],
     alwayslink = 1,

@@ -26,6 +26,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import liveness
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.platform import test
 
 
@@ -49,7 +50,8 @@ class LivenessAnalyzerTestBase(test.TestCase):
     ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    liveness.resolve(node, ctx, graphs)
+    node = reaching_fndefs.resolve(node, ctx, graphs)
+    node = liveness.resolve(node, ctx, graphs)
     return node
 
   def assertHasLiveOut(self, node, expected):
@@ -190,6 +192,73 @@ class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
     fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'a')
+
+  def test_live_out_nested_functions_defined_ahead(self):
+
+    def test_fn(a, b):
+      def foo():
+        return a
+
+      if b:
+        a = []
+
+      return foo
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[1], ('a', 'foo'))
+
+  def test_live_out_nested_functions_defined_after(self):
+
+    def test_fn(a, b):
+      if b:
+        a = []
+
+      def foo():
+        return a
+
+      return foo
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], ('a',))
+
+  def test_live_out_lambda(self):
+
+    def test_fn(a, b):
+      if b:
+        a = []
+
+      foo = lambda: a
+
+      if b:
+        pass
+
+      return foo
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], ('a', 'b'))
+    self.assertHasLiveOut(fn_body[2], ('foo',))
+
+  def test_live_out_nested_functions_hidden_by_argument(self):
+
+    def test_fn(b):
+      def foo(a):
+        return a
+
+      if b:
+        a = []  # pylint:disable=unused-variable
+
+      return foo
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[1], ('foo'))
 
   def test_live_out_nested_functions_isolation(self):
 

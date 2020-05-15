@@ -111,6 +111,17 @@ message XLATupleNode {
   repeated XLATupleNode tuples = 3;
 }
 
+message CommonExecutionConfig {
+  // The replica index this execute is driving.
+  int32 replica_id = 1;
+  // Mapping local device ordinals to global replica IDs.
+  // local_replica_mapping[LOCAL_DEVICE_ORDINAL] = GLOBAL_REPLICA_ID
+  repeated int32 local_replica_mapping = 2;
+  // The execution run ID used to correlate different XRT execute operations
+  // happeining in parallel from different threads.
+  int64 run_id = 3;
+}
+
 // Options for an XLA execution.
 message XRTExecutionConfig {
   // Local device to run on. This is present because the execute Op
@@ -133,6 +144,9 @@ message XRTExecutionConfig {
   // a single tuple allocation the execution will return a vector of
   // allocations, one for each of the first-level elements of the result tuple.
   bool return_exploded_tuple = 7;
+  reserved 8;
+  // The common configuration for XRT execute operations.
+  CommonExecutionConfig common_config = 9;
 }
 
 message XRTChainedExecuteConfig {
@@ -143,6 +157,9 @@ message XRTChainedExecuteConfig {
   // Optional key to disambiguate between executions. This is only needed if
   // multiple host send/recvs may be outstanding concurrently with executions.
   string execution_instance_key = 3;
+  reserved 4;
+  // The common configuration for XRT execute operations.
+  CommonExecutionConfig common_config = 5;
 }
 
 // A single chained execute operation. An operation can either be a device data

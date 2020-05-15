@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PARSE_ANNOTATION_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PARSE_ANNOTATION_H_
 
-#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"

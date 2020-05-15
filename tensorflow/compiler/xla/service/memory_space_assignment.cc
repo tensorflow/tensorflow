@@ -585,22 +585,34 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
   // definition_time: int. Logical time this value was defined in the schedule.
   // use_times: string. This is a semicolon-separated list of integers for all
   // the use times.
+  // use_names: string. This is a semicolon-separated list of string
+  // representation of uses.
   if (debug_str->empty()) {
     // Append the column names.
     absl::StrAppend(debug_str,
-                    "buffer_id,buffer_name,alt_mem_benefit,size,definition_"
-                    "time,use_times\n");
+                    "buffer_id,buffer_name,alt_mem_benefit,size,"
+                    "definition_time,use_times,use_names\n");
   }
   const HloBuffer& buffer =
       alias_analysis_.GetBufferContainingValue(*interval.buffer);
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   int64 definition_time =
       instruction_schedule.at(interval.buffer->defining_position().instruction);
-  std::set<int64> use_times;
+  std::vector<std::pair<int64, std::string>> uses;
   for (const HloValue* value : buffer.values()) {
     for (const HloUse& use : value->uses()) {
-      use_times.insert(instruction_schedule.at(use.instruction));
+      uses.push_back(
+          {instruction_schedule.at(use.instruction), use.ToString()});
     }
+  }
+  absl::c_sort(uses);
+  std::vector<int64> use_times;
+  std::vector<std::string> use_names;
+  use_times.reserve(uses.size());
+  use_names.reserve(uses.size());
+  for (auto use : uses) {
+    use_times.push_back(use.first);
+    use_names.push_back(use.second);
   }
 
   absl::StrAppend(debug_str, buffer.id(), ",");
@@ -612,7 +624,8 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
       debug_str, alternate_memory_benefit ? *alternate_memory_benefit : 0, ",");
   absl::StrAppend(debug_str, interval.size, ",");
   absl::StrAppend(debug_str, definition_time, ",");
-  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\"");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\",");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\"");
   absl::StrAppend(debug_str, "\n");
 }
 
@@ -1820,24 +1833,30 @@ MemorySpaceAssignment::Run(HloModule* module,
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
 
-  TF_RETURN_IF_ERROR(memory_space_assignment.FindAllocationSequence(
-      hlo_live_range, alias_analysis));
-  TF_RETURN_IF_ERROR(memory_space_assignment.Process());
-  memory_space_assignment.ScheduleAsynchronousCopies();
-  TF_RETURN_IF_ERROR(memory_space_assignment.SimplifyGraph());
-  TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
-  TF_RETURN_IF_ERROR(memory_space_assignment.ExportAndColorBuffers());
+  return memory_space_assignment.RunMemorySpaceAssignment(hlo_live_range,
+                                                          alias_analysis);
+}
+
+StatusOr<std::unique_ptr<PresetAssignments>>
+MemorySpaceAssignment::RunMemorySpaceAssignment(
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
+  TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+  TF_RETURN_IF_ERROR(Process());
+  ScheduleAsynchronousCopies();
+  TF_RETURN_IF_ERROR(SimplifyGraph());
+  TF_RETURN_IF_ERROR(FixSchedule());
+  TF_RETURN_IF_ERROR(ExportAndColorBuffers());
 
   VLOG(3) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(3, module->ToString());
-  TF_CHECK_OK(module->schedule().Verify());
+  XLA_VLOG_LINES(3, module_->ToString());
+  TF_CHECK_OK(module_->schedule().Verify());
   VLOG(1) << "Maximum number of outstanding async copies: "
-          << CountMaximumOutstandingAsyncCopies(*module);
+          << CountMaximumOutstandingAsyncCopies(*module_);
 
-  TF_RETURN_IF_ERROR(
-      memory_space_assignment.VerifyAndExportHeapSimulatorTrace());
+  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace());
 
-  return std::move(memory_space_assignment.preset_assignments_);
+  return std::move(preset_assignments_);
 }
 
 Status MemorySpaceAssignment::FindAllocationSequence(

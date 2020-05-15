@@ -245,6 +245,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;
+  run_opts.rendezvous = ctx->rendezvous();
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();

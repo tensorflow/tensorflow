@@ -75,8 +75,6 @@ class TensorListPatternRewriter : public PatternRewriter {
  public:
   explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getContext()) {}
-
-  Operation *insert(Operation *op) override { return OpBuilder::insert(op); }
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.
@@ -861,6 +859,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
+  target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();
   target.addLegalOp<TFL::UnidirectionalSequenceLSTMOp>();

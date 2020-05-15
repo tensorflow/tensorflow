@@ -4,7 +4,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
-    "if_ios",
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
@@ -85,7 +84,7 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ]) + if_android([
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ]),
 )
 

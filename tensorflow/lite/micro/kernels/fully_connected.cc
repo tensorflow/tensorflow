@@ -71,24 +71,41 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+  const auto params =
+      static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
+
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
-  return kTfLiteOk;
+
+  return CalculateOpData(context, params->activation, input->type, input,
+                         filter, bias, output, data);
 }
 
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const OpData& data, const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
-  FullyConnectedParams op_params;
+  tflite::FullyConnectedParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -174,10 +191,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteType data_type = input->type;
-  OpData data;
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params->activation, data_type,
-                                        input, filter, bias, output, &data));
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
   // Checks in Prepare ensure input, output and filter types are all the same.
   switch (input->type) {

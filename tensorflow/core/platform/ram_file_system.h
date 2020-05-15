@@ -79,6 +79,13 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     return Status::OK();
   }
 
+#if defined(PLATFORM_GOOGLE)
+  Status Append(const absl::Cord& cord) override {
+    data_->append(cord.char_begin(), cord.char_end());
+    return Status::OK();
+  }
+#endif
+
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }

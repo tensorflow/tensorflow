@@ -222,6 +222,16 @@ func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @float_sin
+func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: sin
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @copy
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
@@ -274,12 +284,28 @@ func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
-// CHECK-LABEL: func @broadcast
-func @broadcast(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
+// CHECK-LABEL: func @broadcast_in_dim
+func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
   %0 = "xla_hlo.broadcast_in_dim"(%operand)
          {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
          : (tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32>
   return %0 : tensor<7x10x6x4x5xf32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @broadcast_in_dim_with_one_to_one
+func @broadcast_in_dim_with_one_to_one(
+         %operand: tensor<1xf32>) -> tensor<1x5xf32> {
+  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+         {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+         : (tensor<1xf32>) -> tensor<1x5xf32>
+  return %0 : tensor<1x5xf32>
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):
@@ -444,3 +470,75 @@ func @reshape_multiple_collapse
 //   CHECK-DAG: #[[MAP3:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d4, d5)>
 // CHECK-LABEL: func @reshape_multiple_collapse
 //       CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP3]]]
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_f32
+func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = sitofp %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_i16_to_i32
+func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi16>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_i16
+func @convert_i32_to_i16(%input: tensor<2x2xi32>) -> tensor<2x2xi16> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xi16>
+  return %result : tensor<2x2xi16>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = trunci %[[OPERAND_IN]] : i32 to i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_f64
+func @convert_f32_to_f64(%input: tensor<2x2xf32>) -> tensor<2x2xf64> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf64>
+  return %result : tensor<2x2xf64>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = fpext %[[OPERAND_IN]] : f32 to f64
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f64
+
+// -----
+
+// CHECK-LABEL: func @convert_f64_to_f32
+func @convert_f64_to_f32(%input: tensor<2x2xf64>) -> tensor<2x2xf32> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf64>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f64):
+// CHECK-NEXT:   %[[RESULT:.*]] = fptrunc %[[OPERAND_IN]] : f64 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_i32
+func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = fptosi %[[OPERAND_IN]] : f32 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32

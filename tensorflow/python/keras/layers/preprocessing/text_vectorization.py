@@ -32,7 +32,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding
-from tensorflow.python.keras.layers.preprocessing import index_lookup
+from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -269,10 +269,6 @@ class TextVectorization(CombinerPreprocessingLayer):
 
     self._max_tokens = max_tokens
 
-    # In INT mode, we have two reserved values (PAD and OOV). However, non-INT
-    # modes don't have a PAD value, so we only need to reserve one value.
-    self._reserved_values = 2 if output_mode == INT else 1
-
     # In INT mode, the zero value is reserved for padding (per Keras standard
     # padding approaches). In non-INT modes, there is no padding so we can set
     # the OOV value to zero instead of one.
@@ -302,11 +298,10 @@ class TextVectorization(CombinerPreprocessingLayer):
         combiner=_TextVectorizationCombiner(
             self._max_vocab_size, compute_idf=output_mode == TFIDF),
         **kwargs)
-    self._supports_ragged_inputs = True
 
-    reserve_zero = output_mode in [None, INT]
+    mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
-        max_tokens=max_tokens, reserve_zero=reserve_zero, dtype=dtypes.string)
+        max_tokens=max_tokens, mask_token=mask_token)
 
     # If this layer is configured for string or integer output, we do not
     # create a vectorization layer (as the output is not vectorized).
@@ -329,7 +324,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     return (keys.numpy(), values.numpy())
 
   def _get_index_lookup_class(self):
-    return index_lookup.IndexLookup
+    return string_lookup.StringLookup
 
   def _to_numpy(self, preprocessed_data):
     """Converts preprocessed inputs into numpy arrays."""
@@ -429,26 +424,21 @@ class TextVectorization(CombinerPreprocessingLayer):
   def set_vocabulary(self,
                      vocab,
                      df_data=None,
-                     oov_df_value=None,
-                     append=False):
+                     oov_df_value=None):
     """Sets vocabulary (and optionally document frequency) data for this layer.
 
     This method sets the vocabulary and DF data for this layer directly, instead
     of analyzing a dataset through 'adapt'. It should be used whenever the vocab
     (and optionally document frequency) information is already known. If
-    vocabulary data is already present in the layer, this method will either
-    replace it, if 'append' is set to False, or append to it (if 'append' is set
-    to True).
+    vocabulary data is already present in the layer, this method will replace
+    it.
 
     Arguments:
       vocab: An array of string tokens.
       df_data: An array of document frequency data. Only necessary if the layer
         output_mode is TFIDF.
       oov_df_value: The document frequency of the OOV token. Only necessary if
-        output_mode is TFIDF. OOV data is optional when appending additional
-        data in TFIDF mode; if an OOV value is supplied it will overwrite the
-        existing OOV value.
-      append: Whether to overwrite or append any existing vocabulary data.
+        output_mode is TFIDF.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
@@ -469,8 +459,7 @@ class TextVectorization(CombinerPreprocessingLayer):
                           "be changed after the layer is "
                           "called.").format(mode=self._output_mode))
 
-    current_table_size = self._index_lookup_layer.vocab_size()
-    self._index_lookup_layer.set_vocabulary(vocab, append)
+    self._index_lookup_layer.set_vocabulary(vocab)
 
     # When doing raw or integer output, we don't have a Vectorize layer to
     # manage. In this case, we can return directly.
@@ -478,13 +467,8 @@ class TextVectorization(CombinerPreprocessingLayer):
       return
 
     if not self._pad_to_max or self._max_tokens is None:
-      num_tokens = self._index_lookup_layer.vocab_size() + self._reserved_values
+      num_tokens = self._index_lookup_layer.vocab_size()
       self._vectorize_layer.set_num_elements(num_tokens)
-
-    # We're only _really_ appending if the table_size is nonzero. This is
-    # important for some sanity checks in tfidf mode (specifically, checking if
-    # oov_df_value is set or not) and handling existing tfidf weight data.
-    append = append if current_table_size > 0 else False
 
     if self._output_mode == TFIDF:
       if df_data is None:
@@ -493,31 +477,14 @@ class TextVectorization(CombinerPreprocessingLayer):
         raise ValueError("df_data must be the same length as vocab. "
                          "len(df_data) is %s, len(vocab) is %s" %
                          (len(vocab), len(df_data)))
-      if not append and oov_df_value is None:
-        raise ValueError("You must pass an oov_df_value the first time "
-                         "'set_vocabulary' is called when output_mode is "
+      if oov_df_value is None:
+        raise ValueError("You must pass an oov_df_value when output_mode is "
                          "TFIDF.")
 
       df_data = self._convert_to_ndarray(df_data)
-      if append:
-        # The existing IDF data is stored in a Keras weight, so we can get it
-        # by calling K.get_value() on the weight object. Take the first
-        # table_size+1 values in case we're padding the weight with zeros
-        existing_df_data = K.get_value(
-            self._vectorize_layer.tf_idf_weights)[:current_table_size + 1]
-        df_data = np.append(existing_df_data, df_data, axis=0)
-        # If we are appending and need to replace the OOV DF value, we can
-        # assign it over the existing OOV DF value at index 0 of the (already-
-        # concatenated) DF value array.
-        if oov_df_value is not None:
-          df_data[0] = oov_df_value
-      else:
-        # If we are not appending (that is, we have only new data) we need to
-        # insert the OOV value to the front of the array. (This is a append to
-        # the head, not a replacement of the zeroth value.)
-        if not isinstance(oov_df_value, np.ndarray):
-          oov_df_value = np.array([oov_df_value])
-        df_data = np.insert(df_data, 0, oov_df_value)
+      if not isinstance(oov_df_value, np.ndarray):
+        oov_df_value = np.array([oov_df_value])
+      df_data = np.insert(df_data, 0, oov_df_value)
       self._vectorize_layer.set_tfidf_data(df_data)
 
   def build(self, input_shape):
@@ -537,8 +504,10 @@ class TextVectorization(CombinerPreprocessingLayer):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
     if self._output_mode == TFIDF:
-      self.set_vocabulary(updates[_VOCAB_NAME], updates[_IDF_NAME],
-                          updates[_OOV_IDF_NAME])
+      self.set_vocabulary(
+          updates[_VOCAB_NAME],
+          updates[_IDF_NAME],
+          updates[_OOV_IDF_NAME])
     else:
       self.set_vocabulary(updates[_VOCAB_NAME])
 
@@ -681,6 +650,12 @@ class _TextVectorizationCombiner(Combiner):
 
     if accumulator is None:
       accumulator = self._create_accumulator()
+
+    # If we are being passed raw strings or bytestrings, we need to wrap them
+    # in an array so we don't accidentally iterate over the bytes instead of
+    # treating the string as one object.
+    if isinstance(values, (str, bytes)):
+      values = [values]
 
     # TODO(momernick): Benchmark improvements to this algorithm.
     for document in values:

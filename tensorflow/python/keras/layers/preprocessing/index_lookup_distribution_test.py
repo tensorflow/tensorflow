@@ -65,7 +65,12 @@ class IndexLookupDistributionTest(
 
     with distribution.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-      layer = get_layer_class()()
+      layer = get_layer_class()(
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token="",
+          oov_token="[OOV]",
+          dtype=dtypes.string)
       layer.adapt(vocab_dataset)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)

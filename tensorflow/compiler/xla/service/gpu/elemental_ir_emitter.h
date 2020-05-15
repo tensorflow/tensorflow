@@ -47,10 +47,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                         llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
-
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
@@ -91,6 +87,17 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                         llvm::Value* value) override;
+
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view) override {
+    // TODO(b/118332391): Supported variadic return values.
+    auto result = compute_nested_(callee, parameters);
+    if (!result.ok()) {
+      return result.status();
+    }
+    return std::vector<llvm::Value*>{result.ValueOrDie()};
+  }
 
   llvm::Value* EmitThreadId() override;
 

@@ -828,7 +828,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce",
+       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -849,7 +849,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-       "EnqueueTPUEmbeddingSparseTensorBatch"});
+       "EnqueueTPUEmbeddingSparseTensorBatch",
+       "EnqueueTPUEmbeddingRaggedTensorBatch"});
   return exemption->contains(op);
 }
 
@@ -1121,7 +1122,15 @@ void AddStrictInputSemantics(Node* caller, Graph* g) {
 
   VLOG(3) << "Add control edges from all data inputs to enforce strict "
              "semantics with regard to function inputs";
+
+  // Do not add control edges from placeholders, because it will prevent
+  // pruning, and they can't produce any side effects anyway.
+  const auto is_placeholder = [](const Node* node) -> bool {
+    return node->type_string() == "Placeholder";
+  };
+
   for (const Node* node : data_inputs) {
+    if (is_placeholder(node)) continue;
     g->AddControlEdge(g->FindNodeId(node->id()), caller,
                       /*allow_duplicates=*/true);
   }

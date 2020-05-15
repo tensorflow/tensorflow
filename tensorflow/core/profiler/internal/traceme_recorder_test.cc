@@ -15,18 +15,27 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
 #include <atomic>
+#include <istream>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::ElementsAre;
 
 MATCHER_P(Named, name, "") { return arg.name == name; }
 
@@ -45,7 +54,7 @@ TEST(RecorderTest, SingleThreaded) {
 
   ASSERT_EQ(results.size(), 1);
   EXPECT_THAT(results[0].events,
-              ::testing::ElementsAre(Named("during1"), Named("during2")));
+              ElementsAre(Named("during1"), Named("during2")));
 }
 
 void SpinNanos(int nanos) {

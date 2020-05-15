@@ -2597,7 +2597,7 @@ inline void HardSwish(const HardSwishParams& params,
     // significant bits in the high bits of our 16-bit fixedpoint values, so
     // that fixed-point approximate computations below are as accurate as
     // possible.
-    const int16_t input_value_on_hires_input_scale = input_value << 7;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
     // Compute the input value on essentially the output scale, just not
     // right-shifted yet. This is the value that we'll use in the (x >= +3)
     // case, and that in the general case we'll multiply against the "relu-ish"

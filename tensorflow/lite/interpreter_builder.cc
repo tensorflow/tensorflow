@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -209,7 +210,15 @@ class MallocDataAllocator : public BuiltinDataAllocator {
  public:
   void* Allocate(size_t size, size_t alignment_hint) override {
 #ifdef TFLITE_USE_STD_ALIGNED_ALLOC
-    return aligned_alloc(alignment_hint, size);
+    // Ensure that alignment is a power of two and a multiple of sizeof(void *)
+    // and that size is an integral multiple of alignment.
+    size_t used_alignment = std::max(alignment_hint, sizeof(void*));
+    size_t used_size =
+        ((size + used_alignment - 1) / used_alignment) * used_alignment;
+    TFLITE_DCHECK(
+        (used_alignment != 0) &&
+        ((used_alignment & (used_alignment - 1)) == 0));  // is power-of-two
+    return aligned_alloc(used_alignment, used_size);
 #else
     return malloc(size);
 #endif

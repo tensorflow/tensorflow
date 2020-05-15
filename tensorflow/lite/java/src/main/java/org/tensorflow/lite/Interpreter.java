@@ -348,7 +348,22 @@ public final class Interpreter implements AutoCloseable {
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
-    wrapper.resizeInput(idx, dims);
+    wrapper.resizeInput(idx, dims, false);
+  }
+
+  /**
+   * Resizes idx-th input of the native model to the given dims.
+   *
+   * <p>When `strict` is True, only unknown dimensions can be resized. Unknown dimensions are
+   * indicated as `-1` in the array returned by `Tensor.shapeSignature()`.
+   *
+   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
+   *     model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
+   *     occurs when attempting to resize a tensor with fixed dimensions when `struct` is True.
+   */
+  public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
+    checkNotClosed();
+    wrapper.resizeInput(idx, dims, strict);
   }
 
   /** Gets the number of input tensors. */
@@ -474,6 +489,11 @@ public final class Interpreter implements AutoCloseable {
   public void resetVariableTensors() {
     checkNotClosed();
     wrapper.resetVariableTensors();
+  }
+
+  int getExecutionPlanLength() {
+    checkNotClosed();
+    return wrapper.getExecutionPlanLength();
   }
 
   /** Release resources associated with the {@code Interpreter}. */

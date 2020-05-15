@@ -17,21 +17,6 @@ cc_library(
 )
 
 gentbl(
-    name = "TestLinalgTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestVectorTransformPatternsIncGen",
     tbl_outs = [
         (
@@ -43,22 +28,6 @@ gentbl(
     td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
     td_srcs = [
         "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "TestLinalgMatmulToVectorPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
     ],
 )
 
@@ -108,7 +77,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
     test = True,
 )
@@ -137,7 +106,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:StandardToStandard",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -183,8 +152,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestLinalgMatmulToVectorPatternsIncGen",
-        ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Affine",
@@ -196,8 +163,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",

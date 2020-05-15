@@ -313,7 +313,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
-    self._supports_ragged_inputs = False
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
@@ -905,12 +904,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
-        if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
-            and not self._supports_ragged_inputs):
-          raise ValueError('Layer %s does not support RaggedTensors as input. '
-                           'Inputs received: %s. You can try converting your '
-                           'input to an uniform tensor.' % (self.name, inputs))
-
         graph = backend.get_graph()
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
@@ -1013,13 +1006,23 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """Whether the layer is dynamic (eager-only); set in the constructor."""
     # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
     #                    then this cache logic must be updated.
-    return self._dynamic
+    return self._dynamic or any(layer.dynamic
+                                for layer in self._unique_sublayers())
+
+  def _unique_sublayers(self):
+    # Model.layers will use this as implementation, but we can't expose this
+    # one as the public property since it might conflict with subclass layers
+    # which also have user defined layers property.
+    self._maybe_create_attribute('_layers', [])
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(self._layers))
 
   @property
   @doc_controls.do_not_doc_inheritable
   @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return self._stateful
+    return self._stateful or any(
+        getattr(layer, 'stateful', False) for layer in self._unique_sublayers())
 
   @stateful.setter
   @trackable_layer_utils.invalidate_recursive_cache('stateful')
@@ -2581,6 +2584,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self.__delattr__(name)
     except AttributeError:
       pass
+
+    # Keep track of metric instance created in subclassed layer.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    for val in nest.flatten(value):
+      if isinstance(val, metrics_module.Metric):
+        self._metrics.append(val)
 
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.

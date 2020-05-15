@@ -841,10 +841,6 @@ tf_module {
     argspec: "args=[\'ref\', \'limit\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "CreateJob"
-    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'processing_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "CreateSummaryDbWriter"
     argspec: "args=[\'writer\', \'db_uri\', \'experiment_name\', \'run_name\', \'user_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -938,7 +934,7 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'address\', \'protocol\', \'max_outstanding_requests\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -1077,6 +1073,14 @@ tf_module {
     argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DenseBincount"
+    argspec: "args=[\'input\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "DenseCountSparseOutput"
+    argspec: "args=[\'values\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "DenseToCSRSparseMatrix"
     argspec: "args=[\'dense_input\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1175,6 +1179,10 @@ tf_module {
   member_method {
     name: "DrawBoundingBoxesV2"
     argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DummyIterationCounter"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DummyMemoryCache"
@@ -2197,10 +2205,6 @@ tf_module {
     argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
-    name: "MakeDataServiceIterator"
-    argspec: "args=[\'dataset\', \'job_token\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "MakeIterator"
     argspec: "args=[\'dataset\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3063,6 +3067,14 @@ tf_module {
   member_method {
     name: "RGBToHSV"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RaggedBincount"
+    argspec: "args=[\'splits\', \'values\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "RaggedCountSparseOutput"
+    argspec: "args=[\'splits\', \'values\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "RaggedCross"
@@ -4069,12 +4081,20 @@ tf_module {
     argspec: "args=[\'var\', \'ms\', \'mom\', \'lr\', \'rho\', \'momentum\', \'epsilon\', \'grad\', \'indices\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "SparseBincount"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "SparseConcat"
     argspec: "args=[\'indices\', \'values\', \'shapes\', \'concat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SparseConditionalAccumulator"
     argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'reduction_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'MEAN\', \'None\'], "
+  }
+  member_method {
+    name: "SparseCountSparseOutput"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "SparseCross"

@@ -38,6 +38,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -422,7 +423,8 @@ class DistributedVarOp(object):
     return hash((self.name, self.graph, self.traceback, self.type))
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.Variable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable,
+                          core.Tensor):
   """Holds a map from replica to variables."""
 
   # TODO(josh11b): Support changing the set of variables if e.g. if new
@@ -587,6 +589,96 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   def value(self):
     return self._get_closest().value()
 
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
+    return self._update(
+        update_fn=assign_sub_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
+
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
+    return self._update(
+        update_fn=assign_add_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
+
+  def assign(self, value, use_locking=False, name=None, read_value=True):
+    assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
+    return self._update(
+        update_fn=assign_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    scatter_sub_fn = lambda var, *a, **kw: var.scatter_sub(*a, **kw)
+    return self._update(
+        update_fn=scatter_sub_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    scatter_add_fn = lambda var, *a, **kw: var.scatter_add(*a, **kw)
+    return self._update(
+        update_fn=scatter_add_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    scatter_mul_fn = lambda var, *a, **kw: var.scatter_mul(*a, **kw)
+    return self._update(
+        update_fn=scatter_mul_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    scatter_div_fn = lambda var, *a, **kw: var.scatter_div(*a, **kw)
+    return self._update(
+        update_fn=scatter_div_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    scatter_min_fn = lambda var, *a, **kw: var.scatter_min(*a, **kw)
+    return self._update(
+        update_fn=scatter_min_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    scatter_max_fn = lambda var, *a, **kw: var.scatter_max(*a, **kw)
+    return self._update(
+        update_fn=scatter_max_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    scatter_update_fn = lambda var, *a, **kw: var.scatter_update(*a, **kw)
+    return self._update(
+        update_fn=scatter_update_fn,
+        value=sparse_delta,
+        use_locking=use_locking,
+        name=name)
+
   def _update_cross_replica(self, update_fn, value, **kwargs):
     """Applies updates across replicas.
 
@@ -649,9 +741,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
-
-
-ops.register_dense_tensor_like_type(DistributedVariable)
 
 
 def _validate_colocate_extended(v, extended):
@@ -836,66 +925,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return ds_context.get_replica_context().merge_call(
         merge_fn, args=(value,), kwargs=kwargs)
 
-  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-    assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
-    return self._update(
-        update_fn=assign_sub_fn,
-        value=value,
-        use_locking=use_locking,
-        name=name,
-        read_value=read_value)
-
-  def assign_add(self, value, use_locking=False, name=None, read_value=True):
-    assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
-    return self._update(
-        update_fn=assign_add_fn,
-        value=value,
-        use_locking=use_locking,
-        name=name,
-        read_value=read_value)
-
-  def assign(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
-    return self._update(
-        update_fn=assign_fn,
-        value=value,
-        use_locking=use_locking,
-        name=name,
-        read_value=read_value)
-
-  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    scatter_sub_fn = lambda var, *a, **kw: var.scatter_sub(*a, **kw)
-    return self._update(
-        update_fn=scatter_sub_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
-
-  def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    scatter_add_fn = lambda var, *a, **kw: var.scatter_add(*a, **kw)
-    return self._update(
-        update_fn=scatter_add_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
-
-  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
-    scatter_mul_fn = lambda var, *a, **kw: var.scatter_mul(*a, **kw)
-    return self._update(
-        update_fn=scatter_mul_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
-
-  def scatter_div(self, sparse_delta, use_locking=False, name=None):
-    scatter_div_fn = lambda var, *a, **kw: var.scatter_div(*a, **kw)
-    return self._update(
-        update_fn=scatter_div_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
-
-  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+  def scatter_min(self, *args, **kwargs):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
       raise NotImplementedError("scatter_min is only supported for mirrored "
@@ -903,14 +933,9 @@ class MirroredVariable(DistributedVariable, Mirrored):
                                 "`tf.distribute.Strategy` scope) with NONE or "
                                 "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
                                 self._aggregation)
-    scatter_min_fn = lambda var, *a, **kw: var.scatter_min(*a, **kw)
-    return self._update(
-        update_fn=scatter_min_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
+    return super(MirroredVariable, self).scatter_min(*args, **kwargs)
 
-  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+  def scatter_max(self, *args, **kwargs):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
       raise NotImplementedError("scatter_max is only supported for mirrored "
@@ -918,14 +943,9 @@ class MirroredVariable(DistributedVariable, Mirrored):
                                 "`tf.distribute.Strategy` scope) with NONE or "
                                 "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
                                 self._aggregation)
-    scatter_max_fn = lambda var, *a, **kw: var.scatter_max(*a, **kw)
-    return self._update(
-        update_fn=scatter_max_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
+    return super(MirroredVariable, self).scatter_max(*args, **kwargs)
 
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+  def scatter_update(self, *args, **kwargs):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
       raise NotImplementedError("scatter_update is only supported for mirrored "
@@ -933,12 +953,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
                                 "`tf.distribute.Strategy` scope) with NONE or "
                                 "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
                                 self._aggregation)
-    scatter_update_fn = lambda var, *a, **kw: var.scatter_update(*a, **kw)
-    return self._update(
-        update_fn=scatter_update_fn,
-        value=sparse_delta,
-        use_locking=use_locking,
-        name=name)
+    return super(MirroredVariable, self).scatter_update(*args, **kwargs)
 
   def _get_cross_replica(self):
     # Return identity, to avoid directly exposing the variable to the user and
@@ -1051,6 +1066,11 @@ def _assert_replica_context(strategy):
 class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
+  def _update_replica(self, update_fn, value, **kwargs):
+    return update_fn(self._get_closest(), value, **kwargs)
+
+  # TODO(b/154017756): Make assign behaivor in cross replica context consistent
+  # with MirroredVariable.
   def assign_sub(self, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
@@ -1064,7 +1084,7 @@ class SyncOnReadVariable(DistributedVariable):
                 _assign_sub_on_device(v.device, v, args[0])
                 for v in self._values))
       else:
-        return self._get().assign_sub(*args, **kwargs)
+        return super(SyncOnReadVariable, self).assign_sub(*args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1079,7 +1099,7 @@ class SyncOnReadVariable(DistributedVariable):
                 _assign_add_on_device(v.device, v, args[0])
                 for v in self._values))
       else:
-        return self._get().assign_add(*args, **kwargs)
+        return super(SyncOnReadVariable, self).assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1093,7 +1113,33 @@ class SyncOnReadVariable(DistributedVariable):
         return control_flow_ops.group(
             tuple(_assign_on_device(v.device, v, tensor) for v in self._values))
       else:
-        return self._get().assign(*args, **kwargs)
+        return super(SyncOnReadVariable, self).assign(*args, **kwargs)
+
+  def _scatter_not_implemented(self, method):
+    raise NotImplementedError(
+        "Variables with `synchronization=ON_READ` doesn't support `%s`" %
+        method)
+
+  def scatter_sub(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_sub")
+
+  def scatter_add(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_add")
+
+  def scatter_mul(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_mul")
+
+  def scatter_div(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_div")
+
+  def scatter_min(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_min")
+
+  def scatter_max(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_max")
+
+  def scatter_update(self, *args, **kwargs):
+    self._scatter_not_implemented("scatter_update")
 
   def value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1102,13 +1148,6 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_closest() returns a Variable.
         return self._get_closest().value()
-
-  def numpy(self):
-    if context.executing_eagerly():
-      return self.read_value().numpy()
-    else:
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1340,7 +1379,7 @@ def value_container(val):
   return val
 
 
-class AggregatingVariable(variables_lib.Variable):
+class AggregatingVariable(variables_lib.Variable, core.Tensor):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1385,11 +1424,23 @@ class AggregatingVariable(variables_lib.Variable):
               _aggregation_error_msg.format(
                   variable_type="AggregatingVariable"))
 
-        def merge_fn(strategy, value, *other_args, **other_kwargs):
+        def merge_fn(strategy,
+                     value,
+                     use_locking=False,
+                     name=None,
+                     read_value=True):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
+          if name and isinstance(name, PerReplica):
+            name = name.values[0]
           return strategy.extended.update(
-              self, f, args=(v,) + other_args, kwargs=other_kwargs)
-
+              self,
+              f,
+              args=(v,),
+              kwargs={
+                  "use_locking": use_locking,
+                  "name": name,
+                  "read_value": read_value
+              })
         return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
@@ -1597,4 +1648,3 @@ def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
 
 ops.register_tensor_conversion_function(AggregatingVariable,
                                         _tensor_conversion_aggregate)
-ops.register_dense_tensor_like_type(AggregatingVariable)

@@ -34,6 +34,7 @@ from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -675,15 +676,7 @@ def enable_v2_dtype_behavior():
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  >>> tf.compat.v1.keras.layers.disable_v2_dtype_behavior()
   >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
-  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  >>> print(layer.dtype)  # None since V2 behavior is disabled
-  None
-  >>> y = layer(x)  # Doesn't cast inputs since V2 dtype behavior is disabled
-  >>> print(y.dtype.name)
-  float64
-  >>> tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
   >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
   >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
   float32
@@ -790,6 +783,14 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+def no_ragged_support(inputs, layer_name):
+  input_list = nest.flatten(inputs)
+  if any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list):
+    raise ValueError('Layer %s does not support RaggedTensors as input. '
+                     'Inputs received: %s. You can try converting your '
+                     'input to an uniform tensor.' % (layer_name, inputs))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

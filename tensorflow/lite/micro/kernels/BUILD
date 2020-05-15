@@ -256,6 +256,7 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

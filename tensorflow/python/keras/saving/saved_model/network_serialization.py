@@ -18,22 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.saving.saved_model import layer_serialization
+from tensorflow.python.keras.saving.saved_model import model_serialization
 
 
-# Network serialization is pretty much the same as layer serialization.
-class NetworkSavedModelSaver(layer_serialization.LayerSavedModelSaver):
+# FunctionalModel serialization is pretty much the same as Model serialization.
+class NetworkSavedModelSaver(model_serialization.ModelSavedModelSaver):
   """Network serialization."""
 
   @property
   def object_identifier(self):
     return '_tf_keras_network'
-
-  def _python_properties_internal(self):
-    metadata = super(NetworkSavedModelSaver, self)._python_properties_internal()
-
-    # Network stateful property is dependent on the child layers.
-    metadata.pop('stateful')
-
-    metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
-    return metadata

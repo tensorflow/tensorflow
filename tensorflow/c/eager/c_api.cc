@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #ifdef PLATFORM_GOOGLE
-#include "tensorflow/c/eager/c_api_tfrt.h"
+#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -500,6 +500,17 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       grpc_server->master_env()->worker_cache->GetEagerClientCache(
           &remote_eager_workers));
 
+  // For cluster update, use a status group to aggregate statuses from
+  //   * adding and removing remote devices
+  //   * creating remote contexts on newly added workers
+  //   * updating remote contexts on existing workers
+  //   * updating the master context
+  // Note that we should not return immediately on errors in the middle of these
+  // updates to prevent cluster from having inconsistent context views.
+  //
+  // Unused if `reset_context` is True.
+  tensorflow::StatusGroup sg;
+
   // When updating an existing context, populate the following lists with:
   // * added_workers: set(remote_workers) - set(curr_remote_workers)
   // * removed_workers: set(curr_remote_workers) - set(remote_workers)
@@ -535,7 +546,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     DifferentiateWorkerLists(&curr_remote_workers, &remote_workers,
                              &added_workers, &removed_workers,
                              &existing_workers);
-    LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
+    sg.Update(GetReplacedFromExistingWorkers(
         &existing_workers, context_id, context->GetContextViewId(), server_def,
         remote_eager_workers.get(), &replaced_workers));
     if (VLOG_IS_ON(1)) {
@@ -559,11 +570,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
             existing_workers.end());
       }
     }
-    LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
-    LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
-        added_workers, grpc_server->master_env()->worker_cache,
-        remote_device_mgr));
+    sg.Update(RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
+    sg.Update(AddRemoteDevicesToMgr(added_workers,
+                                    grpc_server->master_env()->worker_cache,
+                                    remote_device_mgr));
   }
 
   std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
@@ -584,7 +594,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   }
 
   // Initialize remote eager workers.
-  // TODO(b/138847548) Create remote eager contexts in async mode by default.
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         ctx, remote_workers, context_id, context_view_id, keep_alive_secs,
@@ -596,7 +605,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // existing workers to also have the updated context_view_id, so
     // we must set their context_view_id to the existing master's
     // context_view_id + 1.
-    LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+    sg.Update(CreateRemoteContexts(
         ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
@@ -606,10 +615,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           VLOG(1) << "Updating cluster with existing worker " << w;
         }
       }
-      LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-          ctx, existing_workers, added_workers, removed_workers, context_id,
-          context_view_id + 1, server_def, remote_eager_workers.get(),
-          base_request));
+      sg.Update(UpdateRemoteContexts(ctx, existing_workers, added_workers,
+                                     removed_workers, context_id,
+                                     context_view_id + 1, server_def,
+                                     remote_eager_workers.get(), base_request));
     }
   }
 
@@ -645,13 +654,13 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // GrpcServer cannot be destroyed after it is started.
     LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
   } else {
-    LOG_AND_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->UpdateSession(
-            session_name, server_def, base_request.cluster_device_attributes(),
-            /*isolate_session_state=*/true));
-    LOG_AND_RETURN_IF_ERROR(
-        context->UpdateRemoteMaster(context_id, std::move(remote_eager_workers),
-                                    added_workers, removed_workers));
+    sg.Update(grpc_server->worker_env()->session_mgr->UpdateSession(
+        session_name, server_def, base_request.cluster_device_attributes(),
+        /*isolate_session_state=*/true));
+    sg.Update(context->UpdateRemoteMaster(context_id,
+                                          std::move(remote_eager_workers),
+                                          added_workers, removed_workers));
+    LOG_AND_RETURN_IF_ERROR(sg.as_summary_status());
   }
 #undef LOG_AND_RETURN_IF_ERROR
 
@@ -685,8 +694,13 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #ifdef PLATFORM_GOOGLE
-    status->status = tensorflow::Status::OK();
-    return tensorflow::wrap(new tfrt::ContextInterface());
+    tfrt::SmallVector<std::string, 4> op_handler_chains;
+    tfrt::SmallVector<tensorflow::DeviceAttributes, 4> device_attributes;
+    status->status = tfrt::ListOpHandlerChains(
+        opts->session_options.options, &op_handler_chains, &device_attributes);
+    if (!status->status.ok()) return nullptr;
+    return tensorflow::wrap(
+        new tfrt::ContextInterface(op_handler_chains, device_attributes));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
@@ -910,7 +924,7 @@ extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
       context->GetDevicePlacementPolicy());
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
@@ -1458,20 +1472,21 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }  // namespace
 
 void TFE_ContextStartStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->StartStep();
+  tensorflow::unwrap(ctx)->StartStep();
 }
 
 void TFE_ContextEndStep(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->EndStep();
+  tensorflow::unwrap(ctx)->EndStep();
+}
+
+const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+  return tensorflow::wrap(
+      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   tensorflow::AttrValueMap m;
-  attrs->attributes->FillAttrValueMap(&m);
+  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
@@ -1483,8 +1498,8 @@ void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  attrs->attributes->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(attrs->attributes->op_name());
+  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
+  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
@@ -1605,9 +1620,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    TFE_OpAttrs attributes(&op->Attrs());
     device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    &attributes, num_retvals, outputs.data(), &status, info_);
+                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+                    info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
         retvals[i] = tensorflow::TensorHandleFromInterface(

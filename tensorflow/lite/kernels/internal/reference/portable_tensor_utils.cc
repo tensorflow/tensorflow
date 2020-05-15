@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -53,7 +52,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float min_value,
                                      float max_value, float* scaling_factor) {
-  const int kScale = 127;
+  const int32_t kScale = 127;
   const float range = std::max(std::abs(min_value), std::abs(max_value));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
@@ -66,7 +65,8 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));
     // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+    quantized_values[i] = static_cast<int8_t>(
+        std::min(kScale, std::max(-kScale, quantized_value)));
   }
 }
 
@@ -232,6 +232,30 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       ++result;
     }  // for row
   }    // for batch
+}
+
+void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  const int kBlockSize = 4;
+  TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
+  for (int batch = 0; batch < n_batch; batch++) {
+    const float* matrix_ptr = matrix;
+    for (int row = 0; row < m_rows; row++) {
+      float dot_prod = 0.0f;
+      const float* vector_in_batch = vector + batch * m_cols;
+      for (int i = segments[row]; i < segments[row + 1]; i++) {
+        const int block_start_index = indices[i] * kBlockSize;
+        const float* vector_block_in_batch_ptr =
+            vector_in_batch + block_start_index;
+        for (int c = 0; c < kBlockSize; c++) {
+          dot_prod += *matrix_ptr++ * *vector_block_in_batch_ptr++;
+        }
+      }
+      result[batch * m_rows + row] += dot_prod;
+    }
+  }
 }
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
@@ -636,7 +660,8 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
       int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
       value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
       value -= output_zp;
-      value = std::min(std::max(-128, value), 127);
+      value = std::min(std::max(static_cast<int32_t>(-128), value),
+                       static_cast<int32_t>(127));
 
       output[index] = static_cast<int8>(value);
     }
@@ -724,7 +749,8 @@ void PortableVectorBatchVectorCwiseProductAccumulate(
       int32_t prod = vector[v] * *batch_vector++;
       prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
       int32_t output = prod + *result;
-      output = std::max(std::min(32767, output), -32768);
+      output = std::max(std::min(static_cast<int32_t>(32767), output),
+                        static_cast<int32_t>(-32768));
       *result++ = output;
     }
   }

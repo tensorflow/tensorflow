@@ -1,4 +1,3 @@
-# Python support for TensorFlow.
 #
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
@@ -135,6 +134,7 @@ py_library(
         ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
+        ":bincount",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -230,6 +230,7 @@ py_library(
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
         "//tensorflow/python/tpu:tpu_noestimator",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )
@@ -655,15 +656,15 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )
@@ -996,6 +997,8 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1686,6 +1689,7 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         ":client_testlib",
+        ":sendrecv_ops_gen",
     ],
 )
 
@@ -2898,6 +2902,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "count_ops_gen",
+    visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "parsing_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -3459,6 +3468,28 @@ py_library(
         ":tensor_util",
         ":util",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "bincount",
+    srcs = ["ops/bincount.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":count_ops_gen",
+        ":framework",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "bincount_test",
+    size = "small",
+    srcs = ["ops/bincount_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":bincount",
+        ":platform_test",
     ],
 )
 
@@ -8019,14 +8050,14 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core:eager_service_proto_cc",
-            "//tensorflow/core:master_proto_cc",
-            "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core:eager_service_proto_cc_headers_only",
-            "//tensorflow/core:master_proto_cc_headers_only",
-            "//tensorflow/core:worker_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
         ],
     ),
 )
