@@ -567,11 +567,10 @@ func isListAttr(attrdef *odpb.OpDef_AttrDef) bool {
 // This is useful when 's' corresponds to a "oneof" protocol buffer message.
 // For example, consider the protocol buffer message:
 //   oneof value { bool b = 1;  int64 i = 2; }
-// String() on a Go corresponding object (using proto.CompactTextString) will
-// print "b:true", or "i:7" etc. This function strips out the leading "b:" or
-// "i:".
-func stripLeadingColon(s fmt.Stringer) string {
-	x := s.String()
+// proto.CompactTextString) will print "b:true", or "i:7" etc. This function
+// strips out the leading "b:" or "i:".
+func stripLeadingColon(m proto.Message) string {
+	x := proto.CompactTextString(m)
 	y := strings.SplitN(x, ":", 2)
 	if len(y) < 2 {
 		return x
