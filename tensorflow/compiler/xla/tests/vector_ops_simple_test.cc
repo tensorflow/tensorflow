@@ -310,8 +310,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
 
 XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
   XlaBuilder builder(TestName());
-  mutable_debug_options()->set_xla_cpu_enable_fast_math(false);
-  mutable_debug_options()->set_xla_gpu_enable_fast_min_max(false);
+  SetFastMathDisabled(true);
   auto low = ConstantR1<float>(&builder, {NAN, 1, 1});
   auto high = ConstantR1<float>(&builder, {3, NAN, 3});
   auto x = ConstantR1<float>(&builder, {2, 2, NAN});
