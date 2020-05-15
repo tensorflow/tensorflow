@@ -19,11 +19,16 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace {
@@ -572,6 +577,181 @@ TEST(CAPI, TestLocalFunctionWithPackedInput) {
 
 TEST(CAPI, TestRemoteFunctionWithPackedInput) {
   TestFunctionWithPackedInput(/*remote=*/true);
+}
+
+string VariableAddFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'VariableAddFunction'"
+      "      input_arg {"
+      "        name: 'var0'"
+      "        type: DT_RESOURCE"
+      "      }"
+      "      output_arg {"
+      "        name: 'var0_value'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'read0'"
+      "      op: 'ReadVariableOp'"
+      "      input: 'var0'"
+      "      attr {"
+      "        key: 'dtype'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'add'"
+      "      op: 'Add'"
+      "      input: 'read0:value:0'"
+      "      input: 'read0:value:0'"
+      "      device: '/job:localhost/task:1/device:CPU:0'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'identity'"
+      "      op: 'Identity'"
+      "      input: 'add:z:0'"
+      "      device: '/job:localhost/task:0/device:CPU:0'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'var0_value'"
+      "      value: 'identity:output:0'"
+      "    }",
+      &def));
+  return def.SerializeAsString();
+}
+
+class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
+ public:
+  FunctionErrorInjectionPass(string error_node, string error_device)
+      : error_node_(error_node), error_device_(error_device) {}
+  tensorflow::Status Run(const tensorflow::DeviceSet& device_set,
+                         const tensorflow::ConfigProto& config_proto,
+                         std::unique_ptr<tensorflow::Graph>* graph,
+                         tensorflow::FunctionLibraryDefinition* flib_def,
+                         std::vector<std::string>* control_ret_node_names,
+                         bool* control_rets_updated) override {
+    // Inject failure to function instantiation if finding a node that contains
+    // the given node name (error_node_) and requested device (error_device_).
+    for (const auto node : graph->get()->nodes()) {
+      if (node->name().find(error_node_) != string::npos &&
+          node->requested_device() == error_device_) {
+        return tensorflow::errors::Internal("Injected graph pass error.");
+      }
+    }
+    return tensorflow::Status::OK();
+  }
+
+ private:
+  const string error_node_;
+  const string error_device_;
+};
+
+void TestDistributedFunctionCancellation(bool inject_error) {
+  tensorflow::ServerDef server_def = GetServerDef(3);
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+  server_def.set_task_index(2);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server2;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server2)
+                  .ok());
+  ASSERT_TRUE(worker_server2->Start().ok());
+  const char dev2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
+
+  if (inject_error) {
+    // Inject a function optimization pass failure when it sees the 'read0' op
+    // having a requested device `dev2_name`. During execution:
+    //   * task:0 processes the main function `VariableAddFunction` and places
+    //     the read0 op on task:2
+    //   * task:0 partitions the main function with a subgraph containing read0
+    //     sent to task:2
+    //   * task:2 graph pass reports an error when it sees read0 with dev2_name
+    tensorflow::function_optimization_registration::
+        FunctionOptimizationPassRegistration register_test_pass(
+            std::make_unique<FunctionErrorInjectionPass>("read0", dev2_name));
+  }
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
+  EXPECT_NE(var_handle, nullptr);
+
+  const string function_def = VariableAddFunction();
+  TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
+                            status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TFE_Op* func = TFE_NewOp(ctx, "VariableAddFunction", status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TFE_OpAddInput(func, var_handle, status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TFE_TensorHandle* retvals[1] = {nullptr};
+  int num_retvals = 1;
+  TFE_Execute(func, &retvals[0], &num_retvals, status);
+
+  if (inject_error) {
+    ASSERT_EQ(TF_INTERNAL, TF_GetCode(status)) << TF_Message(status);
+  } else {
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    ASSERT_EQ(1, num_retvals);
+    TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteTensorHandle(retvals[0]);
+    float sum = 0;
+    ASSERT_EQ(sizeof(sum), TF_TensorByteSize(t));
+    memcpy(&sum, TF_TensorData(t), TF_TensorByteSize(t));
+    TF_DeleteTensor(t);
+    ASSERT_EQ(sum, 4.0);
+  }
+
+  TFE_DeleteOp(func);
+  TFE_DeleteTensorHandle(var_handle);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
+  worker_server1.release();
+  worker_server2.release();
+}
+
+TEST(CAPI, DistributedFunctionNoError) {
+  TestDistributedFunctionCancellation(false);
+}
+
+TEST(CAPI, DistributedFunctionCancelledOnError) {
+  TestDistributedFunctionCancellation(true);
 }
 
 void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {

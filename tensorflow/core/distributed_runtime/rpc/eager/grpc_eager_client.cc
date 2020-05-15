@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
 #include "grpcpp/generic/generic_stub.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -135,7 +136,6 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
-  CLIENT_METHOD(RunComponentFunction);
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD
@@ -162,6 +162,18 @@ class GrpcEagerClient : public EagerClient {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
                  << " does not seem to exist.";
     }
+  }
+
+  void RunComponentFunctionAsync(CallOptions* call_opts,
+                                 const RunComponentFunctionRequest* request,
+                                 RunComponentFunctionResponse* response,
+                                 StatusCallback done) override {
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/RunComponentFunction",
+        *request, response, std::move(done_wrapped), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
   }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,

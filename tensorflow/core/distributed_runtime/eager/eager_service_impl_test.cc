@@ -90,7 +90,8 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
 
-  void RunComponentFunctionAsync(const RunComponentFunctionRequest* request,
+  void RunComponentFunctionAsync(CallOptions* call_opts,
+                                 const RunComponentFunctionRequest* request,
                                  RunComponentFunctionResponse* response,
                                  StatusCallback done) override {
     impl_->RunComponentFunction(request, response, std::move(done));
