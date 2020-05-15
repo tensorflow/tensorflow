@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.autograph.impl import api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -186,7 +187,8 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(-nums, received[1])
     self.assertAllEqual(nums, received[2])
 
-  @test_util.run_in_graph_and_eager_modes
+  #@test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testMap_autograph_indirect(self):
     def test_function(x):
       cond = constant_op.constant(-1)
@@ -195,6 +197,8 @@ class MapFnTest(test.TestCase):
       else:
         result = x
       return result
+
+    @api.convert(recursive=False) 
     def map_call(x):
       return map_fn.map_fn(test_function, x)
 
