@@ -16,12 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
 #include <new>
+#include <string>
 #include <utility>
 
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -78,20 +76,21 @@ inline int GetTFTraceMeLevel(bool is_expensive) {
 //          auto id = ActivityStart("step");
 //          ... do some work ...
 //          ActivityEnd(id);
+//       The two static methods should be called within the same thread.
 class TraceMe {
  public:
-  // Constructor that traces a user-defined activity labeled with activity_name
+  // Constructor that traces a user-defined activity labeled with name
   // in the UI. Level defines the trace priority, used for filtering TraceMe
   // events. By default, traces with TraceMe level <= 2 are recorded. Levels:
   // - Must be a positive integer.
   // - Can be a value in enum TraceMeLevel.
   // Users are welcome to use level > 3 in their code, if they wish to filter
   // out their host traces based on verbosity.
-  explicit TraceMe(absl::string_view activity_name, int level = 1) {
+  explicit TraceMe(absl::string_view name, int level = 1) {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name) string(activity_name);
+      new (&no_init_.name) std::string(name);
       start_time_ = EnvTime::NowNanos();
     }
 #endif
@@ -102,26 +101,26 @@ class TraceMe {
   // Note: We can't take the string by value because a) it would make the
   // overloads ambiguous, and b) we want lvalue strings to use the string_view
   // constructor so we avoid copying them when tracing is disabled.
-  explicit TraceMe(string &&activity_name, int level = 1) {
+  explicit TraceMe(std::string&& name, int level = 1) {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name) string(std::move(activity_name));
+      new (&no_init_.name) std::string(std::move(name));
       start_time_ = EnvTime::NowNanos();
     }
 #endif
   }
 
   // Do not allow passing strings by reference or value since the caller
-  // may unintentionally maintain ownership of the activity_name.
-  // Explicitly std::move the activity_name or wrap it in a string_view if
+  // may unintentionally maintain ownership of the name.
+  // Explicitly std::move the name or wrap it in a string_view if
   // you really wish to maintain ownership.
-  explicit TraceMe(const string &activity_name, int level = 1) = delete;
+  explicit TraceMe(const std::string& name, int level = 1) = delete;
 
   // This overload is necessary to make TraceMe's with string literals work.
   // Otherwise, the string&& and the string_view constructor would be equally
   // good overload candidates.
-  explicit TraceMe(const char *raw, int level = 1)
+  explicit TraceMe(const char* raw, int level = 1)
       : TraceMe(absl::string_view(raw), level) {}
 
   // This overload only generates the activity name if tracing is enabled.
@@ -136,11 +135,13 @@ class TraceMe {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name) string(name_generator());
+      new (&no_init_.name) std::string(name_generator());
       start_time_ = EnvTime::NowNanos();
     }
 #endif
   }
+
+  ~TraceMe() { Stop(); }
 
   // Stop tracing the activity. Called by the destructor, but exposed to allow
   // stopping tracing before the object goes out of scope. Only has an effect
@@ -171,22 +172,20 @@ class TraceMe {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        absl::string_view orig = no_init_.name;
-        if (absl::EndsWith(orig, "#")) {
-          // orig does have metadata.
-          absl::ConsumeSuffix(&orig, "#");
-          absl::ConsumePrefix(&new_metadata, "#");
-          no_init_.name = absl::StrCat(orig, ",", new_metadata);
-        } else {
-          // orig does not have metadata.
-          absl::StrAppend(&no_init_.name, new_metadata);
+        std::string& name = no_init_.name;
+        DCHECK(!name.empty());
+        DCHECK(!new_metadata.empty());
+        if (name.back() == '#') {  // name already has metadata
+          name.back() = ',';
+          if (TF_PREDICT_TRUE(new_metadata.front() == '#')) {
+            new_metadata.remove_prefix(1);
+          }
         }
+        name.append(new_metadata.data(), new_metadata.size());
       }
     }
 #endif
   }
-
-  ~TraceMe() { Stop(); }
 
   // Static API, for use when scoped objects are inconvenient.
 
@@ -196,7 +195,7 @@ class TraceMe {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       uint64 activity_id = TraceMeRecorder::NewActivityId();
-      TraceMeRecorder::Record({activity_id, string(name),
+      TraceMeRecorder::Record({activity_id, std::string(name),
                                /*start_time=*/EnvTime::NowNanos(),
                                /*end_time=*/0});
       return activity_id;
@@ -211,7 +210,8 @@ class TraceMe {
     // We don't check the level again (see TraceMe::Stop()).
     if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        TraceMeRecorder::Record({activity_id, /*name=*/"", /*start_time=*/0,
+        TraceMeRecorder::Record({activity_id, /*name=*/std::string(),
+                                 /*start_time=*/0,
                                  /*end_time=*/EnvTime::NowNanos()});
       }
     }
@@ -239,7 +239,7 @@ class TraceMe {
   union NoInit {
     NoInit() {}
     ~NoInit() {}
-    string name;
+    std::string name;
   } no_init_;
 
   uint64 start_time_ = kUntracedActivity;
