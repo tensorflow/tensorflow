@@ -52,7 +52,6 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/141139247): Allocate these dynamically when possible.
   int32_t per_channel_output_multiplier[kMaxChannels];
   int32_t per_channel_output_shift[kMaxChannels];
 

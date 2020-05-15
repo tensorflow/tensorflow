@@ -55,7 +55,6 @@ typedef volatile struct dw_uart_reg {
 // to organize blocking loop for printing symbols. No input and no IRQ handling. 
 // See embarc_osp repository for full EMSDP uart driver.
 // (https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp)
-// TODO: Consider U-Boot API to do it in a less "hacky" way.
 void DbgUartSendStr(const char* s) {
   DW_UART_REG* uart_reg_ptr = (DW_UART_REG*)(EMSDP_DBG_UART_BASE);
   const char* src = s;

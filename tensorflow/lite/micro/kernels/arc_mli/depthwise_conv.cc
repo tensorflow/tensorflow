@@ -54,7 +54,6 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/141139247): Allocate these dynamically when possible.
   int32_t per_channel_output_multiplier[kMaxChannels];
   int32_t per_channel_output_shift[kMaxChannels];
 
@@ -74,9 +73,8 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
 
   // MLI optimized version only supports int8 dataype, dilation factor of 1 and
   // per-axis quantization of weights (no broadcasting/per-tensor)
-  // TODO: ((in_ch == filters_num) || (in_ch == 1)) is a forbidding of  
+  // (in_ch == filters_num) || (in_ch == 1)) is a forbidding of  
   // channel multiplier logic for multichannel input.
-  // To be removed after it will be supported in MLI 
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) &&
                  (bias->type == kTfLiteInt32) &&

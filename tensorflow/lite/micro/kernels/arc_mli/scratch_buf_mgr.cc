@@ -54,7 +54,6 @@ static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2, int
   } else {
     // In case only one buffer is available,
     // use only the max buffer, and split it.
-    // TODO compute optimal split ratio based on request ratio.
     *grant_size_1 = maxavailable / 2;
     *grant_size_2 = maxavailable / 2;
   }
@@ -228,7 +227,7 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
     const int padding_bot,
     int *in_slice_height,
     int *out_slice_height) {
-  const int height_dimension = 1; // todo: compute from rank
+  const int height_dimension = 1;
   const int in_height = in->shape[height_dimension];
   const int out_height = out->shape[height_dimension];
   const int line_size_in = mli_hlp_count_elem_num(in, height_dimension + 1) * mli_hlp_tensor_element_size(in);
@@ -250,7 +249,7 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
       // in this case only two slices are needed, so both could benefit from padding. take the MIN to get the worst case.
       max_out_lines_for_input = (max_lines_in + std::min(padding_top, padding_bot) - kernel_height + 1) / stride_height;
     } else {
-      max_out_lines_for_input = (max_lines_in - kernel_height + 1) / stride_height; // TODO add padding exceptions and test by makin fit=false;
+      max_out_lines_for_input = (max_lines_in - kernel_height + 1) / stride_height;
     }
     // Ten compute how many ouput lines fit into the output tensor.
     max_lines_out = std::min(out_height, static_cast<int>(out->capacity) / line_size_out);

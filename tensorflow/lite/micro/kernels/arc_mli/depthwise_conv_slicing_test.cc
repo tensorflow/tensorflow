@@ -152,7 +152,6 @@ void TestDepthwiseConvQuantizedPerChannel(
       CreateQuantizedTensor(output_data, output_dims, output_scale,
                             input_zero_point, "output_tensor");
 
-  // TODO(njeff): Affine Quantization Params should be set on tensor creation.
   float input_scales[] = {1, input_scale};
   int input_zero_points[] = {1, input_zero_point};
   TfLiteAffineQuantization input_quant = {FloatArrayFromFloats(input_scales),

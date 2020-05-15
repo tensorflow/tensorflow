@@ -1,7 +1,6 @@
 # Difference with common EMSDP LCF file (to reduce data access time): 
 # - move data from external PSRAM to on-chip memory
 # - move text from SRAM to ICCM
-# - TODO: Move tensor arena to DCCM to reduce data flow between fast and extrnal memory
 #
 # CCMWRAP memory regions indicate unusable portions of the address space
 #   due to CCM memory wrapping into upper addresses beyond its size
@@ -46,8 +45,6 @@ SECTIONS {
     } > SRAM
 
     GROUP BLOCK(4): {
-# TODO: Move tensor arena to DCCM when it will be possible
-#       .tensor_arena? : {}
        .Zdata? : {}
        .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:8K): {}
        .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:8K): {}
