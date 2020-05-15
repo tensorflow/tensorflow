@@ -229,11 +229,9 @@ class BufferBinder {
 // RAII for mapping and unmapping a buffer.
 class BufferMapper {
  public:
-  BufferMapper(GLenum target, size_t offset, size_t bytes, GLbitfield access)
-      : target_(target),
-        data_(glMapBufferRange(target_, offset, bytes, access)) {}
+  BufferMapper(GLenum target, size_t offset, size_t bytes, GLbitfield access);
 
-  ~BufferMapper() { TFLITE_GPU_CALL_GL(glUnmapBuffer, target_).IgnoreError(); }
+  ~BufferMapper();
 
   void* data() { return data_; }
 
