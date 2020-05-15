@@ -215,6 +215,17 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksModel_getExtensionOperationType);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksModel_setOperandExtensionData);
+
+  // API 30 (NNAPI 1.3) methods.
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_setTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_setPriority);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setLoopTimeout);
+
   return nnapi;
 }
 

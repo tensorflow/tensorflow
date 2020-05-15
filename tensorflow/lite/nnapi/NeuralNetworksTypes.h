@@ -216,6 +216,18 @@ enum {
 };
 
 /**
+ * Relative execution priority.
+ *
+ * Available since API level 30.
+ */
+enum {
+  ANEURALNETWORKS_PRIORITY_LOW = 90,
+  ANEURALNETWORKS_PRIORITY_MEDIUM = 100,
+  ANEURALNETWORKS_PRIORITY_HIGH = 110,
+  ANEURALNETWORKS_PRIORITY_DEFAULT = ANEURALNETWORKS_PRIORITY_MEDIUM,
+};
+
+/**
  * ANeuralNetworksMemory is an opaque type that represents memory.
  *
  * This type is used to represent shared memory, memory mapped files,
@@ -528,8 +540,20 @@ typedef int (*ANeuralNetworksCompilation_setCaching_fn)(
     ANeuralNetworksCompilation* compilation, const char* cacheDir,
     const uint8_t* token);
 
+typedef int (*ANeuralNetworksCompilation_setTimeout_fn)(
+    ANeuralNetworksCompilation* compilation, uint64_t duration);
+
+typedef int (*ANeuralNetworksCompilation_setPriority_fn)(
+    ANeuralNetworksCompilation* compilation, int priority);
+
 typedef int (*ANeuralNetworksExecution_compute_fn)(
     ANeuralNetworksExecution* execution);
+
+typedef int (*ANeuralNetworksExecution_setTimeout_fn)(
+    ANeuralNetworksExecution* execution, uint64_t duration);
+
+typedef int (*ANeuralNetworksExecution_setLoopTimeout_fn)(
+    ANeuralNetworksExecution* execution, uint64_t duration);
 
 typedef int (*ANeuralNetworksExecution_getOutputOperandRank_fn)(
     ANeuralNetworksExecution* execution, int32_t index, uint32_t* rank);

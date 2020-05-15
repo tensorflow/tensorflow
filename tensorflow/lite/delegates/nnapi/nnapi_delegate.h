@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
@@ -92,6 +93,30 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
 
     // allow fp32 compuation to be run in fp16.
     bool allow_fp16 = false;
+
+    // Specifies the relative priority for executions of the model.
+    // Available values are {ANEURALNETWORKS_PRIORITY_LOW,
+    // ANEURALNETWORKS_PRIORITY_MEDIUM, ANEURALNETWORKS_PRIORITY_HIGH,
+    // ANEURALNETWORKS_PRIORITY_DEFAULT}.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model. If the device is not able to complete the compilation within the
+    // specified duration, the compilation may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model. If the device is not able to complete the execution within the
+    // specified duration, the execution may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_execution_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution. If a WHILE loop condition model does not output false
+    // within the specified duration, the execution will be aborted. If set to
+    // 0, the default timeout for loops will be used.
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
   };
 
   // Uses default options.
@@ -189,6 +214,17 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     int max_number_delegated_partitions;
     // allow fp32 computation to be run in fp16.
     bool allow_fp16;
+    // Specifies the relative priority for executions of the model.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model.
+    uint64_t max_execution_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
 
     ~Data();
 
