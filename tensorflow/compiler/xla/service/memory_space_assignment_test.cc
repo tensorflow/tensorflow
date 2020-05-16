@@ -184,6 +184,22 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
   }
 
+  /*static*/ int64 CountMaximumOutstandingAsyncCopies(const HloModule& module) {
+    int64 max_copies = 0;
+    int64 current_copies = 0;
+    for (HloInstruction* instruction : module.schedule()
+                                           .sequence(module.entry_computation())
+                                           .instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopyStart) {
+        current_copies++;
+      } else if (instruction->opcode() == HloOpcode::kCopyDone) {
+        current_copies--;
+      }
+      max_copies = std::max(max_copies, current_copies);
+    }
+    return max_copies;
+  }
+
   std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
     HloComputation::Builder builder(TestName());
     Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
@@ -391,8 +407,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
 
-  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
-            0);
+  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
@@ -400,8 +415,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
 
-  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
-            1);
+  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 1);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
@@ -409,8 +423,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/2);
 
-  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
-            2);
+  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 2);
 }
 
 // TODO(berkin): This test is broken with some prefetch timing improvements.
