@@ -70,11 +70,11 @@ def _get_custom_getter():
 
 @tf_export(v1=['tpu.bfloat16_scope'])
 @tf_contextlib.contextmanager
-def bfloat16_scope():
+def bfloat16_scope(name = ''):
   """Scope class for bfloat16 variables so that the model uses custom getter.
 
   This enables variables to be read as bfloat16 type when using get_variable.
   """
   with variable_scope.variable_scope(
-      '', custom_getter=_get_custom_getter()) as varscope:
+      name, custom_getter=_get_custom_getter()) as varscope:
     yield varscope
