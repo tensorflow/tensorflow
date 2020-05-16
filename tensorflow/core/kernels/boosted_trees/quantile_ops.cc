@@ -65,8 +65,7 @@ std::vector<float> GenerateBoundaries(const QuantileStream& stream,
 
   // Uniquify elements as we may get dupes.
   auto end_it = std::unique(boundaries.begin(), boundaries.end());
-  boundaries.resize(std::min<size_t>(std::distance(boundaries.begin(), end_it),
-                                     num_boundaries));
+  boundaries.resize(std::distance(boundaries.begin(), end_it));
   return boundaries;
 }
 
@@ -422,8 +421,6 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
             generate_quantiles_ ? GenerateQuantiles(*stream, num_buckets)
                                 : GenerateBoundaries(*stream, num_buckets),
             stream_idx);
-        VLOG(1) << "Created " << stream_resource->boundaries(stream_idx).size()
-                << " boundaries.";
       }
     };
 

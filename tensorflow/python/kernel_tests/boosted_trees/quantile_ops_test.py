@@ -82,7 +82,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     self.eps = 0.01
     self.max_elements = 1 << 16
-    self.num_quantiles = constant_op.constant(4, dtype=dtypes.int64)
+    self.num_quantiles = constant_op.constant(3, dtype=dtypes.int64)
 
   def testBasicQuantileBucketsSingleResource(self):
     with self.cached_session() as sess:
@@ -183,10 +183,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2,
-          num_quantiles=self.num_quantiles,
-          epsilon=self.eps,
-          name="q0")
+          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
@@ -205,10 +202,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2,
-          num_quantiles=self.num_quantiles,
-          epsilon=self.eps,
-          name="q0")
+          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()
       save.restore(sess, save_path)
       buckets = accumulator.get_bucket_boundaries()
@@ -221,10 +215,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2,
-          num_quantiles=self.num_quantiles,
-          epsilon=self.eps,
-          name="q0")
+          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
@@ -242,10 +233,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
     with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
-          num_streams=2,
-          num_quantiles=self.num_quantiles,
-          epsilon=self.eps,
-          name="q0")
+          num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()
       save.restore(sess, save_path)
       buckets = accumulator.get_bucket_boundaries()
