@@ -1369,6 +1369,48 @@ REGISTER_OP("_MklFusedBatchNormGradV3")
         R"doc(MKL-DNN implementation of FusedBatchNormGradV3: Do not invoke this operator directly in Python.
              Graph rewrite pass is expected to invoke this operator.)doc");
 
+REGISTER_OP("_MklFusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Input("mkl_side_input: num_side_inputs * uint8")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(R"doc(
+MKL version of FusedBatchNormEx operator. Uses MKL DNN APIs to perform fused
+batch normalization and relu.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

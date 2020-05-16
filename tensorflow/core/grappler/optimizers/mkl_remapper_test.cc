@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -293,6 +294,145 @@ TEST_F(MklRemapperTest, FuseDepthwiseConv2DWithBiasAndActivation) {
     test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
   }
 }
+
+#ifdef ENABLE_MKLDNN_V1
+TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
+  using ::tensorflow::ops::Placeholder;
+
+  for (bool is_training : {true, false}) {
+    for (bool has_side_input : {true, false}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+      const int num_channels = 24;
+
+      TensorShape channel_shape({num_channels});
+      TensorShape empty_shape({0});
+
+      auto input =
+          Placeholder(s.WithOpName("input"), DT_FLOAT,
+                      ops::Placeholder::Shape({2, 8, 8, num_channels}));
+      auto input_cast = ops::Cast(s.WithOpName("input_cast"), input, DT_FLOAT);
+      auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT);
+      auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
+      auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
+      auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
+
+      float epsilon = 0.1f;
+      auto fbn =
+          ops::FusedBatchNormV3(s.WithOpName("fused_batch_norm"), input_cast,
+                                scale, offset, mean, var,
+                                ops::FusedBatchNormV3::IsTraining(is_training)
+                                    .Epsilon(epsilon)
+                                    .DataFormat("NHWC"));
+
+      if (has_side_input) {
+        auto side_input =
+            Placeholder(s.WithOpName("side_input"), DT_FLOAT,
+                        ops::Placeholder::Shape({2, 8, 8, num_channels}));
+        auto side_input_cast =
+            ops::Cast(s.WithOpName("side_input_cast"), side_input, DT_FLOAT);
+        auto add = ops::Add(s.WithOpName("add"), fbn.y, side_input_cast);
+        auto relu = ops::Relu(s.WithOpName("relu"), add);
+      } else {
+        auto relu = ops::Relu(s.WithOpName("relu"), fbn.y);
+      }
+
+      auto input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+      auto scale_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+      auto offset_t = GenerateRandomTensor<DT_FLOAT>(channel_shape);
+      auto mean_t = GenerateRandomTensor<DT_FLOAT>(is_training ? empty_shape
+                                                               : channel_shape);
+      auto var_t = GenerateRandomTensor<DT_FLOAT>(is_training ? empty_shape
+                                                              : channel_shape);
+      auto side_input_t =
+          GenerateRandomTensor<DT_FLOAT>({2, 8, 8, num_channels});
+
+      GrapplerItem item;
+      item.fetch = {"relu"};
+      if (has_side_input)
+        item.feed = {{"input", input_t},   {"scale", scale_t},
+                     {"offset", offset_t}, {"mean", mean_t},
+                     {"var", var_t},       {"side_input", side_input_t}};
+      else
+        item.feed = {{"input", input_t},
+                     {"scale", scale_t},
+                     {"offset", offset_t},
+                     {"mean", mean_t},
+                     {"var", var_t}};
+      TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+      // Place all nodes on CPU.
+      for (int i = 0; i < item.graph.node_size(); ++i) {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+
+      Remapper optimizer(RewriterConfig::AGGRESSIVE);
+      GraphDef output;
+      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+      int found = 0;
+      if (has_side_input) {
+        for (const NodeDef& node : output.node()) {
+          if (node.name() == "add") {
+            EXPECT_EQ(node.op(), "Add");
+            ASSERT_EQ(node.input_size(), 2);
+            EXPECT_EQ(node.input(0), "fused_batch_norm");
+            EXPECT_EQ(node.input(1), "side_input_cast");
+            found++;
+          }
+          if (node.name() == "relu") {
+            EXPECT_EQ(node.op(), "Relu");
+            ASSERT_EQ(node.input_size(), 1);
+            EXPECT_EQ(node.input(0), "add");
+            found++;
+          }
+          if (node.name() == "fused_batch_norm") {
+            EXPECT_EQ(node.op(), "FusedBatchNormV3");
+            ASSERT_EQ(node.input_size(), 5);
+            EXPECT_EQ(node.input(0), "input_cast");
+            EXPECT_EQ(node.input(1), "scale");
+            EXPECT_EQ(node.input(2), "offset");
+            EXPECT_EQ(node.input(3), "mean");
+            EXPECT_EQ(node.input(4), "var");
+            found++;
+          }
+        }
+        EXPECT_EQ(found, 3);
+      } else {
+        for (const NodeDef& node : output.node()) {
+          if (node.name() == "relu") {
+            EXPECT_EQ(node.op(), "Identity");
+            ASSERT_EQ(node.input_size(), 1);
+            EXPECT_EQ(node.input(0), "fused_batch_norm");
+            found++;
+          }
+          if (node.name() == "fused_batch_norm") {
+            EXPECT_EQ(node.op(), "_FusedBatchNormEx");
+            ASSERT_EQ(node.input_size(), 5);
+            EXPECT_EQ(node.input(0), "input_cast");
+            EXPECT_EQ(node.input(1), "scale");
+            EXPECT_EQ(node.input(2), "offset");
+            EXPECT_EQ(node.input(3), "mean");
+            EXPECT_EQ(node.input(4), "var");
+
+            auto attr = node.attr();
+            EXPECT_EQ(attr["num_side_inputs"].i(), 0);
+            EXPECT_EQ(attr["activation_mode"].s(), "Relu");
+            found++;
+          }
+        }
+        EXPECT_EQ(found, 2);
+      }
+
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+      ASSERT_EQ(tensors_expected.size(), 1);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 1);
+      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+    }
+  }
+}
+#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace grappler
 }  // namespace tensorflow

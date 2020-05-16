@@ -268,6 +268,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.dequantize = "Dequantize";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.fused_batch_norm_ex = "_FusedBatchNormEx";
     csinfo_.fused_batch_norm_v2 = "FusedBatchNormV2";
     csinfo_.fused_batch_norm_grad_v2 = "FusedBatchNormGradV2";
     csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
@@ -295,6 +296,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "_MklDepthwiseConv2dNativeBackpropInput";
     csinfo_.mkl_depthwise_conv2d_grad_filter =
         "_MklDepthwiseConv2dNativeBackpropFilter";
+    csinfo_.mkl_fused_batch_norm_ex = "_MklFusedBatchNormEx";
     csinfo_.mkl_fused_conv2d = "_MklFusedConv2D";
     csinfo_.mkl_fused_depthwise_conv2d = "_MklFusedDepthwiseConv2dNative";
     csinfo_.mkl_fused_matmul = "_MklFusedMatMul";
@@ -478,6 +480,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#ifdef ENABLE_MKLDNN_V1
+    rinfo_.push_back({csinfo_.fused_batch_norm_ex,
+                      csinfo_.mkl_fused_batch_norm_ex, CopyAttrsAll,
+                      FusedBatchNormExRewrite, kRewriteForLayoutPropagation});
+#endif
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
@@ -926,6 +933,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string dequantize;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string fused_batch_norm_ex;
     string fused_batch_norm_v2;
     string fused_batch_norm_grad_v2;
     string fused_batch_norm_v3;
@@ -951,6 +959,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_with_bias;
     string mkl_depthwise_conv2d_grad_input;
     string mkl_depthwise_conv2d_grad_filter;
+    string mkl_fused_batch_norm_ex;
     string mkl_fused_conv2d;
     string mkl_fused_depthwise_conv2d;
     string mkl_fused_matmul;
@@ -1670,6 +1679,31 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return do_rewrite;
   }
 
+  static bool FusedBatchNormExRewrite(const Node* n) {
+    DCHECK(n);
+
+    int num_side_inputs;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "num_side_inputs", &num_side_inputs));
+    string activation_mode;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "activation_mode", &activation_mode));
+
+    // if the num_side_inputs is not 0, don't rewrite the node.
+    if (num_side_inputs != 0) {
+      VLOG(1) << "FusedBatchNormExRewrite: The model sets num_side_inputs"
+              << "larger than 0 is not optimized by Intel MKL.";
+      return false;
+    }
+
+    // if the activation_mode is not 'Relu', don't rewrite the node.
+    if (activation_mode != "Relu") {
+      VLOG(1) << "FusedBatchNormExRewrite: Only Relu activation mode is"
+              << "supported by Intel MKL.";
+      return false;
+    }
+
+    return true;
+  }
+
   static bool FusedConv2DRewrite(const Node* n) {
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
@@ -2168,9 +2202,6 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
   // Number of input slots to original op
   // Input slots are represented by .Input() calls in REGISTER_OP.
   int old_node_input_slots = old_node->op_def().input_arg_size();
-  // Actual number of inputs can be greater than or equal to number
-  // of Input slots because inputs of type list could be unfolded.
-  CHECK_GE(old_node_inputs.size(), old_node_input_slots);
   int nn_slot_idx = 0;  // slot index for inputs of new node
 
   // Let's copy all inputs (TF tensors) of original node to new node.
@@ -2178,13 +2209,14 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
   for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
     // to handle this case accordingly.
-    CHECK_LT(iidx, old_node_inputs.size());
     const OpDef::ArgDef& arg = old_node->op_def().input_arg(on_slot_idx);
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
-      int N = GetTensorListLength(arg, old_node);
-      GetNodesProducingTFTensorList(old_node_inputs, &iidx, N,
-                                    &new_node_inputs);
+      int tensor_list_length = GetTensorListLength(arg, old_node);
+      if (tensor_list_length != 0) {
+        GetNodesProducingTFTensorList(old_node_inputs, &iidx,
+                                      tensor_list_length, &new_node_inputs);
+      }
       nb->Input(new_node_inputs);
       nn_slot_idx++;
     } else {
@@ -2217,13 +2249,14 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
   for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
     // to handle this case accordingly.
-    CHECK_LT(iidx, old_node_inputs.size());
     const OpDef::ArgDef& arg = old_node->op_def().input_arg(on_slot_idx);
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
-      int N = GetTensorListLength(arg, old_node);
-      GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx, N,
-                                     &new_node_inputs);
+      int tensor_list_length = GetTensorListLength(arg, old_node);
+      if (tensor_list_length != 0) {
+        GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx,
+                                       tensor_list_length, &new_node_inputs);
+      }
       nb->Input(new_node_inputs);
       nn_slot_idx++;
     } else {
@@ -3739,6 +3772,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() != csinfo_.pad_with_conv2d &&
       n->type_string() != csinfo_.pad_with_fused_conv2d &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
+      n->type_string() != csinfo_.fused_batch_norm_ex &&
       n->type_string() != csinfo_.fused_conv2d &&
       n->type_string() != csinfo_.fused_depthwise_conv2d &&
       n->type_string() != csinfo_.fused_matmul &&
