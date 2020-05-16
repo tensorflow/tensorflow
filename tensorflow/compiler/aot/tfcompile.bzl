@@ -208,14 +208,14 @@ def tf_library(
         srcs.append(debug_info)
         debug_info_flag = " --debug_info=$(location " + debug_info + ")"
 
-    default_fast_math_xla_flags = "XLA_FLAGS=\"\
-      --xla_cpu_enable_fast_math=true \
-      --xla_cpu_fast_math_honor_nans=false \
-      --xla_cpu_fast_math_honor_infs=false \
-      --xla_cpu_fast_math_honor_functions=false \
-      --xla_cpu_fast_math_honor_division=false \
-      --xla_cpu_enable_fast_min_max=true \
-      $${XLA_FLAGS:-}\" "
+    default_fast_math_xla_flags = ("XLA_FLAGS='" +
+                                   "--xla_cpu_enable_fast_math=true " +
+                                   "--xla_cpu_fast_math_honor_nans=false " +
+                                   "--xla_cpu_fast_math_honor_infs=false " +
+                                   "--xla_cpu_fast_math_honor_functions=false " +
+                                   "--xla_cpu_fast_math_honor_division=false " +
+                                   "--xla_cpu_enable_fast_min_max=true " +
+                                   "$${XLA_FLAGS:-}' ")
 
     native.genrule(
         name = ("gen_" + name),
