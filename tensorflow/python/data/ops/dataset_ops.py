@@ -4027,6 +4027,12 @@ class PaddedBatchDataset(UnaryDataset):
     self._padded_shapes = nest.pack_sequence_as(input_shapes,
                                                 flat_padded_shapes_as_tensors)
 
+    # If padding_values is a single element and input_shapes is a structure,
+    # "broadcast" padding_values to the same structure as input_shapes.
+    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+      padding_values = nest.map_structure(
+          lambda _: padding_values, input_shapes)
+
     self._padding_values = nest.map_structure_up_to(
         input_shapes, _padding_value_to_tensor, padding_values,
         get_legacy_output_types(input_dataset))
