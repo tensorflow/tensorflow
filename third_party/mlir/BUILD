@@ -788,9 +788,6 @@ cc_library(
             "lib/Support/*.h",
         ],
         exclude = [
-            # TODO(herhut): Move JitRunner out of Support so that Support does not
-            # depend on dialect.
-            "lib/Support/JitRunner.cpp",
             # TODO(jpienaar): Move this out, else Support depends on Analysis/
             "lib/Support/MlirOptMain.cpp",
         ],
@@ -2232,10 +2229,10 @@ gentbl(
 cc_library(
     name = "SideEffects",
     srcs = [
-        "lib/Interfaces/SideEffects.cpp",
+        "lib/Interfaces/SideEffectInterfaces.cpp",
     ],
     hdrs = [
-        "include/mlir/Interfaces/SideEffects.h",
+        "include/mlir/Interfaces/SideEffectInterfaces.h",
     ],
     includes = ["include"],
     deps = [
@@ -2621,8 +2618,8 @@ cc_binary(
 
 cc_library(
     name = "MlirJitRunner",
-    srcs = ["lib/Support/JitRunner.cpp"],
-    hdrs = ["include/mlir/Support/JitRunner.h"],
+    srcs = ["lib/ExecutionEngine/JitRunner.cpp"],
+    hdrs = ["include/mlir/ExecutionEngine/JitRunner.h"],
     includes = ["include"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",

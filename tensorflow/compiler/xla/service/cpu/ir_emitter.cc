@@ -2875,9 +2875,8 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
                                  old_state->getType()->getScalarType(),
                                  address->getType()->getPointerAddressSpace()));
   llvm::StoreInst* store = Store(old_state, address);
-  store->setAlignment(
-      llvm::MaybeAlign(IrEmitter::MinimumAlignmentForPrimitiveType(
-          rng_state->shape().element_type())));
+  store->setAlignment(llvm::Align(IrEmitter::MinimumAlignmentForPrimitiveType(
+      rng_state->shape().element_type())));
 
   return Status::OK();
 }
