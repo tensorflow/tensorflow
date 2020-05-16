@@ -65,12 +65,16 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    VLOG(5) << "Not fusing inexpensive checks of operand " << operand_index
+            << " of " << consumer->ToString();
     return false;
   }
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {
+    VLOG(5) << "Fusion of (" << producer->ToString() << ") into ("
+            << consumer->ToString() << ") would be too large";
     return false;
   }
   if (consumer->opcode() != HloOpcode::kFusion) {
