@@ -20,10 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -89,6 +90,8 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
     if not fast and l2_regularizer != 0:
       # The slow path does not support regularization.
       return
+    if use_placeholder and context.executing_eagerly():
+      return
     maxdim = np.max(x.shape)
     if dtype == np.float32 or dtype == np.complex64:
       tol = maxdim * 5e-4
@@ -109,64 +112,70 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
         b = np.tile(b, batch_shape + (1, 1))
         np_ans = np.tile(np_ans, batch_shape + (1, 1))
         np_r_norm = np.tile(np_r_norm, batch_shape)
-      with self.cached_session(use_gpu=fast) as sess:
-        if use_placeholder:
-          a_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
-          b_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
-          feed_dict = {a_ph: a, b_ph: b}
-          tf_ans = linalg_ops.matrix_solve_ls(
-              a_ph, b_ph, fast=fast, l2_regularizer=l2_regularizer)
-        else:
-          tf_ans = linalg_ops.matrix_solve_ls(
-              a, b, fast=fast, l2_regularizer=l2_regularizer)
-          feed_dict = {}
-          self.assertEqual(np_ans.shape, tf_ans.get_shape())
-        if l2_regularizer == 0:
-          # The least squares solution should satisfy A^H * (b - A*x) = 0.
-          tf_r = b - math_ops.matmul(a, tf_ans)
-          tf_r = math_ops.matmul(a, tf_r, adjoint_a=True)
-          tf_r_norm = linalg_ops.norm(tf_r, ord="fro", axis=[-2, -1])
-          tf_ans_val, tf_r_norm_val = sess.run(
-              [tf_ans, tf_r_norm], feed_dict=feed_dict)
-          self.assertAllClose(np_r_norm, tf_r_norm_val, atol=tol, rtol=tol)
-        else:
+      if use_placeholder:
+        a_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
+        b_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
+        feed_dict = {a_ph: a, b_ph: b}
+        tf_ans = linalg_ops.matrix_solve_ls(
+            a_ph, b_ph, fast=fast, l2_regularizer=l2_regularizer)
+      else:
+        tf_ans = linalg_ops.matrix_solve_ls(
+            a, b, fast=fast, l2_regularizer=l2_regularizer)
+        feed_dict = None
+        self.assertEqual(np_ans.shape, tf_ans.get_shape())
+      if feed_dict:
+        with self.session(use_gpu=True) as sess:
           tf_ans_val = sess.run(tf_ans, feed_dict=feed_dict)
-
+      else:
+        tf_ans_val = self.evaluate(tf_ans)
       self.assertEqual(np_ans.shape, tf_ans_val.shape)
       self.assertAllClose(np_ans, tf_ans_val, atol=2 * tol, rtol=2 * tol)
 
-  @test_util.run_v1_only("b/120545219")
+      if l2_regularizer == 0:
+        # The least squares solution should satisfy A^H * (b - A*x) = 0.
+        tf_r = b - math_ops.matmul(a, tf_ans)
+        tf_r = math_ops.matmul(a, tf_r, adjoint_a=True)
+        tf_r_norm = linalg_ops.norm(tf_r, ord="fro", axis=[-2, -1])
+        if feed_dict:
+          with self.session(use_gpu=True) as sess:
+            tf_ans_val, tf_r_norm_val = sess.run([tf_ans, tf_r_norm],
+                                                 feed_dict=feed_dict)
+        else:
+          tf_ans_val, tf_r_norm_val = self.evaluate([tf_ans, tf_r_norm])
+        self.assertAllClose(np_r_norm, tf_r_norm_val, atol=tol, rtol=tol)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
     with self.session(use_gpu=True):
       matrix = constant_op.constant([[1., 0.], [0., 1.]])
       rhs = constant_op.constant([[1., 0.]])
-      with self.assertRaises(ValueError):
+      with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
         linalg_ops.matrix_solve_ls(matrix, rhs)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     full = np.array([[1., 2.], [3., 4.], [5., 6.]])
     empty0 = np.empty([3, 0])
     empty1 = np.empty([0, 2])
     for fast in [True, False]:
-      with self.cached_session(use_gpu=True):
-        tf_ans = self.evaluate(
-            linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast))
-        self.assertEqual(tf_ans.shape, (0, 0))
-        tf_ans = self.evaluate(
-            linalg_ops.matrix_solve_ls(empty0, full, fast=fast))
-        self.assertEqual(tf_ans.shape, (0, 2))
-        tf_ans = self.evaluate(
-            linalg_ops.matrix_solve_ls(full, empty0, fast=fast))
-        self.assertEqual(tf_ans.shape, (2, 0))
-        tf_ans = self.evaluate(
-            linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast))
-        self.assertEqual(tf_ans.shape, (2, 2))
+      tf_ans = self.evaluate(
+          linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast))
+      self.assertEqual(tf_ans.shape, (0, 0))
+      tf_ans = self.evaluate(
+          linalg_ops.matrix_solve_ls(empty0, full, fast=fast))
+      self.assertEqual(tf_ans.shape, (0, 2))
+      tf_ans = self.evaluate(
+          linalg_ops.matrix_solve_ls(full, empty0, fast=fast))
+      self.assertEqual(tf_ans.shape, (2, 0))
+      tf_ans = self.evaluate(
+          linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast))
+      self.assertEqual(tf_ans.shape, (2, 2))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
-    matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)
+    matrix = np.array([1., 0., 0., 0., 1., 0., 0., 0., 1.] * 3).reshape(3, 3, 3)
     rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)
     answer = linalg_ops.matrix_solve(matrix, rhs)
     ls_answer = linalg_ops.matrix_solve_ls(matrix, rhs)
@@ -358,8 +367,7 @@ if __name__ == "__main__":
     # ROCm does not support BLAS operations for complex types
     dtypes_to_test += [np.complex64, np.complex128]
   for dtype_ in dtypes_to_test:
-    # TF2 does not support placeholders under eager so we skip it
-    for use_placeholder_ in set([False, not tf2.enabled()]):
+    for use_placeholder_ in set([False, True]):
       for fast_ in [True, False]:
         l2_regularizers = [0] if dtype_ == np.complex128 else [0, 0.1]
         for l2_regularizer_ in l2_regularizers:
