@@ -466,17 +466,15 @@ Status FunctionMetadata::Create(
 
   auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
   if (attr != fdef->attr().end() && attr->second.b()) {
-    LOG(WARNING)
-        << "Disabling multi-device execution for a function that uses the "
-        << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+    VLOG(1) << "Disabling multi-device execution for a function that uses the "
+            << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
     (*out_metadata)->use_multi_device_function_ = false;
     return Status::OK();
   }
   auto validate_arg = [](const OpDef::ArgDef& arg) {
     if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-      LOG(WARNING) << "Disabling multi-device execution for a function with "
-                      "a vector argument "
-                   << arg.name() << ".";
+      VLOG(1) << "Disabling multi-device execution for a function with "
+              << "a vector argument " << arg.name() << ".";
       return false;
     }
     return true;
