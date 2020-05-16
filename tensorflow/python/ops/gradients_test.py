@@ -1431,24 +1431,25 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
   def testFnRecomputeWithScopeGradientTape(self):
     """Checks that recompute_grad works with var scope and GradientTape."""
 
-    def TestFn(input_t, test_var):
-      return input_t * test_var
+    def TestFn(input_t):
+      with variable_scope.variable_scope("inner_scope"):
+        test_var = variable_scope.get_variable(
+            name="test_var",
+            shape=10,
+            trainable=True,
+        )
+        self.evaluate(test_var.assign(np.ones([10])))
+        return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
 
     with variable_scope.variable_scope(
         "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
-      with variable_scope.variable_scope("inner_scope"):
-        test_var = variable_scope.get_variable(
-            name="test_var", shape=10, trainable=True,
-        )
-        self.evaluate(test_var.assign(np.ones([10])))
-
       test_fn_re = custom_gradient.recompute_grad(TestFn)
 
       with backprop.GradientTape(persistent=True) as tape:
-        out_re = test_fn_re(test_input_t, test_var)
-        out = TestFn(test_input_t, test_var)
+        out_re = test_fn_re(test_input_t)
+        out = TestFn(test_input_t)
 
     grads_re = tape.gradient(out_re, variables.trainable_variables())
     grads = tape.gradient(out, variables.trainable_variables())
@@ -1463,22 +1464,23 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
   def testFnRecomputeWithScopeGradients(self):
     """Checks that recompute_grad works with var scope and gradients(..)."""
 
-    def TestFn(input_t, test_var):
-      return input_t * test_var
+    def TestFn(input_t):
+      with variable_scope.variable_scope("inner_scope"):
+        test_var = variable_scope.get_variable(
+            name="test_var",
+            shape=10,
+            trainable=True,
+        )
+        self.evaluate(test_var.assign(np.ones([10])))
+        return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
 
     with variable_scope.variable_scope(
         "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
-      with variable_scope.variable_scope("inner_scope"):
-        test_var = variable_scope.get_variable(
-            name="test_var", shape=10, trainable=True,
-        )
-        self.evaluate(test_var.assign(np.ones([10])))
-      
       test_fn_re = custom_gradient.recompute_grad(TestFn)
-      out_re = test_fn_re(test_input_t, test_var)
-      out = TestFn(test_input_t, test_var)
+      out_re = test_fn_re(test_input_t)
+      out = TestFn(test_input_t)
 
     grads_re = gradients.gradients(out_re, variables.trainable_variables())
     grads = gradients.gradients(out, variables.trainable_variables())
