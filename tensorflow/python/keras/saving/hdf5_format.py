@@ -53,7 +53,24 @@ sequential_lib = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
+# create lock file
+def create_lockfile(filepath):
+  lockfile_path = f"{filepath}.lock"
+
+  f = open(lockfile_path, 'w')
+  f.write(f"{os.getpid()}")
+  f.close()
+
+  return lockfile_path 
+
+def check_lockfile(filepath):
+  lockfile_path = f"{filepath}.lock"
+  if os.path.exists(lockfile_path):
+    # use PID?
+    return True
+  return False
+
+def save_model_to_hdf5(model, filepath, overwrite=True, lockFile=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -99,6 +116,10 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
       if not proceed:
         return
 
+    # create lock file
+    if (lockFile == True):
+      lockfile_path = create_lockfile(filepath)
+
     f = h5py.File(filepath, mode='w')
     opened_new_file = True
   else:
@@ -128,6 +149,10 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   finally:
     if opened_new_file:
       f.close()
+
+      # remove lock file
+      if (lockFile == True):
+        os.remove(lockfile_path)
 
 
 def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
@@ -163,6 +188,10 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
 
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
+    # check if lock file exist
+    if check_lockfile(filepath) == True:
+      raise ValueError('Cannot read from file at this time.')
+
     f = h5py.File(filepath, mode='r')
   else:
     f = filepath
