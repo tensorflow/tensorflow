@@ -48,6 +48,7 @@ _KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
 def save_model(model,
                filepath,
                overwrite=True,
+               lockFile=True,
                include_optimizer=True,
                save_format=None,
                signatures=None,
@@ -95,6 +96,7 @@ def save_model(model,
       overwrite: Whether we should overwrite any existing model at the target
         location, or instead ask the user with a manual prompt.
       include_optimizer: If True, save optimizer's state together.
+      lockFile: If True, protect model file while saving model.
       save_format: Either 'tf' or 'h5', indicating whether to save the model
         to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and 'h5'
         in TF 1.X.
@@ -128,7 +130,7 @@ def save_model(model,
           'to the Tensorflow SavedModel format (by setting save_format="tf") '
           'or using `save_weights`.')
     hdf5_format.save_model_to_hdf5(
-        model, filepath, overwrite, include_optimizer)
+        model, filepath, overwrite, lockFile, include_optimizer)
   else:
     saved_model_save.save(model, filepath, overwrite, include_optimizer,
                           signatures, options)
