@@ -1326,7 +1326,7 @@ func @testShapeMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 
 func @testShapeWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
+  // expected-warning @+1 {{has static shape result for unranked operand}}
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
@@ -1370,7 +1370,7 @@ func @testShapeNMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 
 func @testShapeNWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires dynamic shape result #1 for unranked operand #1}}
+  // expected-warning @+1 {{has static shape result #1 for unranked operand #1}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<2xi32>)
   return %0#1 : tensor<2xi32>
 }
@@ -1428,7 +1428,7 @@ func @testVariableShapeMismatchDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x1
 // -----
 
 func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32> {
-  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
+  // expected-warning @+1 {{has static shape result for unranked operand}}
   %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
