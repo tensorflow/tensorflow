@@ -104,6 +104,7 @@ nextafter = gen_math_ops.next_after
 
 
 @tf_export("linspace", v1=["lin_space", "linspace"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("lin_space")
 def linspace_nd(start, stop, num, name=None, axis=0):
   r"""Generates evenly-spaced values in an interval along a given axis.
@@ -214,8 +215,8 @@ linspace = linspace_nd
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
-tf_export(v1=["arg_max"])(arg_max)
-tf_export(v1=["arg_min"])(arg_min)
+tf_export(v1=["arg_max"])(dispatch.add_dispatch_support(arg_max))
+tf_export(v1=["arg_min"])(dispatch.add_dispatch_support(arg_min))
 
 
 # This is set by resource_variable_ops.py. It is included in this way since
@@ -234,6 +235,7 @@ def _set_doc(doc):
 
 # pylint: disable=redefined-builtin
 @tf_export(v1=["math.argmax", "argmax"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -250,6 +252,7 @@ def argmax(input,
 
 
 @tf_export("math.argmax", "argmax", v1=[])
+@dispatch.add_dispatch_support
 def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the largest value across axes of a tensor.
 
@@ -283,6 +286,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
 
 @tf_export(v1=["math.argmin", "argmin"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -299,6 +303,7 @@ def argmin(input,
 
 
 @tf_export("math.argmin", "argmin", v1=[])
+@dispatch.add_dispatch_support
 def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the smallest value across axes of a tensor.
 
@@ -549,6 +554,7 @@ def _neg(x, name=None):
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
+@dispatch.add_dispatch_support
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
@@ -581,6 +587,7 @@ def scalar_mul(scalar, x, name=None):
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@dispatch.add_dispatch_support
 @_set_doc(scalar_mul.__doc__)
 def scalar_mul_v2(scalar, x, name=None):
   with ops.name_scope(name, "scalar_mul", [x]) as name:
@@ -701,6 +708,7 @@ def sign(x, name=None):
 
 
 @tf_export("math.real", v1=["math.real", "real"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
 @dispatch.add_dispatch_support
 def real(input, name=None):
@@ -735,6 +743,7 @@ def real(input, name=None):
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
 @dispatch.add_dispatch_support
 def imag(input, name=None):
@@ -768,6 +777,7 @@ def imag(input, name=None):
 
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
 @dispatch.add_dispatch_support
 def angle(input, name=None):
@@ -937,6 +947,7 @@ def saturate_cast(value, dtype, name=None):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_float"])
+@dispatch.add_dispatch_support
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -956,6 +967,7 @@ def to_float(x, name="ToFloat"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_double"])
+@dispatch.add_dispatch_support
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -975,6 +987,7 @@ def to_double(x, name="ToDouble"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int32"])
+@dispatch.add_dispatch_support
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -994,6 +1007,7 @@ def to_int32(x, name="ToInt32"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int64"])
+@dispatch.add_dispatch_support
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -1013,6 +1027,7 @@ def to_int64(x, name="ToInt64"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_bfloat16"])
+@dispatch.add_dispatch_support
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -1032,6 +1047,7 @@ def to_bfloat16(x, name="ToBFloat16"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex64"])
+@dispatch.add_dispatch_support
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -1051,6 +1067,7 @@ def to_complex64(x, name="ToComplex64"):
 
 @deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex128"])
+@dispatch.add_dispatch_support
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
@@ -1265,6 +1282,7 @@ def truediv(x, y, name=None):
     date=None,
     instructions="Deprecated in favor of operator or tf.math.divide.")
 @tf_export(v1=["div"])
+@dispatch.add_dispatch_support
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -1288,6 +1306,7 @@ def div(x, y, name=None):
 
 
 @tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
@@ -1620,6 +1639,7 @@ ops.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
+@dispatch.add_dispatch_support
 def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
 
@@ -1751,6 +1771,7 @@ def _may_reduce_to_scalar(keepdims, axis, output):
 
 
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -1885,6 +1906,7 @@ def reduce_sum_with_dims(input_tensor,
 
 
 @tf_export("math.reduce_euclidean_norm")
+@dispatch.add_dispatch_support
 def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the Euclidean norm of elements across dimensions of a tensor.
 
@@ -1928,6 +1950,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.count_nonzero", "count_nonzero"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2005,6 +2028,7 @@ def count_nonzero(input_tensor=None,
 
 
 @tf_export("math.count_nonzero", v1=[])
+@dispatch.add_dispatch_support
 def count_nonzero_v2(
     input,  # pylint: disable=redefined-builtin
     axis=None,
@@ -2072,6 +2096,7 @@ def count_nonzero_v2(
 
 
 @tf_export(v1=["math.reduce_mean", "reduce_mean"])
+@dispatch.add_dispatch_support
 def reduce_mean_v1(input_tensor,
                    axis=None,
                    keepdims=None,
@@ -2198,6 +2223,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export("math.reduce_variance")
+@dispatch.add_dispatch_support
 def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the variance of elements across dimensions of a tensor.
 
@@ -2246,6 +2272,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export("math.reduce_std")
+@dispatch.add_dispatch_support
 def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the standard deviation of elements across dimensions of a tensor.
 
@@ -2328,6 +2355,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_prod", "reduce_prod"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2373,6 +2401,7 @@ def reduce_prod_v1(input_tensor,
 
 
 @tf_export(v1=["math.reduce_min", "reduce_min"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2459,6 +2488,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_max", "reduce_max"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2563,6 +2593,7 @@ def reduce_max_with_dims(input_tensor,
 
 
 @tf_export(v1=["math.reduce_all", "reduce_all"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2662,6 +2693,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_any", "reduce_any"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2761,6 +2793,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export(v1=["math.reduce_logsumexp", "reduce_logsumexp"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -2817,6 +2850,7 @@ def reduce_logsumexp_v1(input_tensor,
 
 
 @tf_export("math.reduce_logsumexp", "reduce_logsumexp", v1=[])
+@dispatch.add_dispatch_support
 def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
@@ -2877,6 +2911,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("trace")
 @dispatch.add_dispatch_support
 def trace(x, name=None):
@@ -3116,6 +3151,7 @@ def matmul(a,
 
 
 @tf_export("linalg.matvec")
+@dispatch.add_dispatch_support
 def matvec(a,
            b,
            transpose_a=False,
@@ -3219,6 +3255,7 @@ _OverrideBinaryOperatorHelper(matmul, "matmul")
 sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
     gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
+@dispatch.add_dispatch_support
 
 
 @ops.RegisterStatistics("MatMul", "flops")
@@ -3371,6 +3408,7 @@ def add_n(inputs, name=None):
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("accumulate_n")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
@@ -3449,6 +3487,7 @@ def _accumulate_n_grad(op, grad):
 
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
+@dispatch.add_dispatch_support
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
 
@@ -3521,6 +3560,7 @@ def log_sigmoid(x, name=None):
 
 
 @tf_export("math.bincount", v1=[])
+@dispatch.add_dispatch_support
 def bincount(arr,
              weights=None,
              minlength=None,
@@ -3596,6 +3636,7 @@ def bincount(arr,
 
 
 @tf_export(v1=["math.bincount", "bincount"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("bincount")
 def bincount_v1(arr,
                 weights=None,
@@ -3629,6 +3670,7 @@ def bincount_v1(arr,
 
 
 @tf_export("math.cumsum", "cumsum")
+@dispatch.add_dispatch_support
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -3700,6 +3742,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.cumprod", v1=["math.cumprod", "cumprod"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("cumprod")
 def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative product of the tensor `x` along `axis`.
@@ -3753,6 +3796,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
+@dispatch.add_dispatch_support
 def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
 
@@ -3912,6 +3956,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
 @tf_export(
     "math.unsorted_segment_mean",
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
 @dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
@@ -3958,6 +4003,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 @tf_export(
     "math.unsorted_segment_sqrt_n",
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
 @dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
@@ -4307,6 +4353,7 @@ def sparse_segment_sqrt_n_v2(data,
 
 
 @tf_export("tensordot", "linalg.tensordot")
+@dispatch.add_dispatch_support
 def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes and outer product.
 
@@ -4493,6 +4540,7 @@ def tensordot(a, b, axes, name=None):
 
 
 @tf_export("math.polyval")
+@dispatch.add_dispatch_support
 def polyval(coeffs, x, name=None):
   r"""Computes the elementwise value of a polynomial.
 
@@ -4563,6 +4611,7 @@ def polyval(coeffs, x, name=None):
 
 
 @tf_export("math.reciprocal_no_nan")
+@dispatch.add_dispatch_support
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
 
@@ -4665,6 +4714,7 @@ def ndtri(x, name=None):
 
 
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
 @dispatch.add_dispatch_support
 def ceil(x, name=None):
@@ -4778,6 +4828,7 @@ def exp(x, name=None):
 
 
 @tf_export("math.sobol_sample")
+@dispatch.add_dispatch_support
 def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
   """Generates points from the Sobol sequence.
 
@@ -4802,6 +4853,7 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 
 
 @tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
 @dispatch.add_dispatch_support
 def rsqrt(x, name=None):

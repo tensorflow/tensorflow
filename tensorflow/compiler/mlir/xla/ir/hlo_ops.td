@@ -23,7 +23,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
@@ -785,7 +785,7 @@ def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
     compute shape arguments to dynamic operations.
   }];
 
-  let arguments = (ins Variadic<AnySignlessInteger>:$scalars);
+  let arguments = (ins Variadic<HLO_DimensionValue>:$scalars);
   let results = (outs HLO_DimensionTensor);
 
   // Cannot be exported to legacy formats.
@@ -1058,7 +1058,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_StaticShapeTensor);
   let hasFolder = 1;
 
   let hasCustomHLOConverter = 1;

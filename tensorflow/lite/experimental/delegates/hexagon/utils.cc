@@ -79,7 +79,10 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinConcatenation:
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
+    case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMaxPool2d:
+    case kTfLiteBuiltinMean:
+    case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
@@ -154,11 +157,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return IsActivationReluOrNone(sub_params->activation);
     }
     case kTfLiteBuiltinSum:
-    case kTfLiteBuiltinMean: {
       // TODO(b/139277813): Enable these when they pass unit tests. These seem
       // to recompute the output min/max instead of taking them as inputs, which
       // causes an unexpected shift in dequantized values.
       return false;
+    case kTfLiteBuiltinMean: {
+      return InputsWithCorrectTypes(
+                 node, context,
+                 {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) &&
+             IsConstantTensor(GetInput(context, node, 1));
     }
     case kTfLiteBuiltinMirrorPad: {
       if (!InputsWithCorrectTypes(
@@ -360,6 +367,16 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     case kTfLiteBuiltinQuantize: {
       return InputsWithCorrectTypes(node, context,
                                     {{kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMinimum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMaximum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
     }
     default:
       return false;

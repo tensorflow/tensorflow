@@ -39,7 +39,7 @@ op {
     }
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
     default_value {
       b: false

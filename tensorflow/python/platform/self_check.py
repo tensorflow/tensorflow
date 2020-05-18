@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 
-MSVCP_DLL_NAMES = "msvcp_dll_names"
 
 try:
   from tensorflow.python.platform import build_info
@@ -43,9 +42,9 @@ def preload_check():
     # we load the Python extension, so that we can raise an actionable error
     # message if they are not found.
     import ctypes  # pylint: disable=g-import-not-at-top
-    if MSVCP_DLL_NAMES in build_info.build_info:
+    if hasattr(build_info, "msvcp_dll_names"):
       missing = []
-      for dll_name in build_info.build_info[MSVCP_DLL_NAMES].split(","):
+      for dll_name in build_info.msvcp_dll_names.split(","):
         try:
           ctypes.WinDLL(dll_name)
         except OSError:

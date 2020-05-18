@@ -121,6 +121,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       // | Quantized Int8  |                  4 |                        4 |
       // +-----------------+--------------------+--------------------------+
 
+      // FullyConnected with sparse weight is supported at version 8.
+      if (op_sig.options.fully_connected.sparse_weight) {
+        return 8;
+      }
+
       // Int16 fully fixed point kernel is at version 7.
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.input_types.at(1) == TensorType_INT16 &&
@@ -363,8 +368,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR:
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       if (op_sig.options.resize.half_pixel_centers) {
+        return 3;
+      } else if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
+      if (op_sig.options.resize.half_pixel_centers ||
+          op_sig.options.resize.align_corners) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -571,6 +583,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.fully_connected.weights_format =
             fully_connected_option->weights_format();
       }
+
+      const Tensor* weight_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      op_sig.options.fully_connected.sparse_weight =
+          (weight_tensor->sparsity() != nullptr);
     } break;
 
     case BuiltinOperator_MUL: {
@@ -612,6 +629,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       if (resize_bilinear_option) {
         op_sig.options.resize.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
+        op_sig.options.resize.align_corners =
+            resize_bilinear_option->align_corners();
       }
     } break;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
@@ -620,6 +639,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       if (resize_nn_option) {
         op_sig.options.resize.half_pixel_centers =
             resize_nn_option->half_pixel_centers();
+        op_sig.options.resize.align_corners = resize_nn_option->align_corners();
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.

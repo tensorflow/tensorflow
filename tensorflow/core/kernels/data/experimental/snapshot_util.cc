@@ -503,12 +503,10 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
 #if defined(PLATFORM_GOOGLE)
-      auto tensor_proto_ptr = tensor_proto_str.release();
-      absl::Cord c;
-      c.AppendExternalMemory(
-          absl::string_view(tensor_proto_ptr, tensor_proto_size),
-          tensor_proto_ptr,
-          [](void* arg) { delete[] static_cast<char*>(arg); });
+      absl::string_view tensor_proto_view(tensor_proto_str.get(),
+                                          tensor_proto_size);
+      absl::Cord c = absl::MakeCordFromExternal(
+          tensor_proto_view, [s = std::move(tensor_proto_str)] {});
       if (!tp.ParseFromCord(c)) {
         return errors::Internal("Could not parse TensorProto");
       }
@@ -615,11 +613,9 @@ Status Reader::ReadRecord(absl::Cord* record) {
   } else {
     auto tmp_str = absl::make_unique<tstring>();
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
-    tstring* tmp_str_raw = tmp_str.release();
-    record->AppendExternalMemory(*tmp_str_raw, tmp_str_raw,
-                                 [](absl::string_view unused_data, void* arg) {
-                                   delete static_cast<tstring*>(arg);
-                                 });
+    absl::string_view tmp_str_view(*tmp_str);
+    record->Append(
+        absl::MakeCordFromExternal(tmp_str_view, [s = std::move(tmp_str)] {}));
     return Status::OK();
   }
 }

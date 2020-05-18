@@ -60,8 +60,6 @@ from tensorflow.python.autograph.operators.py_builtins import range_
 from tensorflow.python.autograph.operators.slices import get_item
 from tensorflow.python.autograph.operators.slices import GetItemOpts
 from tensorflow.python.autograph.operators.slices import set_item
-from tensorflow.python.autograph.operators.special_values import is_undefined
-from tensorflow.python.autograph.operators.special_values import is_undefined_return
-from tensorflow.python.autograph.operators.special_values import retval
-from tensorflow.python.autograph.operators.special_values import Undefined
-from tensorflow.python.autograph.operators.special_values import UndefinedReturnValue
+from tensorflow.python.autograph.operators.variables import ld
+from tensorflow.python.autograph.operators.variables import Undefined
+from tensorflow.python.autograph.operators.variables import UndefinedReturnValue

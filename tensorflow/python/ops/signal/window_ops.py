@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -52,6 +53,7 @@ def _check_params(window_length, dtype):
 
 
 @tf_export('signal.kaiser_window')
+@dispatch.add_dispatch_support
 def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
   """Generate a [Kaiser window][kaiser].
 
@@ -91,6 +93,7 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
 
 
 @tf_export('signal.kaiser_bessel_derived_window')
+@dispatch.add_dispatch_support
 def kaiser_bessel_derived_window(window_length, beta=12.,
                                  dtype=dtypes.float32, name=None):
   """Generate a [Kaiser Bessel derived window][kbd].
@@ -118,6 +121,7 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
 
 
 @tf_export('signal.vorbis_window')
+@dispatch.add_dispatch_support
 def vorbis_window(window_length, dtype=dtypes.float32, name=None):
   """Generate a [Vorbis power complementary window][vorbis].
 
@@ -142,6 +146,7 @@ def vorbis_window(window_length, dtype=dtypes.float32, name=None):
 
 
 @tf_export('signal.hann_window')
+@dispatch.add_dispatch_support
 def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
   """Generate a [Hann window][hann].
 
@@ -167,6 +172,7 @@ def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
 
 
 @tf_export('signal.hamming_window')
+@dispatch.add_dispatch_support
 def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
                    name=None):
   """Generate a [Hamming][hamming] window.

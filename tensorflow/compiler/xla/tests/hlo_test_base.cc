@@ -165,6 +165,16 @@ PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
   return precision_config;
 }
 
+void HloTestBase::SetAotFastMathDebugOptions(DebugOptions* options) {
+  options->set_xla_cpu_enable_fast_math(true);
+  options->set_xla_gpu_enable_fast_min_max(true);
+  options->set_xla_cpu_enable_fast_min_max(true);
+  options->set_xla_cpu_fast_math_honor_nans(false);
+  options->set_xla_cpu_fast_math_honor_infs(false);
+  options->set_xla_cpu_fast_math_honor_functions(false);
+  options->set_xla_cpu_fast_math_honor_division(false);
+}
+
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.

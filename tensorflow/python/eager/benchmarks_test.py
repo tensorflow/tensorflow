@@ -1194,6 +1194,46 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def _benchmark_convert_constant(self, value, cached):
+    global GLOBAL_TEST_VALUE
+    GLOBAL_TEST_VALUE = value
+
+    def cached_func():
+      ops.convert_to_tensor(value)
+
+    def uncached_func():
+      global GLOBAL_TEST_VALUE
+      GLOBAL_TEST_VALUE += 1
+      ops.convert_to_tensor(GLOBAL_TEST_VALUE)
+
+    func = cached_func if cached else uncached_func
+
+    self._run(func, 10000)
+
+  def benchmark_convert_python_int(self):
+    self._benchmark_convert_constant(42, cached=True)
+
+  def benchmark_convert_python_int_uncached(self):
+    self._benchmark_convert_constant(42, cached=False)
+
+  def benchmark_convert_python_float(self):
+    self._benchmark_convert_constant(42.0, cached=True)
+
+  def benchmark_convert_python_float_uncached(self):
+    self._benchmark_convert_constant(42.0, cached=False)
+
+  def benchmark_convert_numpy_int(self):
+    self._benchmark_convert_constant(np.array(42), cached=True)
+
+  def benchmark_convert_numpy_int_uncached(self):
+    self._benchmark_convert_constant(np.array(42), cached=False)
+
+  def benchmark_convert_numpy_float(self):
+    self._benchmark_convert_constant(np.array(42.0), cached=True)
+
+  def benchmark_convert_numpy_float_uncached(self):
+    self._benchmark_convert_constant(np.array(42.0), cached=False)
+
   @test_util.disable_tfrt("convert to tensor not supported")
   def benchmark_convert_3x_list_to_tensor(self):
     xs = [1, 2, 3]

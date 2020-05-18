@@ -137,6 +137,9 @@ download_and_extract() {
     exit 1
   fi
 
+  # delete anything after the '?' in a url that may mask true file extension
+  url=$(echo "${url}" | sed "s/\?.*//")
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then

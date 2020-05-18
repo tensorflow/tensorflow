@@ -144,7 +144,7 @@ def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
   vocab = []
   with gfile.GFile(vocabulary_path, "r") as reader:
     while True:
-      # Get the next line, and break if it is None.
+      # Get the next line (incl. \n), and break if nothing is left to read.
       text = reader.readline()
       if not text:
         break
@@ -189,4 +189,3 @@ def convert_to_ndarray(x, dtype=None):
     if np.can_cast(array.dtype, np_dtype):
       array = array.astype(np_dtype, casting="safe")
   return array
-

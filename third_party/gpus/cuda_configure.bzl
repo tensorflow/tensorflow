@@ -714,6 +714,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{cuda_is_configured}": "False",
             "%{cuda_extra_copts}": "[]",
+            "%{cuda_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -841,6 +842,16 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
         for cap in compute_capabilities
     ]
     return str(capability_flags)
+
+def _compute_cuda_gpu_architectures(repository_ctx, compute_capabilities):
+    gpu_architectures = [
+        "sm_" + capability.replace(".", "")
+        for capability in compute_capabilities
+    ]
+
+    # Make the list unique.
+    gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
+    return str(gpu_architectures)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
@@ -970,6 +981,10 @@ def _create_local_cuda_repository(repository_ctx):
         {
             "%{cuda_is_configured}": "True",
             "%{cuda_extra_copts}": _compute_cuda_extra_copts(
+                repository_ctx,
+                cuda_config.compute_capabilities,
+            ),
+            "%{cuda_gpu_architectures}": _compute_cuda_gpu_architectures(
                 repository_ctx,
                 cuda_config.compute_capabilities,
             ),

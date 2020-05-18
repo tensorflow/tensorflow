@@ -59,6 +59,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+// static TensorFlow op prefix set.
+std::set<std::string>* GlobalOpPrefixes() {
+  static std::set<std::string>* global_op_prefixes = [] {
+    std::set<std::string>* result = new std::set<std::string>;
+    result->insert("tf.");
+    result->insert("_tf.");
+    result->insert("tf_executor.");
+    return result;
+  }();
+  return global_op_prefixes;
+}
+
 // Converts a location to the debug information for the node def.
 Status ConvertLocation(mlir::Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
@@ -268,8 +280,10 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
   // don't need to consider ".source"/".Source" because the nodes with this
   // suffix are skipped by the caller and will not be added to the graph.
-  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.") &&
-      !op_name.consume_front("tf_executor.")) {
+  auto prefixes = GlobalOpPrefixes();
+  if (std::none_of(prefixes->begin(), prefixes->end(), [&](std::string prefix) {
+        return op_name.consume_front(prefix);
+      })) {
     return errors::FailedPrecondition("op node '", op_name.str(),
                                       "' was not a TF op!");
   }
@@ -504,6 +518,11 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
 bool IsLegacyCallInstruction(mlir::Operation* inst) {
   return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
          inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
+}
+
+Status AddTensorFlowOpPrefix(std::string prefix) {
+  GlobalOpPrefixes()->insert(prefix);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

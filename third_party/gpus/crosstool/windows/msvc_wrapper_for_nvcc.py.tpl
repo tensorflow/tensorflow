@@ -59,7 +59,7 @@ def GetOptionValue(argv, option):
   parser.add_argument(option, nargs='*', action='append')
   option = option.lstrip('-/').replace('-', '_')
   args, leftover = parser.parse_known_args(argv)
-  if args and vars(args).get(option):
+  if args and vars(args)[option]:
     return (sum(vars(args)[option], []), leftover)
   return ([], leftover)
 
@@ -136,10 +136,12 @@ def InvokeNvcc(argv, log=False):
   m_options = ["-m64"]
 
   nvccopts = ['-D_FORCE_INLINES']
-  for capability in GetOptionValue(argv, "--cuda-gpu-arch"):
+  compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
+  for capability in compute_capabilities:
+    print(capability)
     capability = capability[len('sm_'):]
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
+    nvccopts += [r'-gencode=arch=compute_%s,"code=sm_%s,compute_%s"' % (
+        capability, capability, capability)]
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines

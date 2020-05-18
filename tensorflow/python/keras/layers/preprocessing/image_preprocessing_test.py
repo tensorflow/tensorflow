@@ -1021,7 +1021,27 @@ class RandomZoomTest(keras_parameterized.TestCase):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
         input_image = np.reshape(np.arange(0, 25), (5, 5, 1)).astype(dtype)
-        layer = image_preprocessing.RandomZoom((.5, .5), (.5, .5),
+        layer = image_preprocessing.RandomZoom((.5, .5), (.8, .8),
+                                               fill_mode='constant',
+                                               interpolation='nearest')
+        output_image = layer(np.expand_dims(input_image, axis=0))
+        # pyformat: disable
+        expected_output = np.asarray([
+            [0, 0, 0, 0, 0],
+            [0, 5, 7, 9, 0],
+            [0, 10, 12, 14, 0],
+            [0, 20, 22, 24, 0],
+            [0, 0, 0, 0, 0]
+        ]).astype(dtype)
+        # pyformat: enable
+        expected_output = np.reshape(expected_output, (1, 5, 5, 1))
+        self.assertAllEqual(expected_output, output_image)
+
+  def test_random_zoom_out_numeric_preserve_aspect_ratio(self):
+    for dtype in (np.int64, np.float32):
+      with tf_test_util.use_gpu():
+        input_image = np.reshape(np.arange(0, 25), (5, 5, 1)).astype(dtype)
+        layer = image_preprocessing.RandomZoom((.5, .5),
                                                fill_mode='constant',
                                                interpolation='nearest')
         output_image = layer(np.expand_dims(input_image, axis=0))

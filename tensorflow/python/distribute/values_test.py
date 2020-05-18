@@ -56,6 +56,7 @@ from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 
@@ -623,10 +624,10 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       v = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
     # In cross replica context.
-    self.assertTrue(ops.is_dense_tensor_like(v))
+    self.assertIsInstance(v, core.Tensor)
     # In replica context.
     distribution.run(
-        lambda v: self.assertTrue(ops.is_dense_tensor_like(v)), args=(v,))
+        lambda v: self.assertIsInstance(v, core.Tensor), args=(v,))
 
   def testAssignReturnValueIsTensorLike(self, distribution, synchronization,
                                         aggregation):
@@ -645,9 +646,9 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       # values is not allowed when aggregation is SUM. See
       # `cross_device_ops.reduce_non_distributed_value`.
       delta = array_ops.identity(1.)
-      self.assertTrue(ops.is_dense_tensor_like(v.assign(delta)))
-      self.assertTrue(ops.is_dense_tensor_like(v.assign_sub(delta)))
-      self.assertTrue(ops.is_dense_tensor_like(v.assign_add(delta)))
+      self.assertIsInstance(v.assign(delta), core.Tensor)
+      self.assertIsInstance(v.assign_sub(delta), core.Tensor)
+      self.assertIsInstance(v.assign_add(delta), core.Tensor)
 
     # In cross replica context we return a PerReplica which is not Tensor like
     # yet.

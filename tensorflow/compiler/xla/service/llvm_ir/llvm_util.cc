@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -90,7 +91,9 @@ llvm::CallInst* EmitCallToIntrinsic(
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -103,7 +106,9 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {

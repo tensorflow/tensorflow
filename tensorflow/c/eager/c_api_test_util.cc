@@ -150,6 +150,7 @@ TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
   TFE_TensorHandle* var_handle = nullptr;
   int num_retvals = 1;
   TFE_Execute(op, &var_handle, &num_retvals, status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_DeleteOp(op);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   CHECK_EQ(1, num_retvals);

@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.cluster_resolver.TPUClusterResolver"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver.TPUClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver.TPUClusterResolver\'>"
   is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
   is_instance: "<type \'object\'>"
   member {
