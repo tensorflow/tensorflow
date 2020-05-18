@@ -155,29 +155,6 @@ cuda_py_tests(
     ],
 )
 
-<<<<<<< HEAD
-cuda_py_tests(
-    name = "concatenation_test",
-    srcs = [
-        "test/biasadd_matmul_test.py",
-        "test/concatenation_test.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_windows",
-        "nomac",
-        "notap",  # b/140261407
-    ],
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-=======
->>>>>>> google_upstream/master
 cuda_py_test(
     name = "quantization_mnist_test",
     srcs = ["test/quantization_mnist_test.py"],
