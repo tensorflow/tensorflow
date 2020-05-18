@@ -137,30 +137,18 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
   return os;
 }
 
-nvinfer1::DataType TfDataTypeToTrt(DataType tf_dtype) {
-  switch (tf_dtype) {
-    case DT_FLOAT:
-      return nvinfer1::DataType::kFLOAT;
-    case DT_HALF:
-      return nvinfer1::DataType::kHALF;
-    case DT_INT32:
-      return nvinfer1::DataType::kINT32;
-    default:
-      QCHECK(false) << "Unexpected data type " << DataTypeString(tf_dtype);
-  }
+nvinfer1::DataType TfDataTypeToTrt(DataType tf_type) {
+  nvinfer1::DataType trt_type;
+  Status status = TfTypeToTrtType(tf_type, &trt_type);
+  EXPECT_EQ(status, Status::OK());
+  return trt_type;
 }
 
-DataType TrtDataTypeToTf(nvinfer1::DataType trt_dtype) {
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      return DT_FLOAT;
-    case nvinfer1::DataType::kHALF:
-      return DT_HALF;
-    case nvinfer1::DataType::kINT32:
-      return DT_INT32;
-    default:
-      QCHECK(false) << "Unexpected data type " << static_cast<int>(trt_dtype);
-  }
+DataType TrtDataTypeToTf(nvinfer1::DataType trt_type) {
+  DataType tf_type;
+  Status status = TrtTypeToTfType(trt_type, &tf_type);
+  EXPECT_EQ(status, Status::OK());
+  return tf_type;
 }
 
 NodeDef MakeNodeDef(const string& name, const string& op,
