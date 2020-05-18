@@ -38,6 +38,7 @@ from tensorflow.python.ops.gen_functional_ops import remote_call
 from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -45,6 +46,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
 @tf_export(v1=["foldl"])
+@dispatch.add_dispatch_support
 def foldl(fn,
           elems,
           initializer=None,
@@ -162,6 +164,7 @@ def foldl(fn,
 
 
 @tf_export("foldl", v1=[])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_arg_values(
     None,
     """back_prop=False is deprecated. Consider using tf.stop_gradient instead.
@@ -238,6 +241,7 @@ def foldl_v2(fn,
 
 
 @tf_export(v1=["foldr"])
+@dispatch.add_dispatch_support
 def foldr(fn,
           elems,
           initializer=None,
@@ -356,6 +360,7 @@ def foldr(fn,
 
 
 @tf_export("foldr", v1=[])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_arg_values(
     None,
     """back_prop=False is deprecated. Consider using tf.stop_gradient instead.
@@ -432,6 +437,7 @@ def foldr_v2(fn,
 
 
 @tf_export(v1=["scan"])
+@dispatch.add_dispatch_support
 def scan(fn,
          elems,
          initializer=None,
@@ -686,6 +692,7 @@ def scan(fn,
 
 
 @tf_export("scan", v1=[])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_arg_values(
     None,
     """back_prop=False is deprecated. Consider using tf.stop_gradient instead.

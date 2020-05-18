@@ -236,6 +236,19 @@ XLA_TEST_F(MathTest, SqrtF32) {
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, SqrtF64) {
+  XlaBuilder builder(TestName());
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
+
+  std::unique_ptr<GlobalData> zero_data =
+      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+
+  XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
+  Sqrt(zero);
+
+  ComputeAndCompareR0<double>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
 XLA_TEST_F(MathTest, ErfInvF64) {
   XlaBuilder builder(TestName());

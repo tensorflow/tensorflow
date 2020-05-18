@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -46,16 +47,16 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SvdOpTest(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 0"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*0"):
       linalg_ops.svd(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 1"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*1"):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)

@@ -22,7 +22,6 @@ import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.gpu.GpuDelegate;
 import org.tensorflow.lite.support.common.FileUtil;
 import org.tensorflow.lite.support.common.SupportPreconditions;
 
@@ -91,7 +90,7 @@ public class Model {
   /** The memory-mapped model data. */
   private final MappedByteBuffer byteModel;
 
-  private final GpuDelegate gpuDelegate;
+  private final GpuDelegateProxy gpuDelegateProxy;
 
   /**
    * Builder for {@link Model}.
@@ -181,24 +180,30 @@ public class Model {
    * @param modelPath The original path of the model. It can be fetched later by {@link
    *     Model#getPath()}.
    * @param options The options for running the model.
+   * @throws IllegalArgumentException if {@code options.device} is {@link Device#GPU} but
+   *     "tensorflow-lite-gpu" is not linked to the project.
    */
   public static Model createModel(
       @NonNull MappedByteBuffer byteModel, @NonNull String modelPath, @NonNull Options options) {
     Interpreter.Options interpreterOptions = new Interpreter.Options();
-    GpuDelegate gpuDelegate = options.device.equals(Device.GPU) ? new GpuDelegate() : null;
+    GpuDelegateProxy gpuDelegateProxy = null;
     switch (options.device) {
       case NNAPI:
         interpreterOptions.setUseNNAPI(true);
         break;
       case GPU:
-        interpreterOptions.addDelegate(gpuDelegate);
+        gpuDelegateProxy = GpuDelegateProxy.maybeNewInstance();
+        SupportPreconditions.checkArgument(
+            gpuDelegateProxy != null,
+            "Cannot inference with GPU. Did you add \"tensorflow-lite-gpu\" as dependency?");
+        interpreterOptions.addDelegate(gpuDelegateProxy);
         break;
       case CPU:
         break;
     }
     interpreterOptions.setNumThreads(options.numThreads);
     Interpreter interpreter = new Interpreter(byteModel, interpreterOptions);
-    return new Model(modelPath, byteModel, interpreter, gpuDelegate);
+    return new Model(modelPath, byteModel, interpreter, gpuDelegateProxy);
   }
 
   /** Returns the memory-mapped model data. */
@@ -243,8 +248,8 @@ public class Model {
     if (interpreter != null) {
       interpreter.close();
     }
-    if (gpuDelegate != null) {
-      gpuDelegate.close();
+    if (gpuDelegateProxy != null) {
+      gpuDelegateProxy.close();
     }
   }
 
@@ -252,10 +257,10 @@ public class Model {
       @NonNull String modelPath,
       @NonNull MappedByteBuffer byteModel,
       @NonNull Interpreter interpreter,
-      @Nullable GpuDelegate gpuDelegate) {
+      @Nullable GpuDelegateProxy gpuDelegateProxy) {
     this.modelPath = modelPath;
     this.byteModel = byteModel;
     this.interpreter = interpreter;
-    this.gpuDelegate = gpuDelegate;
+    this.gpuDelegateProxy = gpuDelegateProxy;
   }
 }

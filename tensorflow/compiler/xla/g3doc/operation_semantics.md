@@ -2299,20 +2299,26 @@ The output is guaranteed to be a deterministic function of the initial state but
 it is *not* guaranteed to be deterministic between backends and different
 compiler versions.
 
-<b>`RngBitGenerator(algorithm, key, shape)`</b> | Arguments | Type | Semantics |
-|---------------- | ----------------- | ------------------------------------- |
-| `algorithm` | `RandomAlgorithm` | PRNG algorithm to be used. | |
-`initial_state` | `XlaOp` | Initial state for the PRNG algorithm. | | `shape` |
-`Shape` | Output shape for generated data. |
+<b>`RngBitGenerator(algorithm, key, shape)`</b>
 
-Available values for `algorithm`: * `rng_default`: Backend specific algorithm
-with backend specific shape requirements. * `rng_three_fry`: ThreeFry
-counter-based PRNG algorithm. The `initial_state` shape is `u64[2]` with
-arbitrary values.
-[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
-* `rng_philox`: Philox algorithm to generate random numbers in parallel. The
-`initial_state` shape is `u64[3]` with arbitrary values.
-[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+Arguments       | Type              | Semantics
+--------------- | ----------------- | -------------------------------------
+`algorithm`     | `RandomAlgorithm` | PRNG algorithm to be used.
+`initial_state` | `XlaOp`           | Initial state for the PRNG algorithm.
+`shape`         | `Shape`           | Output shape for generated data.
+
+Available values for `algorithm`:
+
+-   `rng_default`: Backend specific algorithm with backend specific shape
+    requirements.
+
+-   `rng_three_fry`: ThreeFry counter-based PRNG algorithm. The `initial_state`
+    shape is `u64[2]` with arbitrary values.
+    [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+
+-   `rng_philox`: Philox algorithm to generate random numbers in parallel. The
+    `initial_state` shape is `u64[3]` with arbitrary values.
+    [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
 
 ## Scatter
 

@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -131,51 +130,6 @@ class NumericsTest(test.TestCase):
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
-
-  def testCheckNumericsV2OpNegativeAndPositiveInf(self):
-    """Test that CheckNumericsV2 op distinguishes negative and positive infs."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([-1.0, 1.0])
-      t2 = constant_op.constant([0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had -Inf and +Inf values", caught.message)
-      self.assertIn("pass through test", caught.message)
-
-  def testCheckNumericsV2OpNegativeAndPositiveInfAndNaN(self):
-    """CheckNumericsV2 op distinguishes - & + infs when nan is present."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([-1.0, 1.0, 0.0])
-      t2 = constant_op.constant([0.0, 0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had -Inf, +Inf, and NaN values", caught.message)
-      self.assertIn("pass through test", caught.message)
-
-  def testCheckNumericsV2PositiveInfAndNaN(self):
-    """Test that CheckNumericsV2 op shows sign of inf when nan is present."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([0.0, 1.0])
-      t2 = constant_op.constant([0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had +Inf and NaN values", caught.message)
-      self.assertIn("pass through test", caught.message)
 
 
 if __name__ == "__main__":

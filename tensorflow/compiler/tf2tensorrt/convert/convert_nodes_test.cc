@@ -137,30 +137,18 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
   return os;
 }
 
-nvinfer1::DataType TfDataTypeToTrt(DataType tf_dtype) {
-  switch (tf_dtype) {
-    case DT_FLOAT:
-      return nvinfer1::DataType::kFLOAT;
-    case DT_HALF:
-      return nvinfer1::DataType::kHALF;
-    case DT_INT32:
-      return nvinfer1::DataType::kINT32;
-    default:
-      QCHECK(false) << "Unexpected data type " << DataTypeString(tf_dtype);
-  }
+nvinfer1::DataType TfDataTypeToTrt(DataType tf_type) {
+  nvinfer1::DataType trt_type;
+  Status status = TfTypeToTrtType(tf_type, &trt_type);
+  EXPECT_EQ(status, Status::OK());
+  return trt_type;
 }
 
-DataType TrtDataTypeToTf(nvinfer1::DataType trt_dtype) {
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      return DT_FLOAT;
-    case nvinfer1::DataType::kHALF:
-      return DT_HALF;
-    case nvinfer1::DataType::kINT32:
-      return DT_INT32;
-    default:
-      QCHECK(false) << "Unexpected data type " << static_cast<int>(trt_dtype);
-  }
+DataType TrtDataTypeToTf(nvinfer1::DataType trt_type) {
+  DataType tf_type;
+  Status status = TrtTypeToTfType(trt_type, &tf_type);
+  EXPECT_EQ(status, Status::OK());
+  return tf_type;
 }
 
 NodeDef MakeNodeDef(const string& name, const string& op,
@@ -1712,7 +1700,7 @@ INSTANTIATE_TEST_CASE_P(
 
 // Builds and runs the converted network. Checks output tensor shape. Tests
 // output values using a matcher.
-template <DataType dtype>
+template <DataType input_dtype, DataType output_dtype>
 void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
                                  const TestParamBase& p,
                                  const std::vector<float>& input_vec,
@@ -1731,12 +1719,14 @@ void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
     // runtime errors.
     return;
   }
-  typedef typename EnumToDataType<dtype>::Type T;
+  typedef typename EnumToDataType<input_dtype>::Type Tin;
   TensorShape shape;
   TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.input_dims, &shape));
   const DataVec input_data{
-      {"input", test->AsTensor<T>(CastTestVector<float, T>(input_vec), shape)}};
-  DataVec output_data{{name, test->ConstructTensor<T>(6)}};
+      {"input",
+       test->AsTensor<Tin>(CastTestVector<float, Tin>(input_vec), shape)}};
+  typedef typename EnumToDataType<output_dtype>::Type Tout;
+  DataVec output_data{{name, test->ConstructTensor<Tout>(6)}};
   test->BuildAndRun(input_data, &output_data);
   // Check the shape of the actual output tensor
   TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.expected_output_dims, &shape));
@@ -1744,7 +1734,7 @@ void BuildAndRunConvertedNetwork(const string& name, OpConverterTest* test,
       << "Expected shape: " << shape.DebugString() << ", actual shape"
       << output_data[0].tensor.shape().DebugString();
   // Cast the output to float and compare to expected output
-  auto out_span = GetSpanForData<T>(output_data[0]);
+  auto out_span = GetSpanForData<Tout>(output_data[0]);
   std::vector<float> casted_output(out_span.begin(), out_span.end());
   EXPECT_THAT(casted_output, matcher);
 }
@@ -1754,13 +1744,32 @@ void InstantiateBuildAndRun(DataType tf_dtype, const string& name,
                             const std::vector<float>& input_vec,
                             const Matcher<std::vector<float>>& matcher) {
   if (tf_dtype == DT_FLOAT) {
-    BuildAndRunConvertedNetwork<DT_FLOAT>(name, test, p, input_vec, matcher);
+    BuildAndRunConvertedNetwork<DT_FLOAT, DT_FLOAT>(name, test, p, input_vec,
+                                                    matcher);
   } else if (tf_dtype == DT_HALF) {
-    BuildAndRunConvertedNetwork<DT_HALF>(name, test, p, input_vec, matcher);
+    BuildAndRunConvertedNetwork<DT_HALF, DT_HALF>(name, test, p, input_vec,
+                                                  matcher);
   } else if (tf_dtype == DT_INT32) {
-    BuildAndRunConvertedNetwork<DT_INT32>(name, test, p, input_vec, matcher);
+    BuildAndRunConvertedNetwork<DT_INT32, DT_INT32>(name, test, p, input_vec,
+                                                    matcher);
   } else {
     FAIL() << "Test not supported for " << tf_dtype;
+  }
+}
+
+void InstantiateBuildAndRun(DataType input_tf_dtype, DataType output_tf_dtype,
+                            const string& name, OpConverterTest* test,
+                            const TestParamBase& p,
+                            const std::vector<float>& input_vec,
+                            const Matcher<std::vector<float>>& matcher) {
+  if (input_tf_dtype == output_tf_dtype) {
+    InstantiateBuildAndRun(input_tf_dtype, name, test, p, input_vec, matcher);
+  } else if (input_tf_dtype == DT_HALF && output_tf_dtype) {
+    BuildAndRunConvertedNetwork<DT_HALF, DT_FLOAT>(name, test, p, input_vec,
+                                                   matcher);
+  } else {
+    FAIL() << "Test not supported for input " << input_tf_dtype << " output "
+           << output_tf_dtype;
   }
 }
 
@@ -5138,6 +5147,14 @@ NodeDef CreateUnaryOp() {
   return T(s.WithOpName("my_unary"), input).operation.node()->def();
 }
 
+NodeDef CreateCastOp() {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_HALF);
+  return ops::Cast(s.WithOpName("my_unary"), input, DT_FLOAT)
+      .operation.node()
+      ->def();
+}
+
 TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
   const auto& spec = GetParam();
   const TrtTestMode trt_mode = std::get<0>(spec);
@@ -5165,6 +5182,7 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
   ADD_OP("Asinh", ops::Asinh, std::asinh);
   ADD_OP("Atan", ops::Atan, std::atan);
   ADD_OP("Atanh", ops::Atanh, std::atanh);
+  op_map["Cast"] = std::make_pair(CreateCastOp, [](float x) { return x; });
   ADD_OP("Ceil", ops::Ceil, std::ceil);
   ADD_OP("Cos", ops::Cos, std::cos);
   ADD_OP("Cosh", ops::Cosh, std::cosh);
@@ -5203,7 +5221,13 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
     }
     NodeDef node_def = op_map[op_name].first();
 
-    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode);
+    // TODO(bixia): we assume this test is only instantiated for DT_FLOAT for
+    // now. Need to find a better way to express input and output types.
+    DataType input_tf_dtype = op_name == "Cast" ? DT_HALF : tf_dtype;
+    DataType output_tf_dtype = tf_dtype;
+
+    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(input_tf_dtype),
+                  trt_mode);
     RunValidationAndConversion(node_def, Status::OK(), "my_unary",
                                p.expected_output_dims);
 
@@ -5211,8 +5235,8 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
     std::vector<float> output;
     std::transform(input_values.begin(), input_values.end(),
                    std::back_inserter(output), op_map[op_name].second);
-    InstantiateBuildAndRun(tf_dtype, "my_unary", this, p, input_values,
-                           ArrayFloatNear(output, 0.0001, true));
+    InstantiateBuildAndRun(input_tf_dtype, output_tf_dtype, "my_unary", this, p,
+                           input_values, ArrayFloatNear(output, 0.0001, true));
   }
 }
 

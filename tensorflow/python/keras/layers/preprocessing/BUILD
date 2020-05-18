@@ -2,6 +2,8 @@
 #   Contains the Keras preprocess layers (internal TensorFlow version).
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
@@ -521,6 +523,7 @@ tf_py_test(
     size = "medium",
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",

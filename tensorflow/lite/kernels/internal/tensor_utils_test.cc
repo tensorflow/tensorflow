@@ -1136,11 +1136,15 @@ std::vector<float> TestPerChannelDotprodMatrixBatchVectorMultiply(
     bool is_per_channel = true) {
   MatrixVectorData data =
       SetupMatrixVectorData(rows, cols, batch, negative, is_per_channel);
-
+  std::vector<int32_t> scratch(rows * batch);
+  std::vector<int32_t> row_sums(rows);
+  bool compute_row_sums = true;
+  CpuBackendContext context;
   MatrixBatchVectorMultiplyAccumulate(
       data.matrix.data(), rows, cols, data.vectors.data(),
       data.scale_factors.data(), batch, &data.results[0],
-      data.per_channel_scales.data(), data.input_offsets.data());
+      data.per_channel_scales.data(), data.input_offsets.data(), scratch.data(),
+      row_sums.data(), &compute_row_sums, &context);
   return data.results;
 }
 

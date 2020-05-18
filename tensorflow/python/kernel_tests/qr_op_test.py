@@ -20,9 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -30,7 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
@@ -45,35 +46,37 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class QrOpTest(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
-    # The input to qr should be a tensor of at least rank 2.
+    # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 0"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*0"):
       linalg_ops.qr(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 1"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*1"):
       linalg_ops.qr(vector)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
-      all_ops = []
-      for full_matrices_ in True, False:
-        for rows_ in 4, 5:
-          for cols_ in 4, 5:
-            matrix1 = random_ops.random_normal([rows_, cols_], seed=42)
-            matrix2 = random_ops.random_normal([rows_, cols_], seed=42)
-            q1, r1 = linalg_ops.qr(matrix1, full_matrices=full_matrices_)
-            q2, r2 = linalg_ops.qr(matrix2, full_matrices=full_matrices_)
-            all_ops += [q1, r1, q2, r2]
-      val = self.evaluate(all_ops)
-      for i in range(8):
-        q = 4 * i
-        self.assertAllClose(val[q], val[q + 2])  # q1 == q2
-        self.assertAllClose(val[q + 1], val[q + 3])  # r1 == r2
+    seed = [42, 24]
+    all_ops = []
+    for full_matrices_ in True, False:
+      for rows_ in 4, 5:
+        for cols_ in 4, 5:
+          matrix_shape = [rows_, cols_]
+          matrix1 = stateless_random_ops.stateless_random_normal(
+              matrix_shape, seed)
+          matrix2 = stateless_random_ops.stateless_random_normal(
+              matrix_shape, seed)
+          self.assertAllEqual(matrix1, matrix2)
+          q1, r1 = linalg_ops.qr(matrix1, full_matrices=full_matrices_)
+          q2, r2 = linalg_ops.qr(matrix2, full_matrices=full_matrices_)
+          all_ops += [q1, q2, r1, r2]
+    val = self.evaluate(all_ops)
+    for i in range(0, len(val), 2):
+      self.assertAllClose(val[i], val[i + 1])
 
 
 def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
@@ -121,8 +124,10 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       tol = 1e-14
     self.assertAllClose(identity, xx, atol=tol)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def Test(self):
+    if not use_static_shape_ and context.executing_eagerly():
+      return
     np.random.seed(1)
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(dtype_)
@@ -131,7 +136,6 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    with self.session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:
@@ -141,7 +145,8 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       if use_static_shape_:
         q_tf_val, r_tf_val = self.evaluate([q_tf, r_tf])
       else:
-        q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
+        with self.session(use_gpu=True) as sess:
+          q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 
       q_dims = q_tf_val.shape
       np_q = np.ndarray(q_dims, dtype_)
@@ -266,7 +271,7 @@ if __name__ == "__main__":
         for full_matrices in False, True:
           for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
             # TF2 does not support placeholders under eager so we skip it
-            for use_static_shape in set([True, tf2.enabled()]):
+            for use_static_shape in [True, False]:
               shape = batch_dims + (rows, cols)
               name = "%s_%s_full_%s_static_%s" % (dtype.__name__,
                                                   "_".join(map(str, shape)),

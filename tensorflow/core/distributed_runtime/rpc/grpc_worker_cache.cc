@@ -69,9 +69,9 @@ class GrpcWorkerCache : public WorkerCachePartial {
         return nullptr;
       }
       size_t index = AssignWorkerToThread(target);
-      return NewGrpcRemoteWorker(channel,
-                                 worker_env_->GetCompletionQueue(index),
-                                 worker_env_->GetThreadPool(), &logger_);
+      return NewGrpcRemoteWorker(
+          channel, worker_env_->GetCompletionQueue(index),
+          worker_env_->GetThreadPool(), &logger_, target);
     }
   }
 
