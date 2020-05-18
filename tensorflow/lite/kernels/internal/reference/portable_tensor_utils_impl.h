@@ -83,12 +83,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     int n_batch, int32_t* scratch, float* __restrict__ result,
     CpuBackendContext* context);
 
-void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset);
-
 void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
     const float* __restrict__ matrix, const int32_t* __restrict__ segments,
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
