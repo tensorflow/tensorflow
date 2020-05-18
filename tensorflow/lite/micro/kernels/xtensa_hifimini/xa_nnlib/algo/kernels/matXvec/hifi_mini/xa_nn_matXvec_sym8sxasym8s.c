@@ -1,24 +1,23 @@
 /*******************************************************************************
-* Copyright (c) 2018-2020 Cadence Design Systems, Inc.
-*
-* Permission is hereby granted, free of charge, to any person obtaining
-* a copy of this software and associated documentation files (the
-* "Software"), to use this Software with Cadence processor cores only and
-* not with any other processors and platforms, subject to
-* the following conditions:
-*
-* The above copyright notice and this permission notice shall be included
-* in all copies or substantial portions of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-******************************************************************************/
+  * Copyright (c) 2019-2020 Cadence Design Systems, Inc.
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining
+  * a copy of this software and associated documentation files (the
+  * "Software"), to use this Software with Cadence processor cores only and
+  * not with any other processors and platforms, subject to
+  * the following conditions:
+  *
+  * The above copyright notice and this permission notice shall be included
+  * in all copies or substantial portions of the Software.
+  *
+  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+  ******************************************************************************/
 #include "xa_nnlib_common.h"
 #include "xa_nnlib_common_macros.h"
 
@@ -387,17 +386,23 @@ WORD32 xa_nn_matXvec_out_stride_asym8sxasym8s_asym8s(
   /* Check for alignment conditions */
   if(((((unsigned)p_mat1) & 1) == 0) && ((((unsigned)p_vec1) & 1) == 0) && ((row_stride1 & 1) == 0) && ((cols1 & 1) == 0))
   {
-    /* Calculate zero bias adjustment */
-    WORD32 total_zero_bias;
-    ae_q56s dq_zero_bias = AE_CVTQ48A32S(vec1_zero_bias * cols1 * mat1_zero_bias) ;
+    /* Calculate partial zero offset adjustment outside the loop */
+    WORD32 zero_offset_adjustment;
+
+    // Constant part of total zero bias
+    ae_q56s dq_zero_bias_sum = AE_CVTQ48A32S(vec1_zero_bias * cols1 * mat1_zero_bias) ;
+
     WORD8* p_inp = (WORD8*)p_vec1 - 2;
     for(i = 0; i < (cols1 >> 1); i++)
     {
+        /* Input vector is in MSB 8 bits, matrix zero bias in LSB 8 bits */
         AE_LP8X2F_IU(dp_vec1_0, p_inp, 2);
-        AE_MULAAP24S_HH_LL(dq_zero_bias, dp_vec1_0, dp_mat1_zb);
+        AE_MULAAP24S_HH_LL(dq_zero_bias_sum, dp_vec1_0, dp_mat1_zb);
     }
-    total_zero_bias = AE_TRUNCA32Q48(AE_ROUNDSQ32ASYM(dq_zero_bias));
+    /* Product is already aligned to bits 16 to 47 in QR register. */
+    zero_offset_adjustment = AE_TRUNCA32Q48(dq_zero_bias_sum);
 
+    /* If bias is not provided, use a dummy zero value from bias_buffer. */
     if(p_bias == NULL)
     {
       p_bias_load = bias_buffer - 1;
@@ -421,10 +426,10 @@ WORD32 xa_nn_matXvec_out_stride_asym8sxasym8s_asym8s(
       AE_LQ32F_XU(dq_acc_2, (ae_q32s*)p_bias_load, bias_address_increment);
       AE_LQ32F_XU(dq_acc_3, (ae_q32s*)p_bias_load, bias_address_increment);
 
-      dq_acc_0 = AE_ADDQ56(dq_acc_0, AE_CVTQ48A32S(total_zero_bias));
-      dq_acc_1 = AE_ADDQ56(dq_acc_1, AE_CVTQ48A32S(total_zero_bias));
-      dq_acc_2 = AE_ADDQ56(dq_acc_2, AE_CVTQ48A32S(total_zero_bias));
-      dq_acc_3 = AE_ADDQ56(dq_acc_3, AE_CVTQ48A32S(total_zero_bias));
+      dq_acc_0 = AE_ADDQ56(dq_acc_0, AE_CVTQ48A32S(zero_offset_adjustment));
+      dq_acc_1 = AE_ADDQ56(dq_acc_1, AE_CVTQ48A32S(zero_offset_adjustment));
+      dq_acc_2 = AE_ADDQ56(dq_acc_2, AE_CVTQ48A32S(zero_offset_adjustment));
+      dq_acc_3 = AE_ADDQ56(dq_acc_3, AE_CVTQ48A32S(zero_offset_adjustment));
 
       /* AE_LP8X2F* instruction loads in upper 8 bits of P register, so shifting vector right by
       16 to get multiplication result in middle 32 bits of Q register (lower 16 bits 0) */
@@ -485,7 +490,7 @@ WORD32 xa_nn_matXvec_out_stride_asym8sxasym8s_asym8s(
       p_vec1_0 = p_vec1-2;
 
       AE_LQ32F_XU(dq_acc_0, (ae_q32s*)p_bias_load, bias_address_increment);
-      dq_acc_0 = AE_ADDQ56(dq_acc_0, AE_CVTQ48A32S(total_zero_bias));
+      dq_acc_0 = AE_ADDQ56(dq_acc_0, AE_CVTQ48A32S(zero_offset_adjustment));
 
       for(c_itr = 0; c_itr < (cols1-1); c_itr+=2)
       {

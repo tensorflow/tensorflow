@@ -114,11 +114,16 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
 
   // Left shift the activation_state.
+<<<<<<< HEAD
 
   // 4-byte alignment check for state_ptr
   if (((reinterpret_cast<int>(state_ptr)) & 0x3) == 0)
   {
     // 4-bytes aligned processing
+=======
+  if(((int)state_ptr&0x3) == 0)
+  { /* 4-bytes aligned case  */
+>>>>>>> Cadence HiFi Mini NN Library: code cleanup and optimization
     ae_p16x2s* new_state_start = (ae_p16x2s*)(state_ptr-2);
     const ae_p16x2s* old_state_start = (ae_p16x2s*)(state_ptr-2);
     int loopcnt = (n_batch * n_filter * n_memory)-1;
@@ -139,7 +144,10 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   }
   else
   {
+<<<<<<< HEAD
     // 2-bytes aligned processing
+=======
+>>>>>>> Cadence HiFi Mini NN Library: code cleanup and optimization
     ae_p16s* new_state_start = (ae_p16s*)(state_ptr-1);
     const ae_p16s* old_state_start = (ae_p16s*)(state_ptr);
     int loopcnt = (n_batch * n_filter * n_memory)-1;
