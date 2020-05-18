@@ -29,7 +29,7 @@ To cross compile TensorFlow Lite follow the steps:
 2. Clone TensorFlow repository:
 
     ```bash
-    git clone --depth 1 https://github.com/tensorflow/tensorflow.git tensorflow_src
+    git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
 
     ```
 
@@ -74,7 +74,14 @@ To natively compile TensorFlow Lite follow the steps:
     sudo apt-get install build-essential
     ```
 
-2. Run following script at the root of the TensorFlow repository to download all the
+2. Clone TensorFlow repository:
+
+    ```bash
+    git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
+
+    ```
+
+3. Run following script at the root of the TensorFlow repository to download all the
 build dependencies:
 
     ```bash
@@ -83,11 +90,11 @@ build dependencies:
 
     **Note:** You only need to do this once.
 
-3. You should then be able to compile TensorFlow Lite with:
+4. You should then be able to compile TensorFlow Lite with:
 
     ```bash
     ./tensorflow/lite/tools/make/build_rpi_lib.sh
     ```
 
     **Note:** This should compile a static library in:
-    `tensorflow/lite/tools/make/gen/lib/rpi_armv7/libtensorflow-lite.a`.
+    `tensorflow/lite/tools/make/gen/lib/rpi_armv6/libtensorflow-lite.a`.
