@@ -874,7 +874,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
@@ -891,7 +891,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
