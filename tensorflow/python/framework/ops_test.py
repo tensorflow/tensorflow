@@ -34,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -3406,6 +3407,52 @@ class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
       self.assertIsInstance(y_, ops.Tensor)
       self.assertTrue(tensor_util.is_tensor(y_))
       self.assertAllEqual(x_, tensor_util.constant_value(y_))
+
+
+@test_util.disable_tfrt("Packing EagerTensors is not supported yet.")
+class PackEagerTensorTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(PackEagerTensorTest, self).setUp()
+    context._reset_context()
+    cpus = config.list_physical_devices("CPU")
+    # Set 2 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+    ])
+
+  def testPack(self):
+    with context.eager_mode():
+      with ops.device("CPU:0"):
+        var0 = resource_variable_ops.ResourceVariable(1.0)
+        c0 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+      with ops.device("CPU:1"):
+        var1 = resource_variable_ops.ResourceVariable(2.0)
+        var2 = resource_variable_ops.ResourceVariable([3.0])
+        c1 = constant_op.constant([9.0])
+
+      packed_var0 = ops.pack_eager_tensors([var0.handle, var1.handle])
+      self.assertTrue(packed_var0.is_packed)
+      self.assertEqual(packed_var0.dtype, var0.handle.dtype)
+      self.assertEqual(packed_var0.shape, var0.handle.shape)
+      self.assertEqual(packed_var0._handle_data, var0.handle._handle_data)
+      self.assertIn("COMPOSITE:0", packed_var0.device)
+      self.assertIn("COMPOSITE:0", packed_var0.backing_device)
+      with self.assertRaises(errors.InvalidArgumentError):
+        packed_var0.numpy()
+
+      # Different dtypes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, c1])
+
+      # Different shapes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([c0, c1])
+
+      # Different handle data
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, var2.handle])
 
 
 if __name__ == "__main__":
