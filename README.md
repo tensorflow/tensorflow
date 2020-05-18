@@ -149,6 +149,8 @@ Build Type                                                        | Status      
 *   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+*   [Advanced Machine Learning with TensorFlow on Google Cloud Platform Specialization](https://www.coursera.org/specializations/advanced-machine-learning-tensorflow-gcp?ranMID=40328&ranEAID=bt30QTxEyjA&ranSiteID=bt30QTxEyjA-cqyJTzzQW9QxbzJiy1nnOg&siteID=bt30QTxEyjA-cqyJTzzQW9QxbzJiy1nnOg&utm_content=10&utm_medium=partners&utm_source=linkshare&utm_campaign=bt30QTxEyjA)
+*   [TensorFlow in Practice Specialization](https://www.coursera.org/specializations/tensorflow-in-practice?ranMID=40328&ranEAID=bt30QTxEyjA&ranSiteID=bt30QTxEyjA-cqyJTzzQW9QxbzJiy1nnOg&siteID=bt30QTxEyjA-cqyJTzzQW9QxbzJiy1nnOg&utm_content=10&utm_medium=partners&utm_source=linkshare&utm_campaign=bt30QTxEyjA)
 
 Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to
