@@ -11,20 +11,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-genrule(
-    name = "strip_coreml_include_hdr",
-    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
-    outs = ["coreml_delegate.h"],
-    cmd = """
-    sed 's/#include \".*common.h"/#include \"common.h\"/' \
-    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)" \
-    > "$@"
-    """,
-)
-
 TFL_FRAMEWORK_HDRS = [
     "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-    ":coreml_delegate.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:common.h",
 ]
@@ -58,16 +46,46 @@ ios_static_framework(
     ],
 )
 
+genrule(
+    name = "strip_coreml_include_hdr",
+    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
+    outs = ["coreml_delegate.h"],
+    cmd = """
+    sed 's|#include ".*common.h"|#include "TensorFlowLiteC/common.h"|'\
+    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)"\
+    > "$@"
+    """,
+)
+
+# This target builds the Core ML delegate as a separate static framework, which
+# does not include the TensorFlow Lite runtime. As this target does not contain
+# TensorFlow Lite runtime, it is intended to be linked along with the
+# TensorFlowLiteC framework above in a composable way.
+#
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteCCoreMl_framework
+ios_static_framework(
+    name = "TensorFlowLiteCCoreML_framework",
+    hdrs = [
+        ":coreml_delegate.h",
+    ],
+    avoid_deps = [
+        ":tensorflow_lite_c",
+    ],
+    bundle_name = "TensorFlowLiteCCoreML",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+    ],
+)
+
 cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
     ],
     linkopts = [
-        "-Wl,-weak_framework,CoreML",
         "-Wl,-weak_framework,Metal",
     ],
     tags = [
@@ -77,7 +95,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
-        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
 )
 

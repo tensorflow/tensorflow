@@ -177,7 +177,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install PyYAML==3.13 --user
-  "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  "${PIP_CMD}" install --force-reinstall --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
   "${PIP_CMD}" install --user --upgrade wrapt
   # LINT.ThenChange(:ubuntu_pip_installations)
@@ -220,7 +221,8 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  ${PIP_CMD} install --force-reinstall --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade wrapt
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }

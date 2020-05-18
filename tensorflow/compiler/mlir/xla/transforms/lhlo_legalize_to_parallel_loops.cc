@@ -61,8 +61,8 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
 
 // Converts a block with LHLO ops and with signature:
 //   ^bb(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-// into a reduction operator of loop.reduce by doing buffer allocation for
-// scalar arguments and the result of `loop.reduce` to make it compatible with
+// into a reduction operator of scf.reduce by doing buffer allocation for
+// scalar arguments and the result of `scf.reduce` to make it compatible with
 // LHLO ops.
 void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
                                 Block* lhlo_block, OpBuilder* b) {
@@ -170,10 +170,10 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //  is roughly converted into:
 //
 //  %init = load %init_buf[] : memref<f32>
-//  loop.parallel (%i, %k) = (%c0, %c0) to (%c100, %c5) step (%c1, %c1) {
-//    %result = loop.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
+//  scf.parallel (%i, %k) = (%c0, %c0) to (%c100, %c5) step (%c1, %c1) {
+//    %result = scf.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
 //      %elem_to_reduce = load %buffer[%i, %j, %k] : memref<100x10x5xf32>
-//      loop.reduce(%elem_to_reduce)  {
+//      scf.reduce(%elem_to_reduce)  {
 //        ^bb0(%elem: f32, %acc: f32):   // no predecessors
 //          elem_buf = alloc() : memref<f32>
 //          store %elem, elem_buf[] : memref<f32>
@@ -181,11 +181,11 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //          store %acc, acc_buf[] : memref<f32>
 //          <LHLO_ops>
 //          %acc_result = load acc_buf[] : memref<f32>
-//          loop.reduce.return %acc_result : f32
+//          scf.reduce.return %acc_result : f32
 //      } : f32
-//      loop.yield
+//      scf.yield
 //    } : f32
-//    loop.yield
+//    scf.yield
 //  }
 class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
  public:
@@ -206,24 +206,24 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
   }
 
  private:
-  // Creates nested `loop.parallel` ops with `loop.reduce`. The outer ParallelOp
+  // Creates nested `scf.parallel` ops with `scf.reduce`. The outer ParallelOp
   // refers to the parallel dimensions of `xla_reduce_op` if any and the inner
-  // ParallelOp refers to the reduction dimensions. The loop.reduce op is
+  // ParallelOp refers to the reduction dimensions. The scf.reduce op is
   // returned.
   //
   // If the reduction argument is a memref<100x10x5xf32> and the
   // reduction is performed along dimension 1 then this method will generate
   //
   //  %init = load %init_buf[] : memref<f32>
-  //  loop.parallel (%i, %k) = (%c0, %c0) to (%c100, %c5) step (%c1, %c1) {
-  //    %result = loop.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
+  //  scf.parallel (%i, %k) = (%c0, %c0) to (%c100, %c5) step (%c1, %c1) {
+  //    %result = scf.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
   //      %elem_to_reduce = load %buffer[%i, %j, %k] : memref<100x10x5xf32>
-  //      loop.reduce(%elem_to_reduce)  {
+  //      scf.reduce(%elem_to_reduce)  {
   //        <THE BLOCK PTR TO BE RETURNED>
   //      } : f32
-  //      loop.yield
+  //      scf.yield
   //    } : f32
-  //    loop.yield
+  //    scf.yield
   //  }
   scf::ReduceOp CreateReduceOpInNestedParallelLoops(
       xla_lhlo::ReduceOp xla_reduce_op,
@@ -341,20 +341,20 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 // is roughly converted into:
 //
 //    %neutral_elem = load %init_buf[] : memref<f32>
-//    loop.parallel (%i, %j) = (%c0, %c0) to (%c56, %c56) step (%c1, %c1) {
-//      %result = loop.parallel (%iw, %jw) = (%c0, %c0)
+//    scf.parallel (%i, %j) = (%c0, %c0) to (%c56, %c56) step (%c1, %c1) {
+//      %result = scf.parallel (%iw, %jw) = (%c0, %c0)
 //                  to (%c3, %c3) step (%c1, %c1) neutral_elem (%0) -> f32 {
 //        %in_bounds = <COMPUTE IF INDEX IS IN OPERAND'S pad>
 //        %elem = load %operand[%computed_i, %computed_j]
 //        %elem_or_neutral = select %in_bounds, %elem, %neutral_elem : f32
-//        loop.reduce(%elem_to_reduce)  : f32 {
+//        scf.reduce(%elem_to_reduce)  : f32 {
 //          ^bb0(%arg7: f32, %arg8: f32):
 //            <LHLO ops>
 //        }
-//        loop.yield
+//        scf.yield
 //      }
 //      store %result, %output_buffer[%i, %j] : memref<56x56xf32>
-//      loop.yield
+//      scf.yield
 //    }
 //    return
 //  }
@@ -457,16 +457,16 @@ class ReduceWindowOpConverter
 // https://www.tensorflow.org/xla/operation_semantics#selectandscatter
 //
 // Pseudocode:
-//  loop.parallel(coordinates O in the output):
+//  scf.parallel(coordinates O in the output):
 //    output[O] = init
-//  loop.parallel(coordinates S in the source):
+//  scf.parallel(coordinates S in the source):
 //    selected_ivs = 0
 //    selected_val = 0
 //    initialized_flag = false
-//    loop.for (first dim W_1 in the window)
+//    scf.for (first dim W_1 in the window)
 //         iter_args (selected_ivs, selected_val, initialized_flag):
 //    ...
-//      loop.for (last dim W_N in the window):
+//      scf.for (last dim W_N in the window):
 //           iter_args (selected_ivs, selected_val, initialized_flag):
 //        I = S * stride + W - pad_low
 //        if I within bounds of operand:

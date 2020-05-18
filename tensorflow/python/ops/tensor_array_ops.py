@@ -1122,7 +1122,7 @@ class TensorArray(object):
     Returns:
       A new TensorArray object with flow that ensures the control dependencies
       from the contexts will become control dependencies for writes, reads, etc.
-      Use this object all for subsequent operations.
+      Use this object for all subsequent operations.
     """
     return self._implementation.identity()
 
@@ -1152,7 +1152,7 @@ class TensorArray(object):
 
     Returns:
       A new TensorArray object with flow that ensures the write occurs.
-      Use this object all for subsequent operations.
+      Use this object for all subsequent operations.
 
     Raises:
       ValueError: if there are more writers than specified.
@@ -1217,7 +1217,7 @@ class TensorArray(object):
 
     Returns:
       A new TensorArray object with flow that ensures the unstack occurs.
-      Use this object all for subsequent operations.
+      Use this object for all subsequent operations.
 
     Raises:
       ValueError: if the shape inference fails.
@@ -1236,7 +1236,7 @@ class TensorArray(object):
 
     Returns:
       A new TensorArray object with flow that ensures the scatter occurs.
-      Use this object all for subsequent operations.
+      Use this object for all subsequent operations.
 
     Raises:
       ValueError: if the shape inference fails.
@@ -1255,7 +1255,7 @@ class TensorArray(object):
 
     Returns:
       A new TensorArray object with flow that ensures the split occurs.
-      Use this object all for subsequent operations.
+      Use this object for all subsequent operations.
 
     Raises:
       ValueError: if the shape inference fails.

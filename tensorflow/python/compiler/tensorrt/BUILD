@@ -119,8 +119,10 @@ cuda_py_tests(
     srcs = [
         "test/base_test.py",
         "test/batch_matmul_test.py",
+        "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
         "test/combined_nms_test.py",
+        "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
         "test/dynamic_input_shapes_test.py",
@@ -153,6 +155,7 @@ cuda_py_tests(
     ],
 )
 
+<<<<<<< HEAD
 cuda_py_tests(
     name = "concatenation_test",
     srcs = [
@@ -173,6 +176,8 @@ cuda_py_tests(
     ],
 )
 
+=======
+>>>>>>> google_upstream/master
 cuda_py_test(
     name = "quantization_mnist_test",
     srcs = ["test/quantization_mnist_test.py"],

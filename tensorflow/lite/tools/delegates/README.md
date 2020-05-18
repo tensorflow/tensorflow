@@ -73,6 +73,8 @@ TFLite delegate.
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This
     option is ignored if `nnapi_accelerator_name` is specified.
+*   `nnapi_allow_fp16`: `bool` (default=false) \
+    Whether to allow FP32 computation to be run in FP16.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \

@@ -110,7 +110,6 @@ static inline bool HasRankAtMost(Value value, int64_t rank) {
   return !type || type.getRank() <= rank;
 }
 
-
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
@@ -462,9 +461,10 @@ LogicalResult FoldOperandsPermutation(
 namespace {
 // Folder that returns LHS of an Arithmetic Op if the RHS is a constant
 // known to be Identity (e.g X+0)
-template <typename OpT,
-          typename std::enable_if<llvm::is_one_of<
-              OpT, AddV2Op, SubOp, MulOp, DivOp>::value>::type * = nullptr>
+template <
+    typename OpT,
+    typename std::enable_if<llvm::is_one_of<
+        OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
   auto result_op_type = arithmetic_op.getResult().getType();
@@ -479,7 +479,8 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
   // value zero.
   int identity =
-      (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value);
+      (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
+       std::is_same<OpT, RealDivOp>::value);
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
@@ -2406,6 +2407,10 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RealDivWithSqrtDivisor>(context);
+}
+
+OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
