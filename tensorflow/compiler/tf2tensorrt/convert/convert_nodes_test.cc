@@ -5147,6 +5147,14 @@ NodeDef CreateUnaryOp() {
   return T(s.WithOpName("my_unary"), input).operation.node()->def();
 }
 
+NodeDef CreateCastOp() {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_HALF);
+  return ops::Cast(s.WithOpName("my_unary"), input, DT_FLOAT)
+      .operation.node()
+      ->def();
+}
+
 TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
   const auto& spec = GetParam();
   const TrtTestMode trt_mode = std::get<0>(spec);
@@ -5174,6 +5182,7 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
   ADD_OP("Asinh", ops::Asinh, std::asinh);
   ADD_OP("Atan", ops::Atan, std::atan);
   ADD_OP("Atanh", ops::Atanh, std::atanh);
+  op_map["Cast"] = std::make_pair(CreateCastOp, [](float x) { return x; });
   ADD_OP("Ceil", ops::Ceil, std::ceil);
   ADD_OP("Cos", ops::Cos, std::cos);
   ADD_OP("Cosh", ops::Cosh, std::cosh);
@@ -5212,7 +5221,13 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
     }
     NodeDef node_def = op_map[op_name].first();
 
-    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(tf_dtype), trt_mode);
+    // TODO(bixia): we assume this test is only instantiated for DT_FLOAT for
+    // now. Need to find a better way to express input and output types.
+    DataType input_tf_dtype = op_name == "Cast" ? DT_HALF : tf_dtype;
+    DataType output_tf_dtype = tf_dtype;
+
+    AddTestTensor("input", p.input_dims, TfDataTypeToTrt(input_tf_dtype),
+                  trt_mode);
     RunValidationAndConversion(node_def, Status::OK(), "my_unary",
                                p.expected_output_dims);
 
@@ -5220,8 +5235,8 @@ TEST_P(ParameterizedOpConverterTest, ConvertUnary) {
     std::vector<float> output;
     std::transform(input_values.begin(), input_values.end(),
                    std::back_inserter(output), op_map[op_name].second);
-    InstantiateBuildAndRun(tf_dtype, "my_unary", this, p, input_values,
-                           ArrayFloatNear(output, 0.0001, true));
+    InstantiateBuildAndRun(input_tf_dtype, output_tf_dtype, "my_unary", this, p,
+                           input_values, ArrayFloatNear(output, 0.0001, true));
   }
 }
 
