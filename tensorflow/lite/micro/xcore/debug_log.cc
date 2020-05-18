@@ -12,6 +12,5 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
-
 #include <cstdio>
-extern "C" void DebugLog(const char* s) { printf("%s",s); }
+extern "C" void DebugLog(const char* s) { printf("%s", s); }

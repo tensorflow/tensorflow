@@ -21,8 +21,8 @@ py_library(
     srcs = [
         "__init__.py",
         "compile_utils.py",
+        "functional.py",
         "input_layer.py",
-        "network.py",
         "node.py",
         "partial_batch_padding_handler.py",
         "saving.py",
@@ -460,9 +460,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "network_test",
+    name = "functional_test",
     size = "medium",
-    srcs = ["network_test.py"],
+    srcs = ["functional_test.py"],
     python_version = "PY3",
     shard_count = 8,
     tags = [

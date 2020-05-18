@@ -3268,56 +3268,6 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
         test_ops.old()
 
 
-class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
-
-  @test_util.disable_tfrt("Graph is not supported yet.")
-  def testSuccess(self):
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
-    t = op.outputs[0]
-    self.assertTrue(ops.is_dense_tensor_like(t))
-
-    v = variables.Variable([17])
-    self.assertTrue(ops.is_dense_tensor_like(v))
-
-  class BadClassNoName(object):
-    pass
-
-  class BadClassBadName(object):
-
-    def name(self):
-      pass
-
-  class BadClassNoDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-  class BadClassBadDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-    def dtype(self):
-      pass
-
-  def testBadClass(self):
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoName)
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadName)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoDtype)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadDtype)
-
-
 class NameScopeTest(test_util.TensorFlowTestCase):
 
   def testStripAndPrependScope(self):

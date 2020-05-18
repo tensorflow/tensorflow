@@ -20,13 +20,17 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
+
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation.
+class CpuBackendContext;
+
 namespace tensor_utils {
 
 // Limit a float input f between +abs_limit and -abs_limit.

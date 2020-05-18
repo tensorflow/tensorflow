@@ -75,7 +75,7 @@ class DataServiceMasterImpl {
     }
 
     std::string DebugString() {
-      return absl::StrCat("id: ", worker_id_, "address: ", address_);
+      return absl::StrCat("id: ", worker_id_, " address: ", address_);
     }
 
    private:

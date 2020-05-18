@@ -84,6 +84,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(3) << "Received request to process task " << task_def.task_id();
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -100,6 +101,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   task.id = task_def.task_id();
   task.dataset = std::move(dataset);
   task.iterator = std::move(iterator);
+  VLOG(3) << "Began processing for task " << task_def.task_id();
   return Status::OK();
 }
 

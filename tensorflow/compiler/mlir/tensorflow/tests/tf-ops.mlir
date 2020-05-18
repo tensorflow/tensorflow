@@ -881,20 +881,29 @@ func @testValidMatrixBandPartOpUnranked(%arg0: tensor<*xbf16>, %arg1: tensor<i64
 
 // -----
 
-// Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
-  return %0 : tensor<64x64xbf16>
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpUnrankedBand
+func @testValidMatrixBandPartOpUnrankedBand(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpCompatibleDynamicShapes
+func @testValidMatrixBandPartOpCompatibleDynamicShapes(%arg0: tensor<?x10x?xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<?x?x8xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<?x10x?xbf16>, tensor<i64>, tensor<i64>) -> tensor<?x?x8xbf16>
+  return %0 : tensor<?x?x8xbf16>
 }
 
 // -----
 
 // Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
-  return %0 : tensor<*xbf16>
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have dynamically equal types}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
 }
 
 // -----

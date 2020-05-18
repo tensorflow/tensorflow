@@ -66,7 +66,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(true);
   // TODO(b/155295372): disable ptxas fallback by default.
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(true);
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(false);
 
   return opts;
 }

@@ -180,6 +180,10 @@ TEST_F(EagerContextTest, CompositeDevice) {
                                                       &composite_device_0));
   EXPECT_EQ(composite_device_0->name(),
             "/job:worker/replica:0/task:0/device:COMPOSITE:0");
+  CompositeDevice* device = nullptr;
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:0", &device));
+  EXPECT_EQ(device, composite_device_0);
   CompositeDevice* composite_device_1 = nullptr;
   TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
                                                       &composite_device_1));
@@ -190,6 +194,12 @@ TEST_F(EagerContextTest, CompositeDevice) {
                                                       &composite_device_2));
   EXPECT_EQ(composite_device_2->name(),
             "/job:worker/replica:0/task:0/device:COMPOSITE:1");
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:1", &device));
+  EXPECT_EQ(device, composite_device_2);
+
+  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+      "/job:worker/replica:0/task:0/device:COMPOSITE:2", &device)));
 }
 
 }  // namespace

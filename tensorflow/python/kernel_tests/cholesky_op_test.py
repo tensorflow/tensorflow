@@ -114,12 +114,14 @@ class CholeskyOpTest(test.TestCase):
   def testBasic(self):
     data = np.array([[4., -1., 2.], [-1., 6., 0], [2., 0., 5.]])
     for dtype in (np.float32, np.float64):
-      self._verifyCholesky(data.astype(dtype))
+      with self.subTest(dtype=dtype):
+        self._verifyCholesky(data.astype(dtype))
     for dtype in (np.complex64, np.complex128):
-      complex_data = np.tril(1j * data, -1).astype(dtype)
-      complex_data += np.triu(-1j * data, 1).astype(dtype)
-      complex_data += data
-      self._verifyCholesky(complex_data)
+      with self.subTest(dtype=dtype):
+        complex_data = np.tril(1j * data, -1).astype(dtype)
+        complex_data += np.triu(-1j * data, 1).astype(dtype)
+        complex_data += data
+        self._verifyCholesky(complex_data)
 
   def testBatch(self):
     simple_array = np.array([[[1., 0.], [0., 5.]]])  # shape (1, 2, 2)
@@ -131,13 +133,15 @@ class CholeskyOpTest(test.TestCase):
     # Generate random positive-definite matrices.
     matrices = np.random.rand(10, 5, 5)
     for i in xrange(10):
-      matrices[i] = np.dot(matrices[i].T, matrices[i])
+      with self.subTest(i=i):
+        matrices[i] = np.dot(matrices[i].T, matrices[i])
     self._verifyCholesky(matrices)
 
     # Generate random complex valued positive-definite matrices.
     matrices = np.random.rand(10, 5, 5) + 1j * np.random.rand(10, 5, 5)
     for i in xrange(10):
-      matrices[i] = np.dot(matrices[i].T.conj(), matrices[i])
+      with self.subTest(i=i):
+        matrices[i] = np.dot(matrices[i].T.conj(), matrices[i])
     self._verifyCholesky(matrices)
 
   @test_util.run_deprecated_v1

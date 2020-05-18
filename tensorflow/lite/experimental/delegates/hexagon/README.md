@@ -79,7 +79,11 @@ are verified in `IsNodeSupportedByHexagon`:
 * Hardswish
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)
+* Maximum
 * MaxPool2D (without any activation) (b/129276536)
+* Mean
+* Minimum
+* MirrorPad
 * Mul (without any activation) (b/129276536)
 * Neg
 * Pad: Only supports 0 padding (b/139277813)

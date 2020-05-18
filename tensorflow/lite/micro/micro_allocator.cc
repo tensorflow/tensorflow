@@ -388,10 +388,8 @@ TfLiteStatus MicroAllocator::Init() {
     return kTfLiteError;
   }
   subgraph_ = (*subgraphs)[0];
-  tensors_ = subgraph_->tensors();
-  operators_ = subgraph_->operators();
 
-  context_->tensors_size = tensors_->size();
+  context_->tensors_size = subgraph_->tensors()->size();
   context_->tensors =
       reinterpret_cast<TfLiteTensor*>(memory_allocator_->AllocateFromTail(
           sizeof(TfLiteTensor) * context_->tensors_size,
@@ -405,9 +403,9 @@ TfLiteStatus MicroAllocator::Init() {
   }
 
   // Initialize runtime tensors in context_ using the flatbuffer.
-  for (size_t i = 0; i < tensors_->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->tensors()->size(); ++i) {
     TfLiteStatus status = internal::InitializeRuntimeTensor(
-        memory_allocator_, *tensors_->Get(i), model_->buffers(),
+        memory_allocator_, *subgraph_->tensors()->Get(i), model_->buffers(),
         error_reporter_, &context_->tensors[i]);
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
@@ -472,7 +470,7 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
 
   auto* output = reinterpret_cast<NodeAndRegistration*>(
       memory_allocator_->AllocateFromTail(
-          sizeof(NodeAndRegistration) * operators_->size(),
+          sizeof(NodeAndRegistration) * subgraph_->operators()->size(),
           alignof(NodeAndRegistration)));
   if (output == nullptr) {
     TF_LITE_REPORT_ERROR(
@@ -483,8 +481,8 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
   TfLiteStatus status = kTfLiteOk;
   auto* opcodes = model_->operator_codes();
   MicroBuiltinDataAllocator builtin_data_allocator(memory_allocator_);
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    const auto* op = operators_->Get(i);
+  for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
+    const auto* op = subgraph_->operators()->Get(i);
     size_t index = op->opcode_index();
     if (index >= opcodes->size()) {
       TF_LITE_REPORT_ERROR(error_reporter_,
@@ -567,7 +565,7 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
 
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
-        builder.Init(tensors_->size(), scratch_buffer_count_));
+        builder.Init(subgraph_->tensors()->size(), scratch_buffer_count_));
     TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph_, context_->tensors));
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
@@ -606,8 +604,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
 
   // Data in variables need to be kept for the next invocation so allocating
   // them from the tail (persistent area).
-  if (AllocateVariables(tensors_, context_->tensors, memory_allocator_) !=
-      kTfLiteOk) {
+  if (AllocateVariables(subgraph_->tensors(), context_->tensors,
+                        memory_allocator_) != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Failed to allocate variables. Please increase arena size.");

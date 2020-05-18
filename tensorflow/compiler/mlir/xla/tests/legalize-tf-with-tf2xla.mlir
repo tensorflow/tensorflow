@@ -163,6 +163,30 @@ func @truncated_normal() -> tensor<2x2xf32> {
   return %1 : tensor<2x2xf32>
 }
 
+// CHECK-LABEL: dynamic_update_slice
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<3x4xi32>, %[[ARG1:.*]]: tensor<2x2xi32>, %[[ARG2:.*]]: tensor<2xi32>
+func @dynamic_update_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2x2xi32>, %arg2: tensor<2xi32>) -> tensor<3x4xi32> {
+
+  // CHECK: %[[SLICE0:.*]] = "xla_hlo.slice"(%[[ARG2]])
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>
+  // CHECK-DAG-SAME: limit_indices = dense<1> : tensor<1xi64>
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>
+  // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK: %[[DIM0:.*]] = "xla_hlo.reshape"(%[[SLICE0]]) : (tensor<1xi32>) -> tensor<i32>
+
+  // CHECK: %[[SLICE1:.*]] = "xla_hlo.slice"(%[[ARG2]])
+  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>
+  // CHECK-DAG-SAME: limit_indices = dense<2> : tensor<1xi64>
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>
+  // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK: %[[DIM1:.*]] = "xla_hlo.reshape"(%[[SLICE1]]) : (tensor<1xi32>) -> tensor<i32>
+
+  // CHECK: "xla_hlo.dynamic-update-slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
+
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<3x4xi32>, tensor<2x2xi32>, tensor<2xi32>) -> tensor<3x4xi32>
+  return %0: tensor<3x4xi32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

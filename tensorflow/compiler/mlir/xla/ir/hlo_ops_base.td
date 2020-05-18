@@ -62,9 +62,11 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : ShapedContainerType<
-    [Index, HLO_Pred, HLO_Int],
+    [HLO_DimensionValue],
     And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
@@ -147,15 +149,6 @@ class BASE_HLO_ClzOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
-class BASE_HLO_ComplexOp {
-  string summary = "Complex operator";
-
-  string description = [{
-    Performs element-wise conversion of a pair of real and imaginary values to
-    a complex value.
   }];
 }
 
@@ -397,6 +390,15 @@ class BASE_HLO_AddOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
   }];
 }
 

@@ -191,9 +191,11 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
 
   DCHECK_LT(DataType_MAX, 255);  // Must fit in uint8
   uint8* input_types = item->input_type_base();
+  item->is_any_input_ref_typed = false;
   for (int i = 0; i < num_inputs; i++) {
     input_types[i] = static_cast<uint8>(n->input_type(i));
     DCHECK_EQ(item->input_type(i), n->input_type(i));
+    item->is_any_input_ref_typed |= IsRefType(n->input_type(i));
   }
 
   // Check ScopedAllocatorAttrs and forward_from.  Also assign output_types.

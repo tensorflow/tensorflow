@@ -167,7 +167,7 @@ ios_static_framework(
         "metal_delegate.h",
         "metal_delegate_internal.h",
     ],
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     deps = [":metal_delegate"],
 )
 

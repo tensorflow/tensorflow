@@ -19,6 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
+import threading
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -39,6 +42,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
@@ -835,6 +839,64 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         variable_length=variable_length,
         local_mode=True)
 
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=2,
+          mode="eager",
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testEagerMultiThread(self, communication):
+    collective, devices, _ = self._get_test_objects(
+        None,
+        None,
+        num_gpus=2,
+        communication=communication,
+        use_strategy_object=False,
+        local_mode=True)
+
+    # We would like to simulate the following sequence:
+    #   thread-0  device0                 device1
+    #   thread-1          device0 device1
+    # If the kernel launch sequence is as-is the program will deadlock since
+    # NCCL requires the launch order to be same on each device.
+    v0 = _make_per_replica([1.0 for _ in devices], devices)
+    v1 = _make_per_replica([2.0 for _ in devices], devices)
+
+    # Add a delay to collective_ops.all_reduce according to the input tensors
+    # index in `sequence.`
+    sequence = [v0.values[0], v1.values[0], v1.values[1], v0.values[1]]
+    all_reduce = collective_ops.all_reduce
+
+    def delayed_all_reduce(input_tensor, *args, **kwargs):
+      for idx, v in enumerate(sequence):
+        if input_tensor is v:
+          time.sleep(idx)
+          break
+      return all_reduce(input_tensor, *args, **kwargs)
+
+    with test.mock.patch.object(collective_ops, "all_reduce",
+                                delayed_all_reduce):
+      # We only use NCCL for batch reduce with two or more values, so we use two
+      # values here.
+
+      def thread_fn():
+        reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v0, v0),
+                                                                     (v0, v0)])
+        self.assertAllEqual(reduced[0].values, [2.0, 2.0])
+        self.assertAllEqual(reduced[1].values, [2.0, 2.0])
+
+      t = threading.Thread(target=thread_fn)
+      t.start()
+      reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v1, v1),
+                                                                   (v1, v1)])
+      self.assertAllEqual(reduced[0].values, [4.0, 4.0])
+      self.assertAllEqual(reduced[1].values, [4.0, 4.0])
+      t.join()
+
 
 if __name__ == "__main__":
+  # Set default inter op thread pool size to one to ensure we don't exhaust the
+  # thread pool with the additional executors to run collectives in eager.
+  os.environ["TF_NUM_INTEROP_THREADS"] = "1"
   test.main()

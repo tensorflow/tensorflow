@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -36,7 +35,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":context_interface",
@@ -413,7 +412,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
@@ -449,6 +448,8 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
@@ -609,7 +610,6 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
-            "*c_api_tfrt*",
             "*test*",
             "*dlpack*",
         ],

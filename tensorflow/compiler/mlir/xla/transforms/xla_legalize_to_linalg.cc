@@ -84,7 +84,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
       return failure();
     }
-    if (!argType.getElementType().isSignlessIntOrFloat()) {
+    auto elemTy = argType.getElementType();
+    if (!elemTy.isSignlessIntOrFloat() && !elemTy.template isa<ComplexType>()) {
       return failure();
     }
 
@@ -618,17 +619,20 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CeilOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::ComplexOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ConvertOp>,
                    // TODO(ataei): Remove this pattern, CopyOp is folded away.
                    PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CosOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ExpOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::ImagOp>,
                    PointwiseToLinalgConverter<xla_lhlo::LogOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MaxOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MulOp>,
                    PointwiseToLinalgConverter<xla_lhlo::NegOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::RealOp>,
                    PointwiseToLinalgConverter<xla_lhlo::RemOp>,
                    PointwiseToLinalgConverter<xla_lhlo::RsqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
@@ -716,16 +720,19 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::ComplexOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::ConvertOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CosOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::ImagOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::LogOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MaxOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MinOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::RealOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::RsqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,

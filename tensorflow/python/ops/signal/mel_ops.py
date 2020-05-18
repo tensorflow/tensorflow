@@ -128,8 +128,6 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
       # S has shape [..., num_spectrogram_bins].
       # M has shape [..., num_mel_bins].
       M = tf.tensordot(S, A, 1)
-      # tf.tensordot does not support shape inference for this case yet.
-      M.set_shape(S.shape[:-1].concatenate(A.shape[-1:]))
 
   Args:
     num_mel_bins: Python int. How many bands in the resulting mel spectrum.

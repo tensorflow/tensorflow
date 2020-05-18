@@ -23,7 +23,6 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "ruy/detect_arm.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
@@ -80,7 +79,7 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 }
 
 bool HasSdotInstruction() {
-  static const bool has_dotprod = ruy::DetectDotprod();
+  static const bool has_dotprod = DetectArmNeonDotprod();
   return has_dotprod;
 }
 

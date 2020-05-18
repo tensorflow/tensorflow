@@ -135,8 +135,6 @@ class MicroAllocator {
   size_t scratch_buffer_count_ = 0;
 
   const SubGraph* subgraph_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
 };
 
 }  // namespace tflite

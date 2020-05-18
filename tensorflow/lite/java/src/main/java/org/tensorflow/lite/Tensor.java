@@ -196,7 +196,7 @@ public final class Tensor {
   }
 
   private void setTo(Buffer src) {
-    // Note that we attempt to use zero-copy optimization for direct, native-ordered buffers.
+    // Note that we attempt to use a direct memcpy optimization for direct, native-ordered buffers.
     // There are no base Buffer#order() or Buffer#put() methods, so again we have to ugly cast.
     if (src instanceof ByteBuffer) {
       ByteBuffer srcBuffer = (ByteBuffer) src;

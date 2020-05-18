@@ -16,31 +16,33 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/propagator_state.h"
 
 #include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/common_runtime/immutable_executor_state.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
 PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
-                                 int64 step_id)
+                                 int64 step_id, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),
-      vlog_(VLOG_IS_ON(1)) {
+      vlog_(vlog || VLOG_IS_ON(1)) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
   root_frame_ = new FrameState(immutable_state_, 1);
   root_frame_->frame_id = 0;  // must be 0
-  root_frame_->InitializeFrameInfo(root_frame_->frame_name);
+  root_frame_->InitializeFrameInfo(immutable_state_.get_root_frame_info());
 
   // Initialize iteration 0.
   root_frame_->SetIteration(
       0, new PropagatorState::IterationState(0, root_frame_->pending_counts,
                                              root_frame_->total_input_tensors));
 
-  outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
+  outstanding_frames_.emplace(root_frame_->frame_id, root_frame_);
 }
 
 PropagatorState::~PropagatorState() {
@@ -224,16 +226,16 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
                                              const NodeItem& node_item,
                                              FrameState** child) {
   // Get the child frame name.
-  AttrSlice attrs(node_item.kernel->def());
-  const string& enter_name = GetNodeAttrString(attrs, "frame_name");
-  DCHECK(!enter_name.empty()) << "Could not find \"frame_name\" attr in node "
-                              << node_item.kernel->name();
-  const string child_name = strings::StrCat(
-      frame->frame_name, ";", iter_state->iter_num, ";", enter_name);
+  const ImmutableExecutorState::FrameInfo& frame_info =
+      immutable_state_.get_enter_frame_info(node_item);
+
+  const uint64 child_id = Hash64Combine(
+      frame->frame_id,
+      Hash64Combine(iter_state->iter_num, Hash64(frame_info.name)));
 
   {
-    mutex_lock executor_lock(mu_);
-    auto it = outstanding_frames_.find(child_name);
+    tf_shared_lock executor_lock(mu_);
+    auto it = outstanding_frames_.find(child_id);
     if (it != outstanding_frames_.end()) {
       *child = it->second;
       return;
@@ -242,20 +244,18 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
 
   // Need to create a new frame instance.
   // Note that this new frame instance is created without any locks.
-  if (vlog_) VLOG(2) << "Create frame: " << child_name;
+  if (vlog_) {
+    const string child_name = strings::StrCat(
+        frame->frame_name, ";", iter_state->iter_num, ";", frame_info.name);
+    VLOG(2) << "Create frame: " << child_name << " id: " << child_id;
+  }
 
-  int parallel_iters;
-  bool found_parallel_iters =
-      TryGetNodeAttr(attrs, "parallel_iterations", &parallel_iters);
-  DCHECK(found_parallel_iters)
-      << "Could not find \"parallel_iterations\" attr in node "
-      << node_item.kernel->name();
-  FrameState* temp = new FrameState(immutable_state_, parallel_iters);
-  temp->frame_name = child_name;
-  temp->frame_id = Hash64(child_name);
+  FrameState* temp =
+      new FrameState(immutable_state_, frame_info.parallel_iterations);
+  temp->frame_id = child_id;
   temp->parent_frame = frame;
   temp->parent_iter = iter_state;
-  temp->InitializeFrameInfo(enter_name);
+  temp->InitializeFrameInfo(frame_info);
 
   // Initialize iteration 0.
   {
@@ -266,13 +266,13 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
 
   {
     mutex_lock executor_lock(mu_);
-    auto it = outstanding_frames_.find(child_name);
+    auto it = outstanding_frames_.find(child_id);
     if (it != outstanding_frames_.end()) {
       *child = it->second;
     } else {
       mutex_lock frame_lock(frame->mu);
       iter_state->outstanding_frame_count++;
-      outstanding_frames_[child_name] = temp;
+      outstanding_frames_[child_id] = temp;
       *child = temp;
       temp = nullptr;
     }
@@ -349,11 +349,10 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   }
 
   // Delete the frame.
-  const string& frame_name = frame->frame_name;
-  if (vlog_) VLOG(2) << "Delete frame " << frame_name;
+  if (vlog_) VLOG(2) << "Delete frame " << frame->frame_id;
   {
     mutex_lock executor_lock(mu_);
-    outstanding_frames_.erase(frame_name);
+    outstanding_frames_.erase(frame->frame_id);
   }
   delete frame;
 }
@@ -655,14 +654,11 @@ bool PropagatorState::FrameState::CleanupIterations(IterationState* iter_state,
 }
 
 void PropagatorState::FrameState::InitializeFrameInfo(
-    const string& enter_name) {
-  const ImmutableExecutorState::FrameInfo* finfo =
-      immutable_state.get_frame_info(enter_name);
-  DCHECK_NE(finfo, nullptr);
-  pending_counts = finfo->pending_counts.get();
-  total_input_tensors = finfo->total_inputs;
-  num_pending_inputs = finfo->input_count;
-  nodes = finfo->nodes.get();
+    const ImmutableExecutorState::FrameInfo& finfo) {
+  pending_counts = finfo.pending_counts.get();
+  total_input_tensors = finfo.total_inputs;
+  num_pending_inputs = finfo.input_count;
+  nodes = finfo.nodes.get();
 }
 
 void PropagatorState::FrameState::SetIteration(int64 iter,

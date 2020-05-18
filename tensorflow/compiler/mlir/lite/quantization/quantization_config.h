@@ -90,7 +90,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferenceType() {
+  bool IsSignedInferenceType() const {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:
@@ -102,7 +102,7 @@ struct QuantizationSpecs {
 
   // Gets the width of this quantization type. Returns 0 if it isn't a
   // quantization type.
-  int64_t GetQuantizationTypeWidth() {
+  int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:

@@ -112,6 +112,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 
 namespace tensorflow {
+using mlir::NamedAttrList;
 using mlir::TensorType;
 using mlir::TF::VarHandleOp;
 using mlir::tf_saved_model::GlobalTensorOp;
@@ -309,9 +310,9 @@ class ImporterBase {
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
   // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
-  Status ConvertFunctionCallAttribute(
-      const std::string& base_name, const AttrValue& value,
-      llvm::SmallVector<mlir::NamedAttribute, 4>* attributes);
+  Status ConvertFunctionCallAttribute(const std::string& base_name,
+                                      const AttrValue& value,
+                                      NamedAttrList* attributes);
 
   // Helper to create either a tf_executor operation or a TF operation wrapped
   // in an island. When convert_to_legacy_call is true, converts the operation
@@ -1092,9 +1093,9 @@ StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
   return subtypes;
 }
 
-Status ImporterBase::ConvertFunctionCallAttribute(
-    const std::string& base_name, const AttrValue& value,
-    llvm::SmallVector<mlir::NamedAttribute, 4>* attributes) {
+Status ImporterBase::ConvertFunctionCallAttribute(const std::string& base_name,
+                                                  const AttrValue& value,
+                                                  NamedAttrList* attributes) {
   TF_ASSIGN_OR_RETURN(auto func_attr,
                       ConvertFunctionCallName(value.func().name()));
   attributes->push_back(builder_.getNamedAttr(base_name, func_attr));

@@ -130,8 +130,8 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
   }
 };
 
-template <typename Tidx, typename T, bool binary_count>
-struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_count> {
+template <typename Tidx, typename T, bool binary_output>
+struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<Tidx, 2>::ConstTensor& in,
                         const typename TTypes<T, 2>::ConstTensor& weights,
@@ -148,7 +148,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_count> {
             for (int64 j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
               if (value < num_bins) {
-                if (binary_count) {
+                if (binary_output) {
                   out(i, value) = T(1);
                 } else {
                   if (weights.size()) {
@@ -221,7 +221,7 @@ template <typename Device, typename Tidx, typename T>
 class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_count", &binary_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -240,7 +240,7 @@ class DenseBincountOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
-      if (binary_count_) {
+      if (binary_output_) {
         OP_REQUIRES_OK(
             ctx, functor::BincountFunctor<Device, Tidx, T, true>::Compute(
                      ctx, data.flat<Tidx>(), weights.flat<T>(), out, size));
@@ -259,7 +259,7 @@ class DenseBincountOp : public OpKernel {
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
       auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
-      if (binary_count_) {
+      if (binary_output_) {
         OP_REQUIRES_OK(
             ctx, functor::BincountReduceFunctor<Device, Tidx, T, true>::Compute(
                      ctx, data.matrix<Tidx>(), weight_matrix, out, size));
@@ -273,7 +273,7 @@ class DenseBincountOp : public OpKernel {
   }
 
  private:
-  bool binary_count_;
+  bool binary_output_;
 };
 
 #define REGISTER_KERNELS(Tidx, T)                            \
@@ -314,7 +314,7 @@ template <typename Device, typename Tidx, typename T>
 class SparseBincountOp : public OpKernel {
  public:
   explicit SparseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_count", &binary_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -338,7 +338,7 @@ class SparseBincountOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
-      if (binary_count_) {
+      if (binary_output_) {
         OP_REQUIRES_OK(ctx,
                        functor::BincountFunctor<Device, Tidx, T, true>::Compute(
                            ctx, values, weights, out, size));
@@ -359,7 +359,7 @@ class SparseBincountOp : public OpKernel {
         const int64 batch = indices_mat(i, 0);
         const Tidx bin = values(i);
         if (bin < size) {
-          if (binary_count_) {
+          if (binary_output_) {
             out(batch, bin) = T(1);
           } else {
             if (weights_size) {
@@ -374,7 +374,7 @@ class SparseBincountOp : public OpKernel {
   }
 
  private:
-  bool binary_count_;
+  bool binary_output_;
 };
 
 #define REGISTER_KERNELS(Tidx, T)                            \
@@ -395,7 +395,7 @@ template <typename Device, typename Tidx, typename T>
 class RaggedBincountOp : public OpKernel {
  public:
   explicit RaggedBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_count", &binary_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -429,7 +429,7 @@ class RaggedBincountOp : public OpKernel {
       OP_REQUIRES(ctx, bin >= 0,
                   errors::InvalidArgument("Input must be non-negative"));
       if (bin < size) {
-        if (binary_count_) {
+        if (binary_output_) {
           out(batch_idx - 1, bin) = T(1);
         } else {
           T value = (weights_size > 0) ? weights(idx) : T(1);
@@ -440,7 +440,7 @@ class RaggedBincountOp : public OpKernel {
   }
 
  private:
-  bool binary_count_;
+  bool binary_output_;
 };
 
 #define REGISTER_KERNELS(Tidx, T)                            \

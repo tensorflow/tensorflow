@@ -1912,9 +1912,8 @@ class StrategyExtendedV2(object):
 
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
-    return self._local_results(
-        self.reduce_to(reduce_op, value,
-                       device_util.current() or "/device:CPU:0"))[0]
+    dst = device_util.current() or self._default_device or "/device:CPU:0"
+    return self._local_results(self.reduce_to(reduce_op, value, dst))[0]
 
   def reduce_to(self, reduce_op, value, destinations, experimental_hints=None):
     """Combine (via e.g. sum or mean) values across replicas.

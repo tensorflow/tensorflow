@@ -530,3 +530,15 @@ func @convert_f64_to_f32(%input: tensor<2x2xf64>) -> tensor<2x2xf32> {
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f64):
 // CHECK-NEXT:   %[[RESULT:.*]] = fptrunc %[[OPERAND_IN]] : f64 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_i32
+func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
+  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = fptosi %[[OPERAND_IN]] : f32 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32

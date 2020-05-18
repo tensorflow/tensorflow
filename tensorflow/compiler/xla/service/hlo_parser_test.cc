@@ -1480,6 +1480,43 @@ ENTRY CRS {
 
 )"
 },
+// all-gather
+{
+"AllGather",
+R"(HloModule AllGather
+
+ENTRY AllGather {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, dimensions={1}
+}
+
+)"
+},
+// all-gather with constrained layout
+{
+"AllGatherWithLayout",
+R"(HloModule AllGather
+
+ENTRY AllGather {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, constrain_layout=true, dimensions={1}
+}
+
+)"
+},
+// all-gather with subgroups
+{
+"AllGatherWithSubgroups",
+R"(HloModule AllGatherWithSubgroups
+
+ENTRY AllGatherWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,64]{0,1} all-gather(input), replica_groups={{0,1},{2,3}}, dimensions={1}
+}
+
+)",
+/*replica_count=*/4,
+},
 // all-to-all
 {
 "AllToAll",

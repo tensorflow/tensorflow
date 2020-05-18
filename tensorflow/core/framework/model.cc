@@ -32,96 +32,6 @@ constexpr char kInputTimeDerivativeKey[] = "last_input_time";
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
 
-// Given the average time between output events (`output_time`), the average
-// time between input events (`input_time`) and the buffer size, the method
-// computes the expected time an input event will have to wait.
-//
-// The wait time is approximated as the product of the probability the buffer
-// will be empty and the time it takes to produce an element into the buffer.
-//
-// The formula used for computing the probability is derived by modeling the
-// problem as an M/M/1/K queue
-// (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
-//
-// Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
-// and `buffer_size` if the corresponding pointers are not `nullptr`.
-double ComputeWaitTime(double output_time, double input_time,
-                       double buffer_size, double* output_time_derivative,
-                       double* input_time_derivative,
-                       double* buffer_size_derivative) {
-  // Case 0: either the producer or the consumer are infinitely fast. Wait time
-  // is the time to produce an output.
-  if (output_time == 0 || input_time == 0) {
-    if (output_time_derivative) {
-      *output_time_derivative = 1.0L;
-    }
-    if (input_time_derivative) {
-      *input_time_derivative = 0.0L;
-    }
-    if (buffer_size_derivative) {
-      *buffer_size_derivative = 0.0L;
-    }
-    return output_time;
-  }
-  // Case 1: the consumer is slower than the producer. Wait time is 0 since the
-  // buffer will be full in the long run.
-  if (input_time > output_time) {
-    if (output_time_derivative) {
-      *output_time_derivative = 0.0L;
-    }
-    if (input_time_derivative) {
-      *input_time_derivative = 0.0L;
-    }
-    if (buffer_size_derivative) {
-      *buffer_size_derivative = 0.0L;
-    }
-    return 0;
-  }
-  // Case 2: the consumer and the producer are equally fast. Expected wait time
-  // decreases linearly with the size of the buffer.
-  if (input_time == output_time) {
-    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
-    if (output_time_derivative) {
-      *output_time_derivative = p_buffer_empty;
-    }
-    if (input_time_derivative) {
-      *input_time_derivative = 0.0L;
-    }
-    if (buffer_size_derivative) {
-      const double p_buffer_empty_der = -1.0L / Square(buffer_size + 1.0L);
-      *buffer_size_derivative = p_buffer_empty_der * output_time;
-    }
-    return p_buffer_empty * output_time;
-  }
-  // Case 3: the producer is slower than the consumer and neither is infinitely
-  // fast.
-  const double alpha = 1.0L / input_time;
-  const double beta = 1.0L / output_time;
-  const double ratio_pow = std::pow((beta / alpha), (buffer_size + 1.0L));
-  const double p_buffer_empty = (1.0L - beta / alpha) / (1.0L - ratio_pow);
-  if (output_time_derivative) {
-    *output_time_derivative =
-        (1.0L - ratio_pow -
-         (output_time - input_time) * (buffer_size + 1.0L) * ratio_pow /
-             output_time) /
-        Square(1.0L - ratio_pow);
-  }
-  if (input_time_derivative) {
-    *input_time_derivative =
-        (ratio_pow - 1.0L +
-         (buffer_size + 1.0L) * ratio_pow * (alpha / beta - 1.0L)) /
-        Square(1.0L - ratio_pow);
-  }
-  if (buffer_size_derivative) {
-    const double p_buffer_empty_der = (1.0L - beta / alpha) * ratio_pow *
-                                      std::log(beta / alpha) /
-                                      Square(1.0L - ratio_pow);
-    *buffer_size_derivative = p_buffer_empty_der * output_time;
-  }
-
-  return p_buffer_empty * output_time;
-}
-
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
 // interleaved as output.
@@ -698,6 +608,145 @@ std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args) {
 
 std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
+}
+
+double Node::ComputeWaitTime(const double& output_time,
+                             const double& input_time,
+                             const double& buffer_size,
+                             double* output_time_derivative,
+                             double* input_time_derivative,
+                             double* buffer_size_derivative) {
+  // If we set x=`input_time`, y=`output_time`, n=`buffer_size`,
+  // p=`p_buffer_empty`, T=`wait_time`, then we have:
+  // if y = 0, then p = 0;
+  // elif x = 0, then p = 1;
+  // elif x = y, then p = 1 / (n+1);
+  // else p = [1 - x/y] / [1 - power(x/y, n+1)].
+  //
+  // We also have T = p * y, and derivatives of T w.r.t. x, y, n are computed:
+  // dT/dx = dp/dx * y,
+  // dT/dy = p + dp/dy * y,
+  // dT/dn = dp/dn * y.
+  // Then the remaining work is to compute dp/dx, dp/dy, dp/dn by considering
+  // different cases and substitute the values into above formulas.
+
+  // Case 1: if producer is infinitely fast. The buffer will always be full.
+  // Wait time will always be 0.
+  if (output_time == 0) {
+    if (output_time_derivative) {
+      // Note a common error is `*output_time_derivative = 0` since p=0 on the
+      // line y=0 doesn't imply dp/dy = 0 there. Actually to compute dp/dy at
+      // (x,0), we need to consider lim_{dy->0+} [p(x,dy)-p(x,0)] / dy, where
+      // p(x,0)=0 and p(x,dy) = [1 - x/dy] / [1 - power(x/dy, n+1)].
+      if (buffer_size == 0 || input_time == 0) {
+        *output_time_derivative = 1.0L;
+      } else {
+        *output_time_derivative = 0.0L;
+      }
+    }
+    if (input_time_derivative) {
+      *input_time_derivative = 0.0L;
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = 0.0L;
+    }
+    return 0.0L;
+  }
+
+  // Case 2: if consumer is infinitely fast. Wait time is always the time to
+  // produce an output.
+  if (input_time == 0) {
+    if (output_time_derivative) {
+      *output_time_derivative = 1.0L;
+    }
+    if (input_time_derivative) {
+      // Note a common error is `*input_time_derivative = 0` since p=1 on the
+      // line x=0 doesn't imply dp/dx = 0 there. Actually to compute dp/dx at
+      // (0,y), we need to consider lim_{dx->0+} [p(dx,y)-p(0,y)] / dx, where
+      // p(0,y)=1, p(dx,y) = [1 - dx/y] / [1 - power(dx/y, n+1)] if y!=0.
+      if (buffer_size == 0) {
+        *input_time_derivative = 0.0L;
+      } else {
+        *input_time_derivative = -1.0L;
+      }
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = 0.0L;
+    }
+    return output_time;
+  }
+
+  // Case 3: the consumer and the producer are equally fast. Expected wait time
+  // decreases linearly with the size of the buffer.
+  if (input_time == output_time) {
+    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
+    const double p_buffer_empty_der =
+        -buffer_size / (2.0L * buffer_size + 2.0L);
+    if (output_time_derivative) {
+      // Note a common error is `*output_time_derivative = p_buffer_empty` since
+      // p=1/(n+1) on the line x=y doesn't imply dp/dy = 0 there. Actually to
+      // compute dp/dy at (y,y), we need to consider
+      // lim_{dy->0} [p(y,y+dy)-p(y,y)] / dy, where p(y,y)=1/(n+1),
+      // p(y,y+dy) = [1 - y/(y+dy)] / [1 - power(y/(y+dy), n+1)].
+      *output_time_derivative = p_buffer_empty - p_buffer_empty_der;
+    }
+    if (input_time_derivative) {
+      // Note a common error is `*input_time_derivative = 0` since
+      // p=1/(n+1) on the line x=y doesn't imply dp/dx = 0 there. Actually to
+      // compute dp/dx at (x,x), we need to consider
+      // lim_{dx->0} [p(x+dx,x)-p(x,x)] / dx, where p(x,x)=1/(n+1),
+      // p(x+dx,x) = [1 - (x+dx)/x] / [1 - power((x+dx)/x, n+1)].
+      *input_time_derivative = p_buffer_empty_der;
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = -output_time / Square(buffer_size + 1.0L);
+    }
+    return p_buffer_empty * output_time;
+  }
+
+  // Case 4: the consumer is slower than the producer and neither is infinitely
+  // fast. Case 4 and Case 5 actually follow same formula. Separate them for
+  // numerical computation reasons.
+  if (input_time > output_time) {
+    const double ratio = output_time / input_time;
+    const double ratio_pow = std::pow(ratio, buffer_size);
+    const double p_buffer_empty =
+        ratio_pow * (1.0L - ratio) / (1.0L - ratio * ratio_pow);
+    const double p_buffer_empty_der =
+        (buffer_size - (buffer_size + 1.0L) * ratio + ratio_pow * ratio) *
+        ratio_pow / ratio / Square(1.0L - ratio_pow * ratio);
+    if (output_time_derivative) {
+      *output_time_derivative = p_buffer_empty + p_buffer_empty_der * ratio;
+    }
+    if (input_time_derivative) {
+      *input_time_derivative = -p_buffer_empty_der * Square(ratio);
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = p_buffer_empty / (1.0L - ratio_pow * ratio) *
+                                std::log(ratio) * output_time;
+    }
+    return p_buffer_empty * output_time;
+  }
+
+  // Case 5: the producer is slower than the consumer and neither is infinitely
+  // fast.
+  const double ratio = input_time / output_time;
+  const double ratio_pow = std::pow(ratio, buffer_size);
+  const double p_buffer_empty = (1.0L - ratio) / (1.0L - ratio_pow * ratio);
+  const double p_buffer_empty_der =
+      ((buffer_size + 1.0L - buffer_size * ratio) * ratio_pow - 1.0L) /
+      Square(1.0L - ratio_pow * ratio);
+  if (output_time_derivative) {
+    *output_time_derivative = p_buffer_empty - p_buffer_empty_der * ratio;
+  }
+  if (input_time_derivative) {
+    *input_time_derivative = p_buffer_empty_der;
+  }
+  if (buffer_size_derivative) {
+    *buffer_size_derivative = p_buffer_empty / (1.0L - ratio_pow * ratio) *
+                              ratio_pow * ratio * std::log(ratio) * output_time;
+  }
+  return p_buffer_empty * output_time;
 }
 
 void Node::CollectTunableParameters(

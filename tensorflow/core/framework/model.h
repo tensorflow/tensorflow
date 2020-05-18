@@ -142,7 +142,31 @@ class Node {
         metrics_(name_),
         output_(args.output.get()) {}
 
-  virtual ~Node() { FlushMetrics(); }
+  virtual ~Node() {
+    // Clear the sub-nodes instead of relying on implicit shared pointer
+    // destructor to avoid potential stack overflow when the tree is deep.
+    std::deque<std::shared_ptr<Node>> queue;
+    {
+      mutex_lock l(mu_);
+      while (inputs_.size() > 0) {
+        queue.push_back(inputs_.front());
+        inputs_.pop_front();
+      }
+    }
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+      {
+        mutex_lock l(node->mu_);
+        while (node->inputs_.size() > 0) {
+          queue.push_back(node->inputs_.front());
+          node->inputs_.pop_front();
+        }
+      }
+    }
+
+    FlushMetrics();
+  }
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_) {
@@ -260,6 +284,26 @@ class Node {
   void set_autotune(bool autotune) TF_LOCKS_EXCLUDED(mu_) {
     autotune_.store(autotune);
   }
+
+  // Given the average time between output events (`output_time`), the average
+  // time between input events (`input_time`) and the buffer size, the method
+  // computes the expected time an input event will have to wait.
+  //
+  // The wait time is approximated as the product of the probability the buffer
+  // will be empty and the time it takes to produce an element into the buffer.
+  //
+  // The formula used for computing the probability is derived by modeling the
+  // problem as an M/M/1/K queue
+  // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+  //
+  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
+  // and `buffer_size` if the corresponding pointers are not `nullptr`.
+  static double ComputeWaitTime(const double& output_time,
+                                const double& input_time,
+                                const double& buffer_size,
+                                double* output_time_derivative,
+                                double* input_time_derivative,
+                                double* buffer_size_derivative);
 
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(

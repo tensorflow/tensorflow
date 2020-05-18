@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 
+#include <string>
+
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
@@ -50,16 +53,18 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
 // Returns true if explanation for "All Others" time is also included in
 // input_statement.
 bool InputAnalysis(double input_percent, double all_other_percent,
-                   string* input_classification, string* input_statement);
+                   std::string* input_classification,
+                   std::string* input_statement);
 
-void OutputAnalysis(double output_percent, string* output_classification,
-                    string* output_statement);
+void OutputAnalysis(double output_percent, std::string* output_classification,
+                    std::string* output_statement);
 
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);
 
 void AddErrorMessages(const OpStats& op_stats,
                       InputPipelineAnalysisResult* result);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

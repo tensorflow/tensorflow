@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"

@@ -106,8 +106,8 @@ class GrpcEagerClientThread : public core::RefCounted {
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
-                  GrpcEagerClientThread* thread)
-      : stub_(channel), thread_(thread) {
+                  GrpcEagerClientThread* thread, const string& target)
+      : stub_(channel), thread_(thread), target_(target) {
     // Hold a reference to make sure the corresponding EagerClientThread
     // outlives the client.
     thread_->Ref();
@@ -127,7 +127,8 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
         response, std::move(done_wrapped), /*call_opts=*/nullptr,         \
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true);   \
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,    \
+        &target_);                                                        \
   }
 
   CLIENT_METHOD(CreateContext);
@@ -146,7 +147,8 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
         response, std::move(done_wrapped), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr);
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
 
     VLOG(1) << "Sending RPC to close remote eager context "
             << request->DebugString();
@@ -194,6 +196,7 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   const GrpcEagerClientThread* thread_;
+  const string target_;
 
   ::grpc::CompletionQueue* cq_;
 
@@ -236,7 +239,7 @@ class GrpcEagerClientCache : public EagerClientCache {
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();
       core::RefCountPtr<EagerClient> worker(
-          new GrpcEagerClient(shared, thread));
+          new GrpcEagerClient(shared, thread, target));
       it = clients_.emplace(target, std::move(worker)).first;
     }
 

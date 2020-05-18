@@ -29,7 +29,7 @@ import numpy as np
 import six
 
 from tensorflow.python.autograph.operators import control_flow
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables as variable_operators
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -546,7 +546,7 @@ class ForLoopTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, '"s" may not be None'):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, '"s" must be defined'):
-      self._basic_loop(special_values.Undefined(''), lambda i, s: s)
+      self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
 
   def test_tensor_none_output(self):
     with self.assertRaisesRegex(ValueError, '"s" is None at the end'):
@@ -785,7 +785,7 @@ class WhileLoopTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, '"s" may not be None'):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, '"s" must be defined'):
-      self._basic_loop(special_values.Undefined(''), lambda i, s: s)
+      self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
 
   def test_tensor_none_output(self):
     with self.assertRaisesRegex(ValueError, '"s" is None at the end'):
@@ -887,10 +887,10 @@ class IfStmtTest(test.TestCase):
   def test_tensor_undefined_output(self):
     with self.assertRaisesRegex(
         ValueError, "must also be initialized in the if.*'s'"):
-      self._basic_cond(lambda: special_values.Undefined('s'), lambda: 1)
+      self._basic_cond(lambda: variable_operators.Undefined('s'), lambda: 1)
     with self.assertRaisesRegex(
         ValueError, "must also be initialized in the else.*'s'"):
-      self._basic_cond(lambda: 1, lambda: special_values.Undefined('s'))
+      self._basic_cond(lambda: 1, lambda: variable_operators.Undefined('s'))
 
   def test_tensor_dtype_change(self):
     with self.assertRaisesRegex(TypeError, '"s" has dtype int32.*but.*float32'):

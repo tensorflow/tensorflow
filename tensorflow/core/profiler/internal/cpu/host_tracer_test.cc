@@ -12,17 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <ostream>
 #include <string>
 
 #include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -38,13 +44,13 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-NodeExecStats MakeNodeStats(const string& name, uint32 thread_id,
-                            const string& label = "") {
+NodeExecStats MakeNodeStats(absl::string_view name, uint32 thread_id,
+                            absl::string_view label = "") {
   NodeExecStats ns;
-  ns.set_node_name(name);
+  ns.set_node_name(std::string(name));
   ns.set_thread_id(thread_id);
   if (!label.empty()) {
-    ns.set_timeline_label(label);
+    ns.set_timeline_label(std::string(label));
   }
   return ns;
 }
@@ -109,7 +115,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   uint32 thread_id;
-  string thread_name = "MyThreadName";
+  std::string thread_name = "MyThreadName";
   XSpace space;
 
   // We start a thread with a known and controled name. As of the time of

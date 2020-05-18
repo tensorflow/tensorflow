@@ -163,6 +163,8 @@ build:cuda_clang --action_env TF_CUDA_CLANG=1
 build:dbg --config=opt -c dbg
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
+# AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
+build:dbg --copt -DDEBUG_BUILD
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 

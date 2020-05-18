@@ -302,8 +302,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           epochs=10,
           callbacks=[SleepCallback()])
     warning_msg = ('Callbacks method `on_train_batch_end` is slow compared '
-                   'to the batch time. Check your callbacks.')
-    self.assertIn(warning_msg, warning_messages)
+                   'to the batch time')
+    self.assertIn(warning_msg, '\n'.join(warning_messages))
 
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes

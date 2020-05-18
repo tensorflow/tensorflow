@@ -128,14 +128,16 @@ class LuOpTest(test.TestCase):
 
     for dtype in (np.float32, np.float64):
       for output_idx_type in (dtypes.int32, dtypes.int64):
-        self._verifyLu(data.astype(dtype), output_idx_type=output_idx_type)
+        with self.subTest(dtype=dtype, output_idx_type=output_idx_type):
+          self._verifyLu(data.astype(dtype), output_idx_type=output_idx_type)
 
     for dtype in (np.complex64, np.complex128):
       for output_idx_type in (dtypes.int32, dtypes.int64):
-        complex_data = np.tril(1j * data, -1).astype(dtype)
-        complex_data += np.triu(-1j * data, 1).astype(dtype)
-        complex_data += data
-        self._verifyLu(complex_data, output_idx_type=output_idx_type)
+        with self.subTest(dtype=dtype, output_idx_type=output_idx_type):
+          complex_data = np.tril(1j * data, -1).astype(dtype)
+          complex_data += np.triu(-1j * data, 1).astype(dtype)
+          complex_data += data
+          self._verifyLu(complex_data, output_idx_type=output_idx_type)
 
   def testPivoting(self):
     # This matrix triggers partial pivoting because the first diagonal entry
@@ -144,38 +146,41 @@ class LuOpTest(test.TestCase):
     self._verifyLu(data.astype(np.float32))
 
     for dtype in (np.float32, np.float64):
-      self._verifyLu(data.astype(dtype))
-      _, p = linalg_ops.lu(data)
-      p_val = self.evaluate([p])
-      # Make sure p_val is not the identity permutation.
-      self.assertNotAllClose(np.arange(3), p_val)
+      with self.subTest(dtype=dtype):
+        self._verifyLu(data.astype(dtype))
+        _, p = linalg_ops.lu(data)
+        p_val = self.evaluate([p])
+        # Make sure p_val is not the identity permutation.
+        self.assertNotAllClose(np.arange(3), p_val)
 
     for dtype in (np.complex64, np.complex128):
-      complex_data = np.tril(1j * data, -1).astype(dtype)
-      complex_data += np.triu(-1j * data, 1).astype(dtype)
-      complex_data += data
-      self._verifyLu(complex_data)
-      _, p = linalg_ops.lu(data)
-      p_val = self.evaluate([p])
-      # Make sure p_val is not the identity permutation.
-      self.assertNotAllClose(np.arange(3), p_val)
+      with self.subTest(dtype=dtype):
+        complex_data = np.tril(1j * data, -1).astype(dtype)
+        complex_data += np.triu(-1j * data, 1).astype(dtype)
+        complex_data += data
+        self._verifyLu(complex_data)
+        _, p = linalg_ops.lu(data)
+        p_val = self.evaluate([p])
+        # Make sure p_val is not the identity permutation.
+        self.assertNotAllClose(np.arange(3), p_val)
 
   def testInvalidMatrix(self):
     # LU factorization gives an error when the input is singular.
     # Note: A singular matrix may return without error but it won't be a valid
     # factorization.
     for dtype in self.float_types:
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(
-            linalg_ops.lu(
-                np.array([[1., 2., 3.], [2., 4., 6.], [2., 3., 4.]],
-                         dtype=dtype)))
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(
-            linalg_ops.lu(
-                np.array([[[1., 2., 3.], [2., 4., 6.], [1., 2., 3.]],
-                          [[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]]],
-                         dtype=dtype)))
+      with self.subTest(dtype=dtype):
+        with self.assertRaises(errors.InvalidArgumentError):
+          self.evaluate(
+              linalg_ops.lu(
+                  np.array([[1., 2., 3.], [2., 4., 6.], [2., 3., 4.]],
+                           dtype=dtype)))
+        with self.assertRaises(errors.InvalidArgumentError):
+          self.evaluate(
+              linalg_ops.lu(
+                  np.array([[[1., 2., 3.], [2., 4., 6.], [1., 2., 3.]],
+                            [[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]]],
+                           dtype=dtype)))
 
   def testBatch(self):
     simple_array = np.array([[[1., -1.], [2., 5.]]])  # shape (1, 2, 2)

@@ -33,7 +33,7 @@ Pod::Spec.new do |s|
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
-    'VALID_ARCHS' => 'x86_64 armv7 arm64',
+    'VALID_ARCHS' => 'i386 x86_64 armv7 arm64',
   }
 
   s.test_spec 'Tests' do |ts|

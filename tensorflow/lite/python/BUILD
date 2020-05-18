@@ -157,6 +157,7 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",

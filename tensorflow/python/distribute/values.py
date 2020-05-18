@@ -38,6 +38,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -422,7 +423,8 @@ class DistributedVarOp(object):
     return hash((self.name, self.graph, self.traceback, self.type))
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.Variable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable,
+                          core.Tensor):
   """Holds a map from replica to variables."""
 
   # TODO(josh11b): Support changing the set of variables if e.g. if new
@@ -739,9 +741,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
-
-
-ops.register_dense_tensor_like_type(DistributedVariable)
 
 
 def _validate_colocate_extended(v, extended):
@@ -1380,7 +1379,7 @@ def value_container(val):
   return val
 
 
-class AggregatingVariable(variables_lib.Variable):
+class AggregatingVariable(variables_lib.Variable, core.Tensor):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1649,4 +1648,3 @@ def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
 
 ops.register_tensor_conversion_function(AggregatingVariable,
                                         _tensor_conversion_aggregate)
-ops.register_dense_tensor_like_type(AggregatingVariable)

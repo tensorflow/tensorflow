@@ -48,14 +48,16 @@ inline void BroadcastPrelu4DSlow(
               params.input_offset + input_data[input_index];
           int32 output_value;
           if (input_value >= 0) {
-            output_value = input_value;
+            output_value = MultiplyByQuantizedMultiplier(
+                input_value, params.output_multiplier_1, params.output_shift_1);
           } else {
             auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
             const int32 alpha_value =
                 params.alpha_offset + alpha_data[alpha_index];
+
             output_value = MultiplyByQuantizedMultiplier(
-                input_value * alpha_value, params.output_multiplier,
-                params.output_shift);
+                input_value * alpha_value, params.output_multiplier_2,
+                params.output_shift_2);
           }
           output_value += params.output_offset;
 

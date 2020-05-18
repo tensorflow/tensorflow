@@ -92,6 +92,10 @@ class ParallelDevice {
                                                        TFE_TensorHandle* tensor,
                                                        TF_Status* status) const;
 
+  // A parallel tensor with scalar integers numbering component devices.
+  std::unique_ptr<ParallelTensor> DeviceIDs(TFE_Context* context,
+                                            TF_Status* status) const;
+
   // Takes a description of a single operation being executed on the
   // ParallelDevice, and in turn runs one operation per component device with
   // its corresponding inputs from the input ParallelTensors (or
@@ -208,6 +212,46 @@ std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
                                            status);
 }
 
+std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
+    TFE_Context* context, TF_Status* status) const {
+  // TODO(allenl): We could cache DeviceIDs (keyed by context).
+  std::vector<TensorHandlePtr> components;
+  components.reserve(underlying_devices_.size());
+  for (int device_index = 0; device_index < underlying_devices_.size();
+       ++device_index) {
+    int64_t* device_id = new int64_t;
+    *device_id = device_index;
+    std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
+        TF_NewTensor(
+            TF_INT64, /*dims=*/nullptr, /*num_dims=*/0, device_id,
+            sizeof(int64_t),
+            [](void* data, size_t, void* arg) {
+              delete reinterpret_cast<int64_t*>(data);
+            },
+            nullptr),
+        TF_DeleteTensor);
+    // TODO(allenl): Here and when executing regular operations, we could hold
+    // on to one TFE_Op per device and just call TFE_ResetOp to avoid parsing
+    // device names repeatedly.
+    OpPtr const_op(TFE_NewOp(context, "Const", status));
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetDevice(const_op.get(), underlying_devices_[device_index].c_str(),
+                    status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetAttrTensor(const_op.get(), "value", tensor.get(), status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetAttrType(const_op.get(), "dtype", TF_INT64);
+    TFE_TensorHandle* device_handle;
+    int num_outputs = 1;
+    TFE_Execute(const_op.get(), &device_handle, &num_outputs, status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    components.emplace_back(device_handle);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+  }
+  return ParallelTensor::FromTensorHandles(*this, std::move(components),
+                                           status);
+}
+
 absl::optional<std::vector<MaybeParallelTensorOwned>> ParallelDevice::Execute(
     TFE_Context* context, std::vector<MaybeParallelTensorUnowned> inputs,
     const char* operation_name, const TFE_OpAttrs* attributes,
@@ -281,6 +325,13 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ParallelDevice::Execute(
       if (TF_GetCode(status) != TF_OK) return result;
     }
     result.emplace(std::move(outputs));
+    return result;
+  } else if (operation_name == std::string("DeviceID")) {
+    std::vector<MaybeParallelTensorOwned> result_content;
+    result_content.reserve(1);
+    result_content.push_back(DeviceIDs(context, status));
+    if (TF_GetCode(status) != TF_OK) return result;
+    result.emplace(std::move(result_content));
     return result;
   }
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
