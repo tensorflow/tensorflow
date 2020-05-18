@@ -94,6 +94,7 @@ cc_library(
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":traceme_encode",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
@@ -159,6 +160,7 @@ filegroup(
         "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
+        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

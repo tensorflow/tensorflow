@@ -89,6 +89,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme_headers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
