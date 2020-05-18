@@ -8227,7 +8227,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + mkl_deps(),
+    deps = NN_DEPS + [
+        ":fused_batch_norm_op",
+        ":no_op",
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(

@@ -2226,7 +2226,7 @@ class Layer(base_layer.Layer):
     # Keep track of metric instance created in subclassed layer.
     from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
     for val in nest.flatten(value):
-      if isinstance(val, metrics_module.Metric):
+      if isinstance(val, metrics_module.Metric) and hasattr(self, '_metrics'):
         self._metrics.append(val)
 
     # TODO(scottzhu): Need to track Module object as well for weight tracking.

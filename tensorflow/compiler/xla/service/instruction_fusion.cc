@@ -502,7 +502,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     while (true) {
       auto next_entry =
           fusion_queue->DequeueNextInstructionAndOperandsToFuseInOrder();
-      auto instruction = next_entry.first;
+      HloInstruction* instruction = next_entry.first;
       if (instruction == nullptr) {
         break;
       }
@@ -512,12 +512,14 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         continue;
       }
 
+      VLOG(5) << "Considering fusion of: " << instruction->ToString();
       std::vector<int64>& sorted_operand_numbers = next_entry.second;
 
       for (int64 i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
 
         if (!operand->IsFusible()) {
+          VLOG(3) << "Operand (" << operand->ToString() << ") is not fusible";
           continue;
         }
 
@@ -691,6 +693,8 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
+    VLOG(4) << "Stopping: fusion may duplicate operand ("
+            << producer->ToString() << ") , and this is expensive";
     return false;
   }
 

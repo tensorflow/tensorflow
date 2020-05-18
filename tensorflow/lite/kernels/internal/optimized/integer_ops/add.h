@@ -122,7 +122,7 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
                                    vdupq_n_s16(params.output_offset));
     const int16x8_t s2 = vaddq_s16(vcombine_s16(s21_narrowed, s22_narrowed),
                                    vdupq_n_s16(params.output_offset));
-    const int16x8_t s = vcombine_s16(vqmovn_s16(s1), vqmovn_s16(s2));
+    const int8x16_t s = vcombine_s8(vqmovn_s16(s1), vqmovn_s16(s2));
 
     const int8x16_t clamped =
         vmaxq_s8(output_activation_min_vector,

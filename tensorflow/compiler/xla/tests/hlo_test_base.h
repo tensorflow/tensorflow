@@ -100,6 +100,10 @@ class HloTestBase : public ::testing::Test {
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
 
+  // Sets most fath math options to be enabled to model the fast math flags
+  // generally used for CPU:AOT compilation.
+  static void SetAotFastMathDebugOptions(DebugOptions* options);
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the

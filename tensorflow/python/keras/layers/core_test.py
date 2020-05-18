@@ -139,26 +139,6 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     out = ld([x1, x2])
     self.assertAllEqual(out.shape, [3, 2])
 
-  def test_lambda_multiple_args(self):
-    ld = keras.layers.Lambda(lambda x, y: x[0] + y)
-    x1 = np.ones([3, 2], np.float32)
-    x2 = np.ones([3, 5], np.float32)
-
-    expected_result = x1 * 2
-    self.assertAllEqual(ld([x1, x2], x1), expected_result)
-    self.assertAllEqual(ld([x1, x2], y=x1), expected_result)
-    self.assertAllEqual(ld(x=[x1, x2], y=x1), expected_result)
-
-  def test_lambda_constructor_args_and_multiple_args(self):
-    x1 = np.ones([3, 2], np.float32)
-    x2 = np.ones([3, 5], np.float32)
-    ld = keras.layers.Lambda(lambda x, y: x[0] + y, arguments={'y': x1*2})
-
-    self.assertAllEqual(ld([x1, x2]), x1 * 3)
-    self.assertAllEqual(ld([x1, x2], y=x1), x1 * 2)
-    self.assertAllEqual(ld(x=[x1, x2]), x1 * 3)
-    self.assertAllEqual(ld(x=[x1, x2], y=x1), x1 * 2)
-
   def test_lambda_output_shape(self):
     l = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
     l(keras.backend.variable(np.ones((1, 1))))

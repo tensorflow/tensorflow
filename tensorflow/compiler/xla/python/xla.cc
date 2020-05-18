@@ -872,11 +872,7 @@ PYBIND11_MODULE(xla_extension, m) {
         DebugOptions* debug_options =
             options.executable_build_options.mutable_debug_options();
         // Sets fast-math-disabling default options expected by JAX.
-        // TODO(phawkins): make these XLA-wide defaults.
-        debug_options->set_xla_cpu_fast_math_honor_infs(true);
-        debug_options->set_xla_cpu_fast_math_honor_nans(true);
-        debug_options->set_xla_cpu_fast_math_honor_division(true);
-        debug_options->set_xla_cpu_fast_math_honor_functions(true);
+        debug_options->set_xla_cpu_enable_fast_min_max(false);
         debug_options->set_xla_gpu_enable_fast_min_max(false);
         return options;
       }))
