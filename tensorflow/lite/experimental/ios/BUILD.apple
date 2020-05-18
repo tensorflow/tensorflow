@@ -11,17 +11,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-genrule(
-    name = "strip_coreml_include_hdr",
-    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
-    outs = ["coreml_delegate.h"],
-    cmd = """
-    sed 's/#include \".*common.h"/#include \"common.h\"/' \
-    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)" \
-    > "$@"
-    """,
-)
-
 TFL_FRAMEWORK_HDRS = [
     "//tensorflow/lite/delegates/gpu:metal_delegate.h",
     "//tensorflow/lite/c:c_api.h",
@@ -55,6 +44,17 @@ ios_static_framework(
     deps = [
         "//tensorflow/lite/delegates/flex:delegate",
     ],
+)
+
+genrule(
+    name = "strip_coreml_include_hdr",
+    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
+    outs = ["coreml_delegate.h"],
+    cmd = """
+    sed "s|#include \".*common.h\"|#include \"TensorFlowLiteC/common.h\"|"\
+    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)"\
+    > "$@"
+    """,
 )
 
 # This target builds the Core ML delegate as a separate static framework, which
