@@ -109,15 +109,15 @@ The typical usage of `builder` is as follows:
 ~~~python
 export_dir = ...
 ...
-builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
-with tf.Session(graph=tf.Graph()) as sess:
+builder = tf.compat.v1.saved_model.Builder(export_dir)
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
-                                       [tf.saved_model.tag_constants.TRAINING],
+                                       [tf.compat.v1.saved_model.tag_constants.TRAINING],
                                        signature_def_map=foo_signatures,
                                        assets_collection=foo_assets)
 ...
-with tf.Session(graph=tf.Graph()) as sess:
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph(["bar-tag", "baz-tag"])
 ...
@@ -167,8 +167,8 @@ the specific meta graph def, will be restored into the supplied session.
 ~~~python
 export_dir = ...
 ...
-with tf.Session(graph=tf.Graph()) as sess:
-  tf.saved_model.loader.load(sess, [tag_constants.TRAINING], export_dir)
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
+  tf.compat.v1.saved_model.load(sess, [tag_constants.TRAINING], export_dir)
   ...
 ~~~
 
