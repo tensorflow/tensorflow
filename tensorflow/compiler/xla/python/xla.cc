@@ -930,34 +930,6 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<Device>& device) { return device.client; })
       .def("__str__", &Device::DebugString)
-      // TODO(phawkins): remove capitalized names after updating callers.
-      .def("TransferToInfeed",
-           [](const Device& device, const LiteralSlice& literal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                 device.GetLocalDeviceState());
-             return local_device->client()->TransferToInfeedLocal(
-                 literal, local_device->device_ordinal());
-           })
-      .def(
-          "TransferFromOutfeed",
-          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            std::shared_ptr<Literal> literal_shared;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                  device.GetLocalDeviceState());
-              TF_ASSIGN_OR_RETURN(
-                  Literal literal,
-                  local_device->client()->TransferFromOutfeedLocal(
-                      shape, local_device->device_ordinal()));
-
-              literal_shared = std::make_shared<Literal>(std::move(literal));
-            }
-            return LiteralToPython(std::move(literal_shared));
-          })
       .def("transfer_to_infeed",
            [](const Device& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -1244,28 +1216,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("size_of_generated_code_in_bytes",
            &PjRtExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PjRtExecutable::Delete)
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def("Delete", &PjRtExecutable::Delete)
-      .def(
-          "Execute",
-          [](const PjRtExecutable& executable,
-             absl::Span<PjRtBuffer* const> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PjRtBuffer>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                executable.Execute(args, options));
-            std::vector<ClientAndUniquePtr<PjRtBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffer : output_buffers) {
-              outputs.push_back(WrapWithClient(
-                  executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
       .def(
           "execute",
           [](const PjRtExecutable& executable,
@@ -1282,33 +1232,6 @@ PYBIND11_MODULE(xla_extension, m) {
             for (auto& buffer : output_buffers) {
               outputs.push_back(WrapWithClient(
                   executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def(
-          "ExecuteOnLocalDevices",
-          [](const PjRtExecutable& executable,
-             absl::Span<const std::vector<PjRtBuffer*>> args)
-              -> StatusOr<
-                  std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
-                    output_buffers,
-                executable.ExecuteOnLocalDevices(args, options));
-            std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>> outputs;
-            outputs.resize(output_buffers.size());
-            for (int computation = 0; computation < output_buffers.size();
-                 ++computation) {
-              for (auto& buffer : output_buffers[computation]) {
-                outputs[computation].push_back(
-                    WrapWithClient(executable.client()->shared_from_this(),
-                                   std::move(buffer)));
-              }
             }
             return outputs;
           },
@@ -1414,12 +1337,6 @@ PYBIND11_MODULE(xla_extension, m) {
         proto.ParseFromString(serialized_hlo_module_proto);
         return absl::make_unique<XlaComputation>(proto);
       }))
-      // TODO(phawkins): delete capitalized names after updating callers.
-      .def("GetProgramShape", &XlaComputation::GetProgramShape)
-      .def("GetSerializedProto", &GetComputationSerializedProto)
-      .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph)
-      .def("Hash", &HashComputation)
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
@@ -1512,28 +1429,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Builds a computation from the contents of the builder.",
           py::arg("root") = absl::nullopt)
-      .def("ClearOpMetadata", &XlaBuilder::ClearOpMetadata)
       .def("GetShape", &XlaBuilder::GetShape)
-      .def(
-          "GetProgramShape",
-          [](const XlaBuilder& builder,
-             absl::optional<XlaOp> root) -> StatusOr<ProgramShape> {
-            return root ? builder.GetProgramShape(*root)
-                        : builder.GetProgramShape();
-          },
-          py::arg("root") = absl::nullopt)
-      .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
-      .def("SetSharding", &XlaBuilder::SetSharding)
-      .def("ClearSharding", &XlaBuilder::ClearSharding)
-      .def("SetUpAlias",
-           [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64 param_number, const std::vector<int64>& param_index) {
-             builder.SetUpAlias(
-                 ShapeIndex(output_index.begin(), output_index.end()),
-                 param_number,
-                 ShapeIndex(param_index.begin(), param_index.end()));
-           })
       .def(
           "build",
           [](XlaBuilder& builder, absl::optional<XlaOp> root) {
@@ -1564,17 +1460,7 @@ PYBIND11_MODULE(xla_extension, m) {
                  ShapeIndex(param_index.begin(), param_index.end()));
            });
 
-  // TODO(phawkins): delete capitalized names after updating callers
-  m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
-  m.def("DLPackManagedTensorToBuffer",
-        [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
-            -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
-          TF_ASSIGN_OR_RETURN(
-              std::unique_ptr<PjRtBuffer> buffer,
-              DLPackManagedTensorToBuffer(tensor, client.get()));
-          return WrapWithClient(std::move(client), std::move(buffer));
-        });
   m.def("dlpack_managed_tensor_to_buffer",
         [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
             -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
