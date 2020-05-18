@@ -295,6 +295,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // errors, and the error message will be combined from all executors.
   Status SyncExecutors();
 
+  Status AsyncWait() override { return SyncExecutors(); }
+
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);

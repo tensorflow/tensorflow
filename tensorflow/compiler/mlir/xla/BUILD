@@ -194,6 +194,24 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_sink_constants_to_control_flow",
+    srcs = [
+        "transforms/sink_constants_to_control_flow.cc",
+    ],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "map_xla_to_scalar_op",
     hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
@@ -873,6 +891,7 @@ cc_library(
         ":xla_legalize_to_standard",
         ":xla_lower",
         ":xla_materialize_broadcasts",
+        ":xla_sink_constants_to_control_flow",
         ":xla_test_passes",
     ],
 )

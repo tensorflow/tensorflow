@@ -487,6 +487,7 @@ class FullyConnected
     op_sig.options.fully_connected.keep_num_dims = fc_op.keep_num_dims;
     op_sig.options.fully_connected.weights_format =
         GetWeightFormat(fc_op.weights_format);
+    op_sig.options.fully_connected.sparse_weight = false;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

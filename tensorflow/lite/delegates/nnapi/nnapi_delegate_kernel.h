@@ -31,6 +31,7 @@ namespace nnapi {
 constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
+constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {

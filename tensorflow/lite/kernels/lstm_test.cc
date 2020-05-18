@@ -2050,7 +2050,7 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
       }};
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/0.000902065);
+                /*tolerance=*/0.0009021);
 }
 
 class CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test

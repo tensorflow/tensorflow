@@ -44,3 +44,16 @@ func @duplicate_vars() {
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   return
 }
+
+// CHECK-LABEL: func @duplicate_vars_with_users
+// CHECK-SAME: (%arg0: tensor<f32>, %arg1: tensor<!tf.resource<tensor<f32>>> {tf.resource_name = "x"})
+// CHECK: "tf.ReadVariableOp"(%arg1)
+// CHECK: "tf.AssignAddVariableOp"(%arg1, %arg0)
+// CHECK-NOT: "tf.VarHandleOp"
+func @duplicate_vars_with_users(%arg0: tensor<f32>) {
+  %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  %2 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
+  "tf.AssignAddVariableOp"(%2, %arg0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  return
+}
