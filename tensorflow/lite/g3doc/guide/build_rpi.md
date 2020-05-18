@@ -23,7 +23,7 @@ To cross compile TensorFlow Lite follow the steps:
 1. Clone official Raspberry Pi cross-compilation toolchain:
 
     ```bash
-    git clone --depth 1 https://github.com/raspberrypi/tools.git rpi_tools
+    git clone https://github.com/raspberrypi/tools.git rpi_tools
     ```
 
 2. Clone TensorFlow repository:
@@ -39,7 +39,7 @@ To cross compile TensorFlow Lite follow the steps:
 build dependencies:
 
     ```bash
-    cd tensor_src && ./tensorflow/lite/tools/make/download_dependencies.sh
+    cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
     ```
 
     **Note:** You only need to do this once.
@@ -47,7 +47,7 @@ build dependencies:
 4. To build ARMv7 binary for Raspberry Pi 2, 3 and 4 execute:
 
     ```bash
-    PATH=$PATH:../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/ ./tensorflow/lite/tools/make/build_rpi_lib.sh
+    PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH ./tensorflow/lite/tools/make/build_rpi_lib.sh
     ```
 
     **Note:** This should compile a static library in:
@@ -56,7 +56,7 @@ build dependencies:
 5. To build ARMv6 binary for Raspberry Pi Zero execute:
 
     ```bash
-    PATH=$PATH:../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/ ./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
+    PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH ./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
     ```
 
     **Note:** This should compile a static library in:
@@ -64,7 +64,7 @@ build dependencies:
 
 ## Compile natively on Raspberry Pi
 
-Instruction has been tested on Raspberry Pi 3b, Raspbian GNU/Linux 9.1 (stretch), gcc version 6.3.0 20170516 (Raspbian 6.3.0-18+rpi1):
+Instruction has been tested on Raspberry Pi Zero, Raspbian GNU/Linux 10 (buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
 
 To natively compile TensorFlow Lite follow the steps:
 
@@ -78,7 +78,7 @@ To natively compile TensorFlow Lite follow the steps:
 build dependencies:
 
     ```bash
-    cd tensor_src && ./tensorflow/lite/tools/make/download_dependencies.sh
+    cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
     ```
 
     **Note:** You only need to do this once.
