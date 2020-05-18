@@ -47,6 +47,9 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   const int32x4_t input1_left_dup = vdupq_n_s32(input1_left_shift);
   const int32x4_t input2_left_dup = vdupq_n_s32(input2_left_shift);
 
+  const int16x8_t input1_offset_dup = vdupq_n_s16(params.input1_offset);
+  const int16x8_t input2_offset_dup = vdupq_n_s16(params.input2_offset);
+
   for (; i <= size - 16; i += 16) {
     const int8x16_t input1_val_original = vld1q_s8(input1_data + i);
     const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
@@ -61,13 +64,13 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
     const int16x8_t input2_val_s16_low =
         vmovl_s8(vget_low_s8(input2_val_original));
     const int16x8_t input1_val_high =
-        vaddq_s16(input1_val_s16_high, vdupq_n_s16(params.input1_offset));
+        vaddq_s16(input1_val_s16_high, input1_offset_dup);
     const int16x8_t input2_val_high =
-        vaddq_s16(input2_val_s16_high, vdupq_n_s16(params.input2_offset));
+        vaddq_s16(input2_val_s16_high, input2_offset_dup);
     const int16x8_t input1_val_low =
-        vaddq_s16(input1_val_s16_low, vdupq_n_s16(params.input1_offset));
+        vaddq_s16(input1_val_s16_low, input1_offset_dup);
     const int16x8_t input2_val_low =
-        vaddq_s16(input2_val_s16_low, vdupq_n_s16(params.input2_offset));
+        vaddq_s16(input2_val_s16_low, input2_offset_dup);
     const int16x4_t input1_val_high_high = vget_high_s16(input1_val_high);
     const int16x4_t input1_val_high_low = vget_low_s16(input1_val_high);
     const int16x4_t input1_val_low_high = vget_high_s16(input1_val_low);
