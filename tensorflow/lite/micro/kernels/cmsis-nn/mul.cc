@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 namespace ops {
@@ -59,6 +60,18 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
         input1->params.scale * input2->params.scale / output->params.scale;
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
+  }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInput1Tensor);
+  const TfLiteTensor* input2 = GetInput(context, node, kInput2Tensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  if (output->dims->size == 0) {
+    return AllocateOutputDimensionsFromInput(context, input1, input2, output);
   }
 
   return kTfLiteOk;
@@ -167,7 +180,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_MUL() {
   static TfLiteRegistration r = {nullptr /* Init */, nullptr /* Free */,
-                                 nullptr /* Prepare */, mul::Eval};
+                                 mul::Prepare, mul::Eval};
   return &r;
 }
 

@@ -42,6 +42,11 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
                                     size_t* bytes, size_t* type_size,
                                     ErrorReporter* error_reporter);
 
+// Deduce output dimensions from input and allocate given size.
+// Useful for operators with two inputs where the largest input should equal the output dimension.
+TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context, const TfLiteTensor* input1,
+                                               const TfLiteTensor* input2, TfLiteTensor* output);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_MEMORY_HELPERS_H_

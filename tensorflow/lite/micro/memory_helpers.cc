@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 namespace tflite {
 
@@ -99,6 +100,36 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
       TfLiteTypeSizeOf(tf_lite_type, type_size, error_reporter));
   *bytes = element_count * (*type_size);
   return kTfLiteOk;
+}
+
+TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context, const TfLiteTensor* input1,
+                                               const TfLiteTensor* input2, TfLiteTensor* output) {
+    int size = 1, i = 0;
+    const TfLiteTensor* input = nullptr;
+
+    TF_LITE_ENSURE(context, input1->dims != nullptr);
+    TF_LITE_ENSURE(context, input2->dims != nullptr);
+    TF_LITE_ENSURE(context, output->dims->size == 0);
+
+    input = input1->dims->size > input2->dims->size ? input1 : input2;
+    TF_LITE_ENSURE(context, output->type == input->type);
+
+    const int dimensions_count = tflite::GetTensorShape(input).DimensionsCount();
+    for (i = 0; i < dimensions_count; i++) {
+      size *= input->dims->data[i];
+    }
+    output->bytes += size;
+
+    TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+        context, TfLiteIntArrayGetSizeInBytes(size),
+      reinterpret_cast<void**>(&output->dims)));
+
+    output->dims->size = input->dims->size;
+    for (i = 0; i < dimensions_count; i++) {
+      output->dims->data[i] = input->dims->data[i];
+    }
+
+    return kTfLiteOk;
 }
 
 }  // namespace tflite

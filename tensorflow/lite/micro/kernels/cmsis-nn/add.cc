@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 namespace ops {
@@ -89,6 +90,18 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
+  }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  if (output->dims->size == 0) {
+    return AllocateOutputDimensionsFromInput(context, input1, input2, output);
   }
 
   return kTfLiteOk;
@@ -199,7 +212,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_ADD() {
   static TfLiteRegistration r = {nullptr /* Init */, nullptr /* Free */,
-                                 nullptr /* Prepare */, add::Eval};
+                                 add::Prepare, add::Eval};
   return &r;
 }
 
