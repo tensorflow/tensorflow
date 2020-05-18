@@ -4473,8 +4473,8 @@ def reverse_sequence(input,
   dimension `seq_axis`.
 
   The elements of `seq_lengths` must obey `seq_lengths[i] <=
-  input.dims[seq_dim]`, and `seq_lengths` must be a vector of length
-  `input.dims[batch_dim]`.
+  input.dims[seq_axis]`, and `seq_lengths` must be a vector of length
+  `input.dims[batch_axis]`.
 
   The output slice `i` along dimension `batch_axis` is then given by
   input slice `i`, with the first `seq_lengths[i]` slices along
@@ -4496,8 +4496,8 @@ def reverse_sequence(input,
   Args:
     input: A `Tensor`. The input to reverse.
     seq_lengths: A `Tensor`. Must be one of the following types: `int32`,
-      `int64`. 1-D with length `input.dims(batch_dim)` and `max(seq_lengths) <=
-      input.dims(seq_dim)`
+      `int64`. 1-D with length `input.dims(batch_axis)` and `max(seq_lengths) <=
+      input.dims(seq_axis)`
     seq_axis: An `int`. The dimension which is partially reversed.
     batch_axis: An optional `int`. Defaults to `0`. The dimension along which
       reversal is performed.
