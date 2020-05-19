@@ -42,6 +42,8 @@ bool InputsWithCorrectTypes(
     const std::vector<std::vector<TfLiteType>>& per_input_possible_types) {
   if (node->inputs->size != per_input_possible_types.size()) return false;
   for (int i = 0; i < per_input_possible_types.size(); ++i) {
+    // Skip optional tensor.
+    if (node->inputs->data[i] == -1) continue;
     bool type_found = false;
     for (auto possible_type : per_input_possible_types[i]) {
       if (TensorTypeMatch(node->inputs->data[i], context, possible_type)) {
