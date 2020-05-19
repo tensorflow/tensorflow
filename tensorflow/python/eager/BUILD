@@ -432,6 +432,7 @@ cuda_py_test(
     srcs = ["function_test.py"],
     python_version = "PY3",
     shard_count = 15,
+    tags = ["nomac"],  # b/157056289
     deps = [
         ":backprop",
         ":cancellation",
