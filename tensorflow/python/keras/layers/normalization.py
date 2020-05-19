@@ -712,9 +712,10 @@ class BatchNormalizationBase(Layer):
     if self._USE_V2_BEHAVIOR:
       if isinstance(training, int):
         training = bool(training)
-      # When the layer is not trainable, it overrides the value passed from
-      # model.
-      training = math_ops.logical_and(training, self.trainable)
+      if not self.trainable:
+        # When the layer is not trainable, it overrides the value passed from
+        # model.
+        training = False
     return training
 
   def call(self, inputs, training=None):
