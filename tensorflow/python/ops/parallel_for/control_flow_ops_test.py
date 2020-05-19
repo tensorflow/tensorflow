@@ -1903,6 +1903,14 @@ class VariableTest(PForTestCase):
     ):
       pfor_control_flow_ops.vectorized_map(f, x)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_variable_shape(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+
+    def loop_fn(_):
+      return resource_variable_ops.variable_shape(v.handle)
+
+    self._test_loop_fn(loop_fn, 2)
 
 if __name__ == "__main__":
   test.main()
