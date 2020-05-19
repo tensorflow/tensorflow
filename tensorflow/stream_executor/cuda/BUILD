@@ -353,6 +353,7 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
