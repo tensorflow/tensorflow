@@ -71,6 +71,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
+      DotOpConverter<xla_lhlo::DotOp>,
       BinaryOpConverter<xla_lhlo::AddOp>,
       BinaryOpConverter<xla_lhlo::AndOp>,
       BinaryOpConverter<xla_lhlo::DivOp>,

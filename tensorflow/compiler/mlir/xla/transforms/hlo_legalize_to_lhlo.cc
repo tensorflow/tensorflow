@@ -350,6 +350,7 @@ void populateHLOToLHLOConversionPattern(
   // clang-format off
   patterns->insert<
       HloToLhloDynamicBroadcastInDimOpConverter,
+      HloToLhloOpConverter<xla_hlo::DotOp>,
       HloToLhloOpConverter<xla_hlo::AbsOp>,
       HloToLhloOpConverter<xla_hlo::AddOp>,
       HloToLhloOpConverter<xla_hlo::AndOp>,

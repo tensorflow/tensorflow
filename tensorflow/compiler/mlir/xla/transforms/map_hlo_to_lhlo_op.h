@@ -36,7 +36,7 @@ using HloToLhloOp = typename HloToLhloOpImpl<HloOpTy>::Type;
   struct HloToLhloOpImpl<xla_hlo::OpName> { \
     using Type = xla_lhlo::OpName;          \
   }
-
+MAP_HLO_TO_LHLO(DotOp);
 MAP_HLO_TO_LHLO(AbsOp);
 MAP_HLO_TO_LHLO(AddOp);
 MAP_HLO_TO_LHLO(AndOp);
