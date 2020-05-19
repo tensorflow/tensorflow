@@ -4101,6 +4101,14 @@ tf_module {
     argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'hashed_output\', \'num_buckets\', \'hash_key\', \'out_type\', \'internal_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseCrossHashed"
+    argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'num_buckets\', \'strong_hash\', \'salt\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseCrossV2"
+    argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'sep\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseDenseCwiseAdd"
     argspec: "args=[\'sp_indices\', \'sp_values\', \'sp_shape\', \'dense\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
