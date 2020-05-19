@@ -33,7 +33,6 @@ ifeq ($(COMPARE_OUTPUT_DATA),no)
   CXXFLAGS += -DNO_COMPARE_OUTPUT_DATA
 endif
 
-
 # Builds a standalone object recognition binary.
 $(eval $(call microlite_test,network_tester_test,\
 $(NETWORK_TESTER_TEST_SRCS),$(NETWORK_TESTER_TEST_HDRS)))
