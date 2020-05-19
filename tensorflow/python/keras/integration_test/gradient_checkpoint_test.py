@@ -70,14 +70,11 @@ def _limit_gpu_memory():
   """Helper function to limit GPU memory for testing  """
   gpus = tf.config.experimental.list_physical_devices('GPU')
   if gpus:
-    try:
-      tf.config.experimental.set_virtual_device_configuration(
-          gpus[0], [
-              tf.config.experimental.VirtualDeviceConfiguration(
-                  memory_limit=1024)
-          ])
-    except RuntimeError as e:
-      print(e)
+    tf.config.experimental.set_virtual_device_configuration(
+        gpus[0], [
+            tf.config.experimental.VirtualDeviceConfiguration(
+                memory_limit=1024)
+        ])
     return True
   return False
 
