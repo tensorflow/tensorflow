@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     python3-scipy \
     python3-sklearn \
     python3-pandas \
-    python3-future \
     python3-portpicker
 
 RUN python3 -m pip --no-cache-dir install \
