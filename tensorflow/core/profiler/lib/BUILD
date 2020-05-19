@@ -139,12 +139,6 @@ cc_library(
     ],
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "scoped_annotation_headers",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":scoped_annotation"],
-)
-
 cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],

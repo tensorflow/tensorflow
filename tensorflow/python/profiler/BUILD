@@ -239,13 +239,3 @@ py_library(
         ":trace",
     ],
 )
-
-py_library(
-    name = "scoped_annotation",
-    srcs = ["scoped_annotation.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
-        "@six_archive//:six",
-    ],
-)
