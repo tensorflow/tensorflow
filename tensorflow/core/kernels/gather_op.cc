@@ -154,6 +154,7 @@ class GatherOp : public OpKernel {
     Tensor* out = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
     if (N == 0) return;
+    if (inner_size == 0) return;
 
     int64 bad_i = -1;
     auto indices_flat = indices.flat<Index>();
