@@ -74,21 +74,6 @@ def : Pattern<
 def LowerAssert : Pattern<(TF_AssertOp $condition, $data, $summarize), []>;
 
 //===----------------------------------------------------------------------===//
-// Bias op patterns.
-//===----------------------------------------------------------------------===//
-def BiasAddFeatureDimension : NativeCodeCall<
-    "getBiasFeatureDimension($_builder, $0, $1)">;
-
-// $input needs to be a ranked tensor to identify index of the feature
-// dimension depending on the data_format 'NHWC' or 'NCHW'.
-// TODO(laurenzo): This should be converted to do explicit broadcasting since
-// it can generate broadcast dimensions that are not compatible with the simple
-// xla_chlo.add broadcast_dims.
-def : Pat<(TF_BiasAddOp AnyRankedTensor:$input, $bias, $data_format),
-          (HLO_AddOp $input, $bias,
-              (BiasAddFeatureDimension $data_format, $input))>;
-
-//===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -114,7 +99,8 @@ foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
 
 def LowerRightShiftSigned :
   Pat<(TF_RightShiftOp AnyRankedTensor:$l, AnyRankedTensor:$r),
-      (HLO_ShiftRightArithmeticOp $l, $r, (BinBroadcastDimensions $l, $r)),
+      (HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+       (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
 
 // TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
@@ -126,10 +112,11 @@ def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 //
 //  return floor(div(x, y))
 def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
-          (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+          (HLO_FloorOp
+           (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
           [(IEEEFloatTensor $l)]>;
 
-// Performs a substitution of FloorDir for integer tensors, which required
+// Performs a substitution of FloorDiv for integer tensors, which required
 // additional correction for a negative numerator / denominator. Equivalent
 // pseudocode is shown below:
 //
@@ -150,16 +137,16 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
 // broadcast attributes.
 def : Pat<(TF_FloorDivOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
         (HLO_SelectOp
-         (HLO_CompareOp
-          (HLO_CompareOp $l, (HLO_ConstOp (ConstantSplat<"0"> $l)),
+         (HLOClient_BroadcastCompareOp
+          (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (ConstantSplat<"0"> $l)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
-          (HLO_CompareOp $r, (HLO_ConstOp (ConstantSplat<"0"> $r)),
+          (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (ConstantSplat<"0"> $r)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
           (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
-        (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r)),
-          (HLO_DivOp
-           (HLO_NegOp:$neg (HLO_AddOp (HLO_AbsOp $l),
-                       (HLO_SubOp (HLO_AbsOp $r),
+        (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          (HLOClient_BroadcastDivOp
+           (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
+                       (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
                         (HLO_ConstOp (ConstantSplat<"1"> $r)),
                         (NullDenseIntElementsAttr)),
                      (BinBroadcastDimensions $l, $r))),
@@ -175,20 +162,20 @@ def : Pat<(TF_FloorDivOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
 // broadcast attributes.
 def : Pat<(TF_FloorModOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
       (HLO_SelectOp
-       (HLO_AndOp
-        (HLO_CompareOp
-         (HLO_RemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
+       (HLOClient_BroadcastAndOp
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLO_ConstOp:$l_zeros (ConstantSplat<"0"> $l)),
          (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE),
-        (HLO_CompareOp
-         (HLO_CompareOp:$r_cmp $r,
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstOp:$r_zeros (ConstantSplat<"0"> $r)),
           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
-         (HLO_CompareOp:$rem_cmp $rem, $r_zeros,
+         (HLOClient_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
           (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
          (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
         (NullDenseIntElementsAttr)),
-        (HLO_AddOp $r,
+        (HLOClient_BroadcastAddOp $r,
          $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
@@ -406,39 +393,36 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
           (HLO_SelectOp:$num_lower_or_m
            (HLO_CompareOp
             $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
-            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+            HLO_COMPARISON_DIRECTION_LT
            ),
            $m_dim,
            $num_lower
           ),
           (HLO_SelectOp:$num_upper_or_n
            (HLO_CompareOp
-            $num_upper, $zero,
-            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+            $num_upper, $zero, HLO_COMPARISON_DIRECTION_LT
            ),
            $n_dim,
            $num_upper
           ),
           (HLO_SelectOp
            (HLO_AndOp
-            (HLO_CompareOp
+            (HLOClient_BroadcastCompareOp
              (HLO_NegOp
               (createConvertOp $op, $num_lower_or_m, $input)
              ),
              (HLO_SubOp:$offset
-              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input),
-              (NullDenseIntElementsAttr)
+              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input)
              ),
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
             ),
-            (HLO_CompareOp
+            (HLOClient_BroadcastCompareOp
              $offset,
              (createConvertOp
               $op, $num_upper_or_n, $input
              ),
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
-            ),
-            (BinBroadcastDimensions $offset, $input)
+            )
            ),
            $input,
            (HLO_ConstOp (ConstantSplat<"0"> $input))
@@ -462,8 +446,9 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
 // TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyRankedTensor:$input),
-          (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
-                     (BinBroadcastDimensions $zero, $input)),
+          (HLOClient_BroadcastMaxOp
+               (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
+               (BinBroadcastDimensions $zero, $input)),
           [(TF_SintOrFpTensor $input)]>;
 
 // TODO(hinsu): Lower unsigned and quantized types after supporting
@@ -485,7 +470,7 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
 // to create splat tensor of dynamic shape in HLO.
 def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
           (HLO_SelectOp
-            (HLO_CompareOp $features,
+            (HLOClient_BroadcastCompareOp $features,
               (HLO_ConstOp (GetScalarOfType<0> $features)),
               (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
             $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
@@ -598,7 +583,6 @@ def : Pat<(TF_SignOp $x),
             (HLO_CompareOp
               $x,
               $x,
-              (NullDenseIntElementsAttr),
               HLO_COMPARISON_DIRECTION_NE
             ),
             (HLO_ConstOp (ConstantSplat<"0"> $x)),
@@ -641,8 +625,6 @@ def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
 //===----------------------------------------------------------------------===//
 def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLO_MulOp
-           (HLO_MulOp $r, $l, (NullDenseIntElementsAttr)),
-           (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l,
-            (NullDenseIntElementsAttr)),
-           (NullDenseIntElementsAttr)),
+           (HLO_MulOp $r, $l),
+           (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l)),
           [(IEEEFloatTensor $l)]>;

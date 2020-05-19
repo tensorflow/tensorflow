@@ -360,6 +360,11 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
+    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+  >];
 }
 
 #endif  // CHLO_OPS
