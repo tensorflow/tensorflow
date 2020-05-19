@@ -119,7 +119,7 @@ TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
 #if defined(__ANDROID__)
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
   return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
-                           TfLiteGpuDelegateV2Delete);
+                           &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
@@ -184,7 +184,9 @@ TfLiteDelegatePtr CreateXNNPACKDelegate() {
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* xnnpack_options) {
   auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
-  return TfLiteDelegatePtr(xnnpack_delegate, TfLiteXNNPackDelegateDelete);
+  return TfLiteDelegatePtr(xnnpack_delegate, [](TfLiteDelegate* delegate) {
+    TfLiteXNNPackDelegateDelete(delegate);
+  });
 }
 
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
