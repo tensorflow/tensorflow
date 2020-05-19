@@ -23,6 +23,8 @@ namespace xla {
 
 class TriangularSolveExpander : public OpExpanderPass {
  public:
+  explicit TriangularSolveExpander(int64 block_size = 128);
+
   absl::string_view name() const override {
     return "triangular_solve_expander";
   }
@@ -34,6 +36,8 @@ class TriangularSolveExpander : public OpExpanderPass {
       HloInstruction* instruction) override;
 
  private:
+  // Block size for BuildTriangularSolve
+  const int64 block_size_;
   // Mapping from op signatures to existing computations.
   absl::flat_hash_map<string, HloComputation*> computation_cache_;
 };

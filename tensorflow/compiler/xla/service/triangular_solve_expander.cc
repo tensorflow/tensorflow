@@ -454,6 +454,9 @@ XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 
 }  // namespace
 
+TriangularSolveExpander::TriangularSolveExpander(int64 block_size)
+    : block_size_(block_size) {}
+
 bool TriangularSolveExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kTriangularSolve;
@@ -496,7 +499,7 @@ StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
 
     BuildTriangularSolve(a, b, options.left_side(), options.lower(),
                          transpose_a, conjugate_a, options.unit_diagonal(),
-                         /*block_size=*/128,
+                         /*block_size=*/block_size_,
                          /*precision=*/PrecisionConfig::HIGHEST);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
 
