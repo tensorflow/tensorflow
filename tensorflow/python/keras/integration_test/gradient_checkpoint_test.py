@@ -17,7 +17,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.keras import layers, optimizers
+layers = tf.keras.layers
+optimizers = tf.keras.optimizers
 
 def _get_big_cnn_model(img_dim, n_channels, num_partitions,
                        blocks_per_partition):
