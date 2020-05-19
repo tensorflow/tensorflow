@@ -82,15 +82,30 @@ class MemorySpaceAssignmentCostAnalysis {
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
       float alternate_mem_bandwidth_bytes_per_second,
-      const HloLiveRange& hlo_live_range)
+      const HloLiveRange& hlo_live_range, const CallGraph& call_graph)
       : cost_analysis_(cost_analysis),
         async_copy_bandwidth_bytes_per_second_(
             async_copy_bandwidth_bytes_per_second),
         alternate_mem_bandwidth_bytes_per_second_(
             alternate_mem_bandwidth_bytes_per_second),
-        hlo_live_range_(hlo_live_range) {}
+        hlo_live_range_(hlo_live_range),
+        call_graph_(call_graph) {}
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
+
+  // Returns a heuristic value that captures how much putting this tensor to the
+  // alternate memory would help if the op is memory bound, or otherwise how far
+  // off is the op to memory boundedness. The larger this number, the higher
+  // priority it will be placed in the alternate memory.
+  float GetAlternateMemoryBenefit(
+      const HloInstruction& instruction,
+      float elapsed_time_due_to_alternate_mem) const;
+
+  // Returns a heuristic value of memory boundedness for the given
+  // BufferInterval.  The larger this number, the higher priority it will be
+  // placed in the alternate memory.
+  float GetMemoryBoundedness(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -127,6 +142,10 @@ class MemorySpaceAssignmentCostAnalysis {
 
   int64 GetScheduleEndTime() const;
 
+  // Returns the number of nested while loop levels this instruction resides in.
+  // 0 means it is not in a while loop.
+  int CalculateWhileLoopNestLevel(const HloInstruction* instruction) const;
+
   const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
 
  private:
@@ -134,6 +153,7 @@ class MemorySpaceAssignmentCostAnalysis {
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
   const HloLiveRange& hlo_live_range_;
+  const CallGraph& call_graph_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -262,10 +282,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // corresponds to the instruction schedule.
   float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
 
-  // For performance reasons, we calculate the prefix sum of the elapsed time so
-  // that it's efficient to find the elapsed time in seconds in any logical
-  // interval.
-  std::vector<float> elapsed_time_cumsum_;
+  // For each instruction in the flattened schedule, maintain their elapsed time
+  // and while nesting level.
+  std::vector<float> elapsed_time_;
+  std::vector<int> while_nest_level_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   float min_async_copy_to_overlap_ratio_;
@@ -988,7 +1008,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64 reserved_in_bytes_ = 0;
-  int64 global_max_time_;
 };
 
 }  // namespace xla

@@ -57,9 +57,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
         HloLiveRange::Run(module->schedule(), *alias_analysis,
                           module->entry_computation())
             .ValueOrDie();
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
     MemorySpaceAssignmentCostAnalysis cost_analysis(
         hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth,
-        *hlo_live_range);
+        *hlo_live_range, *call_graph);
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
