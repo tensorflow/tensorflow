@@ -5761,6 +5761,25 @@ TEST_F(AlgebraicSimplifierTest, CompareSame) {
               GmockMatch(m::Broadcast(m::ConstantScalar(true))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareSimplified) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param = s32[] parameter(0)
+      c1 = s32[] constant(10)
+      c2 = s32[] constant(100)
+      cmp1 = pred[] compare(param, c1), direction=LT
+      cmp2 = pred[] compare(param, c2), direction=LT
+      ROOT out = pred[] and(cmp1, cmp2)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Op(), m::Op().IsConstantScalar(10))
+                     .WithComparisonDirection(ComparisonDirection::kLt)));
+}
+
 TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   // Some backends may have better performance by treating an outer product as a
   // Dot, rather than a broadcast Multiply

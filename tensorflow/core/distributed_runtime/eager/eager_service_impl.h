@@ -212,6 +212,8 @@ class EagerServiceImpl {
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status SendPackedHandle(const SendPackedHandleOp& send_packed_handle,
+                          EagerContext* eager_context);
   Status RegisterFunction(const RegisterFunctionOp& register_function,
                           EagerContext* eager_context);
   Status CleanupFunction(const CleanupFunctionOp& cleanup_function);

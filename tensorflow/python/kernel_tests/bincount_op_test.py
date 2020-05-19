@@ -183,7 +183,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           np_out,
           self.evaluate(
               gen_math_ops.dense_bincount(
-                  input=inp, weights=[], size=size, binary_count=True)))
+                  input=inp, weights=[], size=size, binary_output=True)))
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -201,7 +201,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           np_out,
           self.evaluate(
               gen_math_ops.dense_bincount(
-                  input=inp, weights=np_weight, size=size, binary_count=True)))
+                  input=inp, weights=np_weight, size=size, binary_output=True)))
 
   def _test_bincount_col_count(self, num_rows, num_cols, size, dtype):
     np.random.seed(42)
@@ -230,7 +230,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           np_out,
           self.evaluate(
               gen_math_ops.dense_bincount(
-                  input=inp, weights=[], size=size, binary_count=True)))
+                  input=inp, weights=[], size=size, binary_output=True)))
 
   def _test_bincount_col_count_with_weights(self, num_rows, num_cols, size,
                                             dtype):
@@ -401,7 +401,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 dense_shape=[num_rows],
                 size=size,
                 weights=[],
-                binary_count=True)))
+                binary_output=True)))
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -427,7 +427,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 dense_shape=[num_rows],
                 size=size,
                 weights=inp_weight,
-                binary_count=True)))
+                binary_output=True)))
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -490,7 +490,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 dense_shape=inp_sparse.dense_shape,
                 size=size,
                 weights=[],
-                binary_count=True)))
+                binary_output=True)))
 
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
@@ -530,7 +530,7 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                 values=x.values,
                 weights=[],
                 size=6,
-                binary_count=True)))
+                binary_output=True)))
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -629,7 +629,7 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                 values=x.values,
                 weights=[],
                 size=size,
-                binary_count=True)))
+                binary_output=True)))
 
 
 if __name__ == "__main__":

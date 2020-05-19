@@ -27,6 +27,9 @@ py_strict_library(
         "internal.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow:types_whitelist",
+    ],
     deps = [],
 )

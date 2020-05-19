@@ -657,3 +657,17 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
       std::move(tensor_handles), context, &handle);
   return tensorflow::wrap(handle);
 }
+
+void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx, unsigned char enable,
+                                       TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  context->SetAllowSoftPlacement(enable);
+}
+
+void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
+                                      TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  context->SetLogDevicePlacement(enable);
+}

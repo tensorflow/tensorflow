@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -351,7 +351,7 @@ struct FixKernelFunctionSignatures
 struct MapParallelLoops
     : public mlir::PassWrapper<MapParallelLoops, mlir::FunctionPass> {
   void runOnFunction() override {
-    mlir::greedilyMapParallelLoopsToGPU(getFunction().getBody());
+    mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
   }
 };
 

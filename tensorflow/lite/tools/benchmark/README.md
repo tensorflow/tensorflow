@@ -73,6 +73,7 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_accelerator_name`: `str` (default="")
 *   `disable_nnapi_cpu`: `bool` (default=false)
+*   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
@@ -87,6 +88,7 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
+*   `coreml_version`: `int` (default=0)
 
 #### External delegate
 *   `external_delegate_path`: `string` (default="")

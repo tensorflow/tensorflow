@@ -129,7 +129,8 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);

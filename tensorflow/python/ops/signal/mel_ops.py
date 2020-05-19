@@ -24,6 +24,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import shape_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -90,6 +91,7 @@ def _validate_arguments(num_mel_bins, sample_rate,
 
 
 @tf_export('signal.linear_to_mel_weight_matrix')
+@dispatch.add_dispatch_support
 def linear_to_mel_weight_matrix(num_mel_bins=20,
                                 num_spectrogram_bins=129,
                                 sample_rate=8000,

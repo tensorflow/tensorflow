@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -1009,7 +1010,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
   return (isinstance(x, internal.NativeObject) or
-          ops.is_dense_tensor_like(x) or
+          isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
 
 

@@ -65,7 +65,7 @@ import traceback
 import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import compat_util
 from tensorflow.python.autograph.utils import misc
@@ -103,13 +103,13 @@ def _verify_loop_init_vars(values, symbol_names):
   for name, value in zip(symbol_names, values):
     if value is None:
       raise ValueError('"{}" may not be None before the loop.'.format(name))
-    if special_values.is_undefined_return(value):
+    if isinstance(value, variables.UndefinedReturnValue):
       # Assumption: the loop will only capture the variable which tracks the
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
       raise ValueError(
           'return statements are not supported within a TensorFlow loop.')
-    if special_values.is_undefined(value):
+    if isinstance(value, variables.Undefined):
       raise ValueError('"{}" must be defined before the loop.'.format(name))
 
 
@@ -495,8 +495,7 @@ def _tf_range_for_stmt(
   iterate = compat_util.BasicRef(start)
 
   def _value_or(name, var, default):
-    if (name == opts['iterate_names']
-        and isinstance(var, special_values.Undefined)):
+    if (name == opts['iterate_names'] and isinstance(var, variables.Undefined)):
       return default
     return var
 
@@ -1019,20 +1018,21 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
       results_tuple = results
     else:
       results_tuple = results,
-    undefined = tuple(filter(special_values.is_undefined, results_tuple))
+
+    for result in results_tuple:
+      if isinstance(result, variables.UndefinedReturnValue):
+        raise ValueError(
+            'A value must also be returned from the {} branch. If a value is '
+            'returned from one branch of a conditional a value must be '
+            'returned from all branches.'.format(branch_name))
+
+    undefined = [v for v in results_tuple if isinstance(v, variables.Undefined)]
     if undefined:
       raise ValueError(
           'The following symbols must also be initialized in the {} branch: {}.'
           ' Alternatively, you may initialize them before the if'
           ' statement.'.format(branch_name,
                                tuple(s.symbol_name for s in undefined)))
-
-    for result in results_tuple:
-      if special_values.is_undefined_return(result):
-        raise ValueError(
-            'A value must also be returned from the {} branch. If a value is '
-            'returned from one branch of a conditional a value must be '
-            'returned from all branches.'.format(branch_name))
 
     return results
 

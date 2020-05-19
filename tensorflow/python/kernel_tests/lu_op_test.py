@@ -30,7 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
@@ -214,15 +214,20 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
     self._verifyLu(data)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     self._verifyLu(np.empty([0, 2, 2]))
     self._verifyLu(np.empty([2, 0, 0]))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrentExecutesWithoutError(self):
-    matrix1 = random_ops.random_normal([5, 5], seed=42)
-    matrix2 = random_ops.random_normal([5, 5], seed=42)
+    matrix_shape = [5, 5]
+    seed = [42, 24]
+    matrix1 = stateless_random_ops.stateless_random_normal(
+        shape=matrix_shape, seed=seed)
+    matrix2 = stateless_random_ops.stateless_random_normal(
+        shape=matrix_shape, seed=seed)
+    self.assertAllEqual(matrix1, matrix2)
     lu1, p1 = linalg_ops.lu(matrix1)
     lu2, p2 = linalg_ops.lu(matrix2)
     lu1_val, p1_val, lu2_val, p2_val = self.evaluate([lu1, p1, lu2, p2])

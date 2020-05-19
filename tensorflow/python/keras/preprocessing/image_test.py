@@ -146,8 +146,7 @@ class TestImage(keras_parameterized.TestCase):
       generator = preprocessing_image.ImageDataGenerator(
           data_format='unknown')
 
-    generator = preprocessing_image.ImageDataGenerator(
-        zoom_range=(2, 2))
+    generator = preprocessing_image.ImageDataGenerator(zoom_range=(2., 2.))
 
   def test_image_data_generator_fit(self):
     generator = preprocessing_image.ImageDataGenerator(

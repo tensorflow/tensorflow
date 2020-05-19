@@ -604,6 +604,15 @@ class MemorySpaceAssignment {
     AllocationSequence allocation_sequence_;
   };
 
+  // Statistics of asynchronous copies.
+  struct AsyncCopyStats {
+    int64 max_outstanding_async_copies;
+    int64 num_prefetches;
+    int64 prefetch_bytes;
+    int64 num_evictions;
+    int64 eviction_bytes;
+  };
+
   virtual ~MemorySpaceAssignment() = default;
 
   // Runs the MemorySpaceAssignment pass.
@@ -611,9 +620,8 @@ class MemorySpaceAssignment {
       HloModule* module, const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis, const Options& options);
 
-  // Returns the maximum number of outstanding asynchronous copies in the
-  // module.
-  static int64 CountMaximumOutstandingAsyncCopies(const HloModule& module);
+  // Calculates asynchronous copy statistics.
+  StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
@@ -808,11 +816,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // use_times is a sorted sequence of the times of all uses.
   // latest_prefetch_time is the latest time we can schedule the CopyDone for a
   // prefetch.
+  // If allow_no_copy_alternate_mem_allocation is false, an eviction is forced.
+  // If earliest_prefetch_time is set, prefetches cannot start before this
+  // value.
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
     int64 latest_prefetch_time;
     int64 size;
+    bool allow_no_copy_alternate_mem_allocation;
+    absl::optional<int64> earliest_prefetch_time;
     absl::optional<int64> preferred_offset;
     HloUse use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
@@ -833,7 +846,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
   // Returns true if the use is allowed in the alternate memory.
-  bool IsUseAllowedInAlternateMemory(const HloUse& use) const;
+  bool IsUseAllowedInAlternateMemory(const AllocationValue& value,
+                                     const HloUse& use) const;
 
   // Given an HloValue, creates AllocationValue objects and corresponding
   // AllocationSequences and appends them into allocation_sequence_list_.
@@ -886,6 +900,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AddAliasedRequiredAssignment(
       const HloInstruction* instruction, ShapeIndex index,
       const MemorySpaceAssignment::Allocation* aliased_allocation);
+
+  // This sets a required assignment. CHECK fails if there is a conflicting
+  // required assignment at the same time.
+  void AddRequiredAssignment(const HloValue* value,
+                             const HloInstruction* instruction,
+                             MemorySpace memory_space, int64 time,
+                             absl::optional<Chunk> chunk = absl::nullopt);
+  void AddRequiredAssignment(const HloInstruction* instruction,
+                             ShapeIndex index, MemorySpace memory_space,
+                             absl::optional<Chunk> chunk = absl::nullopt);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();

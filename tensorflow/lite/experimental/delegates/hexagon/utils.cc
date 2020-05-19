@@ -42,6 +42,8 @@ bool InputsWithCorrectTypes(
     const std::vector<std::vector<TfLiteType>>& per_input_possible_types) {
   if (node->inputs->size != per_input_possible_types.size()) return false;
   for (int i = 0; i < per_input_possible_types.size(); ++i) {
+    // Skip optional tensor.
+    if (node->inputs->data[i] == -1) continue;
     bool type_found = false;
     for (auto possible_type : per_input_possible_types[i]) {
       if (TensorTypeMatch(node->inputs->data[i], context, possible_type)) {
@@ -79,7 +81,10 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinConcatenation:
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
+    case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMaxPool2d:
+    case kTfLiteBuiltinMean:
+    case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
@@ -113,6 +118,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
   int tensor_id;
   for (int i = 0; i < node->inputs->size; ++i) {
     tensor_id = node->inputs->data[i];
+    // Skip optional tensors. Builders should handle optional tensors
+    // not available.
+    if (tensor_id == -1) continue;
     const auto& tensor = context->tensors[tensor_id];
     if (tensor.dims->size > 4) return false;
   }
@@ -154,11 +162,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return IsActivationReluOrNone(sub_params->activation);
     }
     case kTfLiteBuiltinSum:
-    case kTfLiteBuiltinMean: {
       // TODO(b/139277813): Enable these when they pass unit tests. These seem
       // to recompute the output min/max instead of taking them as inputs, which
       // causes an unexpected shift in dequantized values.
       return false;
+    case kTfLiteBuiltinMean: {
+      return InputsWithCorrectTypes(
+                 node, context,
+                 {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) &&
+             IsConstantTensor(GetInput(context, node, 1));
     }
     case kTfLiteBuiltinMirrorPad: {
       if (!InputsWithCorrectTypes(
@@ -184,19 +196,22 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       if (!InputsWithCorrectTypes(node, context,
                                   {{kTfLiteUInt8, kTfLiteInt8},
                                    {kTfLiteUInt8, kTfLiteInt8},
-                                   {kTfLiteInt32}}))
+                                   {kTfLiteInt32, kTfLiteNoType}}))
         return false;
 
       const auto& weights_tensor = context->tensors[node->inputs->data[1]];
-      const auto& bias_tensor = context->tensors[node->inputs->data[2]];
-      const bool weights_and_bias_const =
-          weights_tensor.allocation_type == kTfLiteMmapRo &&
-          bias_tensor.allocation_type == kTfLiteMmapRo;
+      bool bias_const_or_no_bias = true;
+      if (node->inputs->data[2] != -1) {
+        const auto& bias_tensor = context->tensors[node->inputs->data[2]];
+        bias_const_or_no_bias = bias_tensor.allocation_type == kTfLiteMmapRo;
+      }
+      const bool weights_const =
+          weights_tensor.allocation_type == kTfLiteMmapRo;
 
       const TfLiteFullyConnectedParams* matmul_params =
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
-      return (weights_and_bias_const &&
+      return (weights_const && bias_const_or_no_bias &&
               IsActivationReluOrNone(matmul_params->activation) &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
@@ -328,7 +343,8 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       const auto& input_tensor = context->tensors[node->inputs->data[1]];
       const bool is_four_dim_or_less = input_tensor.dims->size < 5;
-      // We need splitting axis to be constant, so Hexagon knows output shapes.
+      // We need splitting axis to be constant, so Hexagon knows output
+      // shapes.
       return is_four_dim_or_less &&
              IsConstantTensor(GetInput(context, node, 0));
     }
@@ -360,6 +376,16 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     case kTfLiteBuiltinQuantize: {
       return InputsWithCorrectTypes(node, context,
                                     {{kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMinimum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinMaximum: {
+      return InputsWithCorrectTypes(
+          node, context,
+          {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
     }
     default:
       return false;
