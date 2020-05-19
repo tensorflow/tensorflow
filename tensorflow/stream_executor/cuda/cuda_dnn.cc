@@ -1163,17 +1163,26 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // in profile mode, which is run with algorithms returned from
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
     // use tensor ops). CuDNN 7.2.1 fixed this issue
-    cudnnMathType_t math_type;
+    bool allow_tensor_ops =
+        data_type != CUDNN_DATA_FLOAT || tensorflow::tf32_execution_allowed();
+    bool use_tensor_ops;
     if (algorithm_config.algorithm().has_value()) {
-      math_type = algorithm_config.algorithm()->tensor_ops_enabled()
-                      ? CUDNN_TENSOR_OP_MATH
-                      : CUDNN_DEFAULT_MATH;
+      use_tensor_ops = algorithm_config.algorithm()->tensor_ops_enabled();
     } else {
-#if CUDNN_VERSION >= 7201
-      math_type = CUDNN_TENSOR_OP_MATH;
-#else
-      math_type = CUDNN_DEFAULT_MATH;
-#endif  // CUDNN_VERSION >= 7201
+      use_tensor_ops = CUDNN_VERSION >= 7201 && allow_tensor_ops;
+    }
+
+    if (use_tensor_ops && !allow_tensor_ops) {
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "Algo requests disallowed tensor op evaluation.");
+    }
+
+    cudnnMathType_t math_type;
+    if (use_tensor_ops) {
+      math_type =
+          CUDNN_VERSION >= 8000 ? CUDNN_DEFAULT_MATH : CUDNN_TENSOR_OP_MATH;
+    } else {
+      math_type = CUDNN_VERSION >= 8000 ? CUDNN_FMA_MATH : CUDNN_DEFAULT_MATH;
     }
     CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
 #endif  // CUDNN_VERSION >= 7000
@@ -2625,6 +2634,9 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
   }
   return use_tensor_ops;
 }
+
+cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
+dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
