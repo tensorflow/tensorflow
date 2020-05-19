@@ -62,7 +62,7 @@ def _get_end_to_end_test_cases():
           "testcase_name":
               "test_simple_tokens_int_mode",
           # Create an array where 'earth' is the most frequent term, followed by
-          # 'wind', then 'and', then 'fire'. This ensures that the vocab accumulator
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
           # is sorting by frequency.
           "vocab_data":
               np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
@@ -72,6 +72,26 @@ def _get_end_to_end_test_cases():
                         ["and"], ["earth"], ["michigan"]]),
           "kwargs": {
               "max_tokens": None,
+              "standardize": None,
+              "split": None,
+              "output_mode": text_vectorization.INT
+          },
+          "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+      },
+      {
+          "testcase_name":
+              "test_simple_tokens_int_mode_hard_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 6,
               "standardize": None,
               "split": None,
               "output_mode": text_vectorization.INT
@@ -985,7 +1005,7 @@ class TextVectorizationOutputTest(
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
     _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
+    with self.assertRaisesRegex(RuntimeError, "can't be adapted after being"):
       layer.adapt(vocab_data)
 
   def test_bag_output_soft_maximum_set_state_variables_after_call_fails(self):
@@ -1347,6 +1367,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                 ".*`output_sequence_length` must not be set.*"):
       _ = get_layer_class()(output_mode="count", output_sequence_length=2)
 
+
 # Custom functions for the custom callable serialization test. Declared here
 # to avoid multiple registrations from run_all_keras_modes().
 @generic_utils.register_keras_serializable(package="Test")
@@ -1526,209 +1547,6 @@ class TextVectorizationSavingTest(
     # Validate correctness of the new model.
     new_output_dataset = loaded_model.predict(input_array)
     self.assertAllClose(new_output_dataset, expected_output)
-
-
-@keras_parameterized.run_all_keras_modes
-class TextVectorizationCombinerTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
-
-  def compare_text_accumulators(self, a, b, msg=None):
-    if a is None or b is None:
-      self.assertAllEqual(a, b, msg=msg)
-
-    self.assertAllEqual(a.count_dict, b.count_dict, msg=msg)
-    self.assertAllEqual(a.metadata, b.metadata, msg=msg)
-
-    if a.per_doc_count_dict is not None:
-
-      def per_doc_counts(accumulator):
-        count_values = [
-            count_dict["count"]
-            for count_dict in accumulator.per_doc_count_dict.values()
-        ]
-        return dict(zip(accumulator.per_doc_count_dict.keys(), count_values))
-
-      self.assertAllEqual(per_doc_counts(a), per_doc_counts(b), msg=msg)
-
-  compare_accumulators = compare_text_accumulators
-
-  def update_accumulator(self, accumulator, data):
-    accumulator.count_dict.update(dict(zip(data["vocab"], data["counts"])))
-    accumulator.metadata[0] = data["num_documents"]
-
-    if "document_counts" in data:
-      create_dict = lambda x: {"count": x, "last_doc_id": -1}
-      idf_count_dicts = [
-          create_dict(count) for count in data["document_counts"]
-      ]
-      idf_dict = dict(zip(data["vocab"], idf_count_dicts))
-
-      accumulator.per_doc_count_dict.update(idf_dict)
-
-    return accumulator
-
-  def test_combiner_api_compatibility_int_mode(self):
-    data = np.array([["earth", "wind", "and", "fire"],
-                     ["earth", "wind", "and", "michigan"]])
-    combiner = text_vectorization._TextVectorizationCombiner(compute_idf=False)
-    expected_accumulator_output = {
-        "vocab": np.array(["and", "earth", "wind", "fire", "michigan"]),
-        "counts": np.array([2, 2, 2, 1, 1]),
-        "num_documents": np.array(2),
-    }
-    expected_extract_output = {
-        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
-    }
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected_accumulator)
-    self.validate_accumulator_uniqueness(combiner, data)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
-  def test_combiner_api_compatibility_tfidf_mode(self):
-    data = np.array([["earth", "wind", "and", "fire"],
-                     ["earth", "wind", "and", "michigan"]])
-    combiner = text_vectorization._TextVectorizationCombiner(compute_idf=True)
-    expected_extract_output = {
-        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
-        "idf": np.array([0.510826, 0.510826, 0.510826, 0.693147, 0.693147]),
-        "oov_idf": np.array([1.098612])
-    }
-    expected_accumulator_output = {
-        "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
-        "counts": np.array([2, 2, 2, 1, 1]),
-        "document_counts": np.array([2, 2, 2, 1, 1]),
-        "num_documents": np.array(2),
-    }
-
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected_accumulator)
-    self.validate_accumulator_uniqueness(combiner, data)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
-  # TODO(askerryryan): Add tests confirming equivalence to behavior of
-  # existing tf.keras.preprocessing.text.Tokenizer.
-  @parameterized.named_parameters(
-      {
-          "testcase_name":
-              "top_k_smaller_than_full_vocab",
-          "data":
-              np.array([["earth", "wind"], ["fire", "wind"], ["and"],
-                        ["fire", "wind"]]),
-          "vocab_size":
-              3,
-          "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "earth", "and"]),
-              "counts": np.array([3, 2, 1, 1]),
-              "document_counts": np.array([3, 2, 1, 1]),
-              "num_documents": np.array(4),
-          },
-          "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "earth"]),
-              "idf": np.array([0.693147, 0.847298, 1.098612]),
-              "oov_idf": np.array([1.609438]),
-          },
-      },
-      {
-          "testcase_name":
-              "top_k_larger_than_full_vocab",
-          "data":
-              np.array([["earth", "wind"], ["fire", "wind"], ["and"],
-                        ["fire", "wind"]]),
-          "vocab_size":
-              10,
-          "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "earth", "and"]),
-              "counts": np.array([3, 2, 1, 1]),
-              "document_counts": np.array([3, 2, 1, 1]),
-              "num_documents": np.array(4),
-          },
-          "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "earth", "and"]),
-              "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
-              "oov_idf": np.array([1.609438]),
-          },
-      },
-      {
-          "testcase_name":
-              "no_top_k",
-          "data":
-              np.array([["earth", "wind"], ["fire", "wind"], ["and"],
-                        ["fire", "wind"]]),
-          "vocab_size":
-              None,
-          "expected_accumulator_output": {
-              "vocab": np.array(["wind", "fire", "earth", "and"]),
-              "counts": np.array([3, 2, 1, 1]),
-              "document_counts": np.array([3, 2, 1, 1]),
-              "num_documents": np.array(4),
-          },
-          "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "earth", "and"]),
-              "idf": np.array([0.693147, 0.847298, 1.098612, 1.098612]),
-              "oov_idf": np.array([1.609438]),
-          },
-      },
-      {
-          "testcase_name": "single_element_per_row",
-          "data": np.array([["earth"], ["wind"], ["fire"], ["wind"], ["and"]]),
-          "vocab_size": 3,
-          "expected_accumulator_output": {
-              "vocab": np.array(["wind", "and", "earth", "fire"]),
-              "counts": np.array([2, 1, 1, 1]),
-              "document_counts": np.array([2, 1, 1, 1]),
-              "num_documents": np.array(5),
-          },
-          "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "earth"]),
-              "idf": np.array([0.980829, 1.252763, 1.252763]),
-              "oov_idf": np.array([1.791759]),
-          },
-      },
-      # Which tokens are retained are based on global frequency, and thus are
-      # sensitive to frequency within a document. In contrast, because idf only
-      # considers the presence of a token in a document, it is insensitive
-      # to the frequency of the token within the document.
-      {
-          "testcase_name":
-              "retained_tokens_sensitive_to_within_document_frequency",
-          "data":
-              np.array([["earth", "earth"], ["wind", "wind"], ["fire", "fire"],
-                        ["wind", "wind"], ["and", "michigan"]]),
-          "vocab_size":
-              3,
-          "expected_accumulator_output": {
-              "vocab": np.array(["wind", "earth", "fire", "and", "michigan"]),
-              "counts": np.array([4, 2, 2, 1, 1]),
-              "document_counts": np.array([2, 1, 1, 1, 1]),
-              "num_documents": np.array(5),
-          },
-          "expected_extract_output": {
-              "vocab": np.array(["wind", "fire", "earth"]),
-              "idf": np.array([0.980829, 1.252763, 1.252763]),
-              "oov_idf": np.array([1.791759]),
-          },
-      })
-  def test_combiner_computation(self,
-                                data,
-                                vocab_size,
-                                expected_accumulator_output,
-                                expected_extract_output,
-                                compute_idf=True):
-    combiner = text_vectorization._TextVectorizationCombiner(
-        vocab_size=vocab_size, compute_idf=compute_idf)
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_computation(combiner, data, expected_accumulator)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
 
 
 if __name__ == "__main__":
