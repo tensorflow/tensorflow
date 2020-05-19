@@ -120,6 +120,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._num_iters_2_by_2 = 30000
     self._num_iters_100_by_784 = 30000
 
+    # used for conv2d benchmarks
+    self._m_8_28_28_3 = random_ops.random_uniform((8, 28, 28, 3))
+    self._m_1_3_3_1 = random_ops.random_uniform((1, 3, 3, 1))
+
   def _get_benchmark_name(self):
     """Mostly copied from benchmark.py _get_name()."""
     stack = tf_inspect.stack()
@@ -305,6 +309,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: m * m
     self._run(func, num_iters)
 
+  def _benchmark_tf_conv2d(self, m1, m2, num_iters):
+    func = lambda: nn_ops.conv2d(m1, m2, strides=[1, 1, 1, 1], padding="VALID")
+    self._run(func, num_iters)
+
   def _benchmark_tf_multiply_op(self, m, num_iters):
     func = lambda: math_ops.multiply(m, m)
     self._run(func, num_iters)
@@ -338,6 +346,21 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     with context.device(GPU):
       m = self._m_2.gpu()
       self._benchmark_tf_multiply_op(m, 30000)
+
+  def benchmark_tf_conv2d_CPU(self):
+    with context.device(CPU):
+      m1 = self._m_8_28_28_3.cpu()
+      m2 = self._m_1_3_3_1.cpu()
+      self._benchmark_tf_conv2d(m1, m2, 30000)
+
+  @test_util.disable_tfrt("copy to GPU not supported")
+  def benchmark_tf_conv2d_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m1 = self._m_8_28_28_3.gpu()
+      m2 = self._m_1_3_3_1.gpu()
+      self._benchmark_tf_conv2d(m1, m2, 30000)
 
   def benchmark_tf_identity(self):
     m = self._m_2
