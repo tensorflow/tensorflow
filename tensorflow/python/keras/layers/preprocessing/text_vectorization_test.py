@@ -37,9 +37,9 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import embeddings
+from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
-from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
