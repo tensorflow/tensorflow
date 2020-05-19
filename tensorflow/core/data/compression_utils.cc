@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/compression_utils.h"
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -21,11 +21,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-namespace service_util {
 
-Status Compress(const std::vector<Tensor>& element, CompressedElement* out) {
+Status CompressElement(const std::vector<Tensor>& element,
+                       CompressedElement* out) {
   tensorflow::profiler::TraceMe activity(
-      "Compress", tensorflow::profiler::TraceMeLevel::kInfo);
+      "CompressElement", tensorflow::profiler::TraceMeLevel::kInfo);
 
   // Step 1: Determine the total uncompressed size. This requires serializing
   // non-memcopyable tensors, which we save to use again later.
@@ -51,7 +51,8 @@ Status Compress(const std::vector<Tensor>& element, CompressedElement* out) {
   char* position = uncompressed.mdata();
   int non_memcpy_component_index = 0;
   for (auto& component : element) {
-    ComponentMetadata* metadata = out->mutable_component_metadata()->Add();
+    CompressedComponentMetadata* metadata =
+        out->mutable_component_metadata()->Add();
     metadata->set_dtype(component.dtype());
     component.shape().AsProto(metadata->mutable_tensor_shape());
     if (DataTypeCanUseMemcpy(component.dtype())) {
@@ -74,10 +75,10 @@ Status Compress(const std::vector<Tensor>& element, CompressedElement* out) {
   return Status::OK();
 }
 
-Status Uncompress(const CompressedElement& compressed,
-                  std::vector<Tensor>* out) {
+Status UncompressElement(const CompressedElement& compressed,
+                         std::vector<Tensor>* out) {
   tensorflow::profiler::TraceMe activity(
-      "Uncompress", tensorflow::profiler::TraceMeLevel::kInfo);
+      "UncompressElement", tensorflow::profiler::TraceMeLevel::kInfo);
   int num_components = compressed.component_metadata_size();
   out->clear();
   out->reserve(num_components);
@@ -92,7 +93,8 @@ Status Uncompress(const CompressedElement& compressed,
   tensor_proto_strs.reserve(num_components);
   int64 total_size = 0;
   for (int i = 0; i < num_components; ++i) {
-    const ComponentMetadata& metadata = compressed.component_metadata(i);
+    const CompressedComponentMetadata& metadata =
+        compressed.component_metadata(i);
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
       out->emplace_back(metadata.dtype(), metadata.tensor_shape());
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
@@ -146,6 +148,5 @@ Status Uncompress(const CompressedElement& compressed,
   return Status::OK();
 }
 
-}  // namespace service_util
 }  // namespace data
 }  // namespace tensorflow

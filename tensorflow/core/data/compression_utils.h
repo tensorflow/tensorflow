@@ -16,24 +16,23 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_COMPRESSION_UTILS_H_
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
-namespace service_util {
 
 // Compresses the components of `element` into the `CompressedElement` proto.
 //
 // In addition to writing the actual compressed bytes, `Compress` fills
 // out the per-component metadata for the `CompressedElement`.
-Status Compress(const std::vector<Tensor>& element, CompressedElement* out);
+Status CompressElement(const std::vector<Tensor>& element,
+                       CompressedElement* out);
 
 // Uncompresses a `CompressedElement` into a vector of tensor components.
-Status Uncompress(const CompressedElement& compressed,
-                  std::vector<Tensor>* out);
+Status UncompressElement(const CompressedElement& compressed,
+                         std::vector<Tensor>* out);
 
-}  // namespace service_util
 }  // namespace data
 }  // namespace tensorflow
 

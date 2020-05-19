@@ -18,7 +18,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.grpc.pb.h"
 #include "tensorflow/core/data/service/master.pb.h"
@@ -74,7 +74,7 @@ Status CheckWorkerOutput(const std::string& worker_address, int64 task_id,
       return errors::Internal("Reached end of sequence too early.");
     }
     std::vector<Tensor> element;
-    TF_RETURN_IF_ERROR(service_util::Uncompress(compressed, &element));
+    TF_RETURN_IF_ERROR(UncompressElement(compressed, &element));
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::ExpectEqual(element, expected,
                                                        /*compare_order=*/true));
   }

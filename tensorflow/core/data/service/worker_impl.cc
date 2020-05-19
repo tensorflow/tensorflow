@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.grpc.pb.h"
@@ -135,8 +135,8 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
 
   if (!end_of_sequence) {
     VLOG(3) << "Producing an element for task " << request->task_id();
-    TF_RETURN_IF_ERROR(service_util::Compress(
-        outputs, response->mutable_compressed_element()));
+    TF_RETURN_IF_ERROR(
+        CompressElement(outputs, response->mutable_compressed_element()));
   }
   response->set_end_of_sequence(end_of_sequence);
 

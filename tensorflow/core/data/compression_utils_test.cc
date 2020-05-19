@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/compression_utils.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-namespace service_util {
 
 class ParameterizedCompressionUtilsTest
     : public DatasetOpsTestBase,
@@ -29,9 +28,9 @@ class ParameterizedCompressionUtilsTest
 TEST_P(ParameterizedCompressionUtilsTest, RoundTrip) {
   std::vector<Tensor> element = GetParam();
   CompressedElement compressed;
-  TF_ASSERT_OK(Compress(element, &compressed));
+  TF_ASSERT_OK(CompressElement(element, &compressed));
   std::vector<Tensor> round_trip_element;
-  TF_ASSERT_OK(Uncompress(compressed, &round_trip_element));
+  TF_ASSERT_OK(UncompressElement(compressed, &round_trip_element));
   TF_EXPECT_OK(
       ExpectEqual(element, round_trip_element, /*compare_order=*/true));
 }
@@ -50,6 +49,5 @@ std::vector<std::vector<Tensor>> TestCases() {
 INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,
                          ::testing::ValuesIn(TestCases()));
 
-}  // namespace service_util
 }  // namespace data
 }  // namespace tensorflow
