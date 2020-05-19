@@ -248,6 +248,14 @@ class TraceMe {
 #endif
   }
 
+  static uint64 NewActivityId() {
+#if !defined(IS_MOBILE_PLATFORM)
+    return TraceMeRecorder::NewActivityId();
+#else
+    return 0;
+#endif
+  }
+
  private:
   // Activity ID or start time used when tracing is disabled.
   constexpr static uint64 kUntracedActivity = 0;

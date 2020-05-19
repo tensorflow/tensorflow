@@ -126,6 +126,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":traceme",
+        ":traceme_encode",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
 tf_pybind_cc_library_wrapper(
     name = "scoped_annotation_headers",
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
