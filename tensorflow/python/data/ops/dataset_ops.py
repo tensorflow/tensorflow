@@ -1461,6 +1461,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
+    >>> # Pad with a single value and multiple components.
+    >>> E = tf.data.Dataset.zip((A, A)).padded_batch(2, padding_values=-1)
+    >>> for element in E.as_numpy_iterator():
+    ...   print(element)
+    (array([[ 1, -1],
+           [ 2,  2]], dtype=int32), array([[ 1, -1],
+           [ 2,  2]], dtype=int32))
+    (array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32), array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32))
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.sparse.SparseTensor`.
@@ -1479,7 +1489,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types.
+        string for string types. The `padding_values` should have the
+        same structure as the input dataset. If `padding_values` is a single
+        element and the input dataset has multiple components, then the same
+        `padding_values` will be used to pad every component of the dataset.
+        If `padding_values` is a scalar, then its value will be broadcasted
+        to match the shape of each component.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
