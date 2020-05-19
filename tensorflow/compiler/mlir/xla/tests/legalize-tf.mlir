@@ -1320,27 +1320,6 @@ func @relu_grad(%gradients: tensor<4x8xf32>, %features: tensor<?x?xf32>) -> tens
 // Select op legalizations.
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: func @select
-func @select(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0: tensor<2xi32>
-}
-
-// CHECK-LABEL: func @select_float
-func @select_float(%arg0: tensor<2xi1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  return %0: tensor<2xf32>
-}
-
-// CHECK-LABEL: func @select_multidimensional
-func @select_multidimensional(%arg0: tensor<3x2xi1>, %arg1: tensor<3x2xi32>, %arg2: tensor<3x2xi32>) -> tensor<3x2xi32> {
-  // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3x2xi1>, tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32>
-  return %0: tensor<3x2xi32>
-}
-
 // CHECK-LABEL: func @selectv2
 func @selectv2(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
@@ -1377,6 +1356,14 @@ func @selectv2_broadcast_pred(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %ar
   // CHECK: "xla_hlo.select"(%[[BROADCAST]], %arg1, %arg2)
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
   return %0: tensor<2x8x8xi32>
+}
+
+// CHECK-LABEL: func @selectv2_broadcast_tensor_pred
+func @selectv2_broadcast_tensor_pred(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
+  // CHECK: %[[BROADCAST:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi1>) -> tensor<2x3xi1>
+  // CHECK: "xla_hlo.select"(%[[BROADCAST]], %arg1, %arg2)
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
+  return %0: tensor<2x3xf16>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_all

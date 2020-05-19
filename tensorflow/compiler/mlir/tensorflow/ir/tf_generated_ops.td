@@ -7436,9 +7436,15 @@ select(condition, t, e) ==> [[1, 2],
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let hasCanonicalizer = 1;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
-def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
+def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]> {
   let summary = "";
 
   let description = [{

@@ -1008,6 +1008,116 @@ func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
 // -----
 
 //===--------------------------------------------------------------------===//
+//  tf.Select
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.Select
+// CHECK-LABEL: func @testSelect
+func @testSelect(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<3x2xf16>) -> tensor<3x2xf16> {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<3x2xf16>) -> tensor<3x2xf16>
+  return %0: tensor<3x2xf16>
+}
+
+// -----
+
+func @testInvalidSelect(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
+  // expected-error @+1 {{requires that, when pred is a vector, the shape matches the first dimension of t and e}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
+  return %0: tensor<2x3xf16>
+}
+
+// -----
+
+// Test invalid tf.Select - broadcasting then/else parameters is not supported
+func @selectBroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  // expected-error @+1 {{requires t and e have compatible shapes}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+func @invalidSelect(%arg0: tensor<2xi1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires that t and e are nonscalar when pred is a vector}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// -----
+
+func @invalidSelect(%arg0: tensor<1x8xi1>, %arg1: tensor<1x8x8xi32>, %arg2: tensor<1x8x8xi32>) -> tensor<1x8x8xi32> {
+  // expected-error @+1 {{requires that pred is a scalar OR has the same rank as t and e OR is a vector}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<1x8xi1>, tensor<1x8x8xi32>, tensor<1x8x8xi32>) -> tensor<1x8x8xi32>
+  return %0: tensor<1x8x8xi32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.SelectV2
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.SelectV2
+// CHfaECK-LABEL: func @selectV2BroadcastThen
+func @selectV2BroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// Test valid tf.SelectV2
+// CHECK-LABEL: func @selectV2BroadcastElse
+func @selectV2BroadcastElse(%arg0: tensor<i1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<8x1xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x8x8xi32>, tensor<8x1xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// Test valid tf.SelectV2
+// CHECK-LABEL: func @selectV2BroadcastPred
+func @selectV2BroadcastPred(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2BroadcastAll
+func @selectV2BroadcastAll(%arg0: tensor<8x1x1xi1>, %arg1: tensor<1x8x1xi32>, %arg2: tensor<1x1x8xi32>) -> tensor<8x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8x1x1xi1>, tensor<1x8x1xi32>, tensor<1x1x8xi32>) -> tensor<8x8x8xi32>
+  return %0: tensor<8x8x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2DynamicRanked
+func @selectV2DynamicRanked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x?x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x?x8xi32>, tensor<2x8x8xi32>) -> tensor<2x?x8xi32>
+  return %0: tensor<2x?x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2Unranked
+func @selectV2Unranked(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
+}
+
+// -----
+
+// Test invalid tf.SelectV2: this is an invalid broadcast for the predicate
+func @testInvalidSelectV2(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<3x2xf16>) -> tensor<3x2xf16> {
+  // expected-error @+1 {{operands don't have broadcast-compatible shapes}}
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<3x2xf16>) -> tensor<3x2xf16>
+  return %0: tensor<3x2xf16>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
 //  tf.Softmax
 //===--------------------------------------------------------------------===//
 

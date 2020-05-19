@@ -522,18 +522,6 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
     (HLO_ReverseOp $values, (ConvertAxisAttr $values, $axis))>;
 
 //===----------------------------------------------------------------------===//
-// Ternary op patterns.
-//===----------------------------------------------------------------------===//
-
-def BothTypesMatch : Constraint<CPred<"$0.getType() == $1.getType()">,
-   "types must be equal">;
-
-def : Pat<(TF_SelectOp $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
-  // TODO(jpienaar): This restriction is to avoid creating a currently
-  // unsupported HLO select.
-  [(BothTypesMatch $t, $e)]>;
-
-//===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
