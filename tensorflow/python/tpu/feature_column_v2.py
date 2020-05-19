@@ -913,8 +913,9 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
   def create_state(self, state_manager):
     _check_invalid_cases(self._embedding_lookup_device)
     # CPU case.
-    if self._embedding_lookup_device == EmbeddingDevice.CPU or _is_running_on_cpu(
-    ):
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
       return fc_lib.EmbeddingColumn.create_state(self, state_manager)
     # TPU_EMBEDDING_CORE case.
     elif self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE:
@@ -928,8 +929,9 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
     """Private method that follows get_dense_tensor."""
     _check_invalid_cases(self._embedding_lookup_device)
     # CPU Case.
-    if self._embedding_lookup_device == EmbeddingDevice.CPU or _is_running_on_cpu(
-    ):
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
       return super(_TPUDeviceSpecificEmbeddingColumnV2,
                    self).get_dense_tensor(transformation_cache, state_manager)
     # TPU_EMBEDDING_CORE case.
@@ -963,8 +965,9 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     _check_invalid_cases(self._embedding_lookup_device)
     # CPU Case.
-    if self._embedding_lookup_device == EmbeddingDevice.CPU or _is_running_on_cpu(
-    ):
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
       return super(_TPUDeviceSpecificEmbeddingColumnV2,
                    self)._get_dense_tensor(inputs, weight_collections,
                                            trainable)
@@ -1039,8 +1042,9 @@ class _TPUSharedDeviceSpecificEmbeddingColumnV2(_TPUSharedEmbeddingColumnV2):
     """Private method that follows _get_dense_tensor_internal."""
     _check_invalid_cases(self._embedding_lookup_device)
     # CPU Case.
-    if self._embedding_lookup_device == EmbeddingDevice.CPU or _is_running_on_cpu(
-    ):
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
       return super(_TPUSharedDeviceSpecificEmbeddingColumnV2,
                    self)._get_dense_tensor_internal(transformation_cache,
                                                     state_manager)
