@@ -57,6 +57,8 @@ class IntegerLookup(index_lookup.IndexLookup):
       a vocabulary to load into this layer. The file should contain one value
       per line. If the list or file contains the same token multiple times, an
       error will be thrown.
+    invert: If true, this layer will map indices to vocabulary items instead
+      of mapping vocabulary items to indices.
   """
 
   def __init__(self,
@@ -65,6 +67,7 @@ class IntegerLookup(index_lookup.IndexLookup):
                mask_value=0,
                oov_value=-1,
                vocabulary=None,
+               invert=False,
                **kwargs):
     allowed_dtypes = [dtypes.int64]
 
@@ -95,6 +98,7 @@ class IntegerLookup(index_lookup.IndexLookup):
         mask_token=mask_value,
         oov_token=oov_value,
         vocabulary=vocabulary,
+        invert=invert,
         **kwargs)
 
   def get_config(self):

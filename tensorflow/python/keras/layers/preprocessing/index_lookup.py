@@ -75,6 +75,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       only used when performing an inverse lookup.
     vocabulary: An optional list of vocabulary terms. If the list contains the
       same token multiple times, an error will be thrown.
+    invert: If true, this layer will map indices to vocabulary items instead
+      of mapping vocabulary items to indices.
   """
   # TODO(momernick): Add an examples section to the docstring.
 
@@ -84,17 +86,22 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                mask_token,
                oov_token,
                vocabulary=None,
+               invert=False,
                **kwargs):
 
     # If max_tokens is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_tokens is not None and max_tokens <= 1:
-      raise ValueError("If set, max_tokens must be greater than 1.")
+      raise ValueError("If set, `max_tokens` must be greater than 1.")
 
     if num_oov_indices < 0:
-      raise ValueError("num_oov_indices must be greater than 0. You passed %s" %
-                       num_oov_indices)
+      raise ValueError("`num_oov_indices` must be greater than 0. You passed "
+                       "%s" % num_oov_indices)
 
+    if invert and num_oov_indices != 1:
+      raise ValueError("`num_oov_tokens` must be 1 when `invert` is True.")
+
+    self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices
     self.oov_token = oov_token
@@ -117,10 +124,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._output_dtype = dtypes.int64
 
+    if invert:
+      key_dtype = self._output_dtype
+      value_dtype = self.dtype
+      oov_value = self.oov_token
+    else:
+      key_dtype = self.dtype
+      value_dtype = self._output_dtype
+      oov_value = self._oov_value
+
     self._table = lookup_ops.MutableHashTable(
-        key_dtype=self.dtype,
-        value_dtype=self._output_dtype,
-        default_value=self._oov_value,
+        key_dtype=key_dtype,
+        value_dtype=value_dtype,
+        default_value=oov_value,
         name=(self._name + "_index_table"))
     tracked_table = self._add_trackable(self._table, trainable=False)
     # This is a workaround for summary() on this layer. Because the table is
@@ -149,7 +165,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64
+    output_dtype = self.dtype if self.invert else self._output_dtype
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -176,13 +192,18 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     keys, values = self._table_handler.data()
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
-    return [x for _, x in sorted(zip(values, keys))]
+    if self.invert:
+      # If we are inverting, the vocabulary is in the values instead of keys.
+      return [x for _, x in sorted(zip(keys, values))]
+    else:
+      return [x for _, x in sorted(zip(values, keys))]
 
   def vocab_size(self):
     return self._table_handler.vocab_size()
 
   def get_config(self):
     config = {
+        "invert": self.invert,
         "max_tokens": self.max_tokens,
         "num_oov_indices": self.num_oov_indices,
         "oov_token": self.oov_token,
@@ -198,33 +219,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # abstraction for ease of saving!) we return 0.
     return 0
 
-  def set_vocabulary(self, vocab):
-    """Sets vocabulary (and optionally document frequency) data for this layer.
-
-    This method sets the vocabulary for this layer directly, instead of
-    analyzing a dataset through 'adapt'. It should be used whenever the vocab
-    information is already known. If vocabulary data is already present in the
-    layer, this method will either replace it
-
-    Arguments:
-      vocab: An array of string tokens.
-
-    Raises:
-      ValueError: If there are too many inputs, the inputs do not match, or
-        input data is missing.
-    """
-
+  def _set_forward_vocabulary(self, vocab):
+    """Sets vocabulary data for this layer when inverse is False."""
     table_utils.validate_vocabulary_is_unique(vocab)
 
     should_have_mask = self.mask_token is not None
-    if should_have_mask:
-      has_mask = vocab[0] == self.mask_token
-      oov_start = 1
-    else:
-      has_mask = False
-      oov_start = 0
+    has_mask = vocab[0] == self.mask_token
+    oov_start = 1 if should_have_mask else 0
 
-    should_have_oov = self.num_oov_indices > 0
+    should_have_oov = (self.num_oov_indices > 0) and not self.invert
     if should_have_oov:
       oov_end = oov_start + self.num_oov_indices
       expected_oov = [self.oov_token] * self.num_oov_indices
@@ -292,6 +295,65 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+
+  def _set_inverse_vocabulary(self, vocab):
+    """Sets vocabulary data for this layer when inverse is True."""
+    table_utils.validate_vocabulary_is_unique(vocab)
+
+    should_have_mask = self.mask_token is not None
+    has_mask = vocab[0] == self.mask_token
+
+    insert_special_tokens = should_have_mask and not has_mask
+    special_tokens = [] if self.mask_token is None else [self.mask_token]
+
+    num_special_tokens = len(special_tokens)
+    tokens = vocab if insert_special_tokens else vocab[num_special_tokens:]
+    if self.mask_token in tokens:
+      raise ValueError("Reserved mask token %s was found in the passed "
+                       "vocabulary at index %s. Please either remove the "
+                       "reserved token from the vocabulary or change the "
+                       "mask token for this layer." %
+                       (self.mask_token, tokens.index(self.mask_token)))
+
+    if insert_special_tokens:
+      total_vocab_size = len(vocab) + num_special_tokens
+    else:
+      total_vocab_size = len(vocab)
+    if self.max_tokens is not None and total_vocab_size > self.max_tokens:
+      raise ValueError(
+          "Attempted to set a vocabulary larger than the maximum vocab size. "
+          "Passed vocab size is %s, max vocab size is %s." %
+          (total_vocab_size, self.max_tokens))
+
+    start_index = num_special_tokens if insert_special_tokens else 0
+    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
+
+    self._table_handler.clear()
+    self._table_handler.insert(values, vocab)
+
+    if insert_special_tokens and num_special_tokens > 0:
+      special_token_values = np.arange(num_special_tokens, dtype=np.int64)
+      self._table_handler.insert(special_token_values, special_tokens)
+
+  def set_vocabulary(self, vocab):
+    """Sets vocabulary data for this layer with inverse=False.
+
+    This method sets the vocabulary for this layer directly, instead of
+    analyzing a dataset through 'adapt'. It should be used whenever the vocab
+    information is already known. If vocabulary data is already present in the
+    layer, this method will either replace it
+
+    Arguments:
+      vocab: An array of string tokens.
+
+    Raises:
+      ValueError: If there are too many inputs, the inputs do not match, or
+        input data is missing.
+    """
+    if self.invert:
+      self._set_inverse_vocabulary(vocab)
+    else:
+      self._set_forward_vocabulary(vocab)
 
   def _set_state_variables(self, updates):
     if not self.built:
