@@ -12,63 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
-	namespace micro{
+namespace micro {
 namespace split_v {
-
-
-	template <typename Scalar>
-	void Split(const SplitParams& params, const RuntimeShape& input_shape,
-		const Scalar* input_data, const RuntimeShape* const* output_shapes,
-		Scalar* const* output_data) {
-	
-		const int split_dimensions = input_shape.DimensionsCount();
-		int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
-		int outputs_count = params.num_split;
-		TFLITE_DCHECK_LT(axis, split_dimensions);
-
-		int64_t split_size = 0;
-		for (int i = 0; i < outputs_count; i++) {
-			TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), split_dimensions);
-			for (int j = 0; j < split_dimensions; j++) {
-				if (j != axis) {
-					MatchingDim(*output_shapes[i], j, input_shape, j);
-				}
-			}
-			split_size += output_shapes[i]->Dims(axis);
-		}
-		TFLITE_DCHECK_EQ(split_size, input_shape.Dims(axis));
-		int64_t outer_size = 1;
-		for (int i = 0; i < axis; ++i) {
-			outer_size *= input_shape.Dims(i);
-		}
-		// For all output arrays,
-		// FlatSize() = outer_size * Dims(axis) * base_inner_size;
-		int64_t base_inner_size = 1;
-		for (int i = axis + 1; i < split_dimensions; ++i) {
-			base_inner_size *= input_shape.Dims(i);
-		}
-
-		const Scalar* input_ptr = input_data;
-		for (int k = 0; k < outer_size; k++) {
-			for (int i = 0; i < outputs_count; ++i) {
-				const int copy_size = output_shapes[i]->Dims(axis) * base_inner_size;
-				memcpy(output_data[i] + k * copy_size, input_ptr,
-					copy_size * sizeof(Scalar));
-				input_ptr += copy_size;
-			}
-		}
-	}
 
 struct OpContext {
   OpContext(TfLiteContext* context, TfLiteNode* node) {
@@ -82,6 +37,54 @@ struct OpContext {
   const TfLiteTensor* size_splits;
   const TfLiteTensor* axis;
 };
+
+template <typename T>
+TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
+                       OpContext* op_context) {
+  const int outputs_count = NumOutputs(node);
+  const TfLiteTensor* input = op_context->input;
+  const TfLiteIntArray* input_dims = input->dims;
+  const TfLiteTensor* output0 = GetOutput(context, node, 0);
+  const TfLiteIntArray* output_dims = output0->dims;
+  int axis_value = op_context->axis->data.i32[0];
+
+  const int split_dimensions = input_dims->size;
+  int axis = axis_value < 0 ? axis_value + split_dimensions : axis_value;
+
+  TFLITE_DCHECK_LT(axis, split_dimensions);
+  TFLITE_DCHECK_EQ(output_dims->size, split_dimensions);
+
+  int64_t split_size = 0;
+  for (int i = 0; i < outputs_count; i++) {
+    split_size += GetOutput(context, node, i)->dims->data[axis];
+  }
+
+  TFLITE_DCHECK_EQ(split_size, input_dims->data[axis]);
+  int64_t outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_dims->data[i];
+  }
+
+  int64_t base_inner_size = 1;
+  for (int i = axis + 1; i < split_dimensions; ++i) {
+    base_inner_size *= input_dims->data[i];
+  }
+
+  const T* input_ptr = GetTensorData<T>(input);
+  for (int k = 0; k < outer_size; ++k) {
+    for (int i = 0; i < outputs_count; ++i) {
+      TfLiteTensor* t = GetOutput(context, node, i);
+      T* output_data = GetTensorData<T>(t);
+      output_dims = t->dims;
+      const int copy_size = output_dims->data[axis] * base_inner_size;
+      T* output_ptr = output_data + k * copy_size;
+      for (int j = 0; j < copy_size; ++j) output_ptr[j] = input_ptr[j];
+      input_ptr += copy_size;
+    }
+  }
+
+  return kTfLiteOk;
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
@@ -103,47 +106,44 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(size_splits), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), NumElements(size_splits));
 
-  
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
 
-  int axis_value = GetTensorData<int>(op_context.axis)[0];
+  // if not const return error - unsupported
+  if (!IsConstantTensor(op_context.axis) ||
+      !IsConstantTensor(op_context.size_splits)) {
+    context->ReportError(
+        context, "Only const tensors are supported for size_splits and axis");
+    return kTfLiteError;
+  }
 
-  // Use split function to build the outputs since they share the same logic.
-#define TF_LITE_SPLIT_V(scalar)                                     \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
-  tflite::SplitParams op_params;                                    \
-  op_params.num_split = NumOutputs(node);                           \
-  op_params.axis = axis_value;                                      \
-  Split(op_params, GetTensorShape(op_context.input), \
-                       GetTensorData<scalar>(op_context.input),     \
-                       all_outputs.shapes(), all_outputs.data());
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
-      TF_LITE_SPLIT_V(float);
+      SplitImpl<float>(context, node, &op_context);
       break;
     }
     case kTfLiteUInt8: {
-      TF_LITE_SPLIT_V(uint8_t);
+      SplitImpl<uint8_t>(context, node, &op_context);
       break;
     }
     case kTfLiteInt16: {
-      TF_LITE_SPLIT_V(int16_t);
+      SplitImpl<int16_t>(context, node, &op_context);
       break;
     }
     case kTfLiteInt32: {
-      TF_LITE_SPLIT_V(int32_t);
+      SplitImpl<int32_t>(context, node, &op_context);
       break;
     }
     case kTfLiteInt64: {
-      TF_LITE_SPLIT_V(int64_t);
-      break;
+      SplitImpl<int64_t>(context, node, &op_context);
+	   break;
     }
     case kTfLiteInt8: {
-      TF_LITE_SPLIT_V(int8_t);
+      SplitImpl<int8_t>(context, node, &op_context);
+
       break;
     }
     default:
@@ -151,7 +151,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
-#undef TF_LITE_SPLIT_V
 
   return kTfLiteOk;
 }
@@ -164,6 +163,6 @@ TfLiteRegistration* Register_SPLIT_V() {
   return &r;
 }
 
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite
