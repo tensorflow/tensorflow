@@ -146,6 +146,7 @@ function install_pip_deps {
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
+  ${PIP_CMD} install --user --upgrade wrapt
   # LINT.ThenChange(:ubuntu_16_pip_installations)
 }
 
@@ -176,8 +177,10 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install PyYAML==3.13 --user
-  "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  "${PIP_CMD}" install --force-reinstall --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
+  "${PIP_CMD}" install --user --upgrade wrapt
   # LINT.ThenChange(:ubuntu_pip_installations)
 }
 
@@ -218,7 +221,9 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  ${PIP_CMD} install --force-reinstall --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade wrapt
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }
 
@@ -267,4 +272,47 @@ function copy_to_new_project_name {
   mv "${NEW_WHL_NAME}" "${ORIGINAL_WHL_DIR}"
   popd
   rm -rf "${TMP_DIR}"
+}
+
+# Create minimalist test XML for web view. It includes the pass/fail status
+# of each target, without including errors or stacktraces.
+# Remember to "set +e" before calling bazel or we'll only generate the XML for
+# passing runs.
+function test_xml_summary {
+  set +x
+  set +e
+  mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+  # First build the repeated inner XML blocks, since the header block needs to
+  # report the number of test cases / failures / errors.
+  # TODO(rsopher): handle build breakages
+  # TODO(rsopher): extract per-test times as well
+  TESTCASE_XML="$(sed -n '/INFO:\ Build\ completed/,/INFO:\ Build\ completed/p' \
+    /tmpfs/kokoro_build.log \
+    | grep -E '(PASSED|FAILED|TIMEOUT)\ in' \
+    | while read -r line; \
+      do echo '<testcase name="'"$(echo "${line}" | tr -s ' ' | cut -d ' ' -f 1)"\
+          '" status="run" classname="" time="0">'"$( \
+        case "$(echo "${line}" | tr -s ' ' | cut -d ' ' -f 2)" in \
+          FAILED) echo '<failure message="" type=""/>' ;; \
+          TIMEOUT) echo '<failure message="timeout" type=""/>' ;; \
+        esac; \
+      )"'</testcase>'; done; \
+  )"
+  NUMBER_OF_TESTS="$(echo "${TESTCASE_XML}" | wc -l)"
+  NUMBER_OF_FAILURES="$(echo "${TESTCASE_XML}" | grep -c '<failure')"
+  echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"${NUMBER_OF_TESTS}"\
+  '" failures="'"${NUMBER_OF_FAILURES}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
+}
+
+# Create minimalist test XML for web view, then exit.
+# Ends script with value of previous command, meant to be called immediately
+# after bazel as the last call in the build script.
+function test_xml_summary_exit {
+  RETVAL=$?
+  test_xml_summary
+  exit "${RETVAL}"
 }

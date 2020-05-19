@@ -388,6 +388,24 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                   proto.outfeed_config());
       break;
     }
+    case HloOpcode::kAllGather: {
+      absl::optional<int64> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
+
+      TF_RET_CHECK(proto.dimensions_size() == 1)
+          << "AllGather cannot have more than 1 all-gather dimensions";
+      TF_RET_CHECK(all_operands().size() == 1)
+          << "AllGather must have a single operand";
+      int64 all_gather_dimension = proto.dimensions(0);
+      instruction = CreateAllGather(
+          shape, operands(0), all_gather_dimension,
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
+          proto.constrain_layout(), channel_id, proto.use_global_device_ids());
+      break;
+    }
     case HloOpcode::kAllReduce: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
@@ -927,6 +945,15 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
                                       const int mantissa_bits) {
   return absl::make_unique<HloReducePrecisionInstruction>(
       shape, operand, exponent_bits, mantissa_bits);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
+    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+  return absl::make_unique<HloAllGatherInstruction>(
+      shape, operand, all_gather_dimension, replica_groups, constrain_layout,
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
@@ -1518,6 +1545,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
@@ -1997,6 +2025,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
@@ -2851,6 +2880,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
       return visitor->HandleFft(this);
+    case HloOpcode::kAllGather:
+      return visitor->HandleAllGather(this);
     case HloOpcode::kAllReduce:
       return visitor->HandleAllReduce(this);
     case HloOpcode::kAllToAll:

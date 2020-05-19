@@ -48,7 +48,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.default_ranges.second.hasValue()) {
     pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
         quant_specs.default_ranges.first.getValueOr(0.0),
-        quant_specs.default_ranges.second.getValueOr(0.0)));
+        quant_specs.default_ranges.second.getValueOr(0.0),
+        quant_specs.IsSignedInferenceType()));
     pass_manager->addPass(mlir::TFL::CreateQuantizePass());
     pass_manager->addPass(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
@@ -73,14 +74,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   }
 
+  if (pass_config.shape_inference) {
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
+  // Keep this pass after the shape inference pass, which couldn't do shape
+  // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
     pass_manager->addPass(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
-  }
-
-  if (pass_config.shape_inference) {
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
   // The conversion pipeline has to follow the following orders:

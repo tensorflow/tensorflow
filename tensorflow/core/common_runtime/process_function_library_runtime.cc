@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -230,7 +231,7 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
-      VLOG(1) << "Could not find device: " << device_name;
+      VLOG(4) << "Could not find device: " << device_name;
       return nullptr;
     }
   }
@@ -1046,7 +1047,37 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
-  auto* refcounted_done = new ReffedStatusCallback(std::move(done));
+  // A locally created cancellation manager, used only when the caller does not
+  // provide one in argument.
+  std::shared_ptr<CancellationManager> local_cm;
+  CancellationManager* cm = opts.cancellation_manager;
+  if (cm == nullptr) {
+    local_cm = std::make_shared<CancellationManager>();
+    cm = local_cm.get();
+  }
+  auto token = cm->get_cancellation_token();
+  const auto cancelled_error = errors::Cancelled(
+      "ProcessFunctionLibraryRuntime::RunMultiDevice was cancelled.");
+  const bool already_cancelled = !cm->RegisterCallback(
+      token,
+      [rendez = opts.rendezvous, n_func = data->glue_.size(), cancelled_error] {
+        // Abort rendezvous only if there are more than one component functions
+        // to avoid reporting cancellation error directly to PartitionedCallOps
+        // that launch a single component function.
+        if (rendez && n_func > 1) {
+          rendez->StartAbort(cancelled_error);
+        }
+      });
+  if (already_cancelled) {
+    done(cancelled_error);
+    return;
+  }
+
+  auto* refcounted_done = new ReffedStatusCallback(
+      [cm, token, local_cm, done = std::move(done)](const Status& s) {
+        cm->TryDeregisterCallback(token);
+        done(s);
+      });
   for (int i = 0; i < data->glue_.size(); ++i) {
     refcounted_done->Ref();
   }
@@ -1059,7 +1090,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs;
-    opts_copy.remote_execution = false;
+    opts_copy.cancellation_manager = cm;
 
     InternalArgs comp_args;
     Status s = get_component_args(comp_data, &comp_args);
@@ -1067,13 +1098,39 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(2) << "Failed to get component function arguments: " << s;
       refcounted_done->UpdateStatus(s);
       refcounted_done->Unref();
+      cm->StartCancel();
       continue;
     }
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
 
+    auto component_fn_callback = [comp_rets, rets, comp_data, refcounted_done,
+                                  cm, local_cm, data,
+                                  target](const Status& status) {
+      if (!status.ok()) {
+        VLOG(2) << "Component function execution on target " << target
+                << " failed: " << status;
+        const string function_and_msg = strings::StrCat(
+            errors::FormatFunctionForError(data->function_name_), " ",
+            status.error_message());
+        refcounted_done->UpdateStatus(Status(status.code(), function_and_msg));
+        // Cancel the execution of other component functions.
+        cm->StartCancel();
+      } else {
+        VLOG(2) << "Component function execution on target " << target
+                << " succeeded.";
+        for (int i = 0; i < comp_rets->size(); ++i) {
+          (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
+        }
+      }
+      delete comp_rets;
+      // refcounted_done is thread-safe
+      refcounted_done->Unref();
+    };
+
     FunctionLibraryRuntime* flr = GetFLR(target);
     if (flr != nullptr) {
+      opts_copy.remote_execution = false;
       // When target device has private thread pool, use the target device
       // runner
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
@@ -1084,24 +1141,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       flr->Run(opts_copy, handle, GetLocalArgs(comp_args.args), comp_rets,
-               [comp_rets, rets, comp_data, refcounted_done,
-                data](const Status& status) {
-                 if (!status.ok()) {
-                   VLOG(2) << "Component function execution failed: " << status;
-                   const string function_and_msg = strings::StrCat(
-                       errors::FormatFunctionForError(data->function_name_),
-                       " ", status.error_message());
-                   refcounted_done->UpdateStatus(
-                       Status(status.code(), function_and_msg));
-                 } else {
-                   for (int i = 0; i < comp_rets->size(); ++i) {
-                     (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
-                   }
-                 }
-                 delete comp_rets;
-                 // refcounted_done is thread-safe
-                 refcounted_done->Unref();
-               });
+               std::move(component_fn_callback));
     } else {
       opts_copy.remote_execution = true;
 
@@ -1109,21 +1149,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
-      RunInternal(
-          opts_copy, handle, comp_args.args, comp_rets, cleanup_items,
-          [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
-            if (!status.ok()) {
-              VLOG(2) << "Component function execution failed: " << status;
-              refcounted_done->UpdateStatus(status);
-            } else {
-              for (int i = 0; i < comp_rets->size(); ++i) {
-                (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
-              }
-            }
-            delete comp_rets;
-            // refcounted_done is thread-safe
-            refcounted_done->Unref();
-          });
+      RunInternal(opts_copy, handle, comp_args.args, comp_rets, cleanup_items,
+                  std::move(component_fn_callback));
     }
   }
   refcounted_done->Unref();

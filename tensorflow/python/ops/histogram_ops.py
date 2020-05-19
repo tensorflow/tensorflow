@@ -22,15 +22,16 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('histogram_fixed_width_bins')
+@dispatch.add_dispatch_support
 def histogram_fixed_width_bins(values,
                                value_range,
                                nbins=100,
@@ -77,20 +78,11 @@ def histogram_fixed_width_bins(values,
   """
   with ops.name_scope(name, 'histogram_fixed_width_bins',
                       [values, value_range, nbins]):
-    value_range_value = tensor_util.constant_value(value_range)
-    if value_range_value is not None:
-      if (value_range_value[0] >= value_range_value[1]):
-        raise ValueError(
-            'value_range should satisfy value_range[0] < value_range[1], ',
-            "but got '[{}, {}]".format(value_range_value[0],
-                                       value_range_value[1]))
-
     values = ops.convert_to_tensor(values, name='values')
     shape = array_ops.shape(values)
 
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
-
     nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
     nbins_float = math_ops.cast(nbins, values.dtype)
 
@@ -111,6 +103,7 @@ def histogram_fixed_width_bins(values,
 
 
 @tf_export('histogram_fixed_width')
+@dispatch.add_dispatch_support
 def histogram_fixed_width(values,
                           value_range,
                           nbins=100,

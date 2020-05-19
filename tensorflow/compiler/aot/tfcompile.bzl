@@ -42,7 +42,8 @@ def tf_library(
         mlir_components = "None",
         deps = None,
         tags = []):
-    """Runs tfcompile to compile a TensorFlow graph into executable code.
+    """Runs tfcompile to compile a TensorFlow graph into executable code with fast
+    math enabled on cpu.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
     build targets:
@@ -207,6 +208,15 @@ def tf_library(
         srcs.append(debug_info)
         debug_info_flag = " --debug_info=$(location " + debug_info + ")"
 
+    default_fast_math_xla_flags = ("XLA_FLAGS='" +
+                                   "--xla_cpu_enable_fast_math=true " +
+                                   "--xla_cpu_fast_math_honor_nans=false " +
+                                   "--xla_cpu_fast_math_honor_infs=false " +
+                                   "--xla_cpu_fast_math_honor_functions=false " +
+                                   "--xla_cpu_fast_math_honor_division=false " +
+                                   "--xla_cpu_enable_fast_min_max=true " +
+                                   "$${XLA_FLAGS:-}' ")
+
     native.genrule(
         name = ("gen_" + name),
         srcs = srcs,
@@ -216,6 +226,7 @@ def tf_library(
             function_object_file,
         ],
         cmd = (
+            default_fast_math_xla_flags +
             "CUDA_VISIBLE_DEVICES='' " +
             "$(location " + tfcompile_tool + ")" +
             " --graph=$(location " + tfcompile_graph + ")" +
@@ -256,6 +267,7 @@ def tf_library(
             session_module_pb,
         ],
         cmd = (
+            default_fast_math_xla_flags +
             "CUDA_VISIBLE_DEVICES='' " +
             "$(location " + tfcompile_tool + ")" +
             " --graph=$(location " + tfcompile_graph + ")" +

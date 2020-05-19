@@ -10,14 +10,32 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# TODO(b/153554551): investigate if separate delegate libraries can be made with same module_name
+# If you don't need delegates and want to reduce size of the app, you can exclude Metal/Core ML
+# delegate related dependencies from the rule.
+# For example, if you don't want to use Core ML delegate:
+# 1. add `exclude = ["Sources/CoreMLDelegate.swift"]` to `glob`, so that `srcs` would look like this:
+#    ```
+#    srcs = glob(
+#        ["Sources/*.swift"],
+#        exclude = ["Sources/CoreMLDelegate.swift"],
+#    ),
+# 2. remove "-Wl,-weak_framework,CoreML" from `linkopts`
+# 3. remove "...:coreml_delegate" from `deps`
+
 swift_library(
     name = "TensorFlowLite",
     srcs = glob(["Sources/*.swift"]),
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
-        "//tensorflow/lite/experimental/ios:TensorFlowLiteC",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
     ],
 )
 

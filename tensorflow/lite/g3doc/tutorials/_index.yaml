@@ -87,11 +87,11 @@ landing_page:
       path: https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/#0
     - classname: tfo-landing-page-card
       description: >
-        <a href="https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb">
+        <a href="/lite/tutorials/model_maker_image_classification">
           <h3 class="no-link">Transfer learning for image classification</h3>
         </a>
         Learn how to use TensorFlow Lite Model Maker to quickly create image classification models.
-      path: https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb
+      path: /lite/tutorials/model_maker_image_classification
 
   # IoT developers
   ## Linux-based IoT devices
@@ -160,7 +160,7 @@ landing_page:
             bar. They show you how to train a model for a specific machine learning task, such as
             <a href="https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html">object detection</a>
             or
-            <a href="https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb">sentiment analysis</a>.
+            <a href="/lite/tutorials/model_maker_text_classification">sentiment analysis</a>.
           </li>
           <li>
             Learn more about the development workflow in the TensorFlow Lite

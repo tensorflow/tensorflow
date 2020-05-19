@@ -51,6 +51,19 @@ _RESIZE_METHODS = {
     'mitchellcubic': ResizeMethod.MITCHELLCUBIC
 }
 
+H_AXIS = 1
+W_AXIS = 2
+
+
+def check_fill_mode_and_interpolation(fill_mode, interpolation):
+  if fill_mode not in {'reflect', 'wrap', 'constant'}:
+    raise NotImplementedError(
+        'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+        '`constant` are supported.'.format(fill_mode))
+  if interpolation not in {'nearest', 'bilinear'}:
+    raise NotImplementedError('Unknown `interpolation` {}. Only `nearest` and '
+                              '`bilinear` are supported.'.format(interpolation))
+
 
 @keras_export('keras.layers.experimental.preprocessing.Resizing')
 class Resizing(Layer):
@@ -132,9 +145,8 @@ class CenterCrop(Layer):
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
-    h_axis, w_axis = 1, 2
-    img_hd = inputs_shape[h_axis]
-    img_wd = inputs_shape[w_axis]
+    img_hd = inputs_shape[H_AXIS]
+    img_wd = inputs_shape[W_AXIS]
     img_hd_diff = img_hd - self.target_height
     img_wd_diff = img_wd - self.target_width
     checks = []
@@ -230,9 +242,9 @@ class RandomCrop(Layer):
     def resize_and_center_cropped_inputs():
       """Deterministically resize to shorter side and center crop."""
       input_shape = array_ops.shape(inputs)
-      input_height_t = input_shape[1]
-      input_width_t = input_shape[2]
-      ratio_cond = (input_height_t / input_width_t > 1.)
+      input_height_t = input_shape[H_AXIS]
+      input_width_t = input_shape[W_AXIS]
+      ratio_cond = (input_height_t / input_width_t > (self.height / self.width))
       # pylint: disable=g-long-lambda
       resized_height = tf_utils.smart_cond(
           ratio_cond,
@@ -407,17 +419,24 @@ class RandomTranslation(Layer):
   """Randomly translate each image during training.
 
   Arguments:
-    height_factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound for shifting vertically. When
-      represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `height_factor=(0.2, 0.3)` results in an output
-      height varying in the range `[original - 20%, original + 30%]`.
-      `height_factor=0.2` results in an output height varying in the range
-      `[original - 20%, original + 20%]`.
-    width_factor: a positive float represented as fraction of value, or a tuple
+    height_factor: a float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for shifting vertically.
+      A negative value means shifting image up, while a positive value
+      means shifting image down. When represented as a single positive float,
+      this value is used for both the upper and lower bound. For instance,
+      `height_factor=(-0.2, 0.3)` results in an output shifted by a random
+      amount in the range [-20%, +30%].
+      `height_factor=0.2` results in an output height shifted by a random
+      amount in the range [-20%, +20%].
+    width_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for shifting horizontally.
-      When represented as a single float, this value is used for both the upper
-      and lower bound.
+      A negative value means shifting image left, while a positive value
+      means shifting image right. When represented as a single positive float,
+      this value is used for both the upper and lower bound. For instance,
+      `width_factor=(-0.2, 0.3)` results in an output shifted left by 20%, and
+      shifted right by 30%.
+      `width_factor=0.2` results in an output height shifted left or right
+      by 20%.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
@@ -440,8 +459,8 @@ class RandomTranslation(Layer):
       data_format='channels_last'.
 
   Raise:
-    ValueError: if lower bound is not between [0, 1], or upper bound is
-      negative.
+    ValueError: if either bound is not between [0, 1], or upper bound is
+      less than lower bound.
   """
 
   def __init__(self,
@@ -454,38 +473,34 @@ class RandomTranslation(Layer):
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
-      self.height_lower = abs(height_factor[0])
+      self.height_lower = height_factor[0]
       self.height_upper = height_factor[1]
     else:
-      self.height_lower = self.height_upper = height_factor
-    if self.height_upper < 0.:
-      raise ValueError('`height_factor` cannot have negative values as upper '
-                       'bound, got {}'.format(height_factor))
+      self.height_lower = -height_factor
+      self.height_upper = height_factor
+    if self.height_upper < self.height_lower:
+      raise ValueError('`height_factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(height_factor))
     if abs(self.height_lower) > 1. or abs(self.height_upper) > 1.:
       raise ValueError('`height_factor` must have values between [-1, 1], '
                        'got {}'.format(height_factor))
 
     self.width_factor = width_factor
     if isinstance(width_factor, (tuple, list)):
-      self.width_lower = abs(width_factor[0])
+      self.width_lower = width_factor[0]
       self.width_upper = width_factor[1]
     else:
-      self.width_lower = self.width_upper = width_factor
-    if self.width_upper < 0.:
-      raise ValueError('`width_factor` cannot have negative values as upper '
-                       'bound, got {}'.format(width_factor))
+      self.width_lower = -width_factor
+      self.width_upper = width_factor
+    if self.width_upper < self.width_lower:
+      raise ValueError('`width_factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(width_factor))
     if abs(self.width_lower) > 1. or abs(self.width_upper) > 1.:
       raise ValueError('`width_factor` must have values between [-1, 1], '
                        'got {}'.format(width_factor))
 
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
+
     self.fill_mode = fill_mode
     self.interpolation = interpolation
     self.seed = seed
@@ -501,22 +516,24 @@ class RandomTranslation(Layer):
       """Translated inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
+      h_axis, w_axis = H_AXIS, W_AXIS
       img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
       img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
       height_translate = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.height_lower,
-          maxval=self.height_upper)
+          minval=self.height_lower,
+          maxval=self.height_upper,
+          dtype=dtypes.float32)
       height_translate = height_translate * img_hd
       width_translate = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.width_lower,
-          maxval=self.width_upper)
+          minval=self.width_lower,
+          maxval=self.width_upper,
+          dtype=dtypes.float32)
       width_translate = width_translate * img_wd
       translations = math_ops.cast(
-          array_ops.concat([height_translate, width_translate], axis=1),
-          dtype=inputs.dtype)
+          array_ops.concat([width_translate, height_translate], axis=1),
+          dtype=dtypes.float32)
       return transform(
           inputs,
           get_translation_matrix(translations),
@@ -713,9 +730,15 @@ class RandomRotation(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    factor: a positive float represented as fraction of 2pi, or a tuple of size
+    factor: a float represented as fraction of 2pi, or a tuple of size
       2 representing lower and upper bound for rotating clockwise and
-      counter-clockwise. When represented as a single float, lower = upper.
+      counter-clockwise. A positive values means rotating counter clock-wise,
+      while a negative value means clock-wise. When represented as a single
+      float, this value is used for both the upper and lower bound. For
+      instance, `factor=(-0.2, 0.3)` results in an output
+      rotation by a random amount in the range `[-20% * 2pi, 30% * 2pi]`.
+      `factor=0.2` results in an output rotating by a random amount in the range
+      `[-20% * 2pi, 20% * 2pi]`.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
@@ -736,8 +759,8 @@ class RandomRotation(Layer):
       data_format='channels_last'.
 
   Raise:
-    ValueError: if lower bound is not between [0, 1], or upper bound is
-      negative.
+    ValueError: if either bound is not between [0, 1], or upper bound is
+      less than lower bound.
   """
 
   def __init__(self,
@@ -752,18 +775,12 @@ class RandomRotation(Layer):
       self.lower = factor[0]
       self.upper = factor[1]
     else:
-      self.lower = self.upper = factor
-    if self.lower < 0. or self.upper < 0.:
+      self.lower = -factor
+      self.upper = factor
+    if self.upper < self.lower:
       raise ValueError('Factor cannot have negative values, '
                        'got {}'.format(factor))
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
     self.fill_mode = fill_mode
     self.interpolation = interpolation
     self.seed = seed
@@ -779,13 +796,12 @@ class RandomRotation(Layer):
       """Rotated inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       min_angle = self.lower * 2. * np.pi
       max_angle = self.upper * 2. * np.pi
       angles = self._rng.uniform(
-          shape=[batch_size], minval=-min_angle, maxval=max_angle)
+          shape=[batch_size], minval=min_angle, maxval=max_angle)
       return transform(
           inputs,
           get_rotation_matrix(angles, img_hd, img_wd),
@@ -811,20 +827,29 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 
   Arguments:
-    height_factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound for zooming horizontally.
-      When represented as a single float, this value is used for both the
-      upper and lower bound. For instance, `height_factor=(0.2, 0.3)` result in
-      an output zoom varying in the range `[original * 20%, original * 30%]`.
-    width_factor: a positive float represented as fraction of value, or a tuple
+    height_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for zooming vertically.
       When represented as a single float, this value is used for both the
-      upper and lower bound. For instance, `width_factor=(0.2, 0.3)` result in
-      an output zoom varying in the range `[original * 20%, original * 30%]`.
+      upper and lower bound. A positive value means zooming out, while a
+      negative value means zooming in.
+      For instance, `height_factor=(0.2, 0.3)` result in an output zoomed out
+      by a random amount in the range [+20%, +30%].
+      `height_factor=(-0.3, -0.2)` result in an output zoomed in by a random
+      amount in the range [+20%, +30%].
+    width_factor: a float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for zooming horizontally.
+      When represented as a single float, this value is used for both the
+      upper and lower bound.
+      For instance, `width_factor=(0.2, 0.3)` result in an output zooming out
+      between 20% to 30%.
+      `width_factor=(-0.3, -0.2)` result in an output zooming in between 20%
+      to 30%. Defaults to `None`, i.e., zooming vertical and horizontal
+      directions by preserving the aspect ratio.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
@@ -836,6 +861,14 @@ class RandomZoom(Layer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+
+  Example:
+
+  >>> input_img = np.random.random((32, 224, 224, 3))
+  >>> layer = tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2)
+  >>> out_img = layer(input_img)
+  >>> out_img.shape
+  TensorShape([32, 224, 224, 3])
 
   Input shape:
     4D tensor with shape:
@@ -850,9 +883,10 @@ class RandomZoom(Layer):
       negative.
   """
 
+  # TODO(b/156526279): Add `fill_value` argument.
   def __init__(self,
                height_factor,
-               width_factor,
+               width_factor=None,
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
@@ -863,35 +897,28 @@ class RandomZoom(Layer):
       self.height_lower = height_factor[0]
       self.height_upper = height_factor[1]
     else:
-      self.height_lower = self.height_upper = height_factor
-    if self.height_lower < 0. or self.height_upper < 0.:
-      raise ValueError('`height_factor` cannot have negative values, '
+      self.height_lower = -height_factor
+      self.height_upper = height_factor
+
+    if abs(self.height_lower) > 1. or abs(self.height_upper) > 1.:
+      raise ValueError('`height_factor` must have values between [-1, 1], '
                        'got {}'.format(height_factor))
-    if self.height_lower > self.height_upper:
-      raise ValueError('`height_factor` cannot have lower bound larger than '
-                       'upper bound, got {}.'.format(height_factor))
 
     self.width_factor = width_factor
-    if isinstance(width_factor, (tuple, list)):
-      self.width_lower = width_factor[0]
-      self.width_upper = width_factor[1]
-    else:
-      self.width_lower = self.width_upper = width_factor
-    if self.width_lower < 0. or self.width_upper < 0.:
-      raise ValueError('`width_factor` cannot have negative values, '
-                       'got {}'.format(width_factor))
-    if self.width_lower > self.width_upper:
-      raise ValueError('`width_factor` cannot have lower bound larger than '
-                       'upper bound, got {}.'.format(width_factor))
+    if width_factor is not None:
+      if isinstance(width_factor, (tuple, list)):
+        self.width_lower = width_factor[0]
+        self.width_upper = width_factor[1]
+      else:
+        self.width_lower = -width_factor  # pylint: disable=invalid-unary-operand-type
+        self.width_upper = width_factor
 
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+      if self.width_lower < -1. or self.width_upper < -1.:
+        raise ValueError('`width_factor` must have values larger than -1, '
+                         'got {}'.format(width_factor))
+
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
+
     self.fill_mode = fill_mode
     self.interpolation = interpolation
     self.seed = seed
@@ -907,22 +934,22 @@ class RandomZoom(Layer):
       """Zoomed inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       height_zoom = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.height_lower,
-          maxval=self.height_upper)
-      height_zoom = height_zoom * img_hd
-      width_zoom = self._rng.uniform(
-          shape=[batch_size, 1],
-          minval=-self.width_lower,
-          maxval=self.width_upper)
-      width_zoom = width_zoom * img_wd
+          minval=1. + self.height_lower,
+          maxval=1. + self.height_upper)
+      if self.width_factor is not None:
+        width_zoom = self._rng.uniform(
+            shape=[batch_size, 1],
+            minval=1. + self.width_lower,
+            maxval=1. + self.width_upper)
+      else:
+        width_zoom = height_zoom
       zooms = math_ops.cast(
-          array_ops.concat([height_zoom, width_zoom], axis=1),
-          dtype=inputs.dtype)
+          array_ops.concat([width_zoom, height_zoom], axis=1),
+          dtype=dtypes.float32)
       return transform(
           inputs, get_zoom_matrix(zooms, img_hd, img_wd),
           fill_mode=self.fill_mode,
@@ -974,8 +1001,8 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
     #      [0 0 1]]
     # where the last entry is implicit.
     # Zoom matrices are always float32.
-    x_offset = ((image_height + 1.) / 2.0) * (zooms[:, 0, None] - 1.)
-    y_offset = ((image_width + 1.) / 2.0) * (zooms[:, 1, None] - 1.)
+    x_offset = ((image_width - 1.) / 2.0) * (1.0 - zooms[:, 0, None])
+    y_offset = ((image_height - 1.) / 2.0) * (1.0 - zooms[:, 1, None])
     return array_ops.concat(
         values=[
             zooms[:, 0, None],
@@ -1073,11 +1100,11 @@ class RandomHeight(Layer):
     factor: A positive float (fraction of original height), or a tuple of size 2
       representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `factor=(0.2, 0.3)` results in an output height
-      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
-      0.3)` results in an output height varying in the range `[original - 20%,
-      original + 30%]`. `factor=0.2` results in an output height varying in the
-      range `[original - 20%, original + 20%]`.
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
+      height changed by a random amount in the range `[20%, 30%]`.
+      `factor=(-0.2, 0.3)` results in an output with height changed by a random
+      amount in the range `[-20%, +30%]. `factor=0.2` results in an output with
+      height changed by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
@@ -1099,12 +1126,17 @@ class RandomHeight(Layer):
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
-      self.height_lower = -factor[0]
+      self.height_lower = factor[0]
       self.height_upper = factor[1]
     else:
-      self.height_lower = self.height_upper = factor
-    if self.height_lower > 1.:
-      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+      self.height_lower = -factor
+      self.height_upper = factor
+
+    if self.height_upper < self.height_lower:
+      raise ValueError('`factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(factor))
+    if self.height_lower < -1. or self.height_upper < -1.:
+      raise ValueError('`factor` must have values larger than -1, '
                        'got {}'.format(factor))
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
@@ -1120,12 +1152,11 @@ class RandomHeight(Layer):
     def random_height_inputs():
       """Inputs height-adjusted with random ops."""
       inputs_shape = array_ops.shape(inputs)
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = inputs_shape[w_axis]
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = inputs_shape[W_AXIS]
       height_factor = self._rng.uniform(
           shape=[],
-          minval=(1.0 - self.height_lower),
+          minval=(1.0 + self.height_lower),
           maxval=(1.0 + self.height_upper))
       adjusted_height = math_ops.cast(height_factor * img_hd, dtypes.int32)
       adjusted_size = array_ops.stack([adjusted_height, img_wd])
@@ -1163,14 +1194,14 @@ class RandomWidth(Layer):
   By default, this layer is inactive during inference.
 
   Arguments:
-    factor: A positive float (fraction of original width), or a tuple of
-      size 2 representing lower and upper bound for resizing horizontally. When
+    factor: A positive float (fraction of original height), or a tuple of size 2
+      representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `factor=(0.2, 0.3)` results in an output width
-      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
-      0.3)` results in an output width varying in the range `[original - 20%,
-      original + 30%]`. `factor=0.2` results in an output width varying in the
-      range `[original - 20%, original + 20%]`.
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
+      width changed by a random amount in the range `[20%, 30%]`.
+      `factor=(-0.2, 0.3)` results in an output with width changed by a random
+      amount in the range `[-20%, +30%]. `factor=0.2` results in an output with
+      width changed by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
@@ -1183,7 +1214,7 @@ class RandomWidth(Layer):
 
   Output shape:
     4D tensor with shape:
-    `(samples, random_height, width, channels)`.
+    `(samples, height, random_width, channels)`.
   """
 
   def __init__(self,
@@ -1194,12 +1225,16 @@ class RandomWidth(Layer):
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
-      self.width_lower = -factor[0]
+      self.width_lower = factor[0]
       self.width_upper = factor[1]
     else:
-      self.width_lower = self.width_upper = factor
-    if self.width_lower > 1.:
-      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+      self.width_lower = -factor
+      self.width_upper = factor
+    if self.width_upper < self.width_lower:
+      raise ValueError('`factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(factor))
+    if self.width_lower < -1. or self.width_upper < -1.:
+      raise ValueError('`factor` must have values larger than -1, '
                        'got {}'.format(factor))
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
@@ -1215,12 +1250,11 @@ class RandomWidth(Layer):
     def random_width_inputs():
       """Inputs width-adjusted with random ops."""
       inputs_shape = array_ops.shape(inputs)
-      h_axis, w_axis = 1, 2
-      img_hd = inputs_shape[h_axis]
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = inputs_shape[H_AXIS]
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       width_factor = self._rng.uniform(
           shape=[],
-          minval=(1.0 - self.width_lower),
+          minval=(1.0 + self.width_lower),
           maxval=(1.0 + self.width_upper))
       adjusted_width = math_ops.cast(width_factor * img_wd, dtypes.int32)
       adjusted_size = array_ops.stack([img_hd, adjusted_width])

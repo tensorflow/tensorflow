@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -26,6 +27,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
@@ -126,6 +130,506 @@ class BincountTest(test_util.TensorFlowTestCase):
     s = array_ops.placeholder(dtype=dtypes.int32)
     v2 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], s, [])
     self.assertAllEqual(v2.get_shape().as_list(), [None])
+
+
+class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_bincount_all_count(self, dtype):
+    np.random.seed(42)
+    size = 1000
+    inp = np.random.randint(0, size, (4096), dtype=dtype)
+    np_out = np.bincount(inp, minlength=size)
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(input=inp, weights=[], size=size)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_bincount_all_count_with_weights(self, dtype):
+    np.random.seed(42)
+    size = 1000
+    inp = np.random.randint(0, size, (4096,), dtype=dtype)
+    np_weight = np.random.random((4096,))
+    np_out = np.bincount(inp, minlength=size, weights=np_weight)
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=inp, weights=np_weight, size=size)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_bincount_all_binary(self, dtype):
+    np.random.seed(42)
+    size = 10
+    inp = np.random.randint(0, size, (4096), dtype=dtype)
+    np_out = np.ones((size,))
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=inp, weights=[], size=size, binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_bincount_all_binary_with_weights(self, dtype):
+    np.random.seed(42)
+    size = 10
+    inp = np.random.randint(0, size, (4096,), dtype=dtype)
+    np_weight = np.random.random((4096,))
+    np_out = np.ones((size,))
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=inp, weights=np_weight, size=size, binary_output=True)))
+
+  def _test_bincount_col_count(self, num_rows, num_cols, size, dtype):
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate(
+            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
+            axis=0), (num_rows, size))
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(input=inp, weights=[], size=size)))
+
+  def _test_bincount_col_binary(self, num_rows, num_cols, size, dtype):
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate([
+            np.where(np.bincount(inp[j, :], minlength=size) > 0, 1, 0)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=inp, weights=[], size=size, binary_output=True)))
+
+  def _test_bincount_col_count_with_weights(self, num_rows, num_cols, size,
+                                            dtype):
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_weight = np.random.random((num_rows, num_cols))
+    np_out = np.reshape(
+        np.concatenate([
+            np.bincount(inp[j, :], weights=np_weight[j, :], minlength=size)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    with test_util.use_gpu():
+      self.assertAllEqual(
+          np_out,
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=inp, weights=np_weight, size=size)))
+
+  def test_col_reduce_basic(self):
+    with test_util.use_gpu():
+      v = self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=[[1, 2, 3], [0, 3, 2]], weights=[], size=4))
+    expected_out = [[0., 1., 1., 1.], [1., 0., 1., 1.]]
+    self.assertAllEqual(expected_out, v)
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_col_reduce_shared_memory(self, dtype):
+    # num_rows * num_bins less than half of max shared memory.
+    num_rows = 128
+    num_cols = 27
+    size = 10
+    self._test_bincount_col_count(num_rows, num_cols, size, dtype)
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_col_reduce_global_memory(self, dtype):
+    # num_rows * num_bins more than half of max shared memory.
+    num_rows = 128
+    num_cols = 27
+    size = 1024
+    self._test_bincount_col_count(num_rows, num_cols, size, dtype)
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_col_reduce_shared_memory_with_weights(self, dtype):
+    # num_rows * num_bins less than half of max shared memory.
+    num_rows = 128
+    num_cols = 27
+    size = 100
+    self._test_bincount_col_count_with_weights(num_rows, num_cols, size, dtype)
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_col_reduce_global_memory_with_weights(self, dtype):
+    # num_rows * num_bins more than half of max shared memory.
+    num_rows = 128
+    num_cols = 27
+    size = 1024
+    self._test_bincount_col_count_with_weights(num_rows, num_cols, size, dtype)
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_col_reduce_binary(self, dtype):
+    num_rows = 128
+    num_cols = 7
+    size = 10
+    self._test_bincount_col_binary(num_rows, num_cols, size, dtype)
+
+  @test_util.run_deprecated_v1
+  def test_invalid_rank(self):
+    with self.assertRaisesRegexp(ValueError, "at most rank 2"):
+      with test_util.use_gpu():
+        self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=[[[1, 2, 3], [0, 3, 2]]], weights=[], size=10))
+
+
+class SparseBincountOpTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_all_count(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 1000
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+
+    np_out = np.bincount(inp_vals, minlength=size)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_indices,
+                values=inp_vals,
+                dense_shape=[num_rows],
+                size=size,
+                weights=[])))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_all_count_with_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 1000
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    inp_weight = np.random.random((n_elems,))
+
+    np_out = np.bincount(inp_vals, minlength=size, weights=inp_weight)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_indices,
+                values=inp_vals,
+                dense_shape=[num_rows],
+                size=size,
+                weights=inp_weight)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_all_binary(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 10
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+
+    np_out = np.ones((size,))
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_indices,
+                values=inp_vals,
+                dense_shape=[num_rows],
+                size=size,
+                weights=[],
+                binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_all_binary_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 10
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    inp_weight = np.random.random((n_elems,))
+
+    np_out = np.ones((size,))
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_indices,
+                values=inp_vals,
+                dense_shape=[num_rows],
+                size=size,
+                weights=inp_weight,
+                binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_col_reduce_count(self, dtype):
+    num_rows = 128
+    num_cols = 27
+    size = 100
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate(
+            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
+            axis=0), (num_rows, size))
+    # from_dense will filter out 0s.
+    inp = inp + 1
+    # from_dense will cause OOM in GPU.
+    with ops.device("/CPU:0"):
+      inp_sparse = sparse_ops.from_dense(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_sparse.indices,
+                values=inp_sparse.values - 1,
+                dense_shape=inp_sparse.dense_shape,
+                size=size,
+                weights=[])))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_bincount_col_reduce_binary(self, dtype):
+    num_rows = 128
+    num_cols = 27
+    size = 100
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate([
+            np.where(np.bincount(inp[j, :], minlength=size) > 0, 1, 0)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    # from_dense will filter out 0s.
+    inp = inp + 1
+    # from_dense will cause OOM in GPU.
+    with ops.device("/CPU:0"):
+      inp_sparse = sparse_ops.from_dense(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=inp_sparse.indices,
+                values=inp_sparse.values - 1,
+                dense_shape=inp_sparse.dense_shape,
+                size=size,
+                weights=[],
+                binary_output=True)))
+
+
+class RaggedBincountOpTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_count(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
+    expected_output = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0,
+                                            0], [1, 1, 0, 1, 0, 0],
+                       [0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 2, 1]]
+    self.assertAllEqual(
+        expected_output,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits, values=x.values, weights=[], size=6)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_binary(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
+    expected_output = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0,
+                                            0], [1, 1, 0, 1, 0, 0],
+                       [0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 1, 1]]
+    self.assertAllEqual(
+        expected_output,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits,
+                values=x.values,
+                weights=[],
+                size=6,
+                binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_count_with_weights(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
+    weights = ragged_factory_ops.constant([[], [], [.1, .2, .3], [],
+                                           [.2, .5, .6, .3]])
+    expected_output = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0],
+                       [.2, .3, 0, .1, 0, 0], [0, 0, 0, 0, 0, 0],
+                       [.5, 0, 0, 0, .9, .2]]
+    self.assertAllClose(
+        expected_output,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits,
+                values=x.values,
+                weights=weights.values,
+                size=6)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_count_np(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    num_cols = 27
+    size = 1000
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate(
+            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
+            axis=0), (num_rows, size))
+    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits, values=x.values, weights=[], size=size)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_count_np_with_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    num_cols = 27
+    size = 1000
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_weight = np.random.random((num_rows, num_cols))
+    np_out = np.reshape(
+        np.concatenate([
+            np.bincount(inp[j, :], weights=np_weight[j, :], minlength=size)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits,
+                values=x.values,
+                weights=np_weight,
+                size=size)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_bincount_binary_np_with_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    num_cols = 27
+    size = 1000
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate([
+            np.where(np.bincount(inp[j, :], minlength=size) > 0, 1, 0)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            gen_math_ops.ragged_bincount(
+                splits=x.row_splits,
+                values=x.values,
+                weights=[],
+                size=size,
+                binary_output=True)))
 
 
 if __name__ == "__main__":

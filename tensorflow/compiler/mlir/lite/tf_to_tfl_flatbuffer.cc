@@ -174,7 +174,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     return module;
   } else if (saved_model_version == 1) {
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, context);
+        input_filename, tags, exported_names, context);
 
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");

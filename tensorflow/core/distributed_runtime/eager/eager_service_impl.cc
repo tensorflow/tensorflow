@@ -524,6 +524,8 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       s = context->Context()->Executor().AddOrExecute(std::move(node));
     } else if (item.has_send_tensor()) {
       s = SendTensor(item.send_tensor(), context->Context());
+    } else if (item.has_send_packed_handle()) {
+      s = SendPackedHandle(item.send_packed_handle(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
     } else if (item.has_cleanup_function()) {
@@ -640,6 +642,52 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
 
   eager_context->RemoteMgr()->AddOperationOutputs(tensors, send_tensor.op_id());
 
+  return Status::OK();
+}
+
+Status EagerServiceImpl::SendPackedHandle(
+    const SendPackedHandleOp& send_packed_handle, EagerContext* eager_context) {
+  if (send_packed_handle.handles().empty()) {
+    return errors::InvalidArgument("Handles should not be empty.");
+  }
+
+  std::vector<tensorflow::TensorHandle*> handles;
+  handles.resize(send_packed_handle.handles_size());
+  for (int i = 0; i < send_packed_handle.handles_size(); ++i) {
+    const auto& item = send_packed_handle.handles(i);
+    if (item.has_local_handle()) {
+      Tensor tensor;
+      if (!ParseTensorProtoToTensor(item.local_handle().tensor(), &tensor)) {
+        return errors::InvalidArgument(
+            "Invalid TensorProto: ",
+            item.local_handle().tensor().DebugString());
+      }
+      Device* op_device = nullptr;
+      TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
+          item.local_handle().device().c_str(), &op_device));
+      handles[i] = TensorHandle::CreateLocalHandle(
+          std::move(tensor), /*d=*/nullptr, op_device, eager_context);
+    } else {
+      TF_RETURN_IF_ERROR(
+          eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
+              item.remote_handle(), &handles[i]));
+    }
+  }
+
+  tensorflow::TensorHandle* packed_handle = nullptr;
+  std::vector<tensorflow::TensorHandle*> handles_to_pack = handles;
+  // Create a unshaped packed TensorHandle.
+  TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
+      std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
+      eager_context, &packed_handle));
+
+  for (auto* h : handles) {
+    // Unref handle since it has a ref in the packed handle now.
+    h->Unref();
+  }
+
+  eager_context->RemoteMgr()->AddOperationOutputs({packed_handle},
+                                                  send_packed_handle.op_id());
   return Status::OK();
 }
 

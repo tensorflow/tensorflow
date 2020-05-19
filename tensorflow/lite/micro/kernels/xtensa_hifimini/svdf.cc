@@ -352,15 +352,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Calculate effective scales.
   auto* input_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
-  auto* weights_feature_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      static_cast<TfLiteAffineQuantization*>(input->quantization.params);
+  auto* weights_feature_params = static_cast<TfLiteAffineQuantization*>(
       weights_feature->quantization.params);
-  auto* state_params = reinterpret_cast<TfLiteAffineQuantization*>(
+  auto* state_params = static_cast<TfLiteAffineQuantization*>(
       activation_state->quantization.params);
-  auto* weight_time_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      weights_time->quantization.params);
+  auto* weight_time_params =
+      static_cast<TfLiteAffineQuantization*>(weights_time->quantization.params);
   auto* output_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(output->quantization.params);
+      static_cast<TfLiteAffineQuantization*>(output->quantization.params);
   const float effective_scale_1 = input_params->scale->data[0] *
                                   weights_feature_params->scale->data[0] /
                                   state_params->scale->data[0];
@@ -392,8 +392,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params = static_cast<TfLiteSVDFParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =

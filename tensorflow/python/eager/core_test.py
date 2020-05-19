@@ -1112,5 +1112,4 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == '__main__':
-  context.set_log_device_placement(True)
   test.main()

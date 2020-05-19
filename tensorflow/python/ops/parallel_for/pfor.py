@@ -2784,8 +2784,8 @@ def _convert_equal(pfor_input):
   x = pfor_input.input(0)[0]
   y = pfor_input.input(1)[0]
   incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
-  assert incompatible_shape_error
-  return wrap(math_ops.equal(x, y), True)
+  return wrap(gen_math_ops.equal(
+      x, y, incompatible_shape_error=incompatible_shape_error), True)
 
 
 @RegisterPFor("NotEqual")
@@ -2794,8 +2794,8 @@ def _convert_not_equal(pfor_input):
   x = pfor_input.input(0)[0]
   y = pfor_input.input(1)[0]
   incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
-  assert incompatible_shape_error
-  return wrap(math_ops.not_equal(x, y), True)
+  return wrap(gen_math_ops.not_equal(
+      x, y, incompatible_shape_error=incompatible_shape_error), True)
 
 
 @RegisterPFor("ApproximateEqual")

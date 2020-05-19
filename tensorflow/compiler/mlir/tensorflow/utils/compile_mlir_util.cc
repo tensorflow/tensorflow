@@ -293,12 +293,22 @@ Status ConvertMLIRToXlaComputation(
   tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
+  // Run shape inference pass to propagate shapes through tensor_cast operations
+  // from static to dynamic shapes. This could be generated if the shape
+  // inference was originally missing in a TF op but the corresponding HLO op
+  // had static shape after lowering.
+  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
+
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
+  // In order to export to XLA, we must sink constants to control flow regions,
+  // since XLA uses functional control flow.
+  tf2xla.addNestedPass<mlir::FuncOp>(
+      mlir::xla_hlo::createSinkConstantsToControlFlowPass());
 
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass which requires disabling

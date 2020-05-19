@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // Status is a wrapper around an error code and an optional error message.
@@ -57,6 +58,7 @@ class Status {
   friend class RuntimeBuilder;
   friend class Runtime;
   friend class SavedModelAPI;
+  friend class TensorHandle;
 
   // Wraps a TF_Status*, and takes ownership of it.
   explicit Status(TF_Status* status) : status_(status) {}
@@ -88,6 +90,7 @@ inline void Status::SetStatus(TF_Code code, const std::string& msg) {
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_PUBLIC_STATUS_H_

@@ -351,6 +351,9 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2) {
   if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
       kSharedMemoryBudgetInBytes) {
+    VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
+            << " and " << instr2.ToString() << " would be over the budget of "
+            << kSharedMemoryBudgetInBytes << "B";
     return true;
   }
 
@@ -383,6 +386,14 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
           num_output_buffers <=
       kMaxOperandsAndOutputsPerFusion) {
     return false;
+  } else {
+    VLOG(5) << "Operand count of "
+            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
+            << " and ( " << instr2.ToString()
+            << " ) = " << instr2.operand_count()
+            << " and num_output_buffers = " << num_output_buffers
+            << " is bigger than the bound of "
+            << kMaxOperandsAndOutputsPerFusion;
   }
 
   // Compute the precise number of operands to the new fusion.

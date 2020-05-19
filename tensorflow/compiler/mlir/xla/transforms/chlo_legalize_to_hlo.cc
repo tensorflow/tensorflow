@@ -33,24 +33,23 @@ namespace {
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding xla_hlo non-broadcasting op.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
-struct ConvertTrivialNonBroadcastBinaryOp
-    : public OpConversionPattern<ChloOpTy> {
-  using OpConversionPattern<ChloOpTy>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      ChloOpTy op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
+struct ConvertTrivialNonBroadcastBinaryOp : public OpRewritePattern<ChloOpTy> {
+  using OpRewritePattern<ChloOpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ChloOpTy op,
+                                PatternRewriter &rewriter) const override {
     // Only rewrite for statically determinable non-broadcasting cases.
-    auto lhs = operands[0].getType().dyn_cast<RankedTensorType>();
-    auto rhs = operands[1].getType().dyn_cast<RankedTensorType>();
-    if (!lhs || !rhs) return failure();
+    auto lhs_type = op.lhs().getType().template dyn_cast<RankedTensorType>();
+    auto rhs_type = op.rhs().getType().template dyn_cast<RankedTensorType>();
+    if (!lhs_type || !rhs_type) return failure();
 
     // Requires rank broadcast.
-    if (lhs.getRank() != rhs.getRank()) return failure();
+    if (lhs_type.getRank() != rhs_type.getRank()) return failure();
     // Any dynamic dimension may require broadcasting and requires more
     // analysis.
-    if (!lhs.hasStaticShape() || !rhs.hasStaticShape()) return failure();
+    if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape())
+      return failure();
 
-    for (auto extents : llvm::zip(lhs.getShape(), rhs.getShape())) {
+    for (auto extents : llvm::zip(lhs_type.getShape(), rhs_type.getShape())) {
       auto lhs_extent = std::get<0>(extents);
       auto rhs_extent = std::get<1>(extents);
       if (lhs_extent != rhs_extent) {
@@ -58,9 +57,8 @@ struct ConvertTrivialNonBroadcastBinaryOp
       }
     }
 
-    rewriter.replaceOp(
-        op, {Adaptor::CreateOp(op, op.getResult().getType(), operands[0],
-                               operands[1], rewriter)});
+    rewriter.replaceOp(op, {Adaptor::CreateOp(op, op.getResult().getType(),
+                                              op.lhs(), op.rhs(), rewriter)});
     return success();
   }
 };
@@ -83,14 +81,13 @@ struct ConvertTrivialNonBroadcastBinaryOp
 // Whether that is of any practical benefit remains to be seen.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
 struct ConvertRankedDynamicBroadcastBinaryOp
-    : public OpConversionPattern<ChloOpTy> {
-  using OpConversionPattern<ChloOpTy>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      ChloOpTy op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
+    : public OpRewritePattern<ChloOpTy> {
+  using OpRewritePattern<ChloOpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ChloOpTy op,
+                                PatternRewriter &rewriter) const override {
     // Only support ranked operands.
-    Value lhs = operands[0];
-    Value rhs = operands[1];
+    Value lhs = op.lhs();
+    Value rhs = op.rhs();
     auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
     auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
     auto result_type =

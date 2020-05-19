@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -91,12 +95,7 @@ class MicroAllocator {
 
   // Returns the arena usage in bytes, only available after
   // `FinishTensorAllocation`. Otherwise, it will return 0.
-  size_t used_bytes() const {
-    if (active_) {
-      return 0;
-    }
-    return memory_allocator_->GetUsedBytes();
-  }
+  size_t used_bytes() const;
 
   // Run through the model to allocate nodes and registrations. We need to keep
   // them for the entire life time of the model to allow persistent tensors.
@@ -140,8 +139,6 @@ class MicroAllocator {
   size_t scratch_buffer_count_ = 0;
 
   const SubGraph* subgraph_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
 };
 
 }  // namespace tflite

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/errors.h"
 
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 namespace profiler {
 

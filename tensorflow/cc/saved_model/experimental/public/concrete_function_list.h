@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/experimental/public/concrete_function.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // ConcreteFunctionList helps convert an opaque pointer to an array of
@@ -56,6 +57,7 @@ inline std::vector<ConcreteFunction*> ConcreteFunctionList::ToVector() {
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_EXPERIMENTAL_PUBLIC_CONCRETE_FUNCTION_LIST_H_

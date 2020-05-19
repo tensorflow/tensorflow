@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
 #include "grpcpp/generic/generic_stub.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -106,8 +107,8 @@ class GrpcEagerClientThread : public core::RefCounted {
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
-                  GrpcEagerClientThread* thread)
-      : stub_(channel), thread_(thread) {
+                  GrpcEagerClientThread* thread, const string& target)
+      : stub_(channel), thread_(thread), target_(target) {
     // Hold a reference to make sure the corresponding EagerClientThread
     // outlives the client.
     thread_->Ref();
@@ -127,14 +128,14 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
         response, std::move(done_wrapped), /*call_opts=*/nullptr,         \
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true);   \
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,    \
+        &target_);                                                        \
   }
 
   CLIENT_METHOD(CreateContext);
   CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
-  CLIENT_METHOD(RunComponentFunction);
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD
@@ -146,7 +147,8 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
         response, std::move(done_wrapped), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr);
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
 
     VLOG(1) << "Sending RPC to close remote eager context "
             << request->DebugString();
@@ -160,6 +162,18 @@ class GrpcEagerClient : public EagerClient {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
                  << " does not seem to exist.";
     }
+  }
+
+  void RunComponentFunctionAsync(CallOptions* call_opts,
+                                 const RunComponentFunctionRequest* request,
+                                 RunComponentFunctionResponse* response,
+                                 StatusCallback done) override {
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/RunComponentFunction",
+        *request, response, std::move(done_wrapped), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
   }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
@@ -194,6 +208,7 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   const GrpcEagerClientThread* thread_;
+  const string target_;
 
   ::grpc::CompletionQueue* cq_;
 
@@ -236,7 +251,7 @@ class GrpcEagerClientCache : public EagerClientCache {
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();
       core::RefCountPtr<EagerClient> worker(
-          new GrpcEagerClient(shared, thread));
+          new GrpcEagerClient(shared, thread, target));
       it = clients_.emplace(target, std::move(worker)).first;
     }
 

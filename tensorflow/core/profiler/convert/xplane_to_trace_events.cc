@@ -15,8 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
+#include <stddef.h>
+
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -72,6 +85,12 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
     xplane.ForEachLine([&](const XLineVisitor& xline) {
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
+        int64 event_type =
+            xevent.Type().value_or(HostEventType::kUnknownHostEventType);
+        if (event_type == HostEventType::kMemoryAllocation ||
+            event_type == HostEventType::kMemoryDeallocation) {
+          return;
+        }
         auto* event = trace->add_trace_events();
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);

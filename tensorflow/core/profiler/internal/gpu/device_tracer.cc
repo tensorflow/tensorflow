@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -85,7 +85,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!event.annotation.empty()) {
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelAnnotation)),
-                        event.annotation);
+                        *plane->GetOrCreateStatMetadata(event.annotation));
   }
   if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
     xevent.AddStatValue(
@@ -102,7 +102,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
                         event.kernel_info.block_y, event.kernel_info.block_z);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelDetails)),
-                        kernel_details);
+                        *plane->GetOrCreateStatMetadata(kernel_details));
   } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
              event.type == CuptiTracerEventType::MemcpyD2H ||
              event.type == CuptiTracerEventType::MemcpyD2D ||
@@ -145,7 +145,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!annotation_stack.empty()) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-        annotation_stack.begin()->name);
+        *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
   }
 }
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -793,6 +794,19 @@ nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
   } else {
     return weights().shape_;
   }
+}
+
+Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
+  if (is_tensor()) {
+    nvinfer1::DataType trt_type = tensor()->getType();
+    return TrtTypeToTfType(trt_type, tf_type);
+  }
+
+  if (is_weights()) {
+    *tf_type = weights().GetTensor().dtype();
+    return Status::OK();
+  }
+  return errors::Internal("The object is probably not initialized");
 }
 
 string TRT_TensorOrWeights::DebugString() const {
@@ -1900,27 +1914,48 @@ Status CheckInputsWeights(
   return Status::OK();
 }
 
-Status AllowDataTypes(const OpConverterParams& params,
-                      const std::set<DataType>& allowed_dtypes,
-                      const char* dtype_attr_name = "T") {
-  const auto& node_def = params.node_def;
+Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
+                        const char* type_attr_name) {
   TFAttrs attrs(node_def);
-  if (!attrs.count(dtype_attr_name)) {
-    return errors::InvalidArgument("Attribute with name ", dtype_attr_name,
+  if (!attrs.count(type_attr_name)) {
+    return errors::InvalidArgument("Attribute with name ", type_attr_name,
                                    " not found.");
   }
-  const auto op_dtype = attrs.get<DataType>(dtype_attr_name);
-  if (!allowed_dtypes.count(op_dtype)) {
-    // Build string list of allowed types.
-    std::ostringstream ss;
-    for (auto it = allowed_dtypes.begin(); it != allowed_dtypes.end(); ++it) {
-      if (it != allowed_dtypes.begin()) ss << ", ";
-      ss << DataTypeString(*it);
-    }
-    return errors::Unimplemented("Data type ", DataTypeString(op_dtype),
+  *tf_type = attrs.get<DataType>(type_attr_name);
+  return Status::OK();
+}
+
+Status GetInputTfType(const OpConverterParams& params, DataType* tf_type,
+                      int pos) {
+  const std::vector<TRT_TensorOrWeights>& inputs = params.inputs;
+  if (inputs.size() <= pos) {
+    return errors::Internal("Invalid input position");
+  }
+
+  return inputs[pos].GetTfType(tf_type);
+}
+
+constexpr const char kOutputTypeAttrName[] = "T";
+
+Status GetOutputTfType(const OpConverterParams& params, DataType* tf_type) {
+  return GetNodeDefTfType(params.node_def, tf_type, kOutputTypeAttrName);
+}
+
+Status AllowDataTypes(const OpConverterParams& params,
+                      const std::set<DataType>& allowed_types,
+                      const char* type_attr_name = kOutputTypeAttrName) {
+  const auto& node_def = params.node_def;
+  DataType tf_type;
+  TF_RETURN_IF_ERROR(GetNodeDefTfType(node_def, &tf_type, type_attr_name));
+  if (!allowed_types.count(tf_type)) {
+    string allowed_types_string = absl::StrJoin(
+        allowed_types, ", ", [](string* out, const DataType& type) {
+          absl::StrAppendFormat(out, "%s", DataTypeString(type));
+        });
+    return errors::Unimplemented("Data type ", DataTypeString(tf_type),
                                  " is not supported for ", node_def.op(),
-                                 ", must be one of [", ss.str(), "], at ",
-                                 node_def.name());
+                                 ", must be one of [", allowed_types_string,
+                                 "], at ", node_def.name());
   }
   return Status::OK();
 }
@@ -2413,26 +2448,19 @@ Status ConvertExpandDims(OpConverterParams* params) {
 }
 
 Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
-                                const std::vector<int>& trt_axes,
+                                std::vector<int>* input_dims,
                                 nvinfer1::ITensor** output) {
-  const nvinfer1::Dims dims = input->getDimensions();
-  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Mark axes to remove by setting them to 0.
-  for (int axis : trt_axes) {
-    input_dims[axis] = 0;
-  }
-
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
   // value.
-  if (absl::c_any_of(input_dims, [](int i) { return i == -1; })) {
+  if (absl::c_any_of(*input_dims, [](int i) { return i == -1; })) {
     nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
     std::vector<nvinfer1::ITensor const*> concat_inputs;
-    for (int i = 0; i < input_dims.size(); i++) {
+    for (int i = 0; i < input_dims->size(); i++) {
       // If input dim wasn't set to 0 earlier, we include it in new shape.
-      if (input_dims[i] != 0) {
+      if (input_dims->at(i) != 0) {
         concat_inputs.push_back(
             network()
                 ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
@@ -2452,11 +2480,12 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   }
 #endif
   // Remove all dims which are equal to 0.
-  input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
-                   input_dims.end());
+  input_dims->erase(std::remove(input_dims->begin(), input_dims->end(), 0),
+                    input_dims->end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
+  VLOG(2) << "input_dims" << input_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(*input_dims, &new_dims));
   TF_RETURN_IF_ERROR(PrepareTensorForShape(TRT_TensorOrWeights(input), new_dims,
                                            /*validation_only=*/false, output));
   return Status::OK();
@@ -2475,31 +2504,48 @@ Status ConvertSqueeze(OpConverterParams* params) {
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
   if (squeeze_dims.empty()) {
-    return errors::Unimplemented(
-        "Squeeze is only implemented for explicit dims, at ", node_def.name());
-  }
-  std::vector<int> trt_axes;
-  trt_axes.reserve(squeeze_dims.size());
-  for (int tf_axis : squeeze_dims) {
-    // If the axis is valid, then convert it to TRT axis, otherwise abort
-    // conversion.
-    int trt_axis;
-    TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                   params->use_implicit_batch, &trt_axis));
-    // Make sure target dimension is size 1 or unknown size (-1)
-    if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
-      return errors::InvalidArgument(
-          "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
-          " cannot be squeezed because it must be size 1, at ",
+    if (params->use_implicit_batch || !HasStaticShape(dims)) {
+      return errors::Unimplemented(
+          "Squeeze is not implemented for empty squeeze_dims, at ",
           node_def.name());
+    } else {
+      // explicit batch mode with static input shape we squeeze all singleton
+      // dimensions
+      for (int& dim : input_dims) {
+        if (dim == 1) {
+          // Mark it for removal by setting it to 0
+          dim = 0;
+        }
+      }
     }
-    trt_axes.push_back(trt_axis);
+  } else {
+    std::vector<int> trt_axes;
+    trt_axes.reserve(squeeze_dims.size());
+    for (int tf_axis : squeeze_dims) {
+      // If the axis is valid, then convert it to TRT axis, otherwise abort
+      // conversion.
+      int trt_axis;
+      TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
+                                     params->use_implicit_batch, &trt_axis));
+      // Make sure target dimension is size 1 or unknown size (-1)
+      if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
+        return errors::InvalidArgument(
+            "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
+            " cannot be squeezed because it must be size 1, at ",
+            node_def.name());
+      }
+      trt_axes.push_back(trt_axis);
+    }
+    // Mark axes to remove by setting them to 0.
+    for (int axis : trt_axes) {
+      input_dims[axis] = 0;
+    }
   }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      input_tensor.tensor(), trt_axes, &output_tensor));
+      input_tensor.tensor(), &input_dims, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -4587,6 +4633,42 @@ Status ConvertUnpack(OpConverterParams* params) {
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
 
+// Supports cast fp16=>fp32 through IIdentityLayer.
+Status ConvertCast(OpConverterParams* params) {
+  const NodeDef& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+  auto unsupport_cast_error = [&]() {
+    return errors::Unimplemented("Cast op: ", node_def.op(),
+                                 " not supported at: ", node_def.name());
+  };
+
+  DataType input_type;
+  TF_RETURN_IF_ERROR(GetInputTfType(*params, &input_type, 0));
+  if (input_type != DataType::DT_HALF) {
+    return unsupport_cast_error();
+  }
+
+  DataType output_type;
+  TF_RETURN_IF_ERROR(GetOutputTfType(*params, &output_type));
+  if (output_type != DataType::DT_FLOAT) {
+    return unsupport_cast_error();
+  }
+
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::ITensor* input = params->inputs.at(0).tensor();
+  nvinfer1::IIdentityLayer* layer =
+      params->converter->network()->addIdentity(*input);
+  layer->setPrecision(nvinfer1::DataType::kFLOAT);
+
+  if (layer->getOutput(0)->getType() != nvinfer1::DataType::kFLOAT) {
+    return errors::Internal("IIdentityLayer doesn't work as expected");
+  }
+
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
+
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5664,6 +5746,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["AddN"] = ConvertAddN;
+  (*registration)["Cast"] = ConvertCast;
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;

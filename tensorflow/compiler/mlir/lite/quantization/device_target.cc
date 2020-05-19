@@ -127,7 +127,7 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   input_multipliers->append(3, kUnitQuantizedMultiplier);
 
   // output multipliers
-  double real_multiplier = o_spec.getScale() / scale_product;
+  double real_multiplier = scale_product / o_spec.getScale();
   output_multipliers->push_back(quant::QuantizeMultiplier(real_multiplier));
 
   // output ranges

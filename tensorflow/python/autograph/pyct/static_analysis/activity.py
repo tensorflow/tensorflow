@@ -617,9 +617,23 @@ class ActivityAnalyzer(transformer.Base):
       # TODO(mdan): Do remove it, it's confusing.
       self._enter_scope(False)
       node.body = self.visit(node.body)
+
+      # The lambda body can contain nodes of types normally not found as
+      # statements, and may not have the SCOPE annotation needed by the CFG.
+      # So we attach one if necessary.
+      if not anno.hasanno(node.body, anno.Static.SCOPE):
+        anno.setanno(node.body, anno.Static.SCOPE, self.scope)
+
       self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
 
+      lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
+
+      # Exception: lambdas are assumed to be used in the place where
+      # they are defined. Therefore, their activity is passed on to the
+      # calling statement.
+      self.scope.read.update(lambda_scope.read - lambda_scope.bound)
+
       return node
 
   def visit_With(self, node):

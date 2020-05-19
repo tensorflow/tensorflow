@@ -165,7 +165,7 @@ class FileIO(object):
     self._read_buf.seek(offset)
 
   def readline(self):
-    r"""Reads the next line from the file. Leaves the '\n' at the end."""
+    r"""Reads the next line, keeping \n. At EOF, returns ''."""
     self._preread_check()
     return self._prepare_value(self._read_buf.readline())
 

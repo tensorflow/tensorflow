@@ -381,6 +381,18 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllGather) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllGather(x, /*all_gather_dimension=*/1, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");

@@ -1,15 +1,48 @@
 # XNNPACK backend for TensorFlow Lite
 
 XNNPACK is a highly optimized library of floating-point neural network
-inference operators for ARM, WebAssembly, and x86 platforms. This document
-describes how to use the XNNPACK library as a backend for TensorFlow Lite.
+inference operators for ARM, x86, and WebAssembly architectures in Android, iOS,
+Windows, Linux, macOS, and Emscripten environments. This document describes how
+to use the XNNPACK library as an inference engine for TensorFlow Lite.
 
-## Enabling XNNPACK backend in TensorFlow Lite models
+## Using XNNPACK engine with TensorFlow Lite interpreter
 
 XNNPACK integrates with TensorFlow Lite interpreter through the delegation
-mechanism. To leverage XNNPACK library for acceleration, the users need to
-create an XNNPACK delegate with the `TfLiteXNNPackDelegateCreate` function,
-and call `Interpreter::ModifyGraphWithDelegate` to delegate supported parts of
+mechanism. There are three methods to enable XNNPACK engine in TensorFlow Lite.
+
+### Enable XNNPACK via Bazel build flags (recommended)
+
+When building TensorFlow Lite with Bazel, add
+`--define tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will
+use XNNPACK engine by default.
+
+The exact command depends on the target platform, e.g. for Android AAR you'd use
+
+```
+bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define tflite_with_xnnpack=true \
+  //tensorflow/lite/java:tensorflow-lite
+```
+
+### Enable XNNPACK via additional dependency
+
+Another way to enable XNNPACK is to build and link the
+`//tensorflow/lite:tflite_with_xnnpack` target into your application alongside
+the TensorFlow Lite framework.
+
+This method works on platforms which support POSIX-style weak symbols (Android,
+iOS, Linux, Mac, but **NOT** Windows).
+
+### Enable XNNPACK via low-level delegate API (not recommended)
+
+While it is possible to use low-level delegate API to enable XNNPACK, this
+method is **NOT RECOMMENDED** unless you need to use TensorFlow Lite both with
+and without XNNPACK (e.g. for benchmarking).
+
+With low-level delegate API users create an XNNPACK delegate with the
+`TfLiteXNNPackDelegateCreate` function, and then call
+`Interpreter::ModifyGraphWithDelegate` to delegate supported parts of
 the model to the XNNPACK delegate. The users must destroy the delegate with
 `TfLiteXNNPackDelegateDelete` **after** releasing the TensorFlow Lite
 interpreter. The snippet below illustrates the typical usage:

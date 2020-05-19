@@ -226,6 +226,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "//tensorflow/python/types",
         "@six_archive//:six",
     ],
 )

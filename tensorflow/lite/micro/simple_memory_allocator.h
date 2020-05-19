@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {
@@ -50,6 +50,9 @@ class SimpleMemoryAllocator {
   uint8_t* GetTail() const { return tail_; }
   size_t GetAvailableMemory() const { return tail_ - head_; }
   size_t GetUsedBytes() const { return GetBufferSize() - GetAvailableMemory(); }
+
+  size_t GetHeadUsedBytes() const { return head_ - buffer_head_; }
+  size_t GetTailUsedBytes() const { return buffer_tail_ - tail_; }
 
  private:
   size_t GetBufferSize() const { return buffer_tail_ - buffer_head_; }

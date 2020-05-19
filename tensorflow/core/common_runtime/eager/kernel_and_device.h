@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -241,7 +242,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 // Represents a multi-device function. Functions can also be run using
 // various function-calling kernels including CallOp and PartitionedCallOp.
 // In such cases, KernelAndDeviceOp is used.
-class KernelAndDeviceFunc final : public KernelAndDevice {
+class KernelAndDeviceFunc : public KernelAndDevice {
  public:
   // `flr` can be nullptr.
   // `pflr` must not be nullptr.
@@ -249,6 +250,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      absl::flat_hash_map<string, const std::vector<string>*> composite_devices,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -261,6 +263,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
+        composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
@@ -320,6 +323,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  // Maps from a CompositeDevice name to a list of physical device names.
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 

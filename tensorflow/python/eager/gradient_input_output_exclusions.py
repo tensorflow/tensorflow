@@ -36,6 +36,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import liveness
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 
@@ -208,6 +209,7 @@ def _live_tensors(f, attr_name="inputs"):
   graphs = cfg.build(node)
   node = qual_names.resolve(node)
   node = activity.resolve(node, ctx, None)
+  node = reaching_fndefs.resolve(node, ctx, graphs)
   node = liveness.resolve(node, ctx, graphs)
 
   op_arg_name = anno.getanno(node.args.args[0], anno.Basic.QN)

@@ -3792,7 +3792,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":eye_functor",
+    ]),
 )
 
 tf_kernel_library(
@@ -4019,7 +4021,7 @@ cc_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//third_party/eigen3",
@@ -4044,7 +4046,7 @@ cc_library(
         ":eigen_spatial_convolutions-inl",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -4060,7 +4062,7 @@ cc_library(
     deps = select({
         "//tensorflow:android": [
             ":conv_3d_mobile",
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             ":conv_3d",
@@ -4871,6 +4873,7 @@ tf_kernel_library(
     name = "bincount_op",
     prefix = "bincount_op",
     deps = [
+        ":fill_functor",
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -7095,7 +7098,7 @@ cc_library(
 
 build_test(
     name = "android_tensorflow_kernels_build_test",
-    targets = [":android_tensorflow_kernels"],
+    targets = [":portable_tensorflow_kernels"],
 )
 
 cc_library(
@@ -7108,7 +7111,7 @@ cc_library(
         "//tensorflow/core:android_gif_internal",
         "//tensorflow/core:android_jpeg_internal",
         "//tensorflow/core:android_png_internal",
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )
@@ -7125,7 +7128,7 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )
@@ -7267,8 +7270,8 @@ tf_cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":quantized_ops",
@@ -7328,8 +7331,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7413,8 +7416,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_testutil",
@@ -7600,8 +7603,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7826,8 +7829,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -8224,7 +8227,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + mkl_deps(),
+    deps = NN_DEPS + [
+        ":fused_batch_norm_op",
+        ":no_op",
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(

@@ -28,15 +28,21 @@ Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
 
 Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 
-// Converts the given numpy ndarray to a (safe) TF_Tensor. The returned
-// TF_Tensor in `out_tensor` may have its own Python reference to `ndarray`s
-// data. After `out_tensor` is destroyed, this reference must (eventually) be
-// decremented via ClearDecrefCache().
-//
-// `out_tensor` must be non-null. Caller retains ownership of `ndarray`.
-Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor);
+// Creates a tensor in 'ret' from the input `ndarray`. The returned TF_Tensor
+// in `ret` may have its own Python reference to `ndarray`s data. After `ret`
+// is destroyed, this reference must (eventually) be decremented via
+// ClearDecrefCache().
+// `convert_string` indicates whether it has to handle tstring conversion.
+// Expected to be removed once tstring migration is done.
+ABSL_MUST_USE_RESULT
+Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
+                       Safe_TF_TensorPtr* ret, bool convert_string);
 
 // Creates a tensor in 'ret' from the input Ndarray.
+// TODO(kkb): This is an old conversion function that does not support TFRT.
+// Currently it's used for session, py_func, and an internal project.  Migrate
+// them.
+ABSL_MUST_USE_RESULT
 Status NdarrayToTensor(PyObject* obj, Tensor* ret);
 
 // Creates a numpy array in 'ret' which either aliases the content of 't' or has
