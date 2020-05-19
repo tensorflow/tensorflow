@@ -88,17 +88,17 @@ class GatherOp : public OpKernel {
     }
 
     if (batch_dims_ != 0) {
-      if (batch_dims_ < 0) {
-        batch_dims_ = indices.dims() + batch_dims_;
-      }
-
-      if (!axis_is_set) axis = batch_dims_;
-
       OP_REQUIRES(
           c, batch_dims_ >= -indices.dims() && batch_dims_ <= indices.dims(),
           errors::InvalidArgument("Expected batch_dims in the range [",
                                   -indices.dims(), ", ", indices.dims(),
                                   "], but got ", batch_dims_));
+
+      if (batch_dims_ < 0) {
+        batch_dims_ = indices.dims() + batch_dims_;
+      }
+
+      if (!axis_is_set) axis = batch_dims_;
 
       OP_REQUIRES(c, batch_dims_ < params.dims(),
                   errors::InvalidArgument("batch_dims (", batch_dims_,
