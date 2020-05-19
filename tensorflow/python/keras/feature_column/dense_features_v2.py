@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.layers import serialization as layer_serialization
+from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -94,7 +93,3 @@ class DenseFeatures(dense_features.DenseFeatures):
     # We would like to call Layer.build and not _DenseFeaturesHelper.build.
     # pylint: disable=protected-access
     super(fc._BaseFeaturesLayer, self).build(None)  # pylint: disable=bad-super-call
-
-
-layer_serialization.inject_feature_column_v2_objects(
-    'DenseFeatures', DenseFeatures)

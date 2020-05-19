@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for dense_features."""
+"""Tests for dense_features_v2."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import dense_features as df
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,9 +30,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.feature_column import dense_features_v2 as df
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
@@ -99,58 +98,6 @@ class DenseFeaturesTest(test.TestCase):
       self.assertEqual(1, len(variables))
       self.assertIs(variables[0], dense_features.variables[0])
 
-  def test_dense_feature_with_partitioner(self):
-    with context.eager_mode():
-      sparse_input = sparse_tensor.SparseTensor(
-          indices=((0, 0), (1, 0), (2, 0), (3, 0)),
-          values=(0, 1, 3, 2),
-          dense_shape=(4, 4))
-
-      # Create feature columns (categorical and embedding).
-      categorical_column = fc.categorical_column_with_identity(
-          key='a', num_buckets=4)
-      embedding_dimension = 2
-
-      def _embedding_column_initializer(shape, dtype, partition_info=None):
-        offset = partition_info._var_offset[0]
-        del shape  # unused
-        del dtype  # unused
-        if offset == 0:
-          embedding_values = (
-              (1, 0),  # id 0
-              (0, 1))  # id 1
-        else:
-          embedding_values = (
-              (1, 1),  # id 2
-              (2, 2))  # id 3
-        return embedding_values
-
-      embedding_column = fc.embedding_column(
-          categorical_column,
-          dimension=embedding_dimension,
-          initializer=_embedding_column_initializer)
-
-      dense_features = df.DenseFeatures(
-          [embedding_column],
-          partitioner=partitioned_variables.fixed_size_partitioner(2))
-      features = {'a': sparse_input}
-
-      inputs = dense_features(features)
-      variables = dense_features.variables
-
-      # Sanity check: test that the inputs are correct.
-      self.assertAllEqual([[1, 0], [0, 1], [2, 2], [1, 1]], inputs)
-
-      # Check that only one variable was created.
-      self.assertEqual(2, len(variables))
-
-      # Check that invoking dense_features on the same features does not create
-      # additional variables
-      _ = dense_features(features)
-      self.assertEqual(2, len(variables))
-      self.assertIs(variables[0], dense_features.variables[0])
-      self.assertIs(variables[1], dense_features.variables[1])
-
   def test_feature_column_dense_features_gradient(self):
     with context.eager_mode():
       sparse_input = sparse_tensor.SparseTensor(
@@ -196,6 +143,43 @@ class DenseFeaturesTest(test.TestCase):
 
       self.assertAllEqual([0, 1, 2], indexed_slice.indices)
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
+
+  def test_dense_feature_with_training_arg(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2')
+
+    # Monkey patch the second numeric column to simulate a column that has
+    # different behavior by mode.
+    def training_aware_get_dense_tensor(transformation_cache,
+                                        state_manager,
+                                        training=None):
+      return transformation_cache.get(price2, state_manager, training=training)
+
+    def training_aware_transform_feature(transformation_cache,
+                                         state_manager,
+                                         training=None):
+      input_tensor = transformation_cache.get(
+          price2.key, state_manager, training=training)
+      if training:
+        return input_tensor * 10.0
+      else:
+        return input_tensor * 20.0
+
+    price2.get_dense_tensor = training_aware_get_dense_tensor
+    price2.transform_feature = training_aware_transform_feature
+    with ops.Graph().as_default():
+      features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
+      train_mode = df.DenseFeatures([price1, price2])(features, training=True)
+      predict_mode = df.DenseFeatures([price1, price2
+                                      ])(features, training=False)
+
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.evaluate(lookup_ops.tables_initializer())
+
+      self.assertAllClose([[1., 2., 30.], [5., 6., 40.]],
+                          self.evaluate(train_mode))
+      self.assertAllClose([[1., 2., 60.], [5., 6., 80.]],
+                          self.evaluate(predict_mode))
 
   def test_raises_if_empty_feature_columns(self):
     with self.assertRaisesRegexp(ValueError,
