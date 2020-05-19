@@ -29,7 +29,7 @@ ENTRY %tfcompile.20 {
   // CHECK: [[R2:%.+]] = "xla_hlo.tuple"([[A0]])
   %tuple.5 = (f32[]) tuple(%arg0.1), metadata={op_type="If" op_name="cond/Merge_if"}
 
-  // CHECK: [[R3:%.+]] = "xla_hlo.conditional"([[R1]], [[R2]], [[R2]]) ( {
+  // CHECK: [[R3:%.+]] = "xla_hlo.if"([[R1]], [[R2]], [[R2]]) ( {
   // CHECK: ^bb0([[A1:%.+]]: tuple<tensor<f32>>):
   // CHECK:   [[R7:%.+]] = "xla_hlo.get_tuple_element"([[A1]])
   // CHECK:   [[R8:%.+]] = "xla_hlo.log"([[R7]])

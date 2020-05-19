@@ -484,8 +484,11 @@ def HLO_AfterAllOp : HLO_Op<"after_all", []> {
   let results = (outs HLO_Token);
 }
 
-def HLO_ConditionalOp: HLO_Op<"conditional", []> {
-  string summary = "Conditional operator";
+// Xla Client API has two separate calls for indexed and predicated conditional,
+// although both eventually map to kConditional HLO. IfOp maps to predicated
+// conditional use of kConditional HLO.
+def HLO_IfOp: HLO_Op<"if", []> {
+  string summary = "If operator";
 
   string description = [{
     Returns the result of executing either a true or false function depending on

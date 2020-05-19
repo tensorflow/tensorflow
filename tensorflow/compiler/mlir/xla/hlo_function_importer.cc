@@ -423,8 +423,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       TF_RETURN_IF_ERROR(GetMlirTypes(
           {instruction->true_computation()->root_instruction()}, &rets));
 
-      auto op = func_builder->create<mlir::xla_hlo::ConditionalOp>(
-          loc, rets, operands, attributes);
+      auto op = func_builder->create<mlir::xla_hlo::IfOp>(loc, rets, operands,
+                                                          attributes);
       TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
                                            &op.true_branch()));
       TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
