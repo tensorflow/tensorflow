@@ -43,6 +43,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
+# Utility functions used by the different classes below.
 def _get_current_replica_id_as_int():
   """Returns the current replica ID as an integer, or `None`."""
   replica_context = ds_context.get_replica_context()
@@ -53,6 +54,59 @@ def _get_current_replica_id_as_int():
   else:
     replica_id = distribute_lib.get_update_replica_id()
   return replica_id
+
+
+def _assign_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign(tensor)
+
+
+def _assign_add_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_add(tensor)
+
+
+def _assign_sub_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_sub(tensor)
+
+
+def _assert_replica_context(strategy):
+  replica_context = ds_context.get_replica_context()
+  if not replica_context:
+    raise RuntimeError(
+        "Replica-local variables may only be assigned in a replica context.")
+  if replica_context.strategy is not strategy:
+    raise RuntimeError(
+        "Replica-local variables may only be assigned in a replica context.")
+
+
+def _apply_aggregation(strategy, value, aggregation, destinations):
+  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    return strategy.extended.broadcast_to(
+        strategy.experimental_local_results(value)[0],
+        destinations=destinations)
+  reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+  return strategy.extended.reduce_to(reduce_op, value, destinations)
+
+
+_aggregation_error_msg = (
+    "You must specify an aggregation method to update a "
+    "{variable_type} in Replica Context. You can do so by passing "
+    "an explicit value for argument `aggregation` to tf.Variable(..)."
+    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
+    "`tf.VariableAggregation` lists the possible aggregation methods."
+    "This is required because {variable_type} should always be "
+    "kept in sync. When updating them or assigning to them in a "
+    "replica context, we automatically try to aggregate the values "
+    "before updating the variable. For this aggregation, we need to "
+    "know the aggregation method. "
+    "Another alternative is to not try to update such "
+    "{variable_type} in replica context, but in cross replica "
+    "context. You can enter cross replica context by calling "
+    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
+    "Inside `merge_fn`, you can then update the {variable_type} "
+    "using `tf.distribute.StrategyExtended.update()`.")
 
 
 @tf_export("distribute.DistributedValues", v1=[])
@@ -387,21 +441,6 @@ class Mirrored(DistributedDelegate):
     if conv_fn and callable(conv_fn):
       return conv_fn()
     return obj
-
-
-def _assign_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign(tensor)
-
-
-def _assign_add_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_add(tensor)
-
-
-def _assign_sub_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_sub(tensor)
 
 
 class DistributedVarOp(object):
@@ -743,59 +782,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     pass
 
 
-def _validate_colocate_extended(v, extended):
-  variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
-  if variable_strategy.extended is not extended:
-    raise ValueError(
-        "`colocate_vars_with` must only be passed a variable created in this "
-        "tf.distribute.Strategy.scope(), not %s created in scope: %s" %
-        (v, variable_strategy))
-
-
-def validate_colocate_distributed_variable(v, extended):
-  if not isinstance(v, DistributedVariable):
-    raise ValueError(
-        "`colocate_vars_with` must only be passed a variable created in this "
-        "tf.distribute.Strategy.scope(), not: %r" % (v,))
-  _validate_colocate_extended(v, extended)
-
-
-def validate_colocate(v, extended):
-  if not hasattr(v, "_distribute_strategy"):
-    raise ValueError(
-        "`colocate_vars_with` must only be passed a variable created in this "
-        "tf.distribute.Strategy.scope(), not: %r" % (v,))
-  _validate_colocate_extended(v, extended)
-
-
-def _apply_aggregation(strategy, value, aggregation, destinations):
-  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.extended.broadcast_to(
-        strategy.experimental_local_results(value)[0],
-        destinations=destinations)
-  reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-  return strategy.extended.reduce_to(reduce_op, value, destinations)
-
-
-_aggregation_error_msg = (
-    "You must specify an aggregation method to update a "
-    "{variable_type} in Replica Context. You can do so by passing "
-    "an explicit value for argument `aggregation` to tf.Variable(..)."
-    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
-    "`tf.VariableAggregation` lists the possible aggregation methods."
-    "This is required because {variable_type} should always be "
-    "kept in sync. When updating them or assigning to them in a "
-    "replica context, we automatically try to aggregate the values "
-    "before updating the variable. For this aggregation, we need to "
-    "know the aggregation method. "
-    "Another alternative is to not try to update such "
-    "{variable_type} in replica context, but in cross replica "
-    "context. You can enter cross replica context by calling "
-    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
-    "Inside `merge_fn`, you can then update the {variable_type} "
-    "using `tf.distribute.StrategyExtended.update()`.")
-
-
 class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
 
@@ -810,87 +796,6 @@ class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
         tuple(
             _assign_on_device(v.device, v, tensor)
             for v in self._mirrored_variable.values))
-
-
-def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls, **kwargs):
-  # Figure out what collections this variable should be added to.
-  # We'll add the MirroredVariable to those collections instead.
-  var_collections = kwargs.pop("collections", None)
-  if var_collections is None:
-    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-  kwargs["collections"] = []
-
-  synchronization = kwargs.get("synchronization",
-                               vs.VariableSynchronization.ON_WRITE)
-
-  if synchronization == vs.VariableSynchronization.NONE:
-    raise ValueError(
-        "`NONE` variable synchronization mode is not supported with `Mirrored` "
-        "distribution strategy. Please change the `synchronization` for "
-        "variable: " + str(kwargs["name"]))
-  elif synchronization == vs.VariableSynchronization.ON_READ:
-    is_sync_on_read = True
-  elif synchronization in (vs.VariableSynchronization.ON_WRITE,
-                           vs.VariableSynchronization.AUTO):
-    # `AUTO` synchronization defaults to `ON_WRITE`.
-    is_sync_on_read = False
-  else:
-    raise ValueError(
-        "Invalid variable synchronization mode: %s for variable: %s" %
-        (synchronization, kwargs["name"]))
-
-  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
-
-  if aggregation not in (vs.VariableAggregation.NONE,
-                         vs.VariableAggregation.SUM,
-                         vs.VariableAggregation.MEAN,
-                         vs.VariableAggregation.ONLY_FIRST_REPLICA):
-    raise ValueError("Invalid variable aggregation mode: %s for variable: %s" %
-                     (aggregation, kwargs["name"]))
-
-  # Ignore user-specified caching device, not needed for mirrored variables.
-  kwargs.pop("caching_device", None)
-
-  # TODO(josh11b,apassos): It would be better if variable initialization
-  # was never recorded on the tape instead of having to do this manually
-  # here.
-  with tape.stop_recording():
-    value_list = real_mirrored_creator(**kwargs)
-    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
-    result = var_cls(strategy, value_list, aggregation)
-    # Install the created DistributedVariable as _distributed_container property
-    # of the underlying variables, to make it easy to map back to the container.
-    for v in result.values:
-      # Hold a strong reference to avoid the container from being GC-ed. After
-      # v = v.assign(), the user code may no longer holds references to the
-      # original container, since v.assign() returns a new DistributedVariable.
-      v._distributed_container = result  # pylint: disable=protected-access
-
-  # Add the wrapped variable to the requested collections.
-  # The handling of eager mode and the global step matches
-  # ResourceVariable._init_from_args().
-  if not context.executing_eagerly():
-    g = ops.get_default_graph()
-    # If "trainable" is True, next_creator() will add the member variables
-    # to the TRAINABLE_VARIABLES collection, so we manually remove
-    # them and replace with the MirroredVariable. We can't set
-    # "trainable" to False for next_creator() since that causes functions
-    # like implicit_gradients to skip those variables.
-    if kwargs.get("trainable", True):
-      var_collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
-      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for value in value_list:
-        for i, trainable_variable in enumerate(l):
-          if value is trainable_variable:
-            del l[i]
-            break
-
-    g.add_to_collections(var_collections, result)
-  elif ops.GraphKeys.GLOBAL_STEP in var_collections:
-    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
-
-  return result
 
 
 class MirroredVariable(DistributedVariable, Mirrored):
@@ -993,30 +898,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
         self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-# Register a conversion function which reads the value of the variable,
-# allowing instances of the class to be used as tensors.
-def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
-  return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
-
-
-ops.register_tensor_conversion_function(MirroredVariable,
-                                        _tensor_conversion_mirrored)
-
-
-def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
-  return ops.convert_to_tensor(
-      value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
-
-
-ops.register_tensor_conversion_function(Mirrored,
-                                        _tensor_conversion_mirrored_val)
-
-
-def is_distributed_variable(v):
-  """Determine if a variable is ds variable or TPU mirrored variable."""
-  return isinstance(v, DistributedVariable)
-
-
 class _SyncOnReadSaveable(saveable_object.SaveableObject):
   """Class for defining how to restore a SyncOnReadVariable."""
 
@@ -1051,16 +932,6 @@ class _SyncOnReadSaveable(saveable_object.SaveableObject):
         tuple(
             _assign_on_device(v.device, v, tensor)
             for v in self._sync_on_read_variable.values))
-
-
-def _assert_replica_context(strategy):
-  replica_context = ds_context.get_replica_context()
-  if not replica_context:
-    raise RuntimeError(
-        "Replica-local variables may only be assigned in a replica context.")
-  if replica_context.strategy is not strategy:
-    raise RuntimeError(
-        "Replica-local variables may only be assigned in a replica context.")
 
 
 class SyncOnReadVariable(DistributedVariable):
@@ -1188,8 +1059,110 @@ class SyncOnReadVariable(DistributedVariable):
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-# Register a conversion function for SyncOnReadVariable which allows as_ref to
-# be true.
+# Variable creation function for sync strategies.
+def create_mirrored_variable(  # pylint: disable=missing-docstring
+    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls, **kwargs):
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  var_collections = kwargs.pop("collections", None)
+  if var_collections is None:
+    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  synchronization = kwargs.get("synchronization",
+                               vs.VariableSynchronization.ON_WRITE)
+
+  if synchronization == vs.VariableSynchronization.NONE:
+    raise ValueError(
+        "`NONE` variable synchronization mode is not supported with `Mirrored` "
+        "distribution strategy. Please change the `synchronization` for "
+        "variable: " + str(kwargs["name"]))
+  elif synchronization == vs.VariableSynchronization.ON_READ:
+    is_sync_on_read = True
+  elif synchronization in (vs.VariableSynchronization.ON_WRITE,
+                           vs.VariableSynchronization.AUTO):
+    # `AUTO` synchronization defaults to `ON_WRITE`.
+    is_sync_on_read = False
+  else:
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
+
+  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+
+  if aggregation not in (vs.VariableAggregation.NONE,
+                         vs.VariableAggregation.SUM,
+                         vs.VariableAggregation.MEAN,
+                         vs.VariableAggregation.ONLY_FIRST_REPLICA):
+    raise ValueError("Invalid variable aggregation mode: %s for variable: %s" %
+                     (aggregation, kwargs["name"]))
+
+  # Ignore user-specified caching device, not needed for mirrored variables.
+  kwargs.pop("caching_device", None)
+
+  # TODO(josh11b,apassos): It would be better if variable initialization
+  # was never recorded on the tape instead of having to do this manually
+  # here.
+  with tape.stop_recording():
+    value_list = real_mirrored_creator(**kwargs)
+    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
+    result = var_cls(strategy, value_list, aggregation)
+    # Install the created DistributedVariable as _distributed_container property
+    # of the underlying variables, to make it easy to map back to the container.
+    for v in result.values:
+      # Hold a strong reference to avoid the container from being GC-ed. After
+      # v = v.assign(), the user code may no longer holds references to the
+      # original container, since v.assign() returns a new DistributedVariable.
+      v._distributed_container = result  # pylint: disable=protected-access
+
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
+  if not context.executing_eagerly():
+    g = ops.get_default_graph()
+    # If "trainable" is True, next_creator() will add the member variables
+    # to the TRAINABLE_VARIABLES collection, so we manually remove
+    # them and replace with the MirroredVariable. We can't set
+    # "trainable" to False for next_creator() since that causes functions
+    # like implicit_gradients to skip those variables.
+    if kwargs.get("trainable", True):
+      var_collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+      for value in value_list:
+        for i, trainable_variable in enumerate(l):
+          if value is trainable_variable:
+            del l[i]
+            break
+
+    g.add_to_collections(var_collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in var_collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
+  return result
+
+
+# Register a conversion functions which reads the value of the variable,
+# allowing instances of the class to be used as tensors.
+# MirroredVariables
+def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
+  return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
+
+
+ops.register_tensor_conversion_function(MirroredVariable,
+                                        _tensor_conversion_mirrored)
+
+
+# Mirrored Values
+def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
+  return ops.convert_to_tensor(
+      value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
+
+
+ops.register_tensor_conversion_function(Mirrored,
+                                        _tensor_conversion_mirrored_val)
+
+
+# SyncOnReadVariables
 def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
@@ -1379,6 +1352,37 @@ def value_container(val):
   return val
 
 
+def is_distributed_variable(v):
+  """Determine if a variable is ds variable or TPU mirrored variable."""
+  return isinstance(v, DistributedVariable)
+
+
+def _validate_colocate_extended(v, extended):
+  variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
+  if variable_strategy.extended is not extended:
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not %s created in scope: %s" %
+        (v, variable_strategy))
+
+
+def validate_colocate_distributed_variable(v, extended):
+  if not isinstance(v, DistributedVariable):
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not: %r" % (v,))
+  _validate_colocate_extended(v, extended)
+
+
+def validate_colocate(v, extended):
+  if not hasattr(v, "_distribute_strategy"):
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not: %r" % (v,))
+  _validate_colocate_extended(v, extended)
+
+
+# Variable used in PSStrategy TF 1 and CentralStorageStrategy.
 class AggregatingVariable(variables_lib.Variable, core.Tensor):
   """A wrapper around a variable that aggregates updates across replicas."""
 
