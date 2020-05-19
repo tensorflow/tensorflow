@@ -175,7 +175,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 
   using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                     PatternRewriter &rewriter) const override {
+                                PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
@@ -230,16 +230,16 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 // TF::FakeQuant operators
 //
 using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsOp, false,
+    TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
     FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
 
 using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsPerChannelOp, true,
+    TF::FakeQuantWithMinMaxVarsPerChannelOp, /*PerAxis=*/true,
     FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
 
 using PreparePerTensorFakeQuantWithMinMaxArgs =
     InsertTFLQuantOpsAfterTFFakeQuantOp<
-        TF::FakeQuantWithMinMaxArgsOp, false,
+        TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
         FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
 // Templated class for declaring a converter from some TensorFlow convolution
@@ -269,8 +269,7 @@ struct ConvertTFConvOp : public RewritePattern {
 
   ConvertTFConvOp(MLIRContext *context)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
-        intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
-
+237
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Assumes TensorFlow convolution op is already verified to be
