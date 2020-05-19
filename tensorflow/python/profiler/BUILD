@@ -224,10 +224,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "//tensorflow/python/types",
-        "@six_archive//:six",
     ],
 )
 

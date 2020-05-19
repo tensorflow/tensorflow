@@ -16,9 +16,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -26,16 +29,41 @@ namespace py = pybind11;
 
 namespace {
 
+// Converts kwargs to strings and appends them to name encoded as TraceMe
+// metadata.
+TF_ATTRIBUTE_ALWAYS_INLINE inline void AppendMetadata(
+    std::string* name, const py::kwargs& kwargs) {
+  name->push_back('#');
+  for (const auto& kv : kwargs) {
+    absl::StrAppend(name, std::string(py::str(kv.first)), "=",
+                    std::string(py::str(kv.second)), ",");
+  }
+  name->back() = '#';
+}
+
 // Helper to implement TraceMe as a context manager in Python.
 class TraceMeWrapper {
  public:
-  explicit TraceMeWrapper(const std::string& name) : name_(name) {}
+  explicit TraceMeWrapper(py::str name, py::kwargs kwargs)
+      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
 
-  void Enter() { traceme_.emplace(std::move(name_)); }
+  void Enter() {
+    traceme_.emplace([this]() {
+      std::string name(name_);
+      if (!kwargs_.empty()) {
+        AppendMetadata(&name, kwargs_);
+      }
+      return name;
+    });
+  }
 
-  void SetMetadata(const std::string& new_metadata) {
-    if (TF_PREDICT_TRUE(traceme_)) {
-      traceme_->AppendMetadata(absl::string_view(new_metadata));
+  void SetMetadata(py::kwargs kwargs) {
+    if (TF_PREDICT_TRUE(traceme_.has_value() && !kwargs.empty())) {
+      traceme_->AppendMetadata([&kwargs]() {
+        std::string metadata;
+        AppendMetadata(&metadata, kwargs);
+        return metadata;
+      });
     }
   }
 
@@ -44,7 +72,8 @@ class TraceMeWrapper {
   static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
 
  private:
-  tensorflow::string name_;
+  py::str name_;
+  py::kwargs kwargs_;
   absl::optional<tensorflow::profiler::TraceMe> traceme_;
 };
 
@@ -52,7 +81,7 @@ class TraceMeWrapper {
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
   py::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
-  traceme_class.def(py::init<const std::string&>())
+  traceme_class.def(py::init<py::str, py::kwargs>())
       .def("Enter", &TraceMeWrapper::Enter)
       .def("Exit", &TraceMeWrapper::Exit)
       .def("SetMetadata", &TraceMeWrapper::SetMetadata)
