@@ -269,7 +269,8 @@ struct ConvertTFConvOp : public RewritePattern {
 
   ConvertTFConvOp(MLIRContext *context)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
-237
+        intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
+
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Assumes TensorFlow convolution op is already verified to be
