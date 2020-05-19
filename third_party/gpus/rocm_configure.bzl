@@ -256,9 +256,9 @@ def _rocm_include_path(repository_ctx, rocm_config):
 
     return inc_dirs
 
-def enable_rocm(repository_ctx):
-    _enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
-    if _enable_rocm == "1":
+def _enable_rocm(repository_ctx):
+    enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
+    if enable_rocm == "1":
         if get_cpu_value(repository_ctx) != "Linux":
             auto_configure_warning("ROCm configure is only supported on Linux")
             return False
@@ -837,7 +837,7 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
 
 def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""
-    if not enable_rocm(repository_ctx):
+    if not _enable_rocm(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif get_host_environ(repository_ctx, _TF_ROCM_CONFIG_REPO) != None:
         _create_remote_rocm_repository(

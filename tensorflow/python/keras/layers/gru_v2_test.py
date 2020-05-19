@@ -47,7 +47,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import build_info
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 

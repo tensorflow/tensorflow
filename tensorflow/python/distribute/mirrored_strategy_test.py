@@ -57,7 +57,6 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import build_info
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import server_lib

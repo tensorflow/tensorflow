@@ -39,7 +39,6 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test as test_lib
 
 
 class LimitStringLengthTest(test_util.TensorFlowTestCase):
