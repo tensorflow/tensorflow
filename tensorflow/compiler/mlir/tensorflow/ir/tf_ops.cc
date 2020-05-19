@@ -497,6 +497,12 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
       return arithmetic_op.x();
   }
 
+  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  // TODO(chhe): we could fold and add an identity to force the broadcast.
+  if (result_op_type != rhs_type) {
+    return {};
+  }
+
   bool is_symmetric =
       (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
   if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
