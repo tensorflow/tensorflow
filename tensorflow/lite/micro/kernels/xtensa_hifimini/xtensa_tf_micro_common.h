@@ -19,20 +19,27 @@
 * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ******************************************************************************/
 
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #ifndef __XTENSA_TF_MICRO_COMMON__
 #define __XTENSA_TF_MICRO_COMMON__
 
 #if defined HIFI_NNLIB_OPT || defined HIFI_MINI_NNLIB_OPT
 #include "xa_nnlib_api.h"
 #include "xa_nnlib_standards.h"
-
-#define CHECK_ERR_HIFI_NNLIB_KER(ret, err_msg) \
-            if(ret != 0) {                     \
-              context->ReportError(            \
-                  context,                     \
-                  err_msg);                    \
-                return kTfLiteError;           \
-            }
 
 #ifndef XTENSA_NNLIB_MAX_SCRATCH_SIZE
 #define XTENSA_NNLIB_MAX_SCRATCH_SIZE (70 * 1024)

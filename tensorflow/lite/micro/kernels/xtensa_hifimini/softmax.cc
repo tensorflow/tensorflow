@@ -166,7 +166,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       int err = xa_nn_vec_softmax_asym8s_16(
           &output_data[i * depth], &input_data[i * depth], op_data->diff_min,
           op_data->input_left_shift, op_data->input_multiplier, depth, p_scratch);
-      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_16 failed");
+      if(err != 0)
+        TF_LITE_KERNEL_LOG(context, "xa_nn_vec_softmax_asym8s_16 failed");
     }
     return kTfLiteOk;
   } else {

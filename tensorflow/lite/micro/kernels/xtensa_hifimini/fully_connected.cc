@@ -160,10 +160,12 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
           (op_params.output_multiplier << 8),
           op_params.output_shift,
           op_params.output_offset);
-      CHECK_ERR_HIFI_NNLIB_KER(ret, "xa_nn_fully_connected_sym8xasym8s_asym8s failed");
+      if(ret != 0)
+        TF_LITE_KERNEL_LOG(context, "xa_nn_fully_connected_sym8xasym8s_asym8s failed");
     }
     ret = xa_nn_vec_activation_min_max_asym8s_asym8s(p_out, p_out, data.output_activation_min, data.output_activation_max, batches * out_depth);
-    CHECK_ERR_HIFI_NNLIB_KER(ret, "fully_connected: xa_nn_vec_activation_min_max_asym8s_asym8s failed");
+    if(ret != 0)
+      TF_LITE_KERNEL_LOG(context, "fully_connected: xa_nn_vec_activation_min_max_asym8s_asym8s failed");
   }
   return kTfLiteOk;
 }

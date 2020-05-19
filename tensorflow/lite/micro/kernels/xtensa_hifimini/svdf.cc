@@ -114,16 +114,11 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
 
   // Left shift the activation_state.
-<<<<<<< HEAD
 
   // 4-byte alignment check for state_ptr
   if (((reinterpret_cast<int>(state_ptr)) & 0x3) == 0)
   {
     // 4-bytes aligned processing
-=======
-  if(((int)state_ptr&0x3) == 0)
-  { /* 4-bytes aligned case  */
->>>>>>> Cadence HiFi Mini NN Library: code cleanup and optimization
     ae_p16x2s* new_state_start = (ae_p16x2s*)(state_ptr-2);
     const ae_p16x2s* old_state_start = (ae_p16x2s*)(state_ptr-2);
     int loopcnt = (n_batch * n_filter * n_memory)-1;
@@ -144,10 +139,7 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   }
   else
   {
-<<<<<<< HEAD
     // 2-bytes aligned processing
-=======
->>>>>>> Cadence HiFi Mini NN Library: code cleanup and optimization
     ae_p16s* new_state_start = (ae_p16s*)(state_ptr-1);
     const ae_p16s* old_state_start = (ae_p16s*)(state_ptr);
     int loopcnt = (n_batch * n_filter * n_memory)-1;
@@ -180,7 +172,8 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
                                                      -input_zp,
                                                      (data.effective_scale_1_a<<8),
                                                      data.effective_scale_1_b);
-      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_matXvec_sym8sxasym8s_16 failed");
+      if(err != 0)
+        TF_LITE_KERNEL_LOG(context, "xa_nn_vec_matXvec_sym8sxasym8s_16 failed");
     }
   }
 
@@ -205,7 +198,8 @@ TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
           data.effective_scale_2_b,
           output_zp,
           n_unit);
-      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_dot_prod_16x16_asym8s failed");
+      if(err != 0)
+        TF_LITE_KERNEL_LOG(context, "xa_nn_dot_prod_16x16_asym8s failed");
     }
   }
   return kTfLiteOk;
