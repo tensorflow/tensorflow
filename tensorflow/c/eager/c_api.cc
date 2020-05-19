@@ -727,24 +727,6 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       tensorflow::GetDefaultCustomKernelCreator()));
 }
 
-TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
-                                       TF_Session* sess, TF_Status* status) {
-  const tensorflow::DeviceMgr* device_mgr = nullptr;
-  status->status = sess->session->LocalDeviceManager(&device_mgr);
-  if (!status->status.ok()) return nullptr;
-  tensorflow::Rendezvous* r =
-      new tensorflow::IntraProcessRendezvous(device_mgr);
-
-  return tensorflow::wrap(new tensorflow::EagerContext(
-      opts->session_options.options,
-      static_cast<tensorflow::ContextDevicePlacementPolicy>(
-          opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr,
-      /*device_mgr_owned*/ false, r,
-      tensorflow::GetDefaultCustomKernelCreator()));
-}
-
 void TFE_DeleteContext(TFE_Context* ctx) {
   if (ctx == nullptr) {
     return;
