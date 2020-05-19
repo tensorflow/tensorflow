@@ -97,6 +97,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateMinMaxBuilder(this, OP_QuantizedMinimum_8);
     case kTfLiteBuiltinMaximum:
       return CreateMinMaxBuilder(this, OP_QuantizedMaximum_8);
+    case kTfLiteBuiltinSlice:
+      return CreateSliceOpBuilder(this, OP_QuantizedSlice_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
