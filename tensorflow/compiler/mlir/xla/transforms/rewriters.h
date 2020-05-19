@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
+class BufferAssignmentPlacer;
 namespace xla_hlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -38,9 +39,9 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHLOToLHLOConversionPattern(MLIRContext *context,
-                                        OwningRewritePatternList *patterns);
-
+void populateHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferAssignmentPlacer *bufferAssignment,
+    TypeConverter *converter, OwningRewritePatternList *patterns);
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           OwningRewritePatternList *patterns);

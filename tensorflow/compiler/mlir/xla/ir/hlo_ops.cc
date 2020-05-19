@@ -1358,19 +1358,23 @@ static LogicalResult Verify(PadOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ReshapeOp op) {
-  auto operand_ty = op.operand().getType().cast<TensorType>();
+  // If the operand type is dynamically shaped there is nothing to verify.
+  auto operand_ty = op.operand().getType().cast<RankedTensorType>();
   if (!operand_ty || !operand_ty.hasStaticShape()) return success();
-  int64_t num_input_elements = operand_ty.getNumElements();
 
-  auto out_ty = op.getType().cast<RankedTensorType>();
-  if (out_ty && out_ty.hasStaticShape()) {
-    int64_t num_output_elements = out_ty.getNumElements();
-    if (num_input_elements != num_output_elements)
-      return op.emitOpError()
-             << "number of output elements (" << num_output_elements
-             << ") doesn't match expected number of elements ("
-             << num_input_elements << ")";
-  }
+  // If the operand type is statically shaped (not required) the number of
+  // elements must match that of the result type.
+  auto result_ty = op.getType().cast<RankedTensorType>();
+  assert(result_ty && result_ty.hasStaticShape() &&
+         "result type must be statically shaped");
+  int64_t num_result_elements = result_ty.getNumElements();
+  int64_t num_operand_elements = operand_ty.getNumElements();
+  if (num_result_elements != num_operand_elements)
+    return op.emitOpError()
+           << "number of output elements (" << num_result_elements
+           << ") doesn't match expected number of elements ("
+           << num_operand_elements << ")";
+
   return success();
 }
 

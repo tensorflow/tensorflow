@@ -827,6 +827,7 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 
@@ -847,7 +848,8 @@ class RandomZoom(Layer):
       For instance, `width_factor=(0.2, 0.3)` result in an output zooming out
       between 20% to 30%.
       `width_factor=(-0.3, -0.2)` result in an output zooming in between 20%
-      to 30%.
+      to 30%. Defaults to `None`, i.e., zooming vertical and horizontal
+      directions by preserving the aspect ratio.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
@@ -859,6 +861,14 @@ class RandomZoom(Layer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+
+  Example:
+
+  >>> input_img = np.random.random((32, 224, 224, 3))
+  >>> layer = tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2)
+  >>> out_img = layer(input_img)
+  >>> out_img.shape
+  TensorShape([32, 224, 224, 3])
 
   Input shape:
     4D tensor with shape:
@@ -873,9 +883,10 @@ class RandomZoom(Layer):
       negative.
   """
 
+  # TODO(b/156526279): Add `fill_value` argument.
   def __init__(self,
                height_factor,
-               width_factor,
+               width_factor=None,
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
@@ -894,16 +905,17 @@ class RandomZoom(Layer):
                        'got {}'.format(height_factor))
 
     self.width_factor = width_factor
-    if isinstance(width_factor, (tuple, list)):
-      self.width_lower = width_factor[0]
-      self.width_upper = width_factor[1]
-    else:
-      self.width_lower = -width_factor
-      self.width_upper = width_factor
+    if width_factor is not None:
+      if isinstance(width_factor, (tuple, list)):
+        self.width_lower = width_factor[0]
+        self.width_upper = width_factor[1]
+      else:
+        self.width_lower = -width_factor  # pylint: disable=invalid-unary-operand-type
+        self.width_upper = width_factor
 
-    if self.width_lower < -1. or self.width_upper < -1.:
-      raise ValueError('`width_factor` must have values larger than -1, '
-                       'got {}'.format(width_factor))
+      if self.width_lower < -1. or self.width_upper < -1.:
+        raise ValueError('`width_factor` must have values larger than -1, '
+                         'got {}'.format(width_factor))
 
     check_fill_mode_and_interpolation(fill_mode, interpolation)
 
@@ -928,10 +940,13 @@ class RandomZoom(Layer):
           shape=[batch_size, 1],
           minval=1. + self.height_lower,
           maxval=1. + self.height_upper)
-      width_zoom = self._rng.uniform(
-          shape=[batch_size, 1],
-          minval=1. + self.width_lower,
-          maxval=1. + self.width_upper)
+      if self.width_factor is not None:
+        width_zoom = self._rng.uniform(
+            shape=[batch_size, 1],
+            minval=1. + self.width_lower,
+            maxval=1. + self.width_upper)
+      else:
+        width_zoom = height_zoom
       zooms = math_ops.cast(
           array_ops.concat([width_zoom, height_zoom], axis=1),
           dtype=dtypes.float32)

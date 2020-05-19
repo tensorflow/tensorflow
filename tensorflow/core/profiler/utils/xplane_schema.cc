@@ -147,6 +147,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      // Schema related.
+      {"$pn", kProducerContextName},
+      {"$cn", kConsumerContextName},
+      {"$p", kProducerId},
+      {"$c", kConsumerId},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},

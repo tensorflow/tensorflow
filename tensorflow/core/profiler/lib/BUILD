@@ -52,12 +52,14 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_schema",
     ]),
     alwayslink = True,
 )
@@ -92,12 +94,23 @@ cc_library(
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":traceme_encode",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
         "//tensorflow/core/profiler/internal:traceme_recorder",
     ]),
+)
+
+cc_library(
+    name = "traceme_encode",
+    hdrs = ["traceme_encode.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -109,6 +122,20 @@ cc_library(
         ":traceme",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":traceme",
+        ":traceme_encode",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -146,6 +173,7 @@ filegroup(
         "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
+        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

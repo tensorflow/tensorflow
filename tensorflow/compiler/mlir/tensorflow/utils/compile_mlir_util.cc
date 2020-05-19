@@ -305,6 +305,10 @@ Status ConvertMLIRToXlaComputation(
   // invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
+  // In order to export to XLA, we must sink constants to control flow regions,
+  // since XLA uses functional control flow.
+  tf2xla.addNestedPass<mlir::FuncOp>(
+      mlir::xla_hlo::createSinkConstantsToControlFlowPass());
 
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass which requires disabling

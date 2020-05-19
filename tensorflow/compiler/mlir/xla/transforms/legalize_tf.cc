@@ -44,9 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -4955,7 +4957,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
+  // Populate with CHLO->HLO lowerings to account for TF ops legalized to
+  // CHLO first.
+  xla_chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
+
   ConversionTarget target(*context);
+  target.addIllegalDialect<xla_chlo::XlaHloClientDialect>();
   target.addLegalDialect<XlaHloDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<shape::ShapeDialect>();

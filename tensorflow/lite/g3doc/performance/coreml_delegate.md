@@ -6,7 +6,7 @@ which results in faster model inference on iOS devices.
 
 Note: This delegate is in experimental (beta) phase.
 
-Note: Core ML delegate is using Core ML version 2.1.
+Note: Core ML delegate supports Core ML version 2 and later.
 
 **Supported iOS versions and devices:**
 
@@ -158,6 +158,14 @@ for more detail. Alternatively, you can implement your own set of blacklist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
 
+### Using older Core ML version
+
+Although iOS 13 supprots Core ML 3, the model might work better when it is
+converted with Core ML 2 model specification. The target conversion version is
+set to the latest version by default, but you can change this by setting
+`coreMLVersion` (in Swift, `coreml_version` in C API) in the delegate option to
+older version.
+
 ## Supported ops
 
 Following ops are supported by the Core ML delegate.
@@ -187,6 +195,8 @@ Following ops are supported by the Core ML delegate.
 *   ReluN1To1
 *   Relu6
 *   Reshape
+    *   Only supported when target Core ML version is 2, not supported when
+        targeting Core ML 3.
 *   ResizeBilinear
 *   SoftMax
 *   Tanh

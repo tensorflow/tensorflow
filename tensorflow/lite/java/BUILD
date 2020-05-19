@@ -14,6 +14,7 @@ package(
 exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
+    "src/testdata/grace_hopper_224.jpg",
 ])
 
 JAVA_SRCS = glob([
@@ -352,6 +353,7 @@ filegroup(
 filegroup(
     name = "portable_gpu_tests",
     srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterTestHelper.java",
         "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
     ],
     visibility = ["//visibility:public"],

@@ -1486,7 +1486,7 @@ class TestDelegate : public ::testing::Test {
                                         TfLiteDelegate* delegate,
                                         TfLiteBufferHandle buffer_handle,
                                         TfLiteTensor* tensor) -> TfLiteStatus {
-        // TODO(ycling): Implement tests to test buffer copying logic.
+        // TODO(b/156586986): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
       delegate_.CopyFromBufferHandle =

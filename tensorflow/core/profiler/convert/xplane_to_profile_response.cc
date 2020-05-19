@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -78,14 +80,14 @@ Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
     // tensorflow::StringPiece.
     auto error_msg = status.message();
     return errors::Internal(
-        strings::StrCat("Could not convert proto to JSON string: ",
-                        StringPiece(error_msg.data(), error_msg.length())));
+        "Could not convert proto to JSON string: ",
+        absl::string_view(error_msg.data(), error_msg.length()));
   }
   return Status::OK();
 }
 
 // Returns the tool name with extension.
-string ToolName(absl::string_view tool) {
+std::string ToolName(absl::string_view tool) {
   if (tool == kTraceViewer) return "trace.json.gz";
   if (tool == kMemoryProfile) return "memory_profile.json.gz";
   return absl::StrCat(tool, ".pb");

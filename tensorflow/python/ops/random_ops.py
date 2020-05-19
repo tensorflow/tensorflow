@@ -36,10 +36,12 @@ from tensorflow.python.ops.gen_random_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("random.normal", v1=["random.normal", "random_normal"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_normal")
 def random_normal(shape,
                   mean=0.0,
@@ -155,6 +157,7 @@ def parameterized_truncated_normal(shape,
 
 @tf_export("random.truncated_normal",
            v1=["random.truncated_normal", "truncated_normal"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("truncated_normal")
 def truncated_normal(shape,
                      mean=0.0,
@@ -202,6 +205,7 @@ ops.NotDifferentiable("TruncatedNormal")
 
 
 @tf_export("random.uniform", v1=["random.uniform", "random_uniform"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_uniform")
 def random_uniform(shape,
                    minval=0,
@@ -313,6 +317,7 @@ ops.NotDifferentiable("RandomUniform")
 
 
 @tf_export("random.shuffle", v1=["random.shuffle", "random_shuffle"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_shuffle")
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
@@ -345,6 +350,7 @@ def random_shuffle(value, seed=None, name=None):
 
 
 @tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_crop")
 def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
@@ -389,6 +395,7 @@ def random_crop(value, size, seed=None, name=None):
 
 
 @tf_export(v1=["random.multinomial", "multinomial"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None, instructions="Use `tf.random.categorical` instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
@@ -468,6 +475,7 @@ def _maybe_set_static_shape_helper(tensor, shape, postfix_tensor):
 
 
 @tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
                  alpha,
@@ -561,6 +569,7 @@ def random_gamma(shape,
 
 
 @tf_export(v1=["random.poisson", "random_poisson"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
@@ -601,6 +610,7 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
 
 
 @tf_export("random.poisson", v1=[])
+@dispatch.add_dispatch_support
 def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
 

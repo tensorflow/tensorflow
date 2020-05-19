@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/core/platform/types.h"
@@ -27,13 +29,13 @@ namespace {
 // Helper to implement TraceMe as a context manager in Python.
 class TraceMeWrapper {
  public:
-  explicit TraceMeWrapper(const tensorflow::string& name) : name_(name) {}
+  explicit TraceMeWrapper(const std::string& name) : name_(name) {}
 
   void Enter() { traceme_.emplace(std::move(name_)); }
 
-  void SetMetadata(const tensorflow::string& new_metadata) {
+  void SetMetadata(const std::string& new_metadata) {
     if (TF_PREDICT_TRUE(traceme_)) {
-      traceme_->SetMetadata(new_metadata);
+      traceme_->AppendMetadata(absl::string_view(new_metadata));
     }
   }
 
@@ -50,7 +52,7 @@ class TraceMeWrapper {
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
   py::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
-  traceme_class.def(py::init<const tensorflow::string&>())
+  traceme_class.def(py::init<const std::string&>())
       .def("Enter", &TraceMeWrapper::Enter)
       .def("Exit", &TraceMeWrapper::Exit)
       .def("SetMetadata", &TraceMeWrapper::SetMetadata)

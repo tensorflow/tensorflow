@@ -18,6 +18,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/xla/ir/chlo_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
@@ -80,6 +81,9 @@ def BiasAddFeatureDimension : NativeCodeCall<
 
 // $input needs to be a ranked tensor to identify index of the feature
 // dimension depending on the data_format 'NHWC' or 'NCHW'.
+// TODO(laurenzo): This should be converted to do explicit broadcasting since
+// it can generate broadcast dimensions that are not compatible with the simple
+// xla_chlo.add broadcast_dims.
 def : Pat<(TF_BiasAddOp AnyRankedTensor:$input, $bias, $data_format),
           (HLO_AddOp $input, $bias,
               (BiasAddFeatureDimension $data_format, $input))>;
@@ -96,16 +100,16 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
-foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
-                         [TF_AddV2Op, HLO_AddOp],
-                         [TF_DivOp, HLO_DivOp],
-                         [TF_LeftShiftOp, HLO_ShiftLeftOp],
-                         [TF_MaximumOp, HLO_MaxOp],
-                         [TF_MinimumOp, HLO_MinOp],
-                         [TF_MulOp, HLO_MulOp],
-                         [TF_PowOp, HLO_PowOp],
-                         [TF_RealDivOp, HLO_DivOp],
-                         [TF_SubOp, HLO_SubOp]] in
+foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
+                         [TF_AddV2Op, HLOClient_BroadcastAddOp],
+                         [TF_DivOp, HLOClient_BroadcastDivOp],
+                         [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
+                         [TF_MaximumOp, HLOClient_BroadcastMaxOp],
+                         [TF_MinimumOp, HLOClient_BroadcastMinOp],
+                         [TF_MulOp, HLOClient_BroadcastMulOp],
+                         [TF_PowOp, HLOClient_BroadcastPowOp],
+                         [TF_RealDivOp, HLOClient_BroadcastDivOp],
+                         [TF_SubOp, HLOClient_BroadcastSubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
@@ -196,10 +200,10 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r)),
         [(SignedIntTensor $l)]>;
 
-foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
-                         [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp],
-                         [TF_BitwiseAndOp, HLO_AndOp]] in
+foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
+                         [TF_LogicalOrOp, HLOClient_BroadcastOrOp],
+                         [TF_BitwiseOrOp, HLOClient_BroadcastOrOp],
+                         [TF_BitwiseAndOp, HLOClient_BroadcastAndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -208,7 +212,8 @@ foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
 
 class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
   : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
-        (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
+        (HLOClient_BroadcastCompareOp
+           $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
 
 def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
 def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
@@ -218,7 +223,8 @@ def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
 class EqualityPat<Op FromOp, StrEnumAttrCase direction>
     : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r,
            TrueBoolAttr:$incompatible_shape_error),
-        (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction),
+        (HLOClient_BroadcastCompareOp
+         $l, $r, (BinBroadcastDimensions $l, $r), direction),
         [(AreBroadcastCompatible $l, $r)]>;
 
 def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;

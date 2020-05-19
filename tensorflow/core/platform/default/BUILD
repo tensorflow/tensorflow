@@ -509,6 +509,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "casts.h",
         "context.h",
         "dynamic_annotations.h",
         "env.cc",

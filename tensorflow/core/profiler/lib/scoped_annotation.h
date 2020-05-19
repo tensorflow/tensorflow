@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"

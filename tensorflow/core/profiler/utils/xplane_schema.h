@@ -139,6 +139,11 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  // Schema related.
+  kProducerContextName,
+  kConsumerContextName,
+  kProducerId,
+  kConsumerId,
   // Device trace arguments.
   kDeviceId,
   kContextId,

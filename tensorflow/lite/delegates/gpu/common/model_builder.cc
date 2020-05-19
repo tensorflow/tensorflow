@@ -2350,7 +2350,7 @@ class TransformTensorOperationParser : public TFLiteOperationParser {
  private:
 };
 
-class TransformTensorV2OperationParser : public TFLiteOperationParser {
+class TransformTensorBilinearV2OperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
@@ -2368,7 +2368,7 @@ class TransformTensorV2OperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddInput(node, 1));  // bbox
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
-    std::string op_name = "transform_tensor_v2";
+    std::string op_name = "transform_tensor_bilinear_v2";
     node->operation.type = op_name;
     BHWC output_shape;
     RETURN_IF_ERROR(
@@ -2731,8 +2731,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       if (custom_name == "TransformTensor") {
         return std::make_unique<TransformTensorOperationParser>();
       }
-      if (custom_name == "TransformTensorV2") {
-        return std::make_unique<TransformTensorV2OperationParser>();
+      if (custom_name == "TransformTensorBilinearV2") {
+        return std::make_unique<TransformTensorBilinearV2OperationParser>();
       }
       if (custom_name == "TransformLandmarks") {
         return std::make_unique<TransformLandmarksOperationParser>();

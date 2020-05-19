@@ -131,6 +131,13 @@ extern __host__ __device__ unsigned CUDARTAPI __cudaPushCallConfiguration(
   return func_ptr(gridDim, blockDim, sharedMem, stream);
 }
 
+extern char CUDARTAPI __cudaInitModule(void **fatCubinHandle) {
+  using FuncPtr = char(CUDARTAPI *)(void **fatCubinHandle);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaInitModule");
+  if (!func_ptr) return 0;
+  return func_ptr(fatCubinHandle);
+}
+
 #if CUDART_VERSION >= 10010
 extern void CUDARTAPI __cudaRegisterFatBinaryEnd(void **fatCubinHandle) {
   using FuncPtr = void(CUDARTAPI *)(void **fatCubinHandle);

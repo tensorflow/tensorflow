@@ -1400,6 +1400,8 @@ class StatelessIfTest(PForTestCase):
 class IfTest(PForTestCase):
 
   def test_read_var(self):
+    self.skipTest("b/156438918")  # Flaky
+
     x = [1, 2, 3, 4, 5.]
     y = 2.5
     z = resource_variable_ops.ResourceVariable(5.)

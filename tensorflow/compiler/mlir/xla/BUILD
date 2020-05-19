@@ -38,7 +38,7 @@ filegroup(
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -132,6 +132,7 @@ cc_library(
         "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
+        ":chlo_legalize_to_hlo",
         ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -188,6 +189,24 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_sink_constants_to_control_flow",
+    srcs = [
+        "transforms/sink_constants_to_control_flow.cc",
+    ],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -822,7 +841,7 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
@@ -872,6 +891,7 @@ cc_library(
         ":xla_legalize_to_standard",
         ":xla_lower",
         ":xla_materialize_broadcasts",
+        ":xla_sink_constants_to_control_flow",
         ":xla_test_passes",
     ],
 )

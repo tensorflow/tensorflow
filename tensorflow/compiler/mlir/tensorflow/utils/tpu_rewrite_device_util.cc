@@ -26,9 +26,9 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -39,6 +39,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+
+const char* const kTPUReplicatedHost = "TPU_REPLICATED_HOST";
+const char* const kNumCoresPerReplicaAttr = "num_cores_per_replica";
+const char* const kTopologyAttr = "topology";
+const char* const kDeviceAssignmentAttr = "device_assignment";
+
 // Device coordinates are defined as (x, y, z, core), thus resulting in a rank 4
 // topology.
 constexpr int kTPUTopologyRank = 4;
@@ -46,8 +52,8 @@ constexpr int kTPUTopologyRank = 4;
 constexpr char kDeviceTPUSystem[] = "TPU_SYSTEM";
 constexpr char kDeviceTPU[] = "TPU";
 constexpr char kTPUReplicatedCore[] = "TPU_REPLICATED_CORE";
-constexpr char kTopologyAttr[] = "topology";
-constexpr char kDeviceAssignmentAttr[] = "device_assignment";
+constexpr char kBadIntArrayElementMsg[] =
+    "bad '{0}' attribute at index {1}, not an int";
 
 using Device = DeviceNameUtils::ParsedName;
 using Devices = llvm::ArrayRef<DeviceNameUtils::ParsedName>;
@@ -416,6 +422,27 @@ GetGeneralTPUExecutionDeviceAssignment(
 }
 
 }  // anonymous namespace
+
+StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+    mlir::ArrayAttr device_assignment_attr) {
+  llvm::SmallVector<int64_t, 8> device_coordinates;
+  device_coordinates.reserve(device_assignment_attr.size());
+
+  for (auto device_coordinate_and_idx :
+       llvm::enumerate(device_assignment_attr)) {
+    auto device_coordinate =
+        device_coordinate_and_idx.value().dyn_cast<mlir::IntegerAttr>();
+    if (!device_coordinate)
+      return errors::InvalidArgument(
+          llvm::formatv(kBadIntArrayElementMsg, kDeviceAssignmentAttr,
+                        device_coordinate_and_idx.index())
+              .str());
+
+    device_coordinates.push_back(device_coordinate.getInt());
+  }
+
+  return device_coordinates;
+}
 
 StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     Devices devices, int num_replicas, int num_cores_per_replica,

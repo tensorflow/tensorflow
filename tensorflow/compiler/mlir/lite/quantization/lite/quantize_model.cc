@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 namespace lite {
@@ -38,6 +39,7 @@ namespace lite {
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
+    const tflite::TensorType& inference_type,
     const std::unordered_set<std::string>& operator_names,
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
@@ -73,7 +75,7 @@ TfLiteStatus QuantizeModel(
   // Apply quantization passes
   PassManager pm(module->getContext());
   TFL::QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
 
@@ -81,8 +83,10 @@ TfLiteStatus QuantizeModel(
   auto input_tf_type = tflite::TflTypeToTfType(input_type);
   if (input_tf_type == tensorflow::DT_FLOAT) {
     emit_adaptor = true;
-  } else if (input_tf_type == tensorflow::DT_UINT8) {
-    quant_specs.inference_type = tensorflow::DT_QUINT8;
+  } else if (input_tf_type == tensorflow::DT_UINT8 ||
+             input_tf_type == tensorflow::DT_INT8 ||
+             input_tf_type == tensorflow::DT_INT16) {
+    quant_specs.inference_type = input_tf_type;
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));

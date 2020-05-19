@@ -65,7 +65,11 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
   ae_q56s result_56 = AE_MULP24S_HH(x_24x2, quantized_multiplier_24x2);
 
   // Shift right if shift amount is positive, left if shift amount is negative.
-  result_56 = AE_SLAASQ56S(result_56, shift_amount);
+  if (shift_amount >= 0) {
+    result_56 = AE_Q56S_SRA(result_56, shift_amount);
+  } else {
+    result_56 = AE_Q56S_SLA(result_56, -shift_amount);
+  }
 
   // Round off the bottom 16 bits.
   // Q48.0 / 2^16 -> Q32.0 aligned to 48 bits.

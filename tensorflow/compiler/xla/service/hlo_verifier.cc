@@ -662,9 +662,11 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
           shape_size_function_(bitcast->operand(0)->shape())) {
     return InternalError(
         "Bitcast cannot have different shape sizes of output (%d) and operand "
-        "(%d)",
+        "(%d) (%s) (%s)",
         shape_size_function_(bitcast->shape()),
-        shape_size_function_(bitcast->operand(0)->shape()));
+        shape_size_function_(bitcast->operand(0)->shape()),
+        bitcast->shape().ToString(true),
+        bitcast->operand(0)->shape().ToString(true));
   }
   return Status::OK();
 }

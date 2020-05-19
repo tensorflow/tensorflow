@@ -50,9 +50,10 @@ class RemoteTensorHandleData {
 
   string DebugString() const;
 
-  // Block until the remote tensor is ready on a remote worker and return the op
-  // id and output num.
-  Status OpIdAndOutputNumUntilReady(int64* op_id, int32* output_num) const;
+  // Return the op id and output num. If wait_util_ready is true, block until
+  // the remote tensor is ready on a remote worker.
+  Status OpIdAndOutputNum(const bool wait_util_ready, int64* op_id,
+                          int32* output_num) const;
 
   uint64 context_view_id() const { return context_view_id_; }
 

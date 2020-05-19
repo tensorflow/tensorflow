@@ -20,7 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
@@ -414,9 +414,9 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, I32]>:$bias,
+    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
@@ -425,7 +425,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     I32Attr:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 0b1;
 }
@@ -1561,10 +1561,12 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                           SameOperandsAndResultShape,
-                                           SameOperandsAndResultType,
-                                           TFL_GpuTargetOp]> {
+def TFL_HardSwishOp: TFL_Op<"hard_swish", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_GpuTargetOp]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -1574,7 +1576,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
 
   let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$out);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$output);
 
   let hasOptions = 0;
 }
@@ -1606,7 +1608,8 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
 def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
     SameOperandsAndResultShape,
     NoSideEffect,
-    SameOperandsAndResultType]> {
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Leaky Relu operator";
 
   let description = [{
@@ -1740,7 +1743,8 @@ def TFL_LogOp: TFL_Op<"log", [
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType,
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<127, 625, -4>>,
@@ -1896,11 +1900,11 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x
+    TFL_FpTensor:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32]>:$y
+    TFL_FpTensor:$y
   );
 }
 
@@ -2443,9 +2447,9 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
     Computes element-wise reverse square root of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -3361,9 +3365,11 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   let results = (outs AnyTensor:$output);
 }
 
-def TFL_DensifyOp: TFL_Op<"densify", [NoSideEffect,
-                                      SameOperandsAndResultType,
-                                      NoQuantizableResult]> {
+def TFL_DensifyOp: TFL_Op<"densify", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoQuantizableResult]> {
   let summary = "Densify operator";
 
   let description = [{

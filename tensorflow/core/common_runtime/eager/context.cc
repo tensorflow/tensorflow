@@ -935,8 +935,11 @@ Status EagerContext::FindOrCreateCompositeDevice(
   }
 
   Status s;
-  auto device = CompositeDevice::MakeDevice(underlying_devices,
-                                            composite_devices_.size(), &s);
+  // Create a CompositeDevice on the same task as the host CPU, in order to
+  // trigger packed TensorHandle copy from a client to a remote worker.
+  auto device =
+      CompositeDevice::MakeDevice(underlying_devices, composite_devices_.size(),
+                                  HostCPU()->parsed_name(), &s);
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
   pflr_->AddCompositeDevice(*composite_device);

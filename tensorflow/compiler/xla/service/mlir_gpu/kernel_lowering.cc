@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -59,34 +60,6 @@ namespace mlir_gpu {
 namespace {
 
 using ::mlir::xla_lhlo::FusionOp;
-
-// Following are some small transformations that are required to clean up code
-// after lowering from linalg to loops.
-
-// A simple pass that applies lowering of HLO to LHLO only within LHLO ops that
-// contain regions with HLO ops, e.g. FusionOp, ReduceOp, SelectAndScatterOp.
-// This is needed, as these ops are not closed from above and hence nested pass
-// managers can not be applied.
-struct NestedHloRegionsConverter
-    : public mlir::PassWrapper<NestedHloRegionsConverter,
-                               ::mlir::FunctionPass> {
-  void runOnFunction() override {
-    auto& ctx = getContext();
-    mlir::OwningRewritePatternList patterns;
-    mlir::ConversionTarget target(ctx);
-    target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
-    ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
-
-    getFunction().walk([&](mlir::Operation* op) {
-      if (op->getNumRegions() == 0) {
-        return;
-      }
-      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
-        signalPassFailure();
-      }
-    });
-  }
-};
 
 // Replaces a FusionOp by the operations contained in its region.
 struct FusionOpRemover
@@ -378,7 +351,7 @@ struct FixKernelFunctionSignatures
 struct MapParallelLoops
     : public mlir::PassWrapper<MapParallelLoops, mlir::FunctionPass> {
   void runOnFunction() override {
-    mlir::greedilyMapParallelLoopsToGPU(getFunction().getBody());
+    mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
   }
 };
 
@@ -436,8 +409,10 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
     tiling_for_unrolling.append(tile_sizes.begin(), tile_sizes.end());
   }
 
-  // First, lower bodies of LHLO operations that contain HLO ops.
-  pm.addPass(absl::make_unique<NestedHloRegionsConverter>());
+  // Legalize from HLO to LHLO.
+  pm.addPass(::mlir::xla_hlo::createLegalizeToLhloPass());
+  // Moving `AllocOp`s and inserting missing `DeallocOp`s
+  pm.addPass(::mlir::createBufferPlacementPass());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary LHLO copies.
