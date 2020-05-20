@@ -1784,15 +1784,40 @@ func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @sigmoid
 func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-DAG: [[R0:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK-DAG: [[R1:%.+]] = "xla_hlo.broadcast"([[R0]]) {broadcast_sizes = dense<2> : tensor<1xi64>} : (tensor<f32>) -> tensor<2xf32>
-  // CHECK-DAG: [[R2:%.+]] =  xla_hlo.multiply %arg0, [[R1]] : tensor<2xf32>
-  // CHECK-DAG: [[R3:%.+]] =  "xla_hlo.tanh"([[R2]]) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.multiply [[R3]], [[R1]] : tensor<2xf32>
-  // CHECK-DAG: [[R5:%.+]] =  xla_hlo.add [[R4]], [[R1]] : tensor<2xf32>
+  // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = "shape.to_extent_tensor"([[SHAPE]]) : (!shape.shape) -> tensor<1xindex>
+  // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<2xf32>
+  // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<2xf32>
+  // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-DAG: [[R3:%.+]] =  xla_hlo.multiply [[R2]], [[HALF]] : tensor<2xf32>
+  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.add [[R3]], [[HALF]] : tensor<2xf32>
   %0 = "tf.Sigmoid"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
+
+// CHECK-LABEL: @sigmoid_complex
+func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHECK: [[R0:%.+]] = xla_hlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<complex<f32>>
+  // CHECK-NOT: tf.Sigmoid
+  %0 = "tf.Sigmoid"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
+// CHECK-LABEL: @sigmoid_unranked
+func @sigmoid_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<*xf32>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = "shape.to_extent_tensor"([[SHAPE]]) : (!shape.shape) -> tensor<?xindex>
+  // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<?xindex>) -> tensor<*xf32>
+  // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<*xf32>
+  // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK-DAG: [[R3:%.+]] =  xla_hlo.multiply [[R2]], [[HALF]] : tensor<*xf32>
+  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.add [[R3]], [[HALF]] : tensor<*xf32>
+  %0 = "tf.Sigmoid"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 
 // CHECK-LABEL: @sigmoid_grad
 func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
@@ -1803,6 +1828,17 @@ func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> 
   // CHECK: return [[MUL1]]
   %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: @sigmoid_grad_complex
+func @sigmoid_grad_complex(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHECK-DAG: [[MUL0:%.+]] =  xla_hlo.multiply %arg1, %arg0 : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[ONE:%.+]] = xla_hlo.constant dense<(1.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[SUB:%.+]] =  xla_hlo.subtract [[ONE]], %arg0 : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[MUL1:%.+]] =  xla_hlo.multiply [[MUL0]], [[SUB]] : tensor<2xcomplex<f32>>
+  // CHECK: return [[MUL1]]
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
 }
 
 // CHECK-LABEL: @sin

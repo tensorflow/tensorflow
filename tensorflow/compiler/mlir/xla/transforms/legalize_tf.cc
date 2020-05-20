@@ -516,6 +516,26 @@ static Value Broadcast1DToFeatureDim(Location loc, Value broadcast_to,
       loc, to_type, broadcast_from, result_extents, broadcast_dims);
 }
 
+// Broadcasts `input` to the shape of `broadcast_to` value following
+// TF::BroadcastTo semantics.
+//
+// Requires that input is a ranked tensor.
+//
+// TODO(hinsu): Utilize TF::ShapeOp followed by TF::BroadcastTo once ShapeOp
+// supports unranked inputs in the lowering.
+static Value BroadcastToShapeOf(Location loc, Value input, Value broadcast_to,
+                                OpBuilder &builder) {
+  auto result_shape = builder.create<shape::ShapeOfOp>(loc, broadcast_to);
+  auto to_type = broadcast_to.getType().cast<TensorType>();
+  auto result_extents_type = GetExtentsTensorTypeFor(to_type);
+  auto result_extents = builder.create<shape::ToExtentTensorOp>(
+      loc, result_extents_type, result_shape);
+  int64_t rank = input.getType().cast<RankedTensorType>().getRank();
+  auto broadcast_dims = GetI64ElementsAttrForSeq(0, rank, &builder);
+  return builder.create<DynamicBroadcastInDimOp>(
+      loc, to_type, input, result_extents, broadcast_dims);
+}
+
 // Creates a batch dot using xla_hlo::DotGeneralOp.
 Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
                bool transpose_rhs, int64_t num_batch_dims,
@@ -1904,27 +1924,20 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 
   LogicalResult matchAndRewrite(TF::SigmoidOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operand = op.getOperand();
+    Location loc = op.getLoc();
 
-    auto scalar_one = rewriter.create<ConstOp>(
-        op.getLoc(),
-        rewriter.getFloatAttr(getElementTypeOrSelf(operand.getType()), 0.5));
+    // Create constant half with shape and element type same as the operand.
+    Value operand = op.getOperand();
+    auto operand_ty = operand.getType().cast<TensorType>();
+    auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
+    ElementsAttr attr = mlir::xla::getSplat(&rewriter, scalar_ty, 0.5);
+    auto scalar_half = rewriter.create<ConstOp>(loc, attr);
+    auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
-    auto type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!type)
-      return rewriter.notifyMatchFailure(op, "requires ranked tensor type");
-    auto constant_ones = rewriter.create<BroadcastOp>(
-        op.getLoc(), type, scalar_one,
-        GetI64ElementsAttr(type.getShape(), &rewriter));
-
-    auto scaled_input =
-        rewriter.create<xla_hlo::MulOp>(op.getLoc(), operand, constant_ones);
-    auto tanh_op =
-        rewriter.create<TanhOp>(op.getLoc(), operand.getType(), scaled_input);
-    auto mul_op =
-        rewriter.create<xla_hlo::MulOp>(op.getLoc(), tanh_op, constant_ones);
-    auto add_op =
-        rewriter.create<xla_hlo::AddOp>(op.getLoc(), mul_op, constant_ones);
+    auto scaled_input = rewriter.create<MulOp>(loc, operand, half);
+    auto tanh_op = rewriter.create<TanhOp>(loc, scaled_input);
+    auto mul_op = rewriter.create<MulOp>(loc, tanh_op, half);
+    auto add_op = rewriter.create<AddOp>(loc, mul_op, half);
 
     rewriter.replaceOp(op, add_op.getResult());
     return success();
