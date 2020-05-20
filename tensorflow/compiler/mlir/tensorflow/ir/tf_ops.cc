@@ -1297,8 +1297,8 @@ static LogicalResult Verify(DataFormatVecPermuteOp op) {
 
   if (rank == 1) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
-      return op.emitOpError("requires 1D input of size 4");
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4 && dim0 != 2)
+      return op.emitOpError("requires 1D input of size 4 or size 2");
   }
 
   if (rank == 2) {
