@@ -2598,14 +2598,10 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
            std::is_same<ParsedElemT, bool>::value))
         << "Unimplemented checking for ParsedElemT";
 
-    ParsedElemT upper_bound;
-    if (sizeof(LiteralNativeT) >= sizeof(ParsedElemT)) {
-      upper_bound = std::numeric_limits<ParsedElemT>::max();
-    } else {
-      upper_bound =
-          static_cast<ParsedElemT>(std::numeric_limits<LiteralNativeT>::max());
-    }
-    if (value > upper_bound || value < 0) {
+    const uint64 unsigned_value = value;
+    const uint64 upper_bound =
+        static_cast<uint64>(std::numeric_limits<LiteralNativeT>::max());
+    if (unsigned_value > upper_bound) {
       // Value is out of range for LiteralNativeT.
       return Error(loc, StrCat("value ", value,
                                " is out of range for literal's primitive type ",

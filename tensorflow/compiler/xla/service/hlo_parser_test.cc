@@ -2000,9 +2000,7 @@ TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
         ROOT %constant = u64[] constant(-1)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
-                  "is out of range for literal's primitive type U64");
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantUnsignedOverflow) {
@@ -2024,7 +2022,7 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
         ROOT %constant = u64[] constant(9223372036854775808)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Overflow) {
