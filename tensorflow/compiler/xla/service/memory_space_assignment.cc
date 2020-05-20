@@ -1293,10 +1293,13 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
     interval_tree_.Remove(interval.start, interval.end, chunk);
   }
   for (const auto& interval : pending_async_copies_) {
-    async_copy_interval_tree_.Remove(interval.start_time, interval.end_time,
-                                     kDummyChunk);
     if (interval.destination == MemorySpace::kAlternate) {
+      prefetch_interval_tree_.Remove(interval.start_time, interval.end_time,
+                                     kDummyChunk);
       async_copy_ordering_.RemoveCopy(interval);
+    } else {
+      eviction_interval_tree_.Remove(interval.start_time, interval.end_time,
+                                     kDummyChunk);
     }
   }
   pending_chunks_.clear();
@@ -1480,27 +1483,37 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
   // the limit at any given time.
   pending_async_copies_.push_back(
       {start_time, copy_done_schedule_before_time, memory_space});
-  async_copy_interval_tree_.Add(start_time, copy_done_schedule_before_time,
-                                kDummyChunk);
   if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
+    prefetch_interval_tree_.Add(start_time, copy_done_schedule_before_time,
+                                kDummyChunk);
     async_copy_ordering_.AddCopy(pending_async_copies_.back());
+  } else {
+    eviction_interval_tree_.Add(start_time, copy_done_schedule_before_time,
+                                kDummyChunk);
   }
 }
 
 bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
-    int64 start_time, int64 end_time) const {
-  if (options_.max_outstanding_async_copies < 0) {
+    int64 start_time, int64 end_time, bool is_prefetch) const {
+  if (options_.max_outstanding_prefetches < 0 && is_prefetch) {
+    return false;
+  }
+  if (options_.max_outstanding_evictions < 0 && !is_prefetch) {
     return false;
   }
 
-  // Count the asynchronous copies in the interval tree for the given interval.
-  int64 num_async_copies =
-      async_copy_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
-          .size();
-
-  // Add one because we are checking if adding an additional asynchronous copy
-  // would violate the limit.
-  return num_async_copies + 1 > options_.max_outstanding_async_copies;
+  // Count the prefetches/evictions in the interval tree for the given interval.
+  if (is_prefetch) {
+    int64 num_prefetches =
+        prefetch_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
+            .size();
+    return num_prefetches >= options_.max_outstanding_prefetches;
+  } else {
+    int64 num_evictions =
+        eviction_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
+            .size();
+    return num_evictions >= options_.max_outstanding_evictions;
+  }
 }
 
 bool AlternateMemoryBestFitHeap::ViolatesAsyncCopyOrdering(
@@ -1664,7 +1677,8 @@ bool AlternateMemoryBestFitHeap::Evict(const AllocationRequest& request) {
   bool eviction_interval_too_short = (eviction_start_time == eviction_end_time);
   bool eviction_violates_outstanding_copies =
       ViolatesMaximumOutstandingAsyncCopies(eviction_start_time,
-                                            eviction_end_time);
+                                            eviction_end_time,
+                                            /*is_prefetch=*/false);
 
   // See if this interval would violate the asynchronous copy limit.
   if (!eviction_interval_too_short && !eviction_violates_outstanding_copies) {
@@ -1685,7 +1699,8 @@ bool AlternateMemoryBestFitHeap::Evict(const AllocationRequest& request) {
     bool eviction_scheduled = false;
     for (int64 time = eviction_start_time; time < eviction_end_time; ++time) {
       VLOG(4) << "Try evicting (" << time << ", " << time + 1 << ")";
-      if (!ViolatesMaximumOutstandingAsyncCopies(time, time + 1)) {
+      if (!ViolatesMaximumOutstandingAsyncCopies(time, time + 1,
+                                                 /*is_prefetch=*/false)) {
         VLOG(3) << "Eviction successful.";
         AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
                      /*chunk=*/absl::nullopt, time, time + 1, time + 1,
@@ -1750,7 +1765,8 @@ bool AlternateMemoryBestFitHeap::Prefetch(
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              request.latest_prefetch_time)) {
+                                              request.latest_prefetch_time,
+                                              /*is_prefetch=*/true)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }

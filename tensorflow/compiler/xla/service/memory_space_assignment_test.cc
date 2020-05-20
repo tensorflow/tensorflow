@@ -127,7 +127,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
     options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
-    options.max_outstanding_async_copies = max_outstanding_async_copies;
+    options.max_outstanding_prefetches = max_outstanding_async_copies;
+    options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
     options.verify = true;
 
@@ -185,20 +186,45 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
   }
 
-  /*static*/ int64 CountMaximumOutstandingAsyncCopies(const HloModule& module) {
-    int64 max_copies = 0;
+  struct OutstandingAsyncCopies {
+    int64 max_copies;
+    int64 max_prefetches;
+    int64 max_evictions;
+  };
+
+  /*static*/ OutstandingAsyncCopies CountMaximumOutstandingAsyncCopies(
+      const HloModule& module) {
+    OutstandingAsyncCopies copies{0, 0, 0};
     int64 current_copies = 0;
+    int64 current_prefetches = 0;
+    int64 current_evictions = 0;
     for (HloInstruction* instruction : module.schedule()
                                            .sequence(module.entry_computation())
                                            .instructions()) {
       if (instruction->opcode() == HloOpcode::kCopyStart) {
         current_copies++;
+        if (ShapeUtil::GetSubshape(instruction->shape(), {0})
+                .layout()
+                .memory_space() == kAlternateMemorySpace) {
+          current_prefetches++;
+        } else {
+          current_evictions++;
+        }
       } else if (instruction->opcode() == HloOpcode::kCopyDone) {
         current_copies--;
+        if (instruction->shape().layout().memory_space() ==
+            kAlternateMemorySpace) {
+          current_prefetches--;
+        } else {
+          current_evictions--;
+        }
       }
-      max_copies = std::max(max_copies, current_copies);
+      copies.max_copies = std::max(copies.max_copies, current_copies);
+      copies.max_prefetches =
+          std::max(copies.max_prefetches, current_prefetches);
+      copies.max_prefetches = std::max(copies.max_evictions, current_evictions);
     }
-    return max_copies;
+    return copies;
   }
 
   std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
@@ -408,7 +434,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 0);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 0);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
@@ -416,7 +443,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 1);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 1);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 1);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
@@ -424,7 +452,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/2);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 2);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 2);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 2);
 }
 
 // TODO(berkin): This test is broken with some prefetch timing improvements.
