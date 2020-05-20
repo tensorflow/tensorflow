@@ -179,6 +179,8 @@ py_library(
         ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_embedding_v2_utils",
         ":tpu_lib",
     ],
 )
@@ -432,6 +434,45 @@ tf_py_test(
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2_utils",
+    srcs = ["tpu_embedding_v2_utils.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain/contrib/learn/tpu:__subpackages__",
+        "//quality/deepsearch:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2",
+    srcs = ["tpu_embedding_v2.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain/contrib/learn/tpu:__subpackages__",
+        "//quality/deepsearch:__subpackages__",
+    ],
+    deps = [
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
     ],
 )
 

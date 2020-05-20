@@ -55,6 +55,7 @@ OpBuilder* CreateQuantizeBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateHardSwishBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateCastBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateMinMaxBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateSliceOpBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

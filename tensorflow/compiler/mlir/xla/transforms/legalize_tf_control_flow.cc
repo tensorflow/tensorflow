@@ -66,7 +66,7 @@ createLegalizeTFControlFlowPass() {
 namespace {
 
 void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
-  // De-tuple the results of the xla hlo conditional result.
+  // De-tuple the results of the xla hlo if result.
   for (auto result_it : llvm::enumerate(replace)) {
     auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
         result_it.value().getLoc(), tuple, result_it.index());
@@ -74,11 +74,11 @@ void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
   }
 }
 
-// Imports the source region into the destination region. The XLA conditional
+// Imports the source region into the destination region. The XLA if
 // operation only supports one argument per branch. Therefore any branch that
 // requires additional arguments requires their values be tupled together. Then,
 // to support multiple returns (as XLA only supports a single return value) the
-// results of the conditional are tupled together.
+// results of the if operation are tupled together.
 void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true) {
   BlockAndValueMapping mapper;
@@ -114,11 +114,11 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   builder.setInsertionPoint(op);
   auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
 
-  // Create the new conditional op with tuple inputs.
+  // Create the new if op with tuple inputs.
   SmallVector<Value, 3> operands(op.getOperands());
   auto result_type = builder.getTupleType(op.getResultTypes());
-  auto conditional = builder.create<xla_hlo::ConditionalOp>(
-      loc, result_type, op.cond(), tuple_input, tuple_input);
+  auto if_op = builder.create<xla_hlo::IfOp>(loc, result_type, op.cond(),
+                                             tuple_input, tuple_input);
 
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
@@ -126,12 +126,12 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   BlockAndValueMapping mapper;
   auto then_branch = module.lookupSymbol<mlir::FuncOp>(op.then_branch());
   auto else_branch = module.lookupSymbol<mlir::FuncOp>(op.else_branch());
-  ImportXlaRegion(then_branch, &conditional.true_branch(), loc);
-  ImportXlaRegion(else_branch, &conditional.false_branch(), loc);
+  ImportXlaRegion(then_branch, &if_op.true_branch(), loc);
+  ImportXlaRegion(else_branch, &if_op.false_branch(), loc);
 
-  // De-tuple the results of the xla hlo conditional result.
+  // De-tuple the results of the xla hlo if result.
   builder.setInsertionPointAfter(op);
-  Detuple(conditional.getResult(), op.getResults(), &builder);
+  Detuple(if_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
 

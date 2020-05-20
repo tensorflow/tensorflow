@@ -58,6 +58,8 @@ class StringLookup(index_lookup.IndexLookup):
       one token per line. If the list or file contains the same token multiple
       times, an error will be thrown.
     encoding: The Python string encoding to use. Defaults to `'utf-8'`.
+    invert: If true, this layer will map indices to vocabulary items instead
+      of mapping vocabulary items to indices.
   """
 
   def __init__(self,
@@ -67,6 +69,7 @@ class StringLookup(index_lookup.IndexLookup):
                oov_token="[OOV]",
                vocabulary=None,
                encoding="utf-8",
+               invert=False,
                **kwargs):
     allowed_dtypes = [dtypes.string]
 
@@ -89,6 +92,7 @@ class StringLookup(index_lookup.IndexLookup):
         mask_token=mask_token,
         oov_token=oov_token,
         vocabulary=vocabulary,
+        invert=invert,
         **kwargs)
 
   def get_config(self):

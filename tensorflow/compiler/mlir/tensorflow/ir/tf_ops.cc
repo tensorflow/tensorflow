@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -249,6 +250,39 @@ static LogicalResult VerifyTypesCompatibility(
     }
   }
   return success();
+}
+
+// This is a helper for the Select to SelectV2 canonicalization. The `data` rank
+// refers to the rank of `t`/`e` (these two inputs have equal rank; this is
+// checked in the verifier).
+//
+// In most cases, the predicate for Select can be used directly as the predicate
+// for SelectV2. However, there is one case that varies, which is when the
+// predicate is a tensor and the data is multidimensional. In this case, Select
+// op semantics dictate that the predicate tensor length must match the size of
+// the first data dimension. This varies from normal broadcasting semantics
+// (which are used in SelectV2), so we must reshape the tensor in this case to
+// be compatible.
+static Value ReshapeSelectPredIfNecessary(OpBuilder *builder, Location loc,
+                                          Value cond, int data_rank) {
+  auto cond_tensor = cond.getType().cast<RankedTensorType>();
+  // Reshape is only needed in the case that the cond rank is 1 (i.e. it is
+  // a vector) AND t/e rank is > 1.
+  if (cond_tensor.getRank() != 1 || data_rank <= 1) {
+    // No reshape necessary. Leave cond as it is.
+    return cond;
+  }
+
+  // This is the case where a reshape is needed. We want to construct the
+  // shape [x,1,...1], where x is the value in the pred tensor and the
+  // length of the shape is equal to data_rank.
+  SmallVector<int64_t, 8> shape(data_rank, 1);
+  shape[0] = cond_tensor.getShape().front();
+  auto new_shape_type =
+      RankedTensorType::get({data_rank}, builder->getIntegerType(64));
+  auto shape_attr = DenseIntElementsAttr::get(new_shape_type, shape);
+  auto new_shape = builder->create<ConstOp>(loc, shape_attr);
+  return builder->create<ReshapeOp>(loc, cond, new_shape);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2551,6 +2585,81 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<SelectToSelectV2>(context);
+}
+
+// Verifies a few extra requirements on SelectOp:
+// (1) `then` and `else` must have same shape
+// (2) At least one of the following must be true:
+//     (a) `cond` has the same rank as `then` and `else`
+//     (b) `cond` is a scalar
+//     (c) `cond` is a vector AND `then` and `else` are non-scalar with their
+//         first dimension equal to `cond`.
+static LogicalResult Verify(SelectOp op) {
+  auto then_tensor = op.t().getType().cast<TensorType>();
+  auto else_tensor = op.e().getType().cast<TensorType>();
+  // Check (1).
+  if (!AreCastCompatible({then_tensor, else_tensor}))
+    return op.emitOpError() << "requires t and e have compatible shapes";
+
+  // Get data rank (if exists).
+  int data_rank;
+  // If data is unranked or data_rank is 0, this will remain -2. Otherwise
+  // refers to first dimension of then and/or else.
+  int data_first_dim = -2;
+  bool then_has_rank = then_tensor.hasRank();
+  bool else_has_rank = else_tensor.hasRank();
+  if (then_has_rank && else_has_rank) {
+    data_rank = then_tensor.getRank();
+    if (then_tensor.getRank() > 0)
+      data_first_dim = then_tensor.getShape().front();
+    if (else_tensor.getRank() > 0)
+      data_first_dim = std::max(
+          static_cast<int>(else_tensor.getShape().front()), data_first_dim);
+  } else if (then_has_rank) {
+    data_rank = then_tensor.getRank();
+    if (then_tensor.getRank() > 0)
+      data_first_dim = then_tensor.getShape().front();
+  } else if (else_has_rank) {
+    data_rank = else_tensor.getRank();
+    if (else_tensor.getRank() > 0)
+      data_first_dim = else_tensor.getShape().front();
+  } else {
+    // Neither has a rank.
+    return success();
+  }
+
+  auto cond_tensor = op.condition().getType().dyn_cast<RankedTensorType>();
+  if (!cond_tensor) return success();
+  auto cond_rank = cond_tensor.getRank();
+  // Check (2a) and (2b).
+  if (cond_rank == 0 || cond_rank == data_rank) return success();
+  // Check (2c).
+  if (cond_rank == 1) {
+    auto cond_shape = cond_tensor.getShape().front();
+    if (data_rank == 0) {
+      return op.emitOpError()
+             << "requires that t and e are nonscalar when pred is a vector";
+    }
+    // We know `data` tensor has a rank of at least 1.
+    if (data_first_dim != -1 && cond_shape != -1 &&
+        data_first_dim != cond_shape) {
+      return op.emitOpError() << "requires that, when pred is a vector, the "
+                                 "shape matches the first dimension of t and e";
+    }
+    return success();
+  }
+  // None of (2a,b,c) were true; fail.
+  return op.emitOpError() << "requires that pred is a scalar OR has the same "
+                             "rank as t and e OR is a vector";
+}
+
+//===----------------------------------------------------------------------===//
 // SelectV2Op
 //===----------------------------------------------------------------------===//
 
@@ -3565,10 +3674,18 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
   if (!const_perm) return {};
 
   auto const_value = const_perm.value();
-  const auto &elements = const_value.getValues<APInt>();
+  const auto elements = const_value.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
+  }
+
+  // TODO(jpienaar): Remove if/when we handle this more generally.
+  if (op.getType() != op.x().getType()) {
+    // If the types don't match then only fold if all the operands are in the TF
+    // dialect.
+    for (auto user : op.getOperation()->getUsers())
+      if (user->getDialect() != op.getDialect()) return {};
   }
 
   return op.x();
@@ -3870,7 +3987,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
   addInterfaces<TFInlinerInterface>();
-  addAttributes<ShapeAttr>();
+  addAttributes<ShapeAttr, FuncAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
@@ -3925,6 +4042,49 @@ void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
   os << ">";
 }
 
+// Parses a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+//
+// where the first element is a SymbolRefAttr and the second element is a
+// DictionaryAttr.
+FuncAttr ParseFuncAttr(MLIRContext *context, StringRef spec, Location loc) {
+  auto emit_error = [&, spec]() {
+    emitError(loc, "invalid TensorFlow func attribute: ") << spec;
+    return nullptr;
+  };
+
+  if (!spec.consume_front("func<")) return emit_error();
+
+  size_t func_name_num_read = 0;
+  Attribute func_name_attr =
+      mlir::parseAttribute(spec, context, func_name_num_read);
+  if (!func_name_attr || !func_name_attr.isa<SymbolRefAttr>())
+    return emit_error();
+  spec = spec.drop_front(func_name_num_read);
+
+  if (!spec.consume_front(", ")) return emit_error();
+
+  size_t func_attrs_num_read = 0;
+  Attribute func_attrs_attr =
+      mlir::parseAttribute(spec, context, func_attrs_num_read);
+  if (!func_attrs_attr || !func_attrs_attr.isa<DictionaryAttr>())
+    return emit_error();
+  spec = spec.drop_front(func_attrs_num_read);
+
+  if (!spec.consume_front(">")) return emit_error();
+
+  return mlir::TF::FuncAttr::get(context, func_name_attr.cast<SymbolRefAttr>(),
+                                 func_attrs_attr.cast<DictionaryAttr>());
+}
+
+// Prints a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+void PrintFuncAttr(FuncAttr attr, DialectAsmPrinter &os) {
+  os << "func<" << attr.GetName() << ", " << attr.GetAttrs() << ">";
+}
+
 }  // namespace
 
 Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
@@ -3934,6 +4094,8 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
   if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
 
+  if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
+
   return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
 }
 
@@ -3942,6 +4104,9 @@ void TensorFlowDialect::printAttribute(Attribute attr,
   switch (attr.getKind()) {
     case AttrKind::SHAPE:
       PrintShapeAttr(attr.cast<ShapeAttr>(), os);
+      break;
+    case AttrKind::FUNC:
+      PrintFuncAttr(attr.cast<FuncAttr>(), os);
       break;
     default:
       llvm_unreachable("unexpected tensorflow attribute kind");

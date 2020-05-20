@@ -40,6 +40,7 @@ hexagon_op_tests(
         "reduce_test.cc",
         "reshape_test.cc",
         "resize_test.cc",
+        "slice_test.cc",
         "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",

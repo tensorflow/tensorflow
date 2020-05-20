@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -121,7 +122,7 @@ def make_variable(name,
         initializer,
         (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
       initializer = initializer()
-    init_val = lambda: initializer(shape, dtype=dtype)
+    init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True

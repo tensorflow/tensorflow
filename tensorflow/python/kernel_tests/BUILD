@@ -864,6 +864,7 @@ cuda_py_test(
     srcs = ["resource_variable_ops_test.py"],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

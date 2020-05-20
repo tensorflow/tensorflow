@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import numbers
 import os
 
@@ -236,6 +237,55 @@ class _NonAtrousConvolution(object):
         padding=self.padding,
         data_format=self.data_format,
         name=self.name)
+
+
+def _squeeze_batch_dims(inp, op, inner_rank, name):
+  """Returns `unsqueeze_batch(op(squeeze_batch(inp)))`.
+
+  Where `squeeze_batch` reshapes `inp` to shape
+  `[prod(inp.shape[:-inner_rank])] + inp.shape[-inner_rank:]`
+  and `unsqueeze_batch` does the reverse reshape but on the output.
+
+  Args:
+    inp: A tensor with dims `batch_shape + inner_shape` where `inner_shape`
+      is length `inner_rank`.
+    op: A callable that takes a single input tensor and returns a single.
+      output tensor.
+    inner_rank: A python integer.
+    name: A string.
+
+  Returns:
+    `unsqueeze_batch_op(squeeze_batch(inp))`.
+  """
+  with ops.name_scope(name, "Convolution", [inp]):
+    inp = ops.convert_to_tensor(inp, name="input")
+    shape = inp.shape
+
+    inner_shape = shape[-inner_rank:]
+    if not inner_shape.is_fully_defined():
+      inner_shape = array_ops.shape(inp)[-inner_rank:]
+
+    batch_shape = shape[:-inner_rank]
+    if not batch_shape.is_fully_defined():
+      batch_shape = array_ops.shape(inp)[:-inner_rank]
+
+    if isinstance(inner_shape, tensor_shape.TensorShape):
+      inp_reshaped = array_ops.reshape(inp, [-1] + inner_shape.as_list())
+    else:
+      inp_reshaped = array_ops.reshape(
+          inp, array_ops.concat(([-1], inner_shape), axis=-1))
+
+    out_reshaped = op(inp_reshaped)
+
+    out_inner_shape = out_reshaped.shape[-inner_rank:]
+    if not out_inner_shape.is_fully_defined():
+      out_inner_shape = array_ops.shape(out_reshaped)[-inner_rank:]
+
+    out = array_ops.reshape(
+        out_reshaped, array_ops.concat((batch_shape, out_inner_shape), axis=-1))
+
+    out.set_shape(inp.shape[:-inner_rank] + out.shape[-inner_rank:])
+    return out
 
 
 @tf_export("nn.dilation2d", v1=[])
@@ -1847,12 +1897,15 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
               dilations=None,
               name=None):
   # pylint: disable=line-too-long
-  r"""Computes a 2-D convolution given 4-D `input` and `filters` tensors.
+  r"""Computes a 2-D convolution given `input` and 4-D `filters` tensors.
 
-  Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
-  and a filter / kernel tensor of shape
-  `[filter_height, filter_width, in_channels, out_channels]`, this op
-  performs the following:
+  The `input` tensor may have rank `4` or higher, where shape dimensions `[:-3]`
+  are considered batch dimensions (`batch_shape`).
+
+  Given an input tensor of shape
+  `batch_shape + [in_height, in_width, in_channels]` and a filter / kernel
+  tensor of shape `[filter_height, filter_width, in_channels, out_channels]`,
+  this op performs the following:
 
   1. Flattens the filter to a 2-D matrix with shape
      `[filter_height * filter_width * in_channels, output_channels]`.
@@ -1890,8 +1943,9 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   Args:
     input: A `Tensor`. Must be one of the following types:
       `half`, `bfloat16`, `float32`, `float64`.
-      A 4-D tensor. The dimension order is interpreted according to the value
-      of `data_format`, see below for details.
+      A 4+-D tensor. The dimension order is interpreted according to the value
+      of `data_format`; with the all-but-inner-3 dimensions acting as batch
+      dimensions.  See below for details.
     filters: A `Tensor`. Must have the same type as `input`.
       A 4-D tensor of shape
       `[filter_height, filter_width, in_channels, out_channels]`
@@ -1911,9 +1965,9 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
       Defaults to `"NHWC"`.
       Specify the data format of the input and output data. With the
       default format "NHWC", the data is stored in the order of:
-          [batch, height, width, channels].
+          `batch_shape + [height, width, channels]`.
       Alternatively, the format could be "NCHW", the data storage order of:
-          [batch, channels, height, width].
+          `batch_shape + [channels, height, width]`.
     dilations: An int or list of `ints` that has length `1`, `2` or `4`,
       defaults to 1. The dilation factor for each dimension of`input`. If a
       single value is given it is replicated in the `H` and `W` dimension. By
@@ -1925,7 +1979,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `input`.
+    A `Tensor`. Has the same type as `input` and the same outer batch shape.
   """
   # pylint: enable=line-too-long
   return conv2d(input,  # pylint: disable=redefined-builtin
@@ -2025,15 +2079,36 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
 
   strides = _get_sequence(strides, 2, channel_index, "strides")
   dilations = _get_sequence(dilations, 2, channel_index, "dilations")
-  return gen_nn_ops.conv2d(input,  # pylint: disable=redefined-builtin
-                           filter,
-                           strides,
-                           padding,
-                           use_cudnn_on_gpu=use_cudnn_on_gpu,
-                           explicit_paddings=explicit_paddings,
-                           data_format=data_format,
-                           dilations=dilations,
-                           name=name)
+
+  # Try really hard to avoid modifying the legacy name scopes - return early.
+  shape = getattr(input, "shape", None)
+  if shape is not None:
+    ndims = getattr(shape, "ndims", -1)
+    if ndims == -1: ndims = len(shape)
+  if ndims in (4, 3, 2, 1, 0, None):
+    return gen_nn_ops.conv2d(
+        input,
+        filter=filter,
+        strides=strides,
+        padding=padding,
+        use_cudnn_on_gpu=use_cudnn_on_gpu,
+        explicit_paddings=explicit_paddings,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+  return _squeeze_batch_dims(
+      input,
+      functools.partial(
+          gen_nn_ops.conv2d,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          use_cudnn_on_gpu=use_cudnn_on_gpu,
+          explicit_paddings=explicit_paddings,
+          data_format=data_format,
+          dilations=dilations),
+      inner_rank=3,
+      name=name)
 
 
 @tf_export(v1=["nn.conv2d_backprop_filter"])

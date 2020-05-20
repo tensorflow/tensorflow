@@ -92,6 +92,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinResizeBilinear:
     case kTfLiteBuiltinResizeNearestNeighbor:
+    case kTfLiteBuiltinSlice:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinSplit:
@@ -212,7 +213,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
       return (weights_const && bias_const_or_no_bias &&
-              IsActivationReluOrNone(matmul_params->activation) &&
+              matmul_params->activation == kTfLiteActNone &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
                   kTfLiteFullyConnectedWeightsFormatDefault);
@@ -386,6 +387,16 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return InputsWithCorrectTypes(
           node, context,
           {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinSlice: {
+      const auto& begins_tensor = context->tensors[node->inputs->data[1]];
+      const auto& sizes_tensor = context->tensors[node->inputs->data[2]];
+      if (!IsConstantTensor(&begins_tensor) || !IsConstantTensor(&sizes_tensor))
+        return false;
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteInt32, kTfLiteInt64},
+                                     {kTfLiteInt32, kTfLiteInt64}});
     }
     default:
       return false;

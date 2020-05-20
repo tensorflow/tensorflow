@@ -95,6 +95,7 @@ are verified in `IsNodeSupportedByHexagon`:
   * Constraints:
     - Requested size <= 65 (b/143105433)
 * Resize Nearest Neighbor
+* Slice
 * SoftMax
 * SpaceToDepth
 * Split

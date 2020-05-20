@@ -15,12 +15,14 @@
 # ==============================================================================
 
 dpkg --add-architecture armhf
-echo 'deb [arch=armhf] http://ports.ubuntu.com/ xenial main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=armhf] http://ports.ubuntu.com/ xenial-updates main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=armhf] http://ports.ubuntu.com/ xenial-security main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=armhf] http://ports.ubuntu.com/ xenial-backports main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+dpkg --add-architecture arm64
+echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-updates main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-security main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-backports main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
 sed -i 's#deb http://archive.ubuntu.com/ubuntu/#deb [arch=amd64] http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list
 yes | add-apt-repository ppa:deadsnakes/ppa
 apt-get update
 apt-get install -y python3.7 python3-numpy python3.7-dev python3-pip
 apt-get install -y libpython3.7-dev:armhf
+apt-get install -y libpython3.7-dev:arm64

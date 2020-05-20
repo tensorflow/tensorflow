@@ -147,9 +147,9 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
-      // Schema related.
-      {"$pn", kProducerContextName},
-      {"$cn", kConsumerContextName},
+      // XPlane semantics related.
+      {"$pt", kProducerType},
+      {"$ct", kConsumerType},
       {"$p", kProducerId},
       {"$c", kConsumerId},
       // Device trace arguments.

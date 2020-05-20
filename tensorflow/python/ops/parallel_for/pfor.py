@@ -93,6 +93,7 @@ def _stack(t, length):
 passthrough_stateful_ops = set([
     "VariableV2",
     "VarHandleOp",
+    "VariableShape",
     "ReadVariableOp",
     "StackV2",
     "TensorArrayWriteV3",

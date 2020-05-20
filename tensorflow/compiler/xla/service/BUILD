@@ -3284,6 +3284,7 @@ cc_library(
         ":heap_simulator",
         ":hlo_cost_analysis",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core/lib/math:math_util",
     ],
 )
 
@@ -4497,6 +4498,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
