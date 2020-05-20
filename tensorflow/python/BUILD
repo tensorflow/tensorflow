@@ -137,7 +137,7 @@ py_library(
         ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
-        ":bincount",
+        ":bincount_ops",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -3476,23 +3476,24 @@ py_library(
 )
 
 py_library(
-    name = "bincount",
-    srcs = ["ops/bincount.py"],
+    name = "bincount_ops",
+    srcs = ["ops/bincount_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":count_ops_gen",
         ":framework",
         ":framework_for_generated_wrappers",
+        "//tensorflow/python/compat",
     ],
 )
 
 tf_py_test(
-    name = "bincount_test",
+    name = "bincount_ops_test",
     size = "small",
-    srcs = ["ops/bincount_test.py"],
+    srcs = ["ops/bincount_ops_test.py"],
     python_version = "PY3",
     deps = [
-        ":bincount",
+        ":bincount_ops",
         ":platform_test",
     ],
 )

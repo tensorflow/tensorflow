@@ -3562,116 +3562,6 @@ def log_sigmoid(x, name=None):
     return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
 
 
-@tf_export("math.bincount", v1=[])
-@dispatch.add_dispatch_support
-def bincount(arr,
-             weights=None,
-             minlength=None,
-             maxlength=None,
-             dtype=dtypes.int32,
-             name=None):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
-  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
-                  will be the vector length.
-
-  Each bin value in the output indicates number of occurrences of the particular
-  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
-  two times in `values`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-    name: A name scope for the associated operations (optional).
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-
-  Raises:
-    `InvalidArgumentError` if negative values are provided as an input.
-
-  """
-  name = "bincount" if name is None else name
-  with ops.name_scope(name):
-    arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-    array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
-    output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
-    if minlength is not None:
-      minlength = ops.convert_to_tensor(
-          minlength, name="minlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.maximum(minlength, output_size)
-    if maxlength is not None:
-      maxlength = ops.convert_to_tensor(
-          maxlength, name="maxlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.minimum(maxlength, output_size)
-    if weights is not None:
-      weights = ops.convert_to_tensor(weights, name="weights")
-      return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-    weights = constant_op.constant([], dtype)
-    return gen_math_ops.bincount(arr, output_size, weights)
-
-
-@tf_export(v1=["math.bincount", "bincount"])
-@dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints("bincount")
-def bincount_v1(arr,
-                weights=None,
-                minlength=None,
-                maxlength=None,
-                dtype=dtypes.int32):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-  """
-  return bincount(arr, weights, minlength, maxlength, dtype)
-
-
 @tf_export("math.cumsum", "cumsum")
 @dispatch.add_dispatch_support
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
@@ -4556,9 +4446,9 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
-            
+
   Usage Example:
-  
+
   >>> coefficients = [1.0, 2.5, -4.2]
   >>> x = 5.0
   >>> y = tf.math.polyval(coefficients, x)

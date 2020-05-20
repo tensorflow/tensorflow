@@ -23,9 +23,12 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import bincount
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -151,7 +154,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                        binary_output=False,
                        weights=None,
                        axis=-1):
-    y = bincount.sparse_bincount(
+    y = bincount_ops.sparse_bincount(
         x,
         weights=weights,
         minlength=minlength,
@@ -349,7 +352,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                         axis=-1):
     x_sparse = sparse_ops.from_dense(x)
     w_sparse = sparse_ops.from_dense(weights) if weights is not None else None
-    y = bincount.sparse_bincount(
+    y = bincount_ops.sparse_bincount(
         x_sparse,
         weights=w_sparse,
         minlength=minlength,
@@ -496,7 +499,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                         axis=-1):
     x_ragged = ragged_factory_ops.constant(x)
     w = ragged_factory_ops.constant(weights) if weights is not None else None
-    y = bincount.sparse_bincount(
+    y = bincount_ops.sparse_bincount(
         x_ragged,
         weights=w,
         minlength=minlength,
@@ -508,6 +511,237 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_shape, y.dense_shape)
 
 
+class TestDenseBincount(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_input_all_count(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 1000
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
+    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
+                                            [num_rows, 1])
+
+    np_out = np.bincount(inp_vals, minlength=size)
+    self.assertAllEqual(
+        np_out, self.evaluate(bincount_ops.bincount(sparse_inp, axis=0)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_input_all_count_with_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 1000
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
+    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
+                                            [num_rows, 1])
+    weight_vals = np.random.random((n_elems,))
+    sparse_weights = sparse_tensor.SparseTensor(inp_indices, weight_vals,
+                                                [num_rows, 1])
+
+    np_out = np.bincount(inp_vals, minlength=size, weights=weight_vals)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(bincount_ops.bincount(
+            sparse_inp, sparse_weights, axis=0)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_input_all_binary(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    size = 10
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
+    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
+                                            [num_rows, 1])
+
+    np_out = np.ones((size,))
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(bincount_ops.bincount(sparse_inp, binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_input_col_reduce_count(self, dtype):
+    num_rows = 128
+    num_cols = 27
+    size = 100
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate(
+            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
+            axis=0), (num_rows, size))
+    # from_dense will filter out 0s.
+    inp = inp + 1
+    # from_dense will cause OOM in GPU.
+    with ops.device("/CPU:0"):
+      inp_sparse = sparse_ops.from_dense(inp)
+      inp_sparse = sparse_tensor.SparseTensor(inp_sparse.indices,
+                                              inp_sparse.values - 1,
+                                              inp_sparse.dense_shape)
+    self.assertAllEqual(
+        np_out, self.evaluate(bincount_ops.bincount(arr=inp_sparse, axis=-1)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_sparse_input_col_reduce_binary(self, dtype):
+    num_rows = 128
+    num_cols = 27
+    size = 100
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate([
+            np.where(np.bincount(inp[j, :], minlength=size) > 0, 1, 0)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    # from_dense will filter out 0s.
+    inp = inp + 1
+    # from_dense will cause OOM in GPU.
+    with ops.device("/CPU:0"):
+      inp_sparse = sparse_ops.from_dense(inp)
+      inp_sparse = sparse_tensor.SparseTensor(inp_sparse.indices,
+                                              inp_sparse.values - 1,
+                                              inp_sparse.dense_shape)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            bincount_ops.bincount(arr=inp_sparse, axis=-1, binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_input_count(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]],
+                                    dtype)
+    # pyformat: disable
+    expected_output = [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [1, 1, 0, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 2, 1]]
+    # pyformat: enable
+    self.assertAllEqual(expected_output,
+                        self.evaluate(bincount_ops.bincount(arr=x, axis=-1)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_input_binary(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
+    # pyformat: disable
+    expected_output = [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [1, 1, 0, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 1, 1]]
+    # pyformat: enable
+    self.assertAllEqual(
+        expected_output,
+        self.evaluate(
+            bincount_ops.bincount(arr=x, axis=-1, binary_output=True)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_input_count_with_weights(self, dtype):
+    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
+    weights = ragged_factory_ops.constant([[], [], [.1, .2, .3], [],
+                                           [.2, .5, .6, .3]])
+    # pyformat: disable
+    expected_output = [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [.2, .3, 0, .1, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [.5, 0, 0, 0, .9, .2]]
+    # pyformat: enable
+    self.assertAllClose(
+        expected_output,
+        self.evaluate(bincount_ops.bincount(arr=x, weights=weights, axis=-1)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_input_count_np(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    num_cols = 27
+    size = 1000
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_out = np.reshape(
+        np.concatenate(
+            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
+            axis=0), (num_rows, size))
+    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(bincount_ops.bincount(arr=x, minlength=size, axis=-1)))
+
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
+  def test_ragged_input_count_np_with_weights(self, dtype):
+    np.random.seed(42)
+    num_rows = 128
+    num_cols = 27
+    size = 1000
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    np_weight = np.random.random((num_rows, num_cols))
+    np_out = np.reshape(
+        np.concatenate([
+            np.bincount(inp[j, :], weights=np_weight[j, :], minlength=size)
+            for j in range(num_rows)
+        ],
+                       axis=0), (num_rows, size))
+    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+    weights = ragged_tensor.RaggedTensor.from_tensor(np_weight)
+    self.assertAllEqual(
+        np_out,
+        self.evaluate(
+            bincount_ops.bincount(
+                arr=x, weights=weights, minlength=size, axis=-1)))
+
+
 class TestSparseCountFailureModes(test.TestCase):
 
   def test_dense_input_sparse_weights_fails(self):
@@ -515,13 +749,13 @@ class TestSparseCountFailureModes(test.TestCase):
     weights = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_dense_input_ragged_weights_fails(self):
     x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
     with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_dense_input_wrong_shape_fails(self):
     x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
@@ -532,24 +766,24 @@ class TestSparseCountFailureModes(test.TestCase):
     if context.executing_eagerly():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "must have the same shape"):
-        self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+        self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
     else:
       with self.assertRaisesRegexp(ValueError, "both shapes must be equal"):
-        self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+        self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_dense_weights_fails(self):
     x = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
     with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_ragged_weights_fails(self):
     x = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
     with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_wrong_indices_fails(self):
     x = sparse_ops.from_dense(
@@ -558,7 +792,7 @@ class TestSparseCountFailureModes(test.TestCase):
         np.array([[3, 1, 0, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "must have the same indices"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_too_many_indices_fails(self):
     x = sparse_ops.from_dense(
@@ -567,7 +801,7 @@ class TestSparseCountFailureModes(test.TestCase):
         np.array([[3, 1, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Incompatible shapes"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_wrong_shape_fails(self):
     x = sparse_ops.from_dense(
@@ -577,27 +811,27 @@ class TestSparseCountFailureModes(test.TestCase):
                  dtype=np.int32))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "must have the same dense shape"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_dense_weights_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
     with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_sparse_weights_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_different_shape_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [], [10, 0.25, 5, 3]])
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "must have the same row splits"):
-      self.evaluate(bincount.sparse_bincount(x, weights=weights, axis=-1))
+      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
 
 if __name__ == "__main__":
