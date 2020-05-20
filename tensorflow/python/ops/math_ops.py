@@ -256,7 +256,7 @@ def argmax(input,
 def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the largest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  In case of identity returns the smallest index.
 
   For example:
 
@@ -269,6 +269,9 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   <tf.Tensor: shape=(5,), dtype=int64, numpy=array([2, 2, 0, 2, 2])>
   >>> tf.math.argmax(B, 1)
   <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 1])>
+  >>> C = tf.constant([0, 0, 0, 0])
+  >>> tf.math.argmax(C) # Returns smallest index in case of ties
+  <tf.Tensor: shape=(), dtype=int64, numpy=0>
 
   Args:
     input: A `Tensor`.
@@ -307,7 +310,7 @@ def argmin(input,
 def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the smallest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  Returns the smallest index in case of ties.
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
