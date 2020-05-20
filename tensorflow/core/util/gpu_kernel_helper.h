@@ -57,9 +57,10 @@ using gpuError_t = hipError_t;
 #if GOOGLE_CUDA
 
 #if defined(__APPLE__)
-    // Tom: keyword __align__ is not available on macOS
-    #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-    extern __shared__ TYPE NAME[]  
+    // TODO: keyword __align__ is not available on macOS. If the following
+    // also works for Linux, the old implementation using __align__  can be removed. 
+   #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+      extern __shared__  __attribute__ ((aligned(ALIGN))) TYPE NAME[]
 #else
    #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
       extern __shared__ __align__(ALIGN) TYPE NAME[]

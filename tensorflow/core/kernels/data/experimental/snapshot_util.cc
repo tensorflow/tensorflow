@@ -40,13 +40,12 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace snapshot_util {
-// Tom: Intializing kSnappyReaderInputBufferSizeBytes and kSnappyReaderOutputBufferSizeBytes in class definition and 
-// refer to them in cc file causes symbol not found error on macOS. 
-// The change solves #39262.
-  static constexpr const int64 kSnappyReaderInputBufferSizeBytes =
+// The following constants should not be defined as static variables in class, or 
+// they will result in import error (Symbol not found in flat namespace) in macOS (#39262).
+  constexpr const int64 kSnappyReaderInputBufferSizeBytes =
       1 << 30;  // 1 GiB
   // TODO(b/148804377): Set this in a smarter fashion.
-  static constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
+  constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
       32 << 20;  // 32 MiB
 
 Writer::Writer(const std::string& filename, const std::string& compression_type,

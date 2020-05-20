@@ -46,21 +46,8 @@ class IterationCounter : public ResourceBase {
 // Creates a dataset for reading from the tf.data service.
 class DataServiceDatasetOp : public DatasetOpKernel {
  public:
-//Tom: Avoid declare static constant variables in class, which will result in import error (Symbol not found in flat namespace) in macOS. 
+// Reminder: Avoid declare static constant variables in class, which will result in import error (Symbol not found in flat namespace) in macOS. 
 // Define them in CC file instead.
-  /*static constexpr const char* const kDatasetType = "DataService";
-  static constexpr const char* const kDatasetId = "dataset_id";
-  static constexpr const char* const kProcessingMode = "processing_mode";
-  static constexpr const char* const kAddress = "address";
-  static constexpr const char* const kProtocol = "protocol";
-  static constexpr const char* const kJobName = "job_name";
-  static constexpr const char* const kMaxOutstandingRequests =
-      "max_outstanding_requests";
-  static constexpr const char* const kTaskRefreshIntervalHintMs =
-      "task_refresh_interval_hint_ms";
-  static constexpr const char* const kIterationCounter = "iteration_counter";
-  static constexpr const char* const kOutputTypes = "output_types";
-  static constexpr const char* const kOutputShapes = "output_shapes";*/
 
   explicit DataServiceDatasetOp(OpKernelConstruction* ctx);
 

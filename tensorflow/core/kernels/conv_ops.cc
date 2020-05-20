@@ -864,10 +864,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
-  auto kComputeInNHWC =
+  const auto kComputeInNHWC =
       std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
                       se::dnn::FilterLayout::kOutputYXInput);
-  auto kComputeInNCHW =
+  const auto kComputeInNCHW =
       std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
                       se::dnn::FilterLayout::kOutputInputYX);
 

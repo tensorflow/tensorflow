@@ -103,11 +103,6 @@ class Reader {
   // The reader input buffer size is deliberately large because the input reader
   // will throw an error if the compressed block length cannot fit in the input
   // buffer.
-  //static constexpr const int64 kSnappyReaderInputBufferSizeBytes =
-  //    1 << 30;  // 1 GiB
-  // TODO(b/148804377): Set this in a smarter fashion.
-  //static constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
-  //    32 << 20;  // 32 MiB
   static constexpr const size_t kHeaderSize = sizeof(uint64);
 
   static constexpr const char* const kClassName = "SnapshotReader";

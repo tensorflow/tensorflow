@@ -49,21 +49,21 @@ const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 
-//Tom: Avoid declare static const variables in class, which will result in import error (Symbol not found in flat namespace) in macOS. 
-// Define them in CC file instead.
-  static constexpr const char* const kDatasetType = "DataService";
-  static constexpr const char* const kDatasetId = "dataset_id";
-  static constexpr const char* const kProcessingMode = "processing_mode";
-  static constexpr const char* const kAddress = "address";
-  static constexpr const char* const kProtocol = "protocol";
-  static constexpr const char* const kJobName = "job_name";
-  static constexpr const char* const kMaxOutstandingRequests =
-      "max_outstanding_requests";
-  static constexpr const char* const kTaskRefreshIntervalHintMs =
-      "task_refresh_interval_hint_ms";
-  static constexpr const char* const kIterationCounter = "iteration_counter";
-  static constexpr const char* const kOutputTypes = "output_types";
-  static constexpr const char* const kOutputShapes = "output_shapes";
+// The following constants should not be defined as static variables in class, or 
+// they will result in import error (Symbol not found in flat namespace) in macOS (#39262).
+constexpr const char* const kDatasetType = "DataService";
+constexpr const char* const kDatasetId = "dataset_id";
+constexpr const char* const kProcessingMode = "processing_mode";
+constexpr const char* const kAddress = "address";
+constexpr const char* const kProtocol = "protocol";
+constexpr const char* const kJobName = "job_name";
+constexpr const char* const kMaxOutstandingRequests =
+  "max_outstanding_requests";
+constexpr const char* const kTaskRefreshIntervalHintMs =
+  "task_refresh_interval_hint_ms";
+constexpr const char* const kIterationCounter = "iteration_counter";
+constexpr const char* const kOutputTypes = "output_types";
+constexpr const char* const kOutputShapes = "output_shapes";
 
 }  // namespace
 

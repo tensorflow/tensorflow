@@ -839,10 +839,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
           << " data_format=" << ToString(data_format)
           << " compute_data_format=" << ToString(compute_data_format);
   
-  auto kComputeInNHWC =
+  const auto kComputeInNHWC =
       std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
                       se::dnn::FilterLayout::kOutputYXInput);
-  auto kComputeInNCHW =
+  const auto kComputeInNCHW =
       std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
                       se::dnn::FilterLayout::kOutputInputYX);
 

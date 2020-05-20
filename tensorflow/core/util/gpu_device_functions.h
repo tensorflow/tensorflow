@@ -192,16 +192,17 @@ __device__ const unsigned kGpuWarpAll = 0xffffffff;
 __device__ inline unsigned GpuLaneId() {
   unsigned int lane_id;
 #if GOOGLE_CUDA
-//#if __clang__
-//  return __nvvm_read_ptx_sreg_laneid(); // Tom: The function is not available on macOS and will cause a compilation error such as
-/**
- ./tensorflow/core/util/gpu_device_functions.h(144): error: identifier "__nvvm_read_ptx_sreg_laneid" is undefined
- */
-//#else   // __clang__
-  asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
-//#endif  // __clang__
+  #if defined(__APPLE__)
+    asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+  #else  //__APPLE__
+    #if __clang__
+        return __nvvm_read_ptx_sreg_laneid(); 
+    #else   // __clang__
+        asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+    #endif  // __clang__
+  #endif //__APPLE__
 #elif TENSORFLOW_USE_ROCM
-  lane_id = __lane_id();
+   lane_id = __lane_id();
 #endif
   return lane_id;
 }
