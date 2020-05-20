@@ -497,13 +497,33 @@ def HLO_IfOp: HLO_Op<"if", []> {
     HLO_TensorOrTuple:$false_arg
   );
 
-  let regions = (region AnyRegion:$true_branch, AnyRegion:$false_branch);
+  let regions = (region AnyRegion:$true_branch,
+                        AnyRegion:$false_branch);
 
   let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
+
+// Xla Client API has two separate calls for indexed and predicated conditional,
+// although both eventually map to kConditional HLO. CaseOp maps to indexed
+// conditional use of kConditional HLO.
+def HLO_CaseOp: HLO_Op<"case", []>,
+      BASE_HLO_CaseOp {
+
+  let arguments = (ins
+    I32Tensor:$index,
+    Variadic<HLO_TensorOrTuple>:$branch_operands
+  );
+
+  let regions = (region VariadicRegion<AnyRegion>:$branches);
+
+  let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let hasCustomHLOConverter = 1;
+}
+
 
 def HLO_WhileOp: HLO_Op<"while", [SameOperandsAndResultType]> {
   string summary = "While operator";
