@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -64,7 +63,7 @@ Status EmitDotOperation(const HloInstruction& dot,
                         const llvm_ir::IrArray& rhs_array,
                         const llvm_ir::IrArray* addend_array,
                         llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b, mlir::MLIRContext* mlir_context,
+                        llvm::IRBuilder<>* b,
                         const HloModuleConfig& hlo_module_config,
                         const TargetMachineFeatures& target_machine_features);
 }  // namespace cpu

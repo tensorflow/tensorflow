@@ -27,7 +27,6 @@ namespace options {
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
-bool UseLinalgForDot(const HloModuleConfig& config);
 absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
 absl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
     const HloModuleConfig& config);

@@ -118,9 +118,6 @@ cc_library(
         ":target_machine_features",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
-        "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:LLVMDialect",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
@@ -369,7 +366,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -460,7 +456,6 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
-        ":mlir_emitter",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -479,10 +474,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:core",
-        "@llvm-project//mlir:EDSC",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -1077,26 +1068,5 @@ tf_cc_test(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
-    ],
-)
-
-cc_library(
-    name = "mlir_emitter",
-    srcs = ["mlir_emitter.cc"],
-    hdrs = ["mlir_emitter.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "@llvm-project//llvm:core",
-        "@llvm-project//llvm:ipo",
-        "@llvm-project//llvm:linker",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:LinalgToLLVM",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:VectorToLLVM",
     ],
 )
