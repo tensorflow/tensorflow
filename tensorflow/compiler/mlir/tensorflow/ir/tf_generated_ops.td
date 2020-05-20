@@ -8317,8 +8317,9 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 }
 
-def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Stops gradient computation.";
+def TF_StopGradientOp : TF_Op<"StopGradient",
+    [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
+  let summary = "Stops gradient computation";
 
   let description = [{
 When executed in a graph, this op outputs its input tensor as-is.
