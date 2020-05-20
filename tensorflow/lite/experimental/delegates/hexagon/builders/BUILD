@@ -80,6 +80,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
 )
