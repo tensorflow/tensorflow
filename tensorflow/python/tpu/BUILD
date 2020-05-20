@@ -441,10 +441,6 @@ py_library(
     name = "tpu_embedding_v2_utils",
     srcs = ["tpu_embedding_v2_utils.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/brain/contrib/learn/tpu:__subpackages__",
-        "//quality/deepsearch:__subpackages__",
-    ],
     deps = [
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
@@ -460,10 +456,6 @@ py_library(
     name = "tpu_embedding_v2",
     srcs = ["tpu_embedding_v2.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/brain/contrib/learn/tpu:__subpackages__",
-        "//quality/deepsearch:__subpackages__",
-    ],
     deps = [
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:variable_scope",
