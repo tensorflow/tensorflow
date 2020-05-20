@@ -40,9 +40,7 @@ from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
-from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
@@ -295,16 +293,15 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
       vocab_data = dataset_ops.Dataset.from_tensor_slices(vocab_data).batch(
           input_shape[0])
 
-    with CustomObjectScope({"TextVectorization": cls}):
-      output_data = testing_utils.layer_test(
-          cls,
-          kwargs=kwargs,
-          input_shape=input_shape,
-          input_data=input_data,
-          input_dtype=dtypes.string,
-          expected_output_dtype=expected_output_dtype,
-          validate_training=False,
-          adapt_data=vocab_data)
+    output_data = testing_utils.layer_test(
+        cls,
+        kwargs=kwargs,
+        input_shape=input_shape,
+        input_data=input_data,
+        input_dtype=dtypes.string,
+        expected_output_dtype=expected_output_dtype,
+        validate_training=False,
+        adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
 
   def test_list_inputs_1d(self):
@@ -1413,8 +1410,7 @@ class TextVectorizationSavingTest(
     if tf2.enabled():
       keras.backend.clear_session()
 
-    loaded_model = keras.models.load_model(
-        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    loaded_model = keras.models.load_model(output_path)
     self.assertAllEqual(loaded_model.predict(input_array), expected_output)
 
   def test_saving_when_nested(self):
@@ -1448,67 +1444,10 @@ class TextVectorizationSavingTest(
     if tf2.enabled():
       keras.backend.clear_session()
 
-    loaded_model = keras.models.load_model(
-        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    loaded_model = keras.models.load_model(output_path)
     self.assertAllEqual(loaded_model.predict(input_array), expected_output)
 
-  def test_serialization_with_custom_callables(self):
-    input_array = np.array([["earth>wind>and Fire"],
-                            ["\tfire>And\nearth>michigan"]])
-    expected_output = [[b"earth", b"wind", b"and fire"],
-                       [b"\tfire", b"and\nearth", b"michigan"]]
-
-    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=custom_standardize_fn,
-        split=custom_split_fn,
-        ngrams=None,
-        output_mode=None)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-    serialized_model_data = model.get_config()
-    with CustomObjectScope({"TextVectorization": get_layer_class()}):
-      new_model = keras.Model.from_config(serialized_model_data)
-    new_output_dataset = new_model.predict(input_array)
-    self.assertAllEqual(expected_output, new_output_dataset)
-
-  def DISABLED_test_vocabulary_persistence_across_saving(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-    input_array = np.array([["earth", "wind", "and", "fire"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
-
-    # Build and validate a golden model.
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(output_dataset, expected_output)
-
-    # Save the model to disk.
-    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-    model.save(output_path, save_format="tf")
-    loaded_model = saving.load_from_saved_model(
-        output_path, custom_objects={"TextVectorization": get_layer_class()})
-
-    # Ensure that the loaded model is unique (so that the save/load is real)
-    self.assertIsNot(model, loaded_model)
-
-    # Validate correctness of the new model.
-    new_output_dataset = loaded_model.predict(input_array)
-    self.assertAllEqual(new_output_dataset, expected_output)
-
-  def DISABLED_test_vocabulary_persistence_across_saving_with_tfidf(self):
+  def test_saving_with_tfidf(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     tfidf_data = [.5, .25, .2, .125]
     input_array = np.array([["earth", "wind", "and", "earth"],
@@ -1538,8 +1477,7 @@ class TextVectorizationSavingTest(
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
     model.save(output_path, save_format="tf")
-    loaded_model = saving.load_from_saved_model(
-        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    loaded_model = keras.models.load_model(output_path)
 
     # Ensure that the loaded model is unique (so that the save/load is real)
     self.assertIsNot(model, loaded_model)
@@ -1547,6 +1485,29 @@ class TextVectorizationSavingTest(
     # Validate correctness of the new model.
     new_output_dataset = loaded_model.predict(input_array)
     self.assertAllClose(new_output_dataset, expected_output)
+
+  def test_serialization_with_custom_callables(self):
+    input_array = np.array([["earth>wind>and Fire"],
+                            ["\tfire>And\nearth>michigan"]])
+    expected_output = [[b"earth", b"wind", b"and fire"],
+                       [b"\tfire", b"and\nearth", b"michigan"]]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=custom_standardize_fn,
+        split=custom_split_fn,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+    serialized_model_data = model.get_config()
+    new_model = keras.Model.from_config(serialized_model_data)
+    new_output_dataset = new_model.predict(input_array)
+    self.assertAllEqual(expected_output, new_output_dataset)
 
 
 if __name__ == "__main__":
