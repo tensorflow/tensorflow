@@ -139,9 +139,9 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
-  // Schema related.
-  kProducerContextName,
-  kConsumerContextName,
+  // XPlane semantics related.
+  kProducerType,
+  kConsumerType,
   kProducerId,
   kConsumerId,
   // Device trace arguments.
