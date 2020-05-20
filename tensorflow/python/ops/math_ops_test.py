@@ -52,7 +52,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
     out_bf16 = self.evaluate(math_ops.reduce_sum(in_bf16))
     expected = math_ops.cast(out_f32, dtypes.bfloat16)
 
-    self.assertAllEqual(out_bf16, expected)
+    self.assertAllClose(out_bf16, expected, 1e-3)
 
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
