@@ -140,7 +140,7 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       options.execution_preference = execution_preference;
     }
     int max_delegated_partitions = params.Get<int>("max_delegated_partitions");
-    if (max_delegated_partitions > 0) {
+    if (max_delegated_partitions >= 0) {
       options.max_number_delegated_partitions = max_delegated_partitions;
     }
     delegate = evaluation::CreateNNAPIDelegate(options);
