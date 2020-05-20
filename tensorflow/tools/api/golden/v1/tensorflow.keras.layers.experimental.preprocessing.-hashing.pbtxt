@@ -1,6 +1,6 @@
-path: "tensorflow.keras.layers.experimental.preprocessing.CategoryCrossing"
+path: "tensorflow.keras.layers.experimental.preprocessing.Hashing"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.category_crossing.CategoryCrossing\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.hashing.Hashing\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -113,7 +113,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'depth\', \'name\', \'separator\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'num_bins\', \'salt\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -206,10 +206,6 @@ tf_class {
   member_method {
     name: "get_weights"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "partial_crossing"
-    argspec: "args=[\'self\', \'partial_inputs\', \'ragged_out\', \'sparse_out\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"

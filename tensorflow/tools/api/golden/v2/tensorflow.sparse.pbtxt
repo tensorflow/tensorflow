@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "cross"
-    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'name\', \'separator\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "cross_hashed"

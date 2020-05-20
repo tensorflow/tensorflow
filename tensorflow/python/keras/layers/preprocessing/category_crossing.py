@@ -49,6 +49,17 @@ class CategoryCrossing(Layer):
            [b'b_X_e'],
            [b'c_X_f']], dtype=object)>
 
+
+  >>> inp_1 = tf.constant([['a'], ['b'], ['c']])
+  >>> inp_2 = tf.constant([['d'], ['e'], ['f']])
+  >>> layer = tf.keras.layers.experimental.preprocessing.CategoryCrossing(
+  ...    separator='-')
+  >>> layer([inp_1, inp_2])
+  <tf.Tensor: shape=(3, 1), dtype=string, numpy=
+    array([[b'a-d'],
+           [b'b-e'],
+           [b'c-f']], dtype=object)>
+
   Arguments:
     depth: depth of input crossing. By default None, all inputs are crossed into
       one output. It can also be an int or tuple/list of ints. Passing an
@@ -59,6 +70,8 @@ class CategoryCrossing(Layer):
       equal to N1 or N2. Passing `None` means a single crossed output with all
       inputs. For example, with inputs `a`, `b` and `c`, `depth=2` means the
       output will be [a;b;c;cross(a, b);cross(bc);cross(ca)].
+    separator: A string added between each input being joined. Defaults to
+      '_X_'.
     name: Name to give to the layer.
     **kwargs: Keyword arguments to construct a layer.
 
@@ -98,13 +111,12 @@ class CategoryCrossing(Layer):
     `[[b'1_X_2_X_3'], [b'4_X_5_X_6']]`
   """
 
-  def __init__(self,
-               depth=None,
-               name=None,
-               **kwargs):
-    # TODO(tanzheny): Consider making seperator configurable.
+  def __init__(self, depth=None, name=None, separator=None, **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
     self.depth = depth
+    if separator is None:
+      separator = '_X_'
+    self.separator = separator
     if isinstance(depth, (tuple, list)):
       self._depth_tuple = depth
     elif depth is not None:
@@ -114,12 +126,16 @@ class CategoryCrossing(Layer):
     """Gets the crossed output from a partial list/tuple of inputs."""
     # If ragged_out=True, convert output from sparse to ragged.
     if ragged_out:
+      # TODO(momernick): Support separator with ragged_cross.
+      if self.separator != '_X_':
+        raise ValueError('Non-default separator with ragged input is not '
+                         'supported yet, given {}'.format(self.separator))
       return ragged_array_ops.cross(partial_inputs)
     elif sparse_out:
-      return sparse_ops.sparse_cross(partial_inputs)
+      return sparse_ops.sparse_cross(partial_inputs, separator=self.separator)
     else:
       return sparse_ops.sparse_tensor_to_dense(
-          sparse_ops.sparse_cross(partial_inputs))
+          sparse_ops.sparse_cross(partial_inputs, separator=self.separator))
 
   def call(self, inputs):
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
@@ -178,6 +194,7 @@ class CategoryCrossing(Layer):
   def get_config(self):
     config = {
         'depth': self.depth,
+        'separator': self.separator,
     }
     base_config = super(CategoryCrossing, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

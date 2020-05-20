@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmark for Keras categorical_encoding preprocessing layer."""
+"""Benchmark for Keras hashing preprocessing layer."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import itertools
+import random
+import string
 import time
 
 from absl import flags
@@ -28,8 +30,8 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.layers.preprocessing import categorical_crossing
-from tensorflow.python.ops import sparse_ops
+from tensorflow.python.keras.layers.preprocessing import hashing
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
@@ -40,9 +42,9 @@ v2_compat.enable_v2_behavior()
 
 # word_gen creates random sequences of ASCII letters (both lowercase and upper).
 # The number of unique strings is ~2,700.
-def int_gen():
+def word_gen():
   for _ in itertools.count(1):
-    yield (np.random.randint(0, 5, (1,)), np.random.randint(0, 7, (1,)))
+    yield "".join(random.choice(string.ascii_letters) for i in range(2))
 
 
 class BenchmarkLayer(benchmark.Benchmark):
@@ -53,9 +55,8 @@ class BenchmarkLayer(benchmark.Benchmark):
     starts = []
     ends = []
     for _ in range(num_repeats):
-      ds = dataset_ops.Dataset.from_generator(
-          int_gen, (dtypes.int64, dtypes.int64),
-          (tensor_shape.TensorShape([1]), tensor_shape.TensorShape([1])))
+      ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
+                                              tensor_shape.TensorShape([]))
       ds = ds.shuffle(batch_size * 100)
       ds = ds.batch(batch_size)
       num_batches = 5
@@ -64,7 +65,7 @@ class BenchmarkLayer(benchmark.Benchmark):
       starts.append(time.time())
       # Benchmarked code begins here.
       for i in ds:
-        _ = sparse_ops.sparse_cross([i[0], i[1]])
+        _ = string_ops.string_to_hash_bucket(i, num_buckets=2)
       # Benchmarked code ends here.
       ends.append(time.time())
 
@@ -72,18 +73,16 @@ class BenchmarkLayer(benchmark.Benchmark):
     return avg_time
 
   def bm_layer_implementation(self, batch_size):
-    input_1 = keras.Input(shape=(1,), dtype=dtypes.int64, name="word")
-    input_2 = keras.Input(shape=(1,), dtype=dtypes.int64, name="int")
-    layer = categorical_crossing.CategoryCrossing()
-    _ = layer([input_1, input_2])
+    input_1 = keras.Input(shape=(None,), dtype=dtypes.string, name="word")
+    layer = hashing.Hashing(num_bins=2)
+    _ = layer(input_1)
 
     num_repeats = 5
     starts = []
     ends = []
     for _ in range(num_repeats):
-      ds = dataset_ops.Dataset.from_generator(
-          int_gen, (dtypes.int64, dtypes.int64),
-          (tensor_shape.TensorShape([1]), tensor_shape.TensorShape([1])))
+      ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
+                                              tensor_shape.TensorShape([]))
       ds = ds.shuffle(batch_size * 100)
       ds = ds.batch(batch_size)
       num_batches = 5
@@ -92,12 +91,12 @@ class BenchmarkLayer(benchmark.Benchmark):
       starts.append(time.time())
       # Benchmarked code begins here.
       for i in ds:
-        _ = layer([i[0], i[1]])
+        _ = layer(i)
       # Benchmarked code ends here.
       ends.append(time.time())
 
     avg_time = np.mean(np.array(ends) - np.array(starts)) / num_batches
-    name = "categorical_crossing|batch_%s" % batch_size
+    name = "hashing|batch_%s" % batch_size
     baseline = self.run_dataset_implementation(batch_size)
     extras = {
         "dataset implementation baseline": baseline,

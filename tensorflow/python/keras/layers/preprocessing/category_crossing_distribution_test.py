@@ -28,7 +28,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras.layers.preprocessing import categorical_crossing
+from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
 
@@ -72,7 +72,7 @@ class CategoryCrossingDistributionTest(
       input_data_2 = keras.Input(shape=(2,), dtype=dtypes.string,
                                  name='input_2')
       input_data = [input_data_1, input_data_2]
-      layer = categorical_crossing.CategoryCrossing()
+      layer = category_crossing.CategoryCrossing()
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(inp_dataset)

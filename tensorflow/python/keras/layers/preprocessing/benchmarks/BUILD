@@ -21,12 +21,22 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "categorical_crossing_benchmark",
-    srcs = ["categorical_crossing_benchmark.py"],
+    name = "category_crossing_benchmark",
+    srcs = ["category_crossing_benchmark.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/layers/preprocessing:categorical_crossing",
+        "//tensorflow/python/keras/layers/preprocessing:category_crossing",
+    ],
+)
+
+tf_py_test(
+    name = "hashing_benchmark",
+    srcs = ["hashing_benchmark.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/layers/preprocessing:hashing",
     ],
 )
 
