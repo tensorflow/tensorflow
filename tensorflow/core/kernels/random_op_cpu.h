@@ -166,9 +166,9 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
   int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-  const int kGroupCost =
-      random::PhiloxRandom::kResultElementCount *
-      (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+  const int kGroupCost = random::PhiloxRandom::kResultElementCount *
+                             random::PhiloxRandom::kElementCost +
+                         kGroupSize * Distribution::kElementCost;
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,
         [&gen, data, size, dist](int64 start_group, int64 limit_group) {

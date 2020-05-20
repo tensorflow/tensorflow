@@ -276,8 +276,9 @@ class RandomUniformTest(RandomOpTestCommon):
 
   def testRange(self):
     for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64):
-      sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=True)
+               dtypes.int64, dtypes.bfloat16):
+      use_gpu = (dt != dtypes.bfloat16)
+      sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=use_gpu)
       x = sampler()
       self.assertTrue(-2 <= np.min(x))
       self.assertTrue(np.max(x) < 8)
@@ -363,10 +364,11 @@ class RandomUniformTest(RandomOpTestCommon):
   @test_util.run_deprecated_v1
   def testSeed(self):
     for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64):
+               dtypes.int64, dtypes.bfloat16):
       for seed in [345, 2**100, -2**100]:
-        sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
-        sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
+        use_gpu = (dt != dtypes.bfloat16)
+        sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
+        sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
         self.assertAllEqual(sx(), sy())
 
   @test_util.run_deprecated_v1

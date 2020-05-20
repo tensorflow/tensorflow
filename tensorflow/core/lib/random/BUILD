@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
