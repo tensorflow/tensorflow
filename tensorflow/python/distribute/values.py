@@ -940,9 +940,19 @@ class SyncOnReadVariable(DistributedVariable):
   def _update_replica(self, update_fn, value, **kwargs):
     return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
+  def _assign_on_each_device(self, assign_func, value, read_value):
+    update = control_flow_ops.group(
+        tuple(
+            assign_func(v.device, v, value)
+            for v in self._values))
+    if not read_value:
+      return update
+    with ops.control_dependencies([update] if update else []):
+      return self.read_value()
+
   # TODO(b/154017756): Make assign behaivor in cross replica context consistent
   # with MirroredVariable.
-  def assign_sub(self, *args, **kwargs):
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
         if self._aggregation == vs.VariableAggregation.SUM:
@@ -950,14 +960,13 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_sub` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return control_flow_ops.group(
-            tuple(
-                _assign_sub_on_device(v.device, v, args[0])
-                for v in self._values))
+        return self._assign_on_each_device(_assign_sub_on_device, value,
+                                           read_value)
       else:
-        return super(SyncOnReadVariable, self).assign_sub(*args, **kwargs)
+        return super(SyncOnReadVariable,
+                     self).assign_sub(value, use_locking, name, read_value)
 
-  def assign_add(self, *args, **kwargs):
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
         if self._aggregation == vs.VariableAggregation.SUM:
@@ -965,26 +974,25 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_add` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return control_flow_ops.group(
-            tuple(
-                _assign_add_on_device(v.device, v, args[0])
-                for v in self._values))
+        return self._assign_on_each_device(_assign_add_on_device, value,
+                                           read_value)
       else:
-        return super(SyncOnReadVariable, self).assign_add(*args, **kwargs)
+        return super(SyncOnReadVariable,
+                     self).assign_add(value, use_locking, name, read_value)
 
-  def assign(self, *args, **kwargs):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
         # To preserve the sum across save and restore, we have to divide the
         # total across all devices when restoring a variable that was summed
         # when saving.
-        tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor = math_ops.cast(tensor / len(self._values), self.dtype)
-        return control_flow_ops.group(
-            tuple(_assign_on_device(v.device, v, tensor) for v in self._values))
+          value = math_ops.cast(value / len(self._values), self.dtype)
+        return self._assign_on_each_device(_assign_on_device, value,
+                                           read_value)
       else:
-        return super(SyncOnReadVariable, self).assign(*args, **kwargs)
+        return super(SyncOnReadVariable,
+                     self).assign(value, use_locking, name, read_value)
 
   def _scatter_not_implemented(self, method):
     raise NotImplementedError(
