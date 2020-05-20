@@ -34,6 +34,7 @@ hexagon_op_tests(
         "mirror_pad_test.cc",
         "mul_test.cc",
         "neg_test.cc",
+        "pack_test.cc",
         "pad_test.cc",
         "pool_test.cc",
         "quantize_test.cc",

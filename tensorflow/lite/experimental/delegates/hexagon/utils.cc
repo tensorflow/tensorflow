@@ -87,6 +87,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinPack:
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinQuantize:
     case kTfLiteBuiltinRelu6:
@@ -397,6 +398,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
                                     {{kTfLiteUInt8, kTfLiteInt8},
                                      {kTfLiteInt32, kTfLiteInt64},
                                      {kTfLiteInt32, kTfLiteInt64}});
+    }
+    case kTfLiteBuiltinPack: {
+      // All tensors must be 8-bit.
+      for (int i = 0; i < node->inputs->size; ++i) {
+        if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8) &&
+            !TensorTypeMatch(node->inputs->data[i], context, kTfLiteInt8))
+          return false;
+      }
+      return true;
     }
     default:
       return false;
