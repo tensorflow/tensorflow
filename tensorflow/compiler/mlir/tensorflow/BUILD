@@ -224,7 +224,10 @@ cc_library(
     hdrs = [
         "ir/tf_attributes.h",
     ],
-    deps = ["@llvm-project//mlir:IR"],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
 )
 
 cc_library(
