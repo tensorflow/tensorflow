@@ -228,6 +228,10 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
         absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }
+  // Print the verbose output of ptxas.
+  if (!stderr_output.empty()) {
+    VLOG(2) << stderr_output;
+  }
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
