@@ -64,7 +64,7 @@ PYBIND11_MODULE(custom_device_testutil, m) {
         PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_Device));
     tensorflow::Safe_PyObjectPtr device_info_capsule(PyCapsule_New(
         device_info, "TFE_CustomDevice_DeviceInfo", &CallDelete_DeviceInfo));
-    return tensorflow::pyo_or_throw(
+    return tensorflow::PyoOrThrow(
         PyTuple_Pack(4, device_capsule.get(), device_info_capsule.get(),
                      arrived_capsule.get(), executed_capsule.get()));
   });

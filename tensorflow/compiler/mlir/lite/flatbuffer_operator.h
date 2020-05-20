@@ -61,11 +61,12 @@ void BuiltinOptionsToAttributes(
 // operands from tflite op name.
 llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 
-// Populates the array of mlir::NamedAttributes corresponding to the given
-// custom_options.
-// We use an out parameter per LLVM convention
+// Populates the `custom_code` and `custom_options` to attributes.
+// `custom_code` is used to identify CustomOp.
+// `custom_options` are opaque attribute used to store infomations for this
+// custom op.
 tensorflow::Status CustomOptionsToAttributes(
-    const std::string &op_name, const std::vector<uint8_t> &custom_options,
+    const std::string &custom_code, const std::vector<uint8_t> &custom_options,
     mlir::Builder builder,
     // NOLINTNEXTLINE
     Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute> *attributes);

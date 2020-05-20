@@ -144,6 +144,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
+        "mkl_threadpool.h",
         "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
@@ -273,6 +274,7 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
+        "mkl_threadpool.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

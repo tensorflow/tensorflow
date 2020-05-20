@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/data/service/data_service.h"
+
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.grpc.pb.h"
 #include "tensorflow/core/data/service/master.pb.h"
@@ -34,97 +36,57 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-Status RegisterDataset(MasterService::Stub* master_stub,
-                       const GraphDef& dataset_graph, int64* dataset_id) {
-  grpc_impl::ClientContext ctx;
-  GetOrRegisterDatasetRequest req;
-  *req.mutable_dataset()->mutable_graph() = dataset_graph;
-  GetOrRegisterDatasetResponse resp;
-  grpc::Status s = master_stub->GetOrRegisterDataset(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to register dataset", s);
-  }
-  *dataset_id = resp.dataset_id();
-  return Status::OK();
+constexpr const char kProtocol[] = "grpc+local";
+
+TEST(DataService, ParseParallelEpochsProcessingMode) {
+  ProcessingMode mode;
+  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", &mode));
+  EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
 }
 
-Status BeginEpoch(MasterService::Stub* master_stub, int64 dataset_id,
-                  int64* epoch_id) {
-  grpc_impl::ClientContext ctx;
-  BeginEpochRequest req;
-  req.set_dataset_id(dataset_id);
-  BeginEpochResponse resp;
-  grpc::Status s = master_stub->BeginEpoch(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to begin epoch", s);
-  }
-  *epoch_id = resp.epoch_id();
-  return Status::OK();
+TEST(DataService, ParseOneEpochProcessingMode) {
+  ProcessingMode mode;
+  TF_ASSERT_OK(ParseProcessingMode("one_epoch", &mode));
+  EXPECT_EQ(mode, ProcessingMode::ONE_EPOCH);
 }
 
-Status GetTasks(MasterService::Stub* master_stub, int64 epoch_id,
-                std::vector<TaskInfo>* tasks) {
-  grpc_impl::ClientContext ctx;
-  GetTasksRequest req;
-  req.set_epoch_id(epoch_id);
-  GetTasksResponse resp;
-  grpc::Status s = master_stub->GetTasks(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get tasks", s);
-  }
-  tasks->clear();
-  for (auto& task : resp.task_info()) {
-    tasks->push_back(task);
-  }
-  return Status::OK();
+TEST(DataService, ParseInvalidProcessingMode) {
+  ProcessingMode mode;
+  Status s = ParseProcessingMode("invalid", &mode);
+  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
 }
 
-Status GetElement(WorkerService::Stub* worker_stub, int64 task_id,
-                  std::vector<Tensor>* element, bool* end_of_sequence) {
-  grpc_impl::ClientContext ctx;
-  GetElementRequest req;
-  req.set_task_id(task_id);
-  GetElementResponse resp;
-  grpc::Status s = worker_stub->GetElement(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get element", s);
-  }
-  *end_of_sequence = resp.end_of_sequence();
-  if (!*end_of_sequence) {
-    const CompressedElement& compressed = resp.compressed_element();
-    TF_RETURN_IF_ERROR(service_util::Uncompress(compressed, element));
-  }
-  return Status::OK();
+TEST(DataService, ProcessingModeToString) {
+  EXPECT_EQ("parallel_epochs",
+            ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
+  EXPECT_EQ("one_epoch", ProcessingModeToString(ProcessingMode::ONE_EPOCH));
 }
 
 Status CheckWorkerOutput(const std::string& worker_address, int64 task_id,
                          std::vector<std::vector<Tensor>> expected_output) {
-  auto worker_channel = grpc::CreateChannel(
-      worker_address, grpc::experimental::LocalCredentials(LOCAL_TCP));
-  std::unique_ptr<WorkerService::Stub> worker_stub =
-      WorkerService::NewStub(worker_channel);
+  DataServiceWorkerClient worker(worker_address, kProtocol);
   for (std::vector<Tensor>& expected : expected_output) {
     bool end_of_sequence;
-    std::vector<Tensor> element;
+    CompressedElement compressed;
     TF_RETURN_IF_ERROR(
-        GetElement(worker_stub.get(), task_id, &element, &end_of_sequence));
+        worker.GetElement(task_id, &compressed, &end_of_sequence));
     if (end_of_sequence) {
       return errors::Internal("Reached end of sequence too early.");
     }
+    std::vector<Tensor> element;
+    TF_RETURN_IF_ERROR(UncompressElement(compressed, &element));
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::ExpectEqual(element, expected,
                                                        /*compare_order=*/true));
   }
   // Call GetElement a couple more times to verify tha end_of_sequence keeps
   // returning true.
   bool end_of_sequence;
-  std::vector<Tensor> element;
-  TF_RETURN_IF_ERROR(
-      GetElement(worker_stub.get(), task_id, &element, &end_of_sequence));
+  CompressedElement compressed;
+  TF_RETURN_IF_ERROR(worker.GetElement(task_id, &compressed, &end_of_sequence));
   if (!end_of_sequence) {
     return errors::Internal("Expected end_of_sequence to be true");
   }
-  TF_RETURN_IF_ERROR(
-      GetElement(worker_stub.get(), task_id, &element, &end_of_sequence));
+  TF_RETURN_IF_ERROR(worker.GetElement(task_id, &compressed, &end_of_sequence));
   if (!end_of_sequence) {
     return errors::Internal("Expected end_of_sequence to be true");
   }
@@ -138,22 +100,21 @@ TEST(DataService, IterateDatasetOneWorker) {
   TF_ASSERT_OK(cluster.Initialize());
   test_util::GraphDefTestCase test_case;
   TF_ASSERT_OK(test_util::map_test_case(&test_case));
-  auto master_channel = grpc::CreateChannel(
-      cluster.MasterAddress(), grpc::experimental::LocalCredentials(LOCAL_TCP));
-  std::unique_ptr<MasterService::Stub> master_stub =
-      MasterService::NewStub(master_channel);
+  DataServiceMasterClient master(cluster.MasterAddress(), kProtocol);
 
   int64 dataset_id;
+  TF_ASSERT_OK(master.RegisterDataset(test_case.graph_def, &dataset_id));
+  int64 job_id;
   TF_ASSERT_OK(
-      RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+      master.CreateJob(dataset_id, ProcessingMode::PARALLEL_EPOCHS, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  bool job_finished;
+  TF_ASSERT_OK(master.GetTasks(job_id, &tasks, &job_finished));
   ASSERT_EQ(tasks.size(), 1);
-  ASSERT_EQ(tasks[0].worker_address(), cluster.WorkerAddress(0));
+  EXPECT_EQ(tasks[0].worker_address(), cluster.WorkerAddress(0));
+  EXPECT_FALSE(job_finished);
 
-  TF_ASSERT_OK(CheckWorkerOutput(tasks[0].worker_address(), tasks[0].id(),
+  TF_EXPECT_OK(CheckWorkerOutput(tasks[0].worker_address(), tasks[0].id(),
                                  test_case.output));
 }
 
@@ -162,23 +123,22 @@ TEST(DataService, IterateDatasetTwoWorkers) {
   TF_ASSERT_OK(cluster.Initialize());
   test_util::GraphDefTestCase test_case;
   TF_ASSERT_OK(test_util::map_test_case(&test_case));
-  auto master_channel = grpc::CreateChannel(
-      cluster.MasterAddress(), grpc::experimental::LocalCredentials(LOCAL_TCP));
-  std::unique_ptr<MasterService::Stub> master_stub =
-      MasterService::NewStub(master_channel);
+  DataServiceMasterClient master(cluster.MasterAddress(), kProtocol);
 
   int64 dataset_id;
+  TF_ASSERT_OK(master.RegisterDataset(test_case.graph_def, &dataset_id));
+  int64 job_id;
   TF_ASSERT_OK(
-      RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+      master.CreateJob(dataset_id, ProcessingMode::PARALLEL_EPOCHS, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
-  ASSERT_EQ(tasks.size(), 2);
+  bool job_finished;
+  TF_EXPECT_OK(master.GetTasks(job_id, &tasks, &job_finished));
+  EXPECT_EQ(tasks.size(), 2);
+  EXPECT_FALSE(job_finished);
 
   // Each worker produces the full dataset.
   for (TaskInfo task : tasks) {
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         CheckWorkerOutput(task.worker_address(), task.id(), test_case.output));
   }
 }
@@ -188,26 +148,26 @@ TEST(DataService, AddWorkerMidEpoch) {
   TF_ASSERT_OK(cluster.Initialize());
   test_util::GraphDefTestCase test_case;
   TF_ASSERT_OK(test_util::map_test_case(&test_case));
-  auto master_channel = grpc::CreateChannel(
-      cluster.MasterAddress(), grpc::experimental::LocalCredentials(LOCAL_TCP));
-  std::unique_ptr<MasterService::Stub> master_stub =
-      MasterService::NewStub(master_channel);
+  DataServiceMasterClient master(cluster.MasterAddress(), kProtocol);
 
   int64 dataset_id;
+  TF_ASSERT_OK(master.RegisterDataset(test_case.graph_def, &dataset_id));
+  int64 job_id;
   TF_ASSERT_OK(
-      RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+      master.CreateJob(dataset_id, ProcessingMode::PARALLEL_EPOCHS, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
-  ASSERT_EQ(tasks.size(), 1);
+  bool job_finished;
+  TF_ASSERT_OK(master.GetTasks(job_id, &tasks, &job_finished));
+  EXPECT_EQ(tasks.size(), 1);
+  EXPECT_FALSE(job_finished);
   TF_ASSERT_OK(cluster.AddWorker());
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
-  ASSERT_EQ(tasks.size(), 2);
+  TF_EXPECT_OK(master.GetTasks(job_id, &tasks, &job_finished));
+  EXPECT_EQ(tasks.size(), 2);
+  EXPECT_FALSE(job_finished);
 
   // Each worker produces the full dataset.
   for (TaskInfo task : tasks) {
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         CheckWorkerOutput(task.worker_address(), task.id(), test_case.output));
   }
 }

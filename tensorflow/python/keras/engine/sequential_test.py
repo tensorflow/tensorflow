@@ -491,6 +491,30 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_build_empty_network(self):
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model = keras.Sequential()
+
+    # Make sure an empty sequential model can still work with build().
+    model.build((None, 6))
+    self.assertTrue(model.built)
+
+    model.add(keras.layers.Dense(5, input_shape=(6,)))
+
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y)
+
+    model.pop()
+    self.assertFalse(model.built)
+
+    model.build((None, 6))
+    self.assertTrue(model.built)
+
 
 if __name__ == '__main__':
   test.main()

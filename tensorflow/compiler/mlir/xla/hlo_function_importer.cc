@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -56,6 +57,7 @@ using mlir::Value;
 namespace xla {
 
 namespace {
+
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
 // direction. Longterm solution is to add a function attribute to maintain the
@@ -230,15 +232,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
 #undef MakeAndReturnBatchNormOp
 
     case HloOpcode::kDot: {
-      attributes.push_back(ConvertPrecisionConfig(instruction));
+      attributes.push_back(builder_->getNamedAttr(
+          "precision_config",
+          ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       // Consider consolidating DotOps together.
       if (DotIsDefault(instruction)) {
         MakeAndReturn(DotOp);
       }
 
-      attributes.push_back(
-          ConvertDotDimensionNumbers(instruction->dot_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "dot_dimension_numbers",
+          ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
+                                     builder_)));
       MakeAndReturn(DotGeneralOp);
     }
     case HloOpcode::kCall: {
@@ -278,8 +284,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kGather: {
       auto gather_instruction = Cast<HloGatherInstruction>(instruction);
-      attributes.push_back(ConvertGatherDimensionNumbers(
-          gather_instruction->gather_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension_numbers",
+          ConvertGatherDimensionNumbers(
+              gather_instruction->gather_dimension_numbers(), builder_)));
 
       std::vector<int64_t> slice_sizes(
           gather_instruction->gather_slice_sizes().begin(),
@@ -296,9 +304,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       std::vector<int64_t> slice_sizes(
           instruction->dynamic_slice_sizes().begin(),
           instruction->dynamic_slice_sizes().end());
-      attributes.push_back(
-          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
-      MakeAndReturn(DynamicSliceOp);
+      return func_builder
+          ->create<mlir::xla_hlo::DynamicSliceOp>(
+              loc, result_type, operands[0],
+              makeArrayRef(operands).drop_front(), Convert(slice_sizes))
+          .getOperation();
     }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder
@@ -343,8 +353,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kScatter: {
       auto scatter = Cast<HloScatterInstruction>(instruction);
-      attributes.push_back(
-          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "scatter_dimension_numbers",
+          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers(),
+                                         builder_)));
       attributes.push_back(builder_->getNamedAttr(
           "indices_are_sorted",
           builder_->getBoolAttr(scatter->indices_are_sorted())));
@@ -411,8 +423,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       TF_RETURN_IF_ERROR(GetMlirTypes(
           {instruction->true_computation()->root_instruction()}, &rets));
 
-      auto op = func_builder->create<mlir::xla_hlo::ConditionalOp>(
-          loc, rets, operands, attributes);
+      auto op = func_builder->create<mlir::xla_hlo::IfOp>(loc, rets, operands,
+                                                          attributes);
       TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
                                            &op.true_branch()));
       TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
@@ -575,15 +587,20 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           builder_->getNamedAttr("lhs_dilations", Convert(lhs_dilations)));
       attributes.push_back(
           builder_->getNamedAttr("rhs_dilations", Convert(rhs_dilations)));
-      attributes.push_back(ConvertConvDimensionNumbers(
-          instruction->convolution_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension_numbers",
+          ConvertConvDimensionNumbers(
+              instruction->convolution_dimension_numbers(), builder_)));
       attributes.push_back(builder_->getNamedAttr(
           "feature_group_count",
           builder_->getI64IntegerAttr(instruction->feature_group_count())));
       attributes.push_back(builder_->getNamedAttr(
           "batch_group_count",
           builder_->getI64IntegerAttr(instruction->batch_group_count())));
-      attributes.push_back(ConvertPrecisionConfig(instruction));
+      attributes.push_back(builder_->getNamedAttr(
+          "precision_config",
+          ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
+
       MakeAndReturn(ConvOp);
     }
 
@@ -715,20 +732,6 @@ StatusOr<Value> HloFunctionImporter::GetMlirValue(HloInstruction* instruction) {
       "Unable to find value for input: ", instruction->ToString()));
 }
 
-mlir::NamedAttribute HloFunctionImporter::ConvertPrecisionConfig(
-    HloInstruction* instruction) {
-  // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
-  // case and the parser sticks it in. Maybe we should too.
-  llvm::SmallVector<mlir::Attribute, 4> operand_precision_attrs;
-
-  for (auto prec : instruction->precision_config().operand_precision()) {
-    operand_precision_attrs.push_back(
-        builder_->getStringAttr(PrecisionConfig_Precision_Name(prec)));
-  }
-  return builder_->getNamedAttr(
-      "precision_config", builder_->getArrayAttr(operand_precision_attrs));
-}
-
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
     HloInstruction* instruction) {
   return builder_->getNamedAttr(
@@ -749,10 +752,10 @@ mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
-    llvm::ArrayRef<int64_t> op_dimensions) {
+    llvm::ArrayRef<int64_t> elements) {
   return DenseIntElementsAttr::get(
-      RankedTensorType::get(op_dimensions.size(), builder_->getIntegerType(64)),
-      op_dimensions);
+      RankedTensorType::get(elements.size(), builder_->getIntegerType(64)),
+      elements);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
@@ -762,86 +765,6 @@ mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
                                   builder_->getIntegerType(64));
   auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);
-}
-
-mlir::NamedAttribute HloFunctionImporter::ConvertDotDimensionNumbers(
-    const DotDimensionNumbers& dnums) {
-  std::vector<int64_t> rhs_contracting_dimensions(
-      dnums.rhs_contracting_dimensions().begin(),
-      dnums.rhs_contracting_dimensions().end());
-  std::vector<int64_t> lhs_contracting_dimensions(
-      dnums.lhs_contracting_dimensions().begin(),
-      dnums.lhs_contracting_dimensions().end());
-  std::vector<int64_t> rhs_batch_dimensions(
-      dnums.rhs_batch_dimensions().begin(), dnums.rhs_batch_dimensions().end());
-  std::vector<int64_t> lhs_batch_dimensions(
-      dnums.lhs_batch_dimensions().begin(), dnums.lhs_batch_dimensions().end());
-
-  // Push the attributes into our new DictionaryAttr.
-  auto lhs_batch_dims_attr = Convert(lhs_batch_dimensions);
-  auto rhs_batch_dims_attr = Convert(rhs_batch_dimensions);
-  auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions);
-  auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions);
-
-  auto attr = mlir::xla_hlo::DotDimensionNumbers::get(
-      lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
-      rhs_contracting_dims_attr, context_);
-  return builder_->getNamedAttr("dot_dimension_numbers", attr);
-}
-
-mlir::NamedAttribute HloFunctionImporter::ConvertConvDimensionNumbers(
-    const xla::ConvolutionDimensionNumbers& dnums) {
-  llvm::SmallVector<int64_t, 4> input_spatial_dims(
-      dnums.input_spatial_dimensions().begin(),
-      dnums.input_spatial_dimensions().end());
-  llvm::SmallVector<int64_t, 4> kernel_spatial_dims(
-      dnums.kernel_spatial_dimensions().begin(),
-      dnums.kernel_spatial_dimensions().end());
-  llvm::SmallVector<int64_t, 4> output_spatial_dims(
-      dnums.output_spatial_dimensions().begin(),
-      dnums.output_spatial_dimensions().end());
-  auto attr = mlir::xla_hlo::ConvDimensionNumbers::get(
-      builder_->getI64IntegerAttr(dnums.input_batch_dimension()),
-      builder_->getI64IntegerAttr(dnums.input_feature_dimension()),
-      Convert(input_spatial_dims),
-      builder_->getI64IntegerAttr(dnums.kernel_input_feature_dimension()),
-      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
-      Convert(kernel_spatial_dims),
-      builder_->getI64IntegerAttr(dnums.output_batch_dimension()),
-      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
-      Convert(output_spatial_dims), context_);
-  return builder_->getNamedAttr("dimension_numbers", attr);
-}
-
-mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
-    const xla::GatherDimensionNumbers& dnums) {
-  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
-                                   dnums.offset_dims().end());
-  std::vector<int64_t> collapsed_slice_dims(
-      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
-  auto attr = mlir::xla_hlo::GatherDimensionNumbers::get(
-      Convert(offset_dims), Convert(collapsed_slice_dims),
-      Convert(start_index_map),
-      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
-  return builder_->getNamedAttr("dimension_numbers", attr);
-}
-
-mlir::NamedAttribute HloFunctionImporter::ConvertScatterDimensionNumbers(
-    const xla::ScatterDimensionNumbers& dnums) {
-  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
-                                          dnums.update_window_dims().end());
-  std::vector<int64_t> inserted_window_dims(
-      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
-  std::vector<int64_t> scatter_dims_to_operand_dims(
-      dnums.scatter_dims_to_operand_dims().begin(),
-      dnums.scatter_dims_to_operand_dims().end());
-  auto attr = mlir::xla_hlo::ScatterDimensionNumbers::get(
-      Convert(update_window_dims), Convert(inserted_window_dims),
-      Convert(scatter_dims_to_operand_dims),
-      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
-  return builder_->getNamedAttr("scatter_dimension_numbers", attr);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(

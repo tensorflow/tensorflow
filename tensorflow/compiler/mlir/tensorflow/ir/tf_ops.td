@@ -28,7 +28,9 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -39,6 +41,9 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{
+    // This is required to populate derived attributes during export in a
+    // meaningful way. Else during export to GraphDef element_type() query
+    // will result in out of bounds access/assert.
     if (handle_dtype().getSubtypes().size() != 1) {
       return emitOpError(
           "must have exactly one subtype in the result variant type");
@@ -64,7 +69,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
-def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
+def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -79,12 +85,18 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState &result, Attribute value">,
+      "OpBuilder &builder, OperationState &result, Attribute value">,
     OpBuilder<
-      "Builder *builder, OperationState &result, Type type, Attribute value">,
+      "OpBuilder &builder, OperationState &result, Type type, Attribute value">,
   ];
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return BroadcastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
@@ -176,7 +188,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     FlatSymbolRefAttr:$then_branch,
     FlatSymbolRefAttr:$else_branch,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -279,6 +291,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
 
     Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    TF_ShapeAttrArray:$dense_shapes,
     I32ElementsAttr:$result_segment_sizes
   );
 
@@ -479,7 +492,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -613,29 +626,6 @@ def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
   TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
 }
 
-def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", []> {
-  let summary = "An op that receives embedding activations on the TPU.";
-
-  let description = [{
-The TPU system performs the embedding lookups and aggregations specified by
-the arguments to TPUEmbeddingEnqueue(Integer/Sparse/SparseTensor)Batch. The
-results of these aggregations are visible to the Tensorflow Graph as the
-outputs of a RecvTPUEmbeddingActivations op. This op returns a list containing
-one Tensor of activations per table specified in the model. There can be at
-most one RecvTPUEmbeddingActivations op in the TPU graph.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Variadic<F32Tensor>:$outputs
-  );
-
-  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
-}
-
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
 def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
@@ -665,6 +655,279 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
+// Multiple variadic operands with different sizes are not supported by the
+// dialect generator, so we manually added the op.
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let description = [{
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+
+gradients: A TensorList of gradients with which to update embedding tables.
+learning_rates: A TensorList of learning rates used for updating the embedding
+    tables via the optimizer. The length of the TensorList must be equal to the
+    number of dynamic learning rate tags specified in the
+    TPUEmbeddingConfiguration proto.
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements. Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_INT32) for embedding lookup or weights (DT_FLOAT) to
+    apply to the output of the embedding lookup operation.
+config: Serialized TPUEmbeddingConfiguration proto.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$gradients,
+    Variadic<TF_Tensor>:$learning_rates,
+    TF_VariantTensor:$deduplication_data,
+    StrAttr:$config
+  );
+
+  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
+}
+
+// Updated the op description text from the auto-generated op definition.
+def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
+  let summary = [{
+Receives deduplication data (indices and weights).
+  }];
+
+  let description = [{
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements. Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_INT32) for
+embedding lookup or weights (DT_FLOAT) to apply to the output of the embedding
+lookup operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output
+  );
+}
+
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+  let summary = [{
+An op which shards the input based on the given sharding attribute.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
+  let summary = "Fetches multiple values from infeed as an XLA tuple.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
+  let summary = "Formats a string template using a list of tensors.";
+
+  let description = [{
+Formats a string template using a list of tensors, pretty-printing tensor summaries.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
+//===----------------------------------------------------------------------===//
+// tf.data ops
+//===----------------------------------------------------------------------===//
+
+def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that batches `batch_size` elements from `input_dataset`.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    I64Tensor:$batch_size,
+    I1Tensor:$drop_remainder,
+
+    DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
+def TF_MapDatasetOp : TF_Op<"MapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_MapAndBatchDatasetOp : TF_Op<"MapAndBatchDataset", [NoSideEffect]> {
+  let summary = "Creates a dataset that fuses mapping with batching.";
+
+  let description = [{
+Creates a dataset that applies `f` to the outputs of `input_dataset` and then
+batches `batch_size` of them.
+
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `batch_size * num_parallel_batches` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I64Tensor:$batch_size,
+    I64Tensor:$num_parallel_calls,
+    I1Tensor:$drop_remainder,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_ParallelMapDatasetOp : TF_Op<"ParallelMapDataset", [NoSideEffect]> {
+  let summary = [{
+    Creates a dataset that applies `f` to the outputs of `input_dataset`.
+  }];
+
+  let description = [{
+    Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes
+    up to `num_parallel_calls` copies of `f` in parallel.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$other_arguments,
+    I32Tensor:$num_parallel_calls,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
+    DefaultValuedAttr<BoolAttr, "false">:$sloppy,
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
+}
+
+def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
+  let summary = [{
+    Creates a dataset that emits each dim-0 slice of `components` once.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$components,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
+}
+
+// TODO(b/156507832): Move tf.InplaceUpdate to tf_generated_ops.td once
+// autogenerated op def matches.
+def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
+  let summary = "Updates specified rows 'i' with values 'v'.";
+
+  let description = [{
+Computes `x[i, :] = v; return x`.
+
+Originally this function is mutative however for compilation we make this
+operation create / operate on a copy of `x`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x,
+    I32Tensor:$i,
+    TF_Tensor:$v
+  );
+
+  let results = (outs
+    TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 #endif // TF_OPS

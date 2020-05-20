@@ -43,6 +43,8 @@ def _is_tensor(t):
   return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
+# TODO(edloper): Update this to just use ConcreteFunction.__call__ with the
+# structured signature.
 def _call_concrete_function(function, inputs):
   """Calls a restored Function with structured inputs.
 
@@ -137,8 +139,6 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
   return function_lib.FunctionSpec(fullargspec=fullargspec,
                                    is_method=False,
-                                   args_to_prepend=[],
-                                   kwargs_to_include={},
                                    input_signature=input_signature)
 
 
@@ -191,6 +191,8 @@ def recreate_function(saved_function, concrete_functions):
   Args:
     saved_function: `SavedFunction` proto.
     concrete_functions: map from function name to `ConcreteFunction`.
+      As a side effect of this function, the `FunctionSpec` from
+      `saved_function` is added to each `ConcreteFunction` in this map.
 
   Returns:
     A `Function`.
@@ -253,6 +255,9 @@ def recreate_function(saved_function, concrete_functions):
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
     concrete_function_objects.append(concrete_functions[concrete_function_name])
+
+  for cf in concrete_function_objects:
+    cf._set_function_spec(function_spec)  # pylint: disable=protected-access
 
   restored_function = RestoredFunction(
       restored_function_body,
@@ -317,6 +322,11 @@ def load_function_def_library(library, load_shared_name_suffix=None):
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
+
+    # We do not initialize the new ConcreteFunction's function_spec or
+    # arg_keywords here (which are used to parse the structured and flat
+    # signatures, respectively).  function_spec is set up later by
+    # recreate_function(); and arg_keywords by setup_bare_concrete_function().
     func = function_lib.ConcreteFunction(func_graph)
     func.add_to_graph(graph)
 

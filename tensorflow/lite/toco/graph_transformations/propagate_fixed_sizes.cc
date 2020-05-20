@@ -2120,6 +2120,27 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
   output_array.copy_shape(input_array.shape());
 }
 
+void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
+  CHECK_EQ(op->inputs.size(), 3);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& shape_array = model->GetArray(op->inputs[2]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+
+  if (!shape_array.has_shape()) {
+    // Yield until dims shape been resolved.
+    return;
+  }
+  if (!shape_array.buffer) {
+    // Yield until the dims are constant
+    return;
+  }
+  CHECK(shape_array.data_type == ArrayDataType::kInt32) << "dims must be int32";
+
+  std::vector<int32> const& dims =
+      shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  *(output_array.mutable_shape()->mutable_dims()) = dims;
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2453,6 +2474,9 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
       // their shapes are propagated.
       break;
     case OperatorType::kSegmentSum:
+      break;
+    case OperatorType::kScatterNd:
+      ProcessScatterNdOperator(model, static_cast<ScatterNdOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

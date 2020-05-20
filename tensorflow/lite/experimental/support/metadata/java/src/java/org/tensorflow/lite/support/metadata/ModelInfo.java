@@ -61,12 +61,13 @@ final class ModelInfo {
    * of how to specify subgraph during convertion for more information.</a> Therefore, all methods
    * in {@link ModelInfo} retrieves metadata of the first subgrpah as default.
    *
-   * @param buffer The TFLite model FlatBuffer.
-   * @throws NullPointerException if {@code buffer} is null.
-   * @throws IllegalArgumentException if the model does not contain any subgraph.
+   * @param buffer the TFLite model FlatBuffer
+   * @throws NullPointerException if {@code buffer} is null
+   * @throws IllegalArgumentException if the model does not contain any subgraph, or the model does
+   *     not contain the expected identifier
    */
   ModelInfo(ByteBuffer buffer) {
-    checkNotNull(buffer, "Model flatbuffer cannot be null.");
+    assertTFLiteModel(buffer);
 
     model = Model.getRootAsModel(buffer);
     checkArgument(model.subgraphsLength() > 0, "The model does not contain any subgraph.");
@@ -171,16 +172,6 @@ final class ModelInfo {
     return getDataType(tensor.type());
   }
 
-  private static Map<Byte, DataType> createTensorTypeToDataTypeMap() {
-    Map<Byte, DataType> map = new HashMap<>();
-    map.put(TensorType.FLOAT32, DataType.FLOAT32);
-    map.put(TensorType.INT32, DataType.INT32);
-    map.put(TensorType.UINT8, DataType.UINT8);
-    map.put(TensorType.INT64, DataType.INT64);
-    map.put(TensorType.STRING, DataType.STRING);
-    return Collections.unmodifiableMap(map);
-  }
-
   /**
    * Gets the quantization parameters of a tensor.
    *
@@ -225,6 +216,31 @@ final class ModelInfo {
     zeroPoint = (int) quantization.zeroPoint(0);
 
     return new QuantizationParams(scale, zeroPoint);
+  }
+
+  /**
+   * Verifies if the buffer is a valid TFLite model.
+   *
+   * @param buffer the TFLite model flatbuffer
+   * @throws NullPointerException if {@code buffer} is null.
+   * @throws IllegalArgumentException if {@code buffer} does not contain the expected identifier
+   */
+  private static void assertTFLiteModel(ByteBuffer buffer) {
+    checkNotNull(buffer, "Model flatbuffer cannot be null.");
+    checkArgument(
+        Model.ModelBufferHasIdentifier(buffer),
+        "The identifier of the model is invalid. The buffer may not be a valid TFLite model"
+            + " flatbuffer.");
+  }
+
+  private static Map<Byte, DataType> createTensorTypeToDataTypeMap() {
+    Map<Byte, DataType> map = new HashMap<>();
+    map.put(TensorType.FLOAT32, DataType.FLOAT32);
+    map.put(TensorType.INT32, DataType.INT32);
+    map.put(TensorType.UINT8, DataType.UINT8);
+    map.put(TensorType.INT64, DataType.INT64);
+    map.put(TensorType.STRING, DataType.STRING);
+    return Collections.unmodifiableMap(map);
   }
 
   /**

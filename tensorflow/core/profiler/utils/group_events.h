@@ -16,9 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -73,6 +80,9 @@ class EventNode {
 
   void SetIsEager(bool is_eager);
 
+  // Returns true if this event is part of eagerly executed op.
+  bool IsEager();
+
   bool IsNestedIn(EventNode* parent);
 
   // Returns the closest parent of the given event type.
@@ -125,8 +135,11 @@ class EventForest {
   void CreateEventGroup(
       const std::vector<int64 /*EventType*/>& root_event_types);
 
-  // Sets the is_eager stat to true for the eagerly executed kernel events.
-  void MarkEagerlyExecutedKernels();
+  // Sets the is_eager stat to true for the eagerly executed GPU kernel events.
+  void MarkEagerlyExecutedGpuKernels();
+
+  // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
+  void MarkEagerlyExecutedCpuTfOps();
 
   // Create virtual events of HostEventType::kHostTrainingLoopIteration and
   // event nodes for them. A virtual event is created for each iteration of the

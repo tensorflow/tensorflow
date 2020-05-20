@@ -235,6 +235,17 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(acc1.jvp(y))
     self.assertIsNone(acc2.jvp(y))
 
+  def testRunFunctionsEagerly(self):
+    try:
+      original_setting = def_function.functions_run_eagerly()
+      def_function.run_functions_eagerly(True)
+      x = constant_op.constant(1.)
+      with forwardprop.ForwardAccumulator(x, 2.) as acc:
+        y = x * 3.
+      self.assertAllClose(6., acc.jvp(y))
+    finally:
+      def_function.run_functions_eagerly(original_setting)
+
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
     try:

@@ -103,8 +103,7 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
 }  // namespace tflite
 
 int main() {
-  tflite::MicroErrorReporter micro_reporter;
-  tflite::ErrorReporter* reporter = &micro_reporter;
+  tflite::MicroErrorReporter reporter;
   const int input_shape[] = {4, 1, 1, 1, 32};
   const int filter_shape[] = {4, 32, 1, 1, 32};
   const int bias_shape[] = {1, 32};
@@ -231,9 +230,9 @@ int main() {
   const int num_tensors = sizeof(tensors) / sizeof(TfLiteTensor);
   TfLiteStatus status = tflite::testing::ValidateConvGoldens(
       tensors, num_tensors, &conv_params, kQuantizationTolerance,
-      output_dims_count, golden_quantized, reporter);
+      output_dims_count, golden_quantized, &reporter);
   if (status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(reporter, "Model invoke failed\n");
+    TF_LITE_REPORT_ERROR(&reporter, "Model invoke failed\n");
   }
   return 0;
 }

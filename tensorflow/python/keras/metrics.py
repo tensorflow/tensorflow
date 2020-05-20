@@ -26,6 +26,8 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -67,6 +69,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -138,7 +141,7 @@ class Metric(base_layer.Layer):
       values = tf.cast(values, self.dtype)
       if sample_weight is not None:
         sample_weight = tf.cast(sample_weight, self.dtype)
-        sample_weight = tf.broadcast_weights(sample_weight, values)
+        sample_weight = tf.broadcast_to(sample_weight, values.shape)
         values = tf.multiply(values, sample_weight)
       self.true_positives.assign_add(tf.reduce_sum(values))
 
@@ -165,7 +168,12 @@ class Metric(base_layer.Layer):
     # return ops.
     if (base_layer_utils.is_in_eager_or_tf_function() or
         is_built_in(cls)):
-      update_state_fn = obj.update_state
+      obj_update_state = obj.update_state
+
+      def update_state_fn(*args, **kwargs):
+        control_status = ag_ctx.control_status_ctx()
+        ag_update_state = autograph.tf_convert(obj_update_state, control_status)
+        return ag_update_state(*args, **kwargs)
     else:
       if isinstance(obj.update_state, def_function.Function):
         update_state_fn = obj.update_state
@@ -174,7 +182,16 @@ class Metric(base_layer.Layer):
 
     obj.update_state = types.MethodType(
         metrics_utils.update_state_wrapper(update_state_fn), obj)
-    obj.result = types.MethodType(metrics_utils.result_wrapper(obj.result), obj)
+
+    obj_result = obj.result
+
+    def result_fn(*args, **kwargs):
+      control_status = ag_ctx.control_status_ctx()
+      ag_result = autograph.tf_convert(obj_result, control_status)
+      return ag_result(*args, **kwargs)
+
+    obj.result = types.MethodType(metrics_utils.result_wrapper(result_fn), obj)
+
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -279,15 +296,16 @@ class Metric(base_layer.Layer):
     if distributed_training_utils.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
-    return super(Metric, self).add_weight(
-        name=name,
-        shape=shape,
-        dtype=self._dtype if dtype is None else dtype,
-        trainable=False,
-        initializer=initializer,
-        collections=[],
-        synchronization=synchronization,
-        aggregation=aggregation)
+    with ops.init_scope():
+      return super(Metric, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=self._dtype if dtype is None else dtype,
+          trainable=False,
+          initializer=initializer,
+          collections=[],
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   ### End: For use by subclasses ###
 
@@ -308,13 +326,12 @@ class Reduce(Metric):
   def __init__(self, reduction, name, dtype=None):
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    with ops.init_scope():
-      self.total = self.add_weight(
-          'total', initializer=init_ops.zeros_initializer)
-      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                       metrics_utils.Reduction.WEIGHTED_MEAN]:
-        self.count = self.add_weight(
-            'count', initializer=init_ops.zeros_initializer)
+    self.total = self.add_weight(
+        'total', initializer=init_ops.zeros_initializer)
+    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+      self.count = self.add_weight(
+          'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the metric.
@@ -591,7 +608,8 @@ class MeanMetricWrapper(Mean):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(MeanMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -1416,8 +1434,8 @@ class Recall(Metric):
 class SensitivitySpecificityBase(Metric):
   """Abstract base class for computing sensitivity and specificity.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
   def __init__(self, value, num_thresholds=200, name=None, dtype=None):
@@ -1523,8 +1541,8 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     specificity: A scalar value in range `[0, 1]`.
@@ -1598,8 +1616,8 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     sensitivity: A scalar value in range `[0, 1]`.
@@ -1828,13 +1846,14 @@ class AUC(Metric):
       use when discretizing the roc curve. Values must be > 1.
     curve: (Optional) Specifies the name of the curve to be computed, 'ROC'
       [default] or 'PR' for the Precision-Recall-curve.
-    summation_method: (Optional) Specifies the Riemann summation method used
-      (https://en.wikipedia.org/wiki/Riemann_sum): 'interpolation' [default],
-        applies mid-point summation scheme for `ROC`. For PR-AUC, interpolates
-        (true/false) positives but not the ratio that is precision (see Davis
-        & Goadrich 2006 for details); 'minoring' that applies left summation
+    summation_method: (Optional) Specifies the [Riemann summation method](
+        https://en.wikipedia.org/wiki/Riemann_sum) used.
+        'interpolation' (default) applies mid-point summation scheme for `ROC`.
+        For PR-AUC, interpolates (true/false) positives but not the ratio that
+        is precision (see Davis & Goadrich 2006 for details);
+        'minoring' applies left summation
         for increasing intervals and right summation for decreasing intervals;
-        'majoring' that does the opposite.
+        'majoring' does the opposite.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
     thresholds: (Optional) A list of floating point values to use as the
@@ -1924,7 +1943,8 @@ class AUC(Metric):
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+    self._thresholds = np.array([0.0 - K.epsilon()] + thresholds +
+                                [1.0 + K.epsilon()])
 
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
@@ -1957,6 +1977,11 @@ class AUC(Metric):
       self._num_labels = None
     else:
       self._build(None)
+
+  @property
+  def thresholds(self):
+    """The thresholds used for evaluating AUC."""
+    return list(self._thresholds)
 
   def _build(self, shape):
     """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
@@ -2055,7 +2080,7 @@ class AUC(Metric):
           },
           y_true,
           y_pred,
-          self.thresholds,
+          self._thresholds,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -2226,8 +2251,9 @@ class AUC(Metric):
 class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
-  cosine similarity = (a . b) / ||a|| ||b||
-  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
+  `cosine similarity = (a . b) / ||a|| ||b||`
+
+  See: [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity).
 
   This metric keeps the average cosine similarity between `predictions` and
   `labels` over a stream of data.
@@ -3163,7 +3189,8 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(SumOverBatchSizeMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -3186,6 +3213,7 @@ def accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.binary_accuracy')
+@dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   """Calculates how often predictions matches binary labels.
 
@@ -3213,6 +3241,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 
 
 @keras_export('keras.metrics.categorical_accuracy')
+@dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches one-hot labels.
 
@@ -3241,6 +3270,7 @@ def categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches integer labels.
 
@@ -3281,6 +3311,7 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often targets are in the top `K` predictions.
 
@@ -3306,6 +3337,7 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often integer targets are in the top `K` predictions.
 
@@ -3453,11 +3485,9 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    error_msg = 'Could not interpret metric function identifier: {}'.format(
-        identifier)
-    raise ValueError(error_msg)
+    raise ValueError(
+        'Could not interpret metric function identifier: {}'.format(identifier))
 
 
 def is_built_in(cls):
   return cls.__module__ == Metric.__module__
-

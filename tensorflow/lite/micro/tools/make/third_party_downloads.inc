@@ -3,12 +3,20 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+ifeq ($(HOST_OS),windows)
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.zip"
+  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
+else
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
+  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+endif
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
   GCC_EMBEDDED_MD5 := "a66be9828cf3c57d7d21178e07cd8904"
+else ifeq ($(HOST_OS),windows)
+  GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-win32.zip"
+  GCC_EMBEDDED_MD5 := "bc8ae26d7c429f30d583a605a4bcf9bc"
 else
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
   GCC_EMBEDDED_MD5 := "299ebd3f1c2c90930d28ab82e5d8d6c0"
@@ -20,8 +28,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
-CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/8a4db53f69da06e97565fe2f2e8926d193a5759d.zip"
+CMSIS_MD5 := "e9864fb71b65adc4f7d92a9dea6e1aab"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -48,8 +56,14 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/91d62808498cea7ccb48aa59181e218b4ad05701.zip"
-RUY_MD5="5e653ae8863408ede2a0ca104fea5b1e"
+RUY_URL="https://github.com/google/ruy/archive/1b313682ef8b8fc8ed08719c610d1c3503b016bf.zip"
+RUY_MD5="2d54f058f8f7120dfc1ecee79dbf259e"
+
+CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
+CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
+
+IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2020_4_14.zip"
+IMAGE_RECOGNITION_MODEL_MD5 := "2b886156e7ef4d6e53d0f1a4bc800e56"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"

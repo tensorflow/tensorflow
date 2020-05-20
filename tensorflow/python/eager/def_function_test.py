@@ -368,13 +368,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
 
-    with self.assertRaisesRegexp(
-        ValueError, 'either zero or all names have to be specified'):
-      conc = g.get_concrete_function([
-          tensor_spec.TensorSpec(None, dtypes.float32, 'z'),
-          tensor_spec.TensorSpec(None, dtypes.float32),
-      ])
-
   def test_error_inner_capture(self):
 
     @def_function.function
@@ -859,13 +852,26 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     with self.assertLogs(level='WARN') as logs:
       inner(1)
-      outer1(2)
-      outer2(3)
-      outer1(4)
-      outer2(5)
+      inner(2)
+      inner(3)
+      inner(4)
 
-    self.assertLen(logs.output, 1)
-    self.assertIn('Tracing is expensive', logs.output[0])
+      outer1(5)
+      outer1(6)
+      outer1(7)
+      outer1(8)
+
+      outer2(9)
+      outer2(10)
+      outer2(11)
+      outer2(12)
+
+      self.assertEmpty(logs.output)
+
+      outer2(13)
+
+      self.assertLen(logs.output, 1)
+      self.assertIn('Tracing is expensive', logs.output[0])
 
   def test_frequent_retracing_warning_on_reinstantiation(self):
     if sys.version_info[0] < 3:

@@ -18,7 +18,8 @@
 set -e
 set -x
 
-MAX_WHL_SIZE=550M
+CPU_MAX_WHL_SIZE=190M
+GPU_MAX_WHL_SIZE=510M
 
 function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
@@ -82,10 +83,22 @@ function test_tf_imports() {
 }
 
 function test_tf_whl_size() {
-  if [[ $(find $WHL_NAME -type f -size +${MAX_WHL_SIZE}) ]]; then
-    echo "The whl size has exceeded 550MB. To keep within pypi's CDN
-distribution limit, we must not exceed that threshold."
-    return 1
+  # We do not need a separate check for MacOS regular binaries.
+  # We check for the `_cpu` string in the whl file name.
+  if [[ "$WHL_NAME" == *"_cpu"* ]]; then
+    # Check CPU whl size.
+    if [[ $(find $WHL_NAME -type f -size +${CPU_MAX_WHL_SIZE}) ]]; then
+      echo "The CPU whl size has exceeded ${CPU_MAX_WHL_SIZE}MB. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  else
+    # Check GPU whl size.
+    if [[ $(find $WHL_NAME -type f -size +${GPU_MAX_WHL_SIZE}) ]]; then
+      echo "The GPU whl size has exceeded ${GPU_MAX_WHL_SIZE}MB. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
   fi
 }
 

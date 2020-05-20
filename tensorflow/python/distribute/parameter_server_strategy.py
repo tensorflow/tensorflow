@@ -120,6 +120,31 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
         len(self.extended.parameter_devices))
 
+  def experimental_distribute_dataset(self, dataset):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy,
+          self).experimental_distribute_dataset(dataset=dataset)
+
+  def experimental_distribute_datasets_from_function(self, dataset_fn):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy,
+          self).experimental_distribute_datasets_from_function(
+              dataset_fn=dataset_fn)
+
+  def run(self, fn, args=(), kwargs=None, options=None):
+    self._raise_pss_error_if_eager()
+    super(ParameterServerStrategy, self).run(
+        fn, args=args, kwargs=kwargs, options=options)
+
+  def scope(self):
+    self._raise_pss_error_if_eager()
+    return super(ParameterServerStrategy, self).scope()
+
+  def _raise_pss_error_if_eager(self):
+    if context.executing_eagerly():
+      raise NotImplementedError("ParameterServerStrategy currently only works "
+                                "with the tf.Estimator API")
+
 
 @tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
 class ParameterServerStrategyV1(distribute_lib.StrategyV1):

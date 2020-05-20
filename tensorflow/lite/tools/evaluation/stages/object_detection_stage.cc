@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <fstream>
 
-#include "google/protobuf/text_format.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
@@ -158,7 +157,7 @@ EvaluationStageMetrics ObjectDetectionStage::LatestMetrics() {
 }
 
 TfLiteStatus PopulateGroundTruth(
-    const std::string& grouth_truth_pbtxt_file,
+    const std::string& grouth_truth_proto_file,
     absl::flat_hash_map<std::string, ObjectDetectionResult>*
         ground_truth_mapping) {
   if (ground_truth_mapping == nullptr) {
@@ -167,11 +166,11 @@ TfLiteStatus PopulateGroundTruth(
   ground_truth_mapping->clear();
 
   // Read the ground truth dump.
-  std::ifstream t(grouth_truth_pbtxt_file);
+  std::ifstream t(grouth_truth_proto_file);
   std::string proto_str((std::istreambuf_iterator<char>(t)),
                         std::istreambuf_iterator<char>());
   ObjectDetectionGroundTruth ground_truth_proto;
-  google::protobuf::TextFormat::ParseFromString(proto_str, &ground_truth_proto);
+  ground_truth_proto.ParseFromString(proto_str);
 
   for (const auto& image_ground_truth :
        ground_truth_proto.detection_results()) {

@@ -120,19 +120,21 @@ class GpuAlarmClock {
       alarm_thread_ = std::thread([this]() {
         id<MTLCommandBuffer> prev_command_buffer;
         while (!release_thread_) {
-          if (active_alarms_ == total_alarms_) {
-            id<MTLCommandBuffer> command_buffer = [command_queue_ commandBuffer];
-            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            [encoder setComputePipelineState:stub_program_];
-            [encoder setBuffer:stub_buffer_ offset:0 atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
-                    threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-            [encoder endEncoding];
-            [command_buffer commit];
-            if (prev_command_buffer != nil) [prev_command_buffer waitUntilScheduled];
-            prev_command_buffer = command_buffer;
-          } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          @autoreleasepool {
+            if (active_alarms_ == total_alarms_) {
+              id<MTLCommandBuffer> command_buffer = [command_queue_ commandBuffer];
+              id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+              [encoder setComputePipelineState:stub_program_];
+              [encoder setBuffer:stub_buffer_ offset:0 atIndex:0];
+              [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+                      threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+              [encoder endEncoding];
+              [command_buffer commit];
+              if (prev_command_buffer != nil) [prev_command_buffer waitUntilScheduled];
+              prev_command_buffer = command_buffer;
+            } else {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
           }
         }
       });
@@ -239,7 +241,7 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
-    auto find_value = [&](int tensor_index) -> Value<TensorRef<BHWC>>* {
+    auto find_value = [&](int tensor_index) -> Value* {
       for (auto value : values) {
         if (value->tensor.ref == tensor_index) return value;
       }

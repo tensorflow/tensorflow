@@ -16,6 +16,7 @@ limitations under the License.
 // A simple logging device to test custom device registration.
 #include <memory>
 
+#include "absl/strings/match.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
-
 
 TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -176,7 +176,7 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 }
 
-TEST(CUSTOM_DEVICE, AccessVariableOnWrongDevice) {
+TEST(CUSTOM_DEVICE, AccessVariableOnCustomDevice) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
@@ -226,16 +226,21 @@ TEST(CUSTOM_DEVICE, AccessVariableOnWrongDevice) {
 
   // Read the variable's value.
   op.reset(TFE_NewOp(context.get(), "ReadVariableOp", status.get()));
-  TFE_OpAddInput(op.get(), var_handle, status.get());
-  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
   executed = false;
   num_retvals = 1;
   TFE_TensorHandle* var_value = nullptr;
   TFE_Execute(op.get(), &var_value, &num_retvals, status.get());
-  EXPECT_FALSE(TF_GetCode(status.get()) == TF_OK)
-      << "Execution should fail because the variable is being used on the "
-         "wrong device.";
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+  ASSERT_EQ(
+      tensorflow::string(name),
+      tensorflow::string(TFE_TensorHandleDeviceName(var_value, status.get())));
+  TFE_DeleteTensorHandle(var_value);
+
   // Free the backing buffer for the variable.
   op.reset(TFE_NewOp(context.get(), "DestroyResourceOp", status.get()));
   TFE_OpAddInput(op.get(), var_handle, status.get());
@@ -244,6 +249,79 @@ TEST(CUSTOM_DEVICE, AccessVariableOnWrongDevice) {
   num_retvals = 0;
   TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+}
+
+TEST(CUSTOM_DEVICE, InputBasedPlacement) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
+      TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  const char* custom0 = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
+  const char* custom1 = "/job:localhost/replica:0/task:0/device:CUSTOM:1";
+  bool arrived = false;
+  bool executed = false;
+  RegisterLoggingDevice(context.get(), custom0, &arrived, &executed,
+                        status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  RegisterLoggingDevice(context.get(), custom1, &arrived, &executed,
+                        status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> hcpu(
+      TestMatrixTensorHandle(context.get()), TFE_DeleteTensorHandle);
+  ASSERT_FALSE(arrived);
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> hcustom0(
+      TFE_TensorHandleCopyToDevice(hcpu.get(), context.get(), custom0,
+                                   status.get()),
+      TFE_DeleteTensorHandle);
+  ASSERT_TRUE(arrived);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  arrived = false;
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> hcustom1(
+      TFE_TensorHandleCopyToDevice(hcpu.get(), context.get(), custom1,
+                                   status.get()),
+      TFE_DeleteTensorHandle);
+  ASSERT_TRUE(arrived);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  // Base case: two CPU inputs executes fine.
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> matmul(
+      MatMulOp(context.get(), hcpu.get(), hcpu.get()), TFE_DeleteOp);
+  TFE_TensorHandle* retval;
+  int num_retvals = 1;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_DeleteTensorHandle(retval);
+
+  // Custom device: inputs in same custom device works.
+  matmul.reset(MatMulOp(context.get(), hcustom0.get(), hcustom0.get()));
+  num_retvals = 1;
+  executed = false;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+  TFE_DeleteTensorHandle(retval);
+
+  // Custom device: inputs in different custom devices fails.
+  matmul.reset(MatMulOp(context.get(), hcustom0.get(), hcustom1.get()));
+  num_retvals = 1;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  ASSERT_NE(TF_OK, TF_GetCode(status.get()));
+  ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom0));
+  ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom1));
+
+  // Custom device: mix of custom/physical fails.
+  matmul.reset(MatMulOp(context.get(), hcustom0.get(), hcpu.get()));
+  num_retvals = 1;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  ASSERT_NE(TF_OK, TF_GetCode(status.get()));
+  ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom0));
+  ASSERT_TRUE(
+      absl::StrContains(TF_Message(status.get()), "[]"));  // kVariantDeviceNull
 }
 
 TEST(CUSTOM_DEVICE, InvalidRegistrationError) {

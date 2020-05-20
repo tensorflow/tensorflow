@@ -436,9 +436,9 @@ absl::Status Winograd4x4To36::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  const int tiles_x = IntegralDivideRoundUp(
+  const int tiles_x = DivideRoundUp(
       src_[0]->Width() + padding_.prepended.w + padding_.appended.w - 2, 4);
-  const int tiles_y = IntegralDivideRoundUp(
+  const int tiles_y = DivideRoundUp(
       src_[0]->Height() + padding_.prepended.h + padding_.appended.h - 2, 4);
   const int tiles_total = tiles_x * tiles_y;
   RETURN_IF_ERROR(
@@ -550,14 +550,14 @@ absl::Status Winograd36To4x4::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  const int tiles_x = IntegralDivideRoundUp(dst_[0]->Width(), 4);
+  const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
   RETURN_IF_ERROR(kernel_.SetBytesAuto(tiles_x));
   return absl::OkStatus();
 }
 
 int3 Winograd36To4x4::GetGridSize() const {
-  const int tiles_x = IntegralDivideRoundUp(dst_[0]->Width(), 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_[0]->Height(), 4);
+  const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
+  const int tiles_y = DivideRoundUp(dst_[0]->Height(), 4);
   const int grid_x = tiles_x * tiles_y * dst_[0]->Batch();
   const int grid_y = 4;
   const int grid_z = dst_[0]->Slices();

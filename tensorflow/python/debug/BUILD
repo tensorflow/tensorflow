@@ -746,37 +746,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "distributed_callbacks_test",
-    size = "medium",
-    srcs = ["lib/distributed_callbacks_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "guitar",
-        "multi_and_single_gpu",
-        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-        "no_windows_gpu",  # TODO(b/130551176)
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
-    deps = [
-        ":check_numerics_callback",
-        ":debug_events_reader",
-        ":debug_events_writer",
-        ":dumping_callback",
-        ":dumping_callback_test_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "dumping_callback_test",
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
@@ -871,7 +840,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss_py38",  #TODO(b/151449908)
         "no_windows",
     ],
     deps = [

@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
@@ -290,62 +292,6 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
     output_data[i] = static_cast<T>(clamped_output);
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const float* input_data,
-                            const RuntimeShape& output_shape,
-                            float* output_data, float epsilon = 1e-6) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  for (int i = 0; i < outer_size; ++i) {
-    float squared_l2_norm = 0;
-    for (int c = 0; c < depth; ++c) {
-      const float val = input_data[depth * i + c];
-      squared_l2_norm += val * val;
-    }
-    float l2_norm = std::sqrt(squared_l2_norm);
-    l2_norm = std::max(l2_norm, epsilon);
-    for (int c = 0; c < depth; ++c) {
-      output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
-    }
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const uint8* input_data,
-                            const RuntimeShape& output_shape,
-                            uint8* output_data) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int32 input_zero_point = op_params.input_zero_point;
-  for (int i = 0; i < outer_size; ++i) {
-    int32 square_l2_norm = 0;
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      square_l2_norm += diff * diff;
-    }
-    int32 inv_l2norm_multiplier;
-    int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
-                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-      int32 unclamped_output_val = 128 + rescaled_diff;
-      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      output_data[depth * i + c] = static_cast<uint8>(output_val);
-    }
   }
 }
 
@@ -2102,7 +2048,8 @@ void Transpose(const TransposeParams& params,
 inline void TransposeConv(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2123,6 +2070,9 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   // Although transpose convolution simplifies to convolution with transposed
   // weights for strides of 1, non-unitary striding complicates matters. To
@@ -2170,16 +2120,27 @@ inline void TransposeConv(
       }
     }
   }
+  if (bias_data) {
+    for (int batch = 0; batch < batches; ++batch) {
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+            output_data[Offset(output_shape, batch, out_y, out_x,
+                               out_channel)] += bias_data[out_channel];
+          }
+        }
+      }
+    }
+  }
 }
 
-inline void TransposeConv(const ConvParams& params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data,
-                          const RuntimeShape& filter_shape,
-                          const uint8* filter_data,
-                          const RuntimeShape& output_shape, uint8* output_data,
-                          const RuntimeShape& im2col_shape, uint8* im2col_data,
-                          int32* scratch_buffer) {
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, const RuntimeShape& im2col_shape, uint8* im2col_data,
+    int32* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -2207,6 +2168,9 @@ inline void TransposeConv(const ConvParams& params,
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
@@ -2248,14 +2212,25 @@ inline void TransposeConv(const ConvParams& params,
       }
     }
   }
-  for (int i = 0; i < num_elements; ++i) {
-    int32 acc = scratch_buffer[i];
-    acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-    acc += output_offset;
-    // Clamp the output before converting back to uint8.
-    acc = std::max(acc, output_activation_min);
-    acc = std::min(acc, output_activation_max);
-    output_data[i] = static_cast<uint8>(acc);
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          int32 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+                                            out_channel)];
+          if (bias_data) {
+            acc += bias_data[out_channel];
+          }
+          int32 scaled_acc = MultiplyByQuantizedMultiplier(
+              acc, output_multiplier, output_shift);
+          scaled_acc += output_offset;
+          scaled_acc = std::max(scaled_acc, output_activation_min);
+          scaled_acc = std::min(scaled_acc, output_activation_max);
+          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
+              static_cast<uint8>(scaled_acc);
+        }
+      }
+    }
   }
 }
 
@@ -2460,60 +2435,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
 }
 
 template <typename T>
-inline void ResizeNearestNeighbor(
-    const tflite::ResizeNearestNeighborParams& op_params,
-    const RuntimeShape& unextended_input_shape, const T* input_data,
-    const RuntimeShape& output_size_shape, const int32* output_size_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Align corners = true is not supported.
-  TFLITE_DCHECK(!op_params.align_corners);
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
-
-  // The Tensorflow version of this op allows resize on the width and height
-  // axis only.
-  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
-
-  // We use float to ensure agreement with the Tensorflow implementation.
-  const float height_scale = static_cast<float>(input_height) / output_height;
-  const float width_scale = static_cast<float>(input_width) / output_width;
-
-  const int col_offset = input_shape.Dims(3);
-  const int row_offset = input_shape.Dims(2) * col_offset;
-  const int batch_offset = input_shape.Dims(1) * row_offset;
-
-  const T* input_ptr = input_data;
-  T* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32 in_y = std::min(static_cast<int32>(std::floor(y * height_scale)),
-                            input_height - 1);
-      const T* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32 in_x = std::min(static_cast<int32>(std::floor(x * width_scale)),
-                              input_width - 1);
-        const T* x_input_ptr = y_input_ptr + in_x * col_offset;
-        memcpy(output_ptr, x_input_ptr, depth * sizeof(T));
-        output_ptr += depth;
-      }
-    }
-    input_ptr += batch_offset;
-  }
-}
-
-template <typename T>
 void Fill(const RuntimeShape& value_shape, const T* value_data,
           const RuntimeShape& output_shape, T* output_data) {
   TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
@@ -2676,7 +2597,7 @@ inline void HardSwish(const HardSwishParams& params,
     // significant bits in the high bits of our 16-bit fixedpoint values, so
     // that fixed-point approximate computations below are as accurate as
     // possible.
-    const int16_t input_value_on_hires_input_scale = input_value << 7;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
     // Compute the input value on essentially the output scale, just not
     // right-shifted yet. This is the value that we'll use in the (x >= +3)
     // case, and that in the general case we'll multiply against the "relu-ish"

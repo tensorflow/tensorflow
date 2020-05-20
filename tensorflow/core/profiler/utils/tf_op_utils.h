@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
+#include <string>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 

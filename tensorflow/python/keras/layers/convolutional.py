@@ -305,8 +305,9 @@ class Conv(Layer):
     """Recreate conv_op if necessary.
 
     Check if the input_shape in call() is different from that in build().
-    For the values that are not None, if they are different, recreate
-    the _convolution_op to avoid the stateful behavior.
+    If the most-specific input shape describing the build and call shapes is not
+    equal to the shape we currently built with, then we need to rebuild the
+    _convolution_op to avoid incorrect behavior.
 
     Args:
       inputs: The input data to call() method.
@@ -315,12 +316,10 @@ class Conv(Layer):
       `True` or `False` to indicate whether to recreate the conv_op.
     """
     call_input_shape = inputs.get_shape()
-    for axis in range(1, len(call_input_shape)):
-      if (call_input_shape[axis] is not None
-          and self._build_conv_op_input_shape[axis] is not None
-          and call_input_shape[axis] != self._build_conv_op_input_shape[axis]):
-        return True
-    return False
+    # If the most specific compatible shape between _build_input_shape and
+    # call_input_shape is not _build_input_shape then we must re-build.
+    return self._build_conv_op_input_shape.most_specific_compatible_shape(
+        call_input_shape) != self._build_conv_op_input_shape
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
@@ -1978,10 +1977,10 @@ class SeparableConv1D(SeparableConv):
 class SeparableConv2D(SeparableConv):
   """Depthwise separable 2D convolution.
 
-  Separable convolutions consist in first performing
+  Separable convolutions consist of first performing
   a depthwise spatial convolution
   (which acts on each input channel separately)
-  followed by a pointwise convolution which mixes together the resulting
+  followed by a pointwise convolution which mixes the resulting
   output channels. The `depth_multiplier` argument controls how many
   output channels are generated per input channel in the depthwise step.
 
@@ -2145,7 +2144,7 @@ class SeparableConv2D(SeparableConv):
 class DepthwiseConv2D(Conv2D):
   """Depthwise separable 2D convolution.
 
-  Depthwise Separable convolutions consists in performing
+  Depthwise Separable convolutions consist of performing
   just the first step in a depthwise spatial convolution
   (which acts on each input channel separately).
   The `depth_multiplier` argument controls how many
@@ -2632,7 +2631,7 @@ class ZeroPadding1D(Layer):
           How many zeros to add at the beginning and end of
           the padding dimension (axis 1).
           - If tuple of int (length 2):
-          How many zeros to add at the beginning and at the end of
+          How many zeros to add at the beginning and the end of
           the padding dimension (`(left_pad, right_pad)`).
 
   Input shape:

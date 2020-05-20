@@ -72,6 +72,23 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   HANDLER(CloseContext);
 #undef HANDLER
 
+  void RunComponentFunctionHandler(
+      EagerCall<RunComponentFunctionRequest, RunComponentFunctionResponse>*
+          call) {
+    env_->compute_pool->Schedule([this, call]() {
+      local_impl_.RunComponentFunction(
+          &call->request, &call->response,
+          [call](const Status& s) { call->SendResponse(ToGrpcStatus(s)); });
+    });
+    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
+         RunComponentFunctionRequest, RunComponentFunctionResponse>::
+        EnqueueRequest(
+            &service_, cq_.get(),
+            &grpc::EagerService::AsyncService::RequestRunComponentFunction,
+            &GrpcEagerServiceImpl::RunComponentFunctionHandler,
+            /*supports_cancel=*/false);
+  }
+
   // Called when a new request has been received as part of a StreamingEnqueue
   // call.
   // StreamingEnqueueHandler gets the request from the `call` and fills the

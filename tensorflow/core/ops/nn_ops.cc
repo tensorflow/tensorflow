@@ -238,7 +238,11 @@ REGISTER_OP("_FusedBatchNormEx")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
     .Output("reserve_space_3: U")
+#ifdef ENABLE_MKLDNN_V1
+    .Attr("T: {half, float, bfloat16}")
+#else
     .Attr("T: {half, float}")
+#endif
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("exponential_avg_factor: float = 1.0")
@@ -595,6 +599,23 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
       c->set_output(0, s);
       return Status::OK();
     });
+
+REGISTER_OP("_FusedDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Conv3D")

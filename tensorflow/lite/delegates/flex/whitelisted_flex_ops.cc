@@ -76,6 +76,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "Concat",
           "ConcatOffset",
           "ConcatV2",
+          "Conj",
           "ConjugateTranspose",
           "Const",
           "ControlTrigger",

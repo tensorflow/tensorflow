@@ -1968,7 +1968,7 @@ def indicator_column(categorical_column):
 
   ```python
   name = indicator_column(categorical_column_with_vocabulary_list(
-      'name', ['bob', 'george', 'wanda'])
+      'name', ['bob', 'george', 'wanda']))
   columns = [name, ...]
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -2231,7 +2231,7 @@ class FeatureColumn(object):
     In CPython, `__lt__` must be defined for all objects in the
     sequence being sorted.
 
-    If any objects in teh sequence being sorted do not have an `__lt__` method
+    If any objects in the sequence being sorted do not have an `__lt__` method
     compatible with feature column objects (such as strings), then CPython will
     fall back to using the `__gt__` method below.
     https://docs.python.org/3/library/stdtypes.html#list.sort
@@ -2254,7 +2254,25 @@ class FeatureColumn(object):
 
     `__gt__` is called when the "other" object being compared during the sort
     does not have `__lt__` defined.
-    Example: http://gpaste/4803354716798976
+    Example:
+    ```
+    # __lt__ only class
+    class A():
+      def __lt__(self, other): return str(self) < str(other)
+
+    a = A()
+    a < "b" # True
+    "0" < a # Error
+
+    # __lt__ and __gt__ class
+    class B():
+      def __lt__(self, other): return str(self) < str(other)
+      def __gt__(self, other): return str(self) > str(other)
+
+    b = B()
+    b < "c" # True
+    "0" < b # True
+    ```
 
     Args:
       other: The other object to compare to.
@@ -3245,7 +3263,7 @@ class EmbeddingColumn(
     embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
     if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
         sparse_id_rank <= 2):
-      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
+      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse_v2
     # Return embedding lookup result.
     return embedding_lookup_sparse(
         embedding_weights,
@@ -3540,7 +3558,7 @@ class SharedEmbeddingColumn(
       embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
       if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
           sparse_id_rank <= 2):
-        embedding_lookup_sparse = (embedding_ops.embedding_lookup_sparse)
+        embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse_v2
       # Return embedding lookup result.
       return embedding_lookup_sparse(
           embedding_weights,

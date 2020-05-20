@@ -133,7 +133,7 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
        [input_id, output_id,
         work_group_size](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
-         const int src_slices = IntegralDivideRoundUp(src_shape.c, 4);
+         const int src_slices = DivideRoundUp(src_shape.c, 4);
          struct uniforms {
            int4 src_size;
            float4 inv_multipliers;
@@ -153,8 +153,8 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
   desc->resize_function = [output_id, work_group_size](
                               const std::map<ValueId, BHWC>& buffers) {
     BHWC dst_shape = buffers.find(output_id)->second;
-    const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
-    const int groups_z = IntegralDivideRoundUp(dst_slices, work_group_size.z);
+    const int dst_slices = DivideRoundUp(dst_shape.c, 4);
+    const int groups_z = DivideRoundUp(dst_slices, work_group_size.z);
     return std::make_pair(work_group_size, uint3{1, 1, groups_z});
   };
   return {desc};

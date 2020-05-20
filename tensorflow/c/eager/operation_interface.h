@@ -42,7 +42,28 @@ class AbstractOperationInterface {
   virtual Status Reset(const char* op, const char* raw_device_name) = 0;
 
   virtual const string& Name() const = 0;
+
+  // Returns the operation's device name.
+  //
+  // The value returned may be different from the one set by SetDeviceName, but
+  // it will be compatible with it: the name will be updated by device placement
+  // logic to refer to the specific device chosen.
+  //
+  // Example: If one calls `op->SetDeviceName("/device:GPU")`, the value
+  // returned by DeviceName should be "/device:GPU:*" until a particular GPU is
+  // chosen for the operation by the device placement logic in the
+  // executor. After that, the value returned by DeviceName will be a full
+  // device name such as "/job:localhost/replica:0/task:0/device:GPU:1".
   virtual const string& DeviceName() const = 0;
+
+  // Sets the operation device name.
+  //
+  // The given `name` must be parseable by DeviceNameUtils::ParseFullName, and
+  // the result will be used as a constraint for device placement. See the
+  // documentation for DeviceName for more details.
+  //
+  // The value will override the previous value - that is, no "merging" of
+  // existing and given constraints will be performed.
   virtual Status SetDeviceName(const char* name) = 0;
 
   virtual Status AddInput(AbstractTensorHandleInterface* input) = 0;

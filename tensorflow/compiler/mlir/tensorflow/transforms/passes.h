@@ -91,6 +91,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 // of their aliasing output arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
 
+// Creates a pass that promotes tf.VarHandleOp to resource arguments for all
+// functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass();
+
 // Marks function visibility using tf.entry_function specification. That is,
 // functions with tf.entry_function attributes are marked with public
 // visibility while the other functions are marked with private visibility.
@@ -100,6 +104,11 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 // visibility.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
+
+// Creates a pass that marks the main function with public visibility, while
+// other functions are marked with private visibility.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOnlyMainFunctionWithPublicVisibilityPass();
 
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
@@ -250,6 +259,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+
+// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
+// at head/tail of TPU cluster to run before/after TPU computation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
+// ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUExtractOutsideCompilationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 void CreateTPUBridgePipeline(OpPassManager& pm);

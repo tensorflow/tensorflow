@@ -36,6 +36,7 @@ from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
@@ -563,7 +564,16 @@ def _wrap_call_and_conditional_losses(layer):
   # Create function that generates both outputs and losses
   layer_call = _get_layer_call_method(layer)
   def call_and_return_conditional_losses(inputs, *args, **kwargs):
-    return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
+    """Returns layer (call_output, conditional losses) tuple."""
+    call_output = layer_call(inputs, *args, **kwargs)
+    if version_utils.is_v1_layer_or_model(layer):
+      conditional_losses = layer.get_losses_for(inputs)
+    else:
+      conditional_losses = [
+          l for l in layer.losses if not hasattr(l, '_unconditional_loss')
+      ]
+    return call_output, conditional_losses
+
   return _create_call_fn_decorator(layer, call_and_return_conditional_losses)
 
 

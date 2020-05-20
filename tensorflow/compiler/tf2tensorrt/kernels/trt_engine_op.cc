@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -569,7 +569,15 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     input_concrete_shapes.push_back(ctx->input(i).shape());
   }
 
-  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
+  Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
+  // TODO(bixia): Fix the segmentation.
+  if (!verify_input_shape_status.ok()) {
+    LOG_FIRST_N(WARNING, 5) << "Running native segment for" << name()
+                            << " due to failure in verifying input shapes: "
+                            << verify_input_shape_status.error_message();
+    ExecuteNativeSegment(ctx, helper);
+    return;
+  }
 
   if (!use_implicit_batch_) {
     if (profile_generation_mode_) {

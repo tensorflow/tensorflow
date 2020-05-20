@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=arg -tf-input-data-types=DT_INT32 -tf-input-shapes=8 -tf-output-arrays=arg -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s --mlir-print-debuginfo --print-after-all -tf-input-arrays=arg -tf-input-data-types=DT_INT32 -tf-input-shapes=8 -tf-output-arrays=arg -o - | FileCheck %s --dump-input=fail
 
 node {
   name: "arg"

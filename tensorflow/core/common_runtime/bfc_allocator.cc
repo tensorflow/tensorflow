@@ -441,34 +441,48 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   return nullptr;
 }
 
-void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
-                              const void* chunk_ptr) {
-  // Internal users will see the memory profile with default trace level.
-  auto traceme_level = profiler::TraceMeLevel::kVerbose;
-#ifdef PLATFORM_GOOGLE
-  traceme_level = profiler::TraceMeLevel::kInfo;
-#endif
+int64 BFCAllocator::LargestFreeChunk() {
+  for (int i = kNumBins - 1; i >= 0; i--) {
+    if (!BinFromIndex(i)->free_chunks.empty()) {
+      return ChunkFromHandle(*BinFromIndex(i)->free_chunks.rbegin())->size;
+    }
+  }
+  return 0;
+}
 
+double BFCAllocator::GetFragmentation() {
+  int64 bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
+  DCHECK_GT(bytes_available, 0);
+  return static_cast<double>(bytes_available - LargestFreeChunk()) /
+         bytes_available;
+}
+
+void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
+  BFCAllocator::Chunk* chunk = ChunkFromHandle(region_manager_.get_handle(ptr));
+  AddTraceMe(traceme_name, chunk->ptr, chunk->requested_size, chunk->size);
+}
+
+void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
+                              const void* chunk_ptr, int64 req_bytes,
+                              int64 alloc_bytes) {
   tensorflow::profiler::TraceMe trace_me(
       [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
         int64 bytes_available =
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
-        BFCAllocator::Chunk* chunk =
-            ChunkFromHandle(region_manager_.get_handle(chunk_ptr));
         const auto& annotation =
             ScopedMemoryDebugAnnotation::CurrentAnnotation();
         std::string tensor_shape = annotation.pending_shape
                                        ? annotation.pending_shape->DebugString()
                                        : "";
-
         return absl::StrCat(traceme_name, "#allocator_name=", name_,
                             ",bytes_reserved=", stats.bytes_reserved,
                             ",bytes_allocated=", stats.bytes_in_use,
                             ",bytes_available=", bytes_available,
+                            ",fragmentation=", GetFragmentation(),
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
-                            ",requested_bytes=", chunk->requested_size,
-                            ",allocation_bytes=", chunk->size,
+                            ",requested_bytes=", req_bytes,
+                            ",allocation_bytes=", alloc_bytes,
                             ",addr=", reinterpret_cast<uint64>(chunk_ptr),
                             ",tf_op=", annotation.pending_op_name,
                             ",id=", annotation.pending_step_id,
@@ -476,7 +490,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                             ",data_type=", annotation.pending_data_type,
                             ",shape=", tensor_shape, "#");
       },
-      traceme_level);
+      /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
@@ -613,11 +627,13 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   // Find the chunk from the ptr.
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
+  // Record chunk information before it's freed.
+  Chunk* chunk = ChunkFromHandle(h);
+  void* chunk_ptr = chunk->ptr;
+  int64 req_bytes = chunk->requested_size;
+  int64 alloc_bytes = chunk->size;
 
   MarkFree(h);
-  // TraceMe needs to be added after MarkFree and before InsertFreeChunkIntoBin
-  // for correct memory stats.
-  AddTraceMe("MemoryDeallocation", ptr);
 
   // Consider coalescing it.
   if (timing_counter_) {
@@ -626,6 +642,10 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   } else {
     InsertFreeChunkIntoBin(TryToCoalesce(h, false));
   }
+
+  // TraceMe needs to be added after MarkFree and InsertFreeChunkIntoBin for
+  // correct aggregation stats (bytes_in_use, fragmentation).
+  AddTraceMe("MemoryDeallocation", chunk_ptr, req_bytes, alloc_bytes);
 
   if (VLOG_IS_ON(4)) {
     LOG(INFO) << "F: " << RenderOccupancy();
@@ -1113,31 +1133,6 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #endif
 
   return md;
-}
-
-double BFCAllocator::GetFragmentation() {
-  int64 largest_free_chunk = 0;
-  int64 free_bytes = 0;
-  for (const auto& region : region_manager_.regions()) {
-    ChunkHandle chunk_handle = region_manager_.get_handle(region.ptr());
-    while (chunk_handle != kInvalidChunkHandle) {
-      const Chunk* chunk = ChunkFromHandle(chunk_handle);
-      if (!chunk->in_use()) {
-        free_bytes += chunk->size;
-        if (chunk->size > largest_free_chunk) {
-          largest_free_chunk = chunk->size;
-        }
-      }
-      chunk_handle = chunk->next;
-    }
-  }
-  double frag_metric = 0.0;
-  if (free_bytes > 0) {
-    frag_metric =
-        (free_bytes - largest_free_chunk) / static_cast<double>(free_bytes);
-  }
-
-  return frag_metric;
 }
 
 absl::optional<AllocatorStats> BFCAllocator::GetStats() {

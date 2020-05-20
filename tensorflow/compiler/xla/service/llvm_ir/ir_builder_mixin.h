@@ -94,18 +94,6 @@ class IrBuilderMixin {
                                        fp_math_tag);
   }
 
-  // DEPRECATED. LLVM is removing getPointerElementType, so calls to this must
-  // be transitioned to one of the other overloads.
-  llvm::CallInst* Call(llvm::Value* callee,
-                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
-                       const llvm::Twine& name = "",
-                       llvm::MDNode* fp_math_tag = nullptr) {
-    return mixin_builder()->CreateCall(
-        llvm::cast<llvm::FunctionType>(
-            callee->getType()->getPointerElementType()),
-        callee, args, name, fp_math_tag);
-  }
-
   template <class... Args>
   llvm::BranchInst* CondBr(Args&&... args) {
     return mixin_builder()->CreateCondBr(std::forward<Args>(args)...);

@@ -339,14 +339,13 @@ absl::Status ConvolutionTransposed3x3::BindArguments() {
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {
-  const int grid_x =
-      IntegralDivideRoundUp(dst_[0]->Width(), 2) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), 2);
+  const int grid_x = DivideRoundUp(dst_[0]->Width(), 2) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
   const int grid_z = dst_[0]->Slices();
   int3 wg;
-  wg.x = IntegralDivideRoundUp(grid_x, work_group_size_.x);
-  wg.y = IntegralDivideRoundUp(grid_y, work_group_size_.y);
-  wg.z = IntegralDivideRoundUp(grid_z, work_group_size_.z);
+  wg.x = DivideRoundUp(grid_x, work_group_size_.x);
+  wg.y = DivideRoundUp(grid_y, work_group_size_.y);
+  wg.z = DivideRoundUp(grid_z, work_group_size_.z);
   return int3(wg[work_group_launch_order_[0]] * work_group_size_.x,
               wg[work_group_launch_order_[1]] * work_group_size_.y,
               wg[work_group_launch_order_[2]] * work_group_size_.z);

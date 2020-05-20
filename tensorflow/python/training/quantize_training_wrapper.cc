@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/core/graph/quantize_training.h"
+#include "tensorflow/core/common_runtime/quantize_training.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
@@ -41,7 +41,7 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(const string& input_graph,
 PYBIND11_MODULE(_pywrap_quantize_training, m) {
   m.def("DoQuantizeTrainingOnGraphDefHelper",
         [](const py::object input_graph, int num_bits) {
-          return tensorflow::pyo_or_throw(
+          return tensorflow::PyoOrThrow(
               tensorflow::DoQuantizeTrainingOnGraphDefHelper(
                   input_graph.cast<std::string>(), num_bits));
         });

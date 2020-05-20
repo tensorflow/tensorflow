@@ -54,7 +54,8 @@ TEST(DumpMlirModuleTest, Valid) {
   std::string expected_txt_module;
   {
     llvm::raw_string_ostream os(expected_txt_module);
-    module_ref->getOperation()->print(os);
+    module_ref->getOperation()->print(
+        os, mlir::OpPrintingFlags().printGenericOpForm());
     os.flush();
   }
 

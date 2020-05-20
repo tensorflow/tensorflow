@@ -322,6 +322,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/types:any",
     ],
 )
 

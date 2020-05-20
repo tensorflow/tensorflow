@@ -31,35 +31,35 @@ def make_resize_bilinear_tests(options):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
-      "align_corners": [None, True, False],
+      "align_corners": [True, False],
       "half_pixel_centers": [False],
       "fully_quantize": [False]
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
-      "align_corners": [None, True, False],
+      "align_corners": [True, False],
       "half_pixel_centers": [False],
       "fully_quantize": [True]
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
       "size": [[8, 12], [12, 18]],
-      "align_corners": [None, True, False],
+      "align_corners": [True, False],
       "half_pixel_centers": [False],
       "fully_quantize": [True]
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
       "size": [[8, 12]],
-      "align_corners": [None, False],
+      "align_corners": [False],
       "half_pixel_centers": [True],
       "fully_quantize": [True]
   }, {
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
-      "align_corners": [None, False],
+      "align_corners": [False],
       "half_pixel_centers": [True],
       "fully_quantize": [False]
   }]

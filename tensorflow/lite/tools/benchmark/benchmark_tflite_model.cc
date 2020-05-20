@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -36,8 +37,8 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -272,8 +273,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("enable_platform_tracing",
                           BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    default_params.Merge(delegate_util->DefaultParams());
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    default_params.Merge(delegate_provider->DefaultParams());
   }
 
   return default_params;
@@ -332,8 +334,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    auto delegate_flags = delegate_util->CreateFlags(&params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    auto delegate_flags = delegate_provider->CreateFlags(&params_);
     flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
   }
 
@@ -372,8 +375,9 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
                    << params_.Get<bool>("enable_platform_tracing") << "]";
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    delegate_util->LogParams(params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    delegate_provider->LogParams(params_);
   }
 }
 
@@ -593,17 +597,20 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
   return kTfLiteOk;
 }
 
-TfLiteStatus BenchmarkTfLiteModel::Init() {
-  TF_LITE_ENSURE_STATUS(LoadModel());
-
+TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
-
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
   if (!interpreter_) {
-    TFLITE_LOG(ERROR) << "Failed to construct interpreter";
+    TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::Init() {
+  TF_LITE_ENSURE_STATUS(LoadModel());
+  TF_LITE_ENSURE_STATUS(InitInterpreter());
 
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the
@@ -615,7 +622,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
-  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
     // It's possible that a delegate of certain type won't be created as
     // user-specified benchmark params tells not to.

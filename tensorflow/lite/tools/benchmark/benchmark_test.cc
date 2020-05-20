@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace {
@@ -88,7 +88,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("enable_platform_tracing",
                   BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
     params.Merge(delegate_provider->DefaultParams());
   }
   return params;

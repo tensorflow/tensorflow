@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
+#include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
 namespace evaluation {
@@ -52,6 +53,23 @@ TEST(EvaluationDelegateProviderTest, DelegateProvidersParams) {
   EXPECT_TRUE(params.Get<bool>("use_gpu"));
   EXPECT_EQ(2, argc);
   EXPECT_EQ("--other_undefined_flag=1", argv[1]);
+}
+
+TEST(EvaluationDelegateProviderTest, GetAllParamsWithTfliteInferenceParams) {
+  DelegateProviders providers;
+  int argc = 2;
+  const char* argv[] = {"program_name", "--num_threads=1"};
+  EXPECT_TRUE(providers.InitFromCmdlineArgs(&argc, argv));
+  const auto& default_params = providers.GetAllParams();
+  EXPECT_EQ(1, default_params.Get<int>("num_threads"));
+
+  TfliteInferenceParams params;
+  params.set_delegate(TfliteInferenceParams::NONE);
+  params.set_num_threads(4);
+  // The same-meaning parameter in TfliteInferenceParams takes precedence.
+  tools::ToolParams tool_params = providers.GetAllParams(params);
+  EXPECT_EQ(4, tool_params.Get<int>("num_threads"));
+  EXPECT_EQ(1, argc);
 }
 
 }  // namespace

@@ -43,11 +43,8 @@ class Softmax : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto* input = ctx.graph->FindInputs(ctx.node->id)[0];
-    const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    const auto& attr = absl::any_cast<const SoftmaxAttributes&>(
-        ctx.node->operation.attributes);
-    if (input->tensor.shape != output->tensor.shape) {
+    const auto& attr = absl::any_cast<const SoftmaxAttributes&>(ctx.op_attr);
+    if (ctx.input_shapes[0] != ctx.output_shapes[0]) {
       return absl::InvalidArgumentError(
           "Input and output shapes do not match.");
     }
@@ -55,7 +52,7 @@ class Softmax : public NodeShader {
       return absl::UnimplementedError(
           "Softmax is only supported for channels axis.");
     }
-    return input->tensor.shape.h == 1 && input->tensor.shape.w == 1
+    return ctx.input_shapes[0][1] == 1 && ctx.input_shapes[0][2] == 1
                ? GenerateCodeFor1x1(ctx, generated_code)
                : GenerateCodeGeneral(ctx, generated_code);
   }
@@ -63,15 +60,14 @@ class Softmax : public NodeShader {
  private:
   absl::Status GenerateCodeFor1x1(const GenerationContext& ctx,
                                   GeneratedCode* generated_code) const {
-    const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    const int depth = IntegralDivideRoundUp(output->tensor.shape.c, 4);
+    const int depth = DivideRoundUp(ctx.output_shapes[0][3], 4);
     std::vector<Variable> shared_variables = {
         {"partial_sum", std::vector<float4>(8)},
     };
     std::vector<Variable> uniform_parameters = {
         {"depth", depth},
-        {"depth_div_32", IntegralDivideRoundUp(depth, 32)},
-        {"mask", GetMask(output->tensor.shape.c)},
+        {"depth_div_32", DivideRoundUp(depth, 32)},
+        {"mask", GetMask(ctx.output_shapes[0][3])},
     };
     std::string source_code = R"(
   highp vec4 kOnes = vec4(1.0);
@@ -140,10 +136,10 @@ class Softmax : public NodeShader {
 
   absl::Status GenerateCodeGeneral(const GenerationContext& ctx,
                                    GeneratedCode* generated_code) const {
-    const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
     std::vector<Variable> parameters = {
-        {"src_depth", IntegralDivideRoundUp(output->tensor.shape.c, 4)},
-        {"mask", GetMask(output->tensor.shape.c)},
+        {"src_depth",
+         DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4)},
+        {"mask", GetMask(ctx.output_shapes[0][3])},
     };
 
     std::string source_code = R"(
@@ -168,7 +164,9 @@ class Softmax : public NodeShader {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
         /*shared_variables=*/{},
-        /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
+        /*workload=*/
+        uint3(static_cast<int>(ctx.output_shapes[0][2]),
+              static_cast<int>(ctx.output_shapes[0][1]), 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source_code),
         /*input=*/IOStructure::ONLY_DEFINITIONS,

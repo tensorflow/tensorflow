@@ -59,7 +59,7 @@ TEST(AddQuantAdjustments, OneNode) {
 
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input->id).ok());
 
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   AddQuantParams(&input->quant_params, /*min=*/0.0, /*max=*/2.0,
                  /*scale=*/0.008);
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
@@ -114,18 +114,18 @@ TEST(AddQuantAdjustments, GeneralCase) {
 
   // Connections.
   ASSERT_TRUE(graph.AddConsumer(add1_node->id, input->id).ok());
-  Value<TensorRef<BHWC>>* link1;
+  Value* link1;
   ASSERT_TRUE(ConnectTwoNodes(&graph, add1_node, quant_node, &link1).ok());
   AddQuantParams(&link1->quant_params, /*min=*/0.0, /*max=*/2.0,
                  /*scale=*/0.008);
   link1->tensor.shape = BHWC(1, 4, 4, 8);
   ASSERT_TRUE(graph.AddConsumer(add2_node->id, link1->id).ok());
-  Value<TensorRef<BHWC>>* link2;
+  Value* link2;
   ASSERT_TRUE(ConnectTwoNodes(&graph, quant_node, add2_node, &link2).ok());
   AddQuantParams(&link2->quant_params, /*min=*/-1.0, /*max=*/1.0,
                  /*scale=*/0.008);
   link2->tensor.shape = BHWC(1, 4, 4, 8);
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add2_node, &output).ok());
   AddQuantParams(&output->quant_params, /*min=*/-1.0, /*max=*/1.0,
                  /*scale=*/0.008);

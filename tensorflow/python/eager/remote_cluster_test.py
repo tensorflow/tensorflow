@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 
 from absl.testing import parameterized
@@ -28,11 +29,13 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
@@ -108,14 +111,24 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
             self._cached_server3_target
         ],
         task_index=0)
+    self.server_def_s1_s2_s3_s4 = get_server_def(
+        JOB_NAME,
+        local_server_port=0,
+        remote_server_addresses=[
+            self._cached_server1_target, self._cached_server2_target,
+            self._cached_server3_target, self._cached_server4_target
+        ],
+        task_index=0)
 
     self.device_local = "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME
     self.device_t1 = "/job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME
     self.device_t2 = "/job:%s/replica:0/task:2/device:CPU:0" % JOB_NAME
     self.device_t3 = "/job:%s/replica:0/task:3/device:CPU:0" % JOB_NAME
+    self.device_t4 = "/job:%s/replica:0/task:4/device:CPU:0" % JOB_NAME
 
   def setUp(self):
     super(DynamicClusterTest, self).setUp()
+    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = str(False)
     local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=get_server_def(
@@ -287,7 +300,6 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       y = worker_fn(x1)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
-  @test_util.run_in_async_and_sync_mode
   def testPendingNodesServerReplaced(self):
     """Update cluster when nodes are still pending on remote workers."""
     with ops.device(self.device_local):
@@ -358,9 +370,9 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     for result in t1_results + t2_results:
       np.testing.assert_array_equal([[2, 2], [2, 2]], result)
 
-  @test_util.run_in_async_and_sync_mode
   def testMultiThreadPendingNodesLockFree(self):
     """Update cluster when other remote function calls are being launched."""
+
     with ops.device(self.device_t1):
       x1 = array_ops.ones([2, 2])
 
@@ -480,6 +492,105 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       with ops.device(device):
         y = worker_fn(x1)
       np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  def testDistributedFunctionPendingNodesServerReplaced(self):
+    with ops.device(self.device_local):
+      x1 = array_ops.ones([2, 2])
+
+    @def_function.function
+    def worker_fn(i):
+      with ops.device(self.device_t1):
+        mul = math_ops.matmul(i, i)
+      with ops.device(self.device_t2):
+        add = mul + i
+      return add - i
+    worker_fn.get_concrete_function(x1)
+
+    num_calls = 10
+    self._coord = coordinator.Coordinator()
+
+    def thread_fn(device, results):
+      with self._coord.stop_on_exception():
+        for i in range(num_calls):
+          with ops.device(device):
+            y = worker_fn(x1)
+          results[i] = y.numpy()
+
+    def update_server_def_fn():
+      with self._coord.stop_on_exception():
+        for i in range(num_calls):
+          context.update_server_def(
+              server_def=(self.server_def_s1_s2_s3
+                          if i % 2 == 0 else self.server_def_s1_s2))
+
+    results = [None] * num_calls
+    threads = []
+    threads.append(threading.Thread(target=thread_fn,
+                                    args=(self.device_t1, results)))
+    threads.append(threading.Thread(target=update_server_def_fn))
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+    for result in results:
+      np.testing.assert_array_equal([[2, 2], [2, 2]], result)
+
+  def testParameterServerMultiExecutors(self):
+    context.update_server_def(server_def=self.server_def_s1_s2_s3_s4)
+
+    with ops.device(self.device_t1):
+      v1 = variables.Variable(initial_value=0.)
+    with ops.device(self.device_t2):
+      v2 = variables.Variable(initial_value=10.)
+
+    @def_function.function
+    def worker_fn():
+      x1 = v1.read_value()
+      x2 = v2.read_value()
+      grad = (x1 + x2) * 0.1
+      v1.assign_add(grad)
+      v2.assign_sub(grad)
+      return v1 + v2
+
+    worker_fn.get_concrete_function()
+
+    executor_t3 = executor.new_executor(enable_async=False)
+    executor_t4 = executor.new_executor(enable_async=False)
+
+    num_calls = 10
+    self._coord = coordinator.Coordinator()
+
+    def thread_fn(executor_obj, device, results):
+      with self._coord.stop_on_exception():
+        for i in range(num_calls):
+          with context.executor_scope(executor_obj):
+            with ops.device(device):
+              results[i] = worker_fn()
+
+    def update_server_def_fn():
+      with self._coord.stop_on_exception():
+        for _ in range(30):
+          context.update_server_def(self.server_def_s1_s2_s3_s4)
+
+    t3_results = [None] * num_calls
+    t4_results = [None] * num_calls
+    threads = []
+    threads.append(
+        threading.Thread(
+            target=thread_fn, args=(executor_t3, self.device_t3, t3_results)))
+    threads.append(
+        threading.Thread(
+            target=thread_fn, args=(executor_t4, self.device_t4, t4_results)))
+    threads.append(threading.Thread(target=update_server_def_fn))
+    for t in threads:
+      t.start()
+    self._coord.join(threads)
+
+    # Cannot assert individual values since the results are non-deterministic.
+    # By summing up the value we ensure that there are all reasonable and valid
+    # numbers (not `None` or `NaN`).
+    total = np.sum(t3_results + t4_results)
+    self.assertGreater(total, 0)
 
   def testCheckAlive(self):
     with self.assertRaisesRegexp(ValueError, "Context is not initialized."):

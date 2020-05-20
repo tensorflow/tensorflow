@@ -40,9 +40,9 @@ std::string GenerateConvolutionConstantCode(
 
   std::string c = GetCommonDefines(op_def.precision);
 
-  const int out_z = IntegralDivideRoundUp(dst_channels, 4);
+  const int out_z = DivideRoundUp(dst_channels, 4);
   const std::string kOutZ = std::to_string(out_z);
-  const int src_depth = IntegralDivideRoundUp(src_channels, 4);
+  const int src_depth = DivideRoundUp(src_channels, 4);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
@@ -290,7 +290,7 @@ bool IsConvConstantsSupported(const CLDevice& device,
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
   const int kConstantMaxSize = GetOptimalMaxConstantSize(device.GetInfo());
-  const int flt4_registers = IntegralDivideRoundUp(w_shape.o, 4);
+  const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 

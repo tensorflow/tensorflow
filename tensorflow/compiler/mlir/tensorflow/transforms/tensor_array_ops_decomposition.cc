@@ -105,17 +105,12 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 // Tries to infer the tensor array element shape.
 llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
-  tensorflow::TensorShapeProto element_shape;
-  if (tensorflow::mangling_util::DemangleShape(ta.element_shape().str(),
-                                               &element_shape)
-          .ok()) {
-    tensorflow::PartialTensorShape shape(element_shape);
-    if (shape.IsFullyDefined()) {
-      // Convert int64 to int64_.
-      auto int64_dims = shape.dim_sizes();
-      llvm::SmallVector<int64_t, 8> dims(int64_dims.begin(), int64_dims.end());
-      return dims;
-    }
+  auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
+  if (element_shape.hasStaticShape()) {
+    auto shape = element_shape.getShape();
+    // Convert int64 to int64_.
+    llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
+    return dims;
   }
 
   bool has_failure = false;
@@ -531,13 +526,12 @@ void ChangeFunctionInputSignature(
 
 LogicalResult DecomposeTensorArrayOps(
     Block*, ModuleOp, llvm::SmallDenseMap<Value, TensorArrayStats>*,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*);
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*);
 
-LogicalResult HandleWhileOp(
-    TF::WhileOp while_op, ModuleOp module,
-    llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
-        decomposed_partitioned_call_callees) {
+LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
+                            llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
+                            llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
+                                decomposed_partitioned_call_callees) {
   auto body = module.lookupSymbol<FuncOp>(while_op.body());
   auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
   auto grads = AccessedGradients({body, cond}, module);
@@ -619,11 +613,10 @@ LogicalResult HandleWhileOp(
   return success();
 }
 
-LogicalResult HandleIfOp(
-    TF::IfOp if_op, ModuleOp module,
-    llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
-        decomposed_partitioned_call_callees) {
+LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
+                         llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
+                         llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
+                             decomposed_partitioned_call_callees) {
   auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
   auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
   auto grads = AccessedGradients({then_branch, else_branch}, module);
@@ -706,11 +699,11 @@ template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
     CallOp call, FuncOp callee, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   auto emplace_res = decomposed_partitioned_call_callees->try_emplace(
-      callee, PartitionedCallTensorArrayOpsInfo());
-  auto& info = emplace_res.first->getSecond();
+      callee.getName(), PartitionedCallTensorArrayOpsInfo());
+  auto& info = emplace_res.first->second;
   // Recreates the call op with info.
   auto recreate_caller = [&]() -> LogicalResult {
     auto new_operands = llvm::to_vector<8>(call.getOperands());
@@ -752,7 +745,7 @@ LogicalResult HandlePartitionedCallOp(
     if (!info.signature_change) return success();
     return recreate_caller();
   }
-  // Rewrite the callee on a cloned function.
+  // Rewrite the callee.
   info.signature_change = false;
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(call.getOperand(index));
@@ -765,45 +758,46 @@ LogicalResult HandlePartitionedCallOp(
     if (it == stats->end()) return false;
     return it->getSecond().accumulate_on_write;
   };
-  auto callee_clone = callee.clone();
-  callee_clone.setVisibility(SymbolTable::Visibility::Private);
-  auto grads = AccessedGradients({callee_clone}, module);
-  for (int64_t i = 0; i < callee_clone.getNumArguments(); ++i) {
+  FuncOp lowered_callee = callee;
+  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+    // Clone non-private callee in case of signature change.
+    lowered_callee = callee.clone();
+    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+  }
+  auto grads = AccessedGradients({lowered_callee}, module);
+  for (int64_t i = 0; i < lowered_callee.getNumArguments(); ++i) {
     auto it = grads.find(i);
     if (it == grads.end()) continue;
     info.arg_grads.emplace_back(i, it->getSecond());
   }
   llvm::SmallDenseMap<Value, TensorArrayStats> callee_stats;
-  ChangeFunctionInputSignature(callee_clone, grads, ta_arg_buffer_type,
+  ChangeFunctionInputSignature(lowered_callee, grads, ta_arg_buffer_type,
                                ta_accumulate_on_write, &callee_stats);
-  if (failed(DecomposeTensorArrayOps(&callee_clone.front(), module,
+  if (failed(DecomposeTensorArrayOps(&lowered_callee.front(), module,
                                      &callee_stats,
                                      decomposed_partitioned_call_callees))) {
     return failure();
   }
   for (int64_t i = 0; i < call.getNumResults(); ++i) {
-    auto ret = callee_clone.front().getTerminator()->getOperand(i);
+    auto ret = lowered_callee.front().getTerminator()->getOperand(i);
     if (!getElementTypeOrSelf(ret.getType()).isa<TF::ResourceType>()) continue;
     auto arg = ret.dyn_cast<BlockArgument>();
     if (!arg) continue;
     info.ret_forward_input.emplace_back(i, arg.getArgNumber());
   }
 
-  if (!info.signature_change) {
-    // Signature is not modified. We do not need to keep two copies.
-    info.signature_change = false;
-    auto name = callee.getName();
-    callee.erase();
-    callee_clone.setName(name);
-    SymbolTable(module).insert(callee_clone);
-  } else {
-    info.decomposed_callee = callee_clone;
-    // Add the clone with a new name.
-    auto name =
-        llvm::formatv("{0}_{1}", callee.getName(), "tensorarray_decomposed")
-            .str();
-    callee_clone.setName(name);
-    SymbolTable(module).insert(callee_clone);
+  info.decomposed_callee = lowered_callee;
+  if (lowered_callee != callee) {
+    if (!info.signature_change) {
+      // Signature is not modified. We do not need to keep two copies.
+      lowered_callee.setName(callee.getName());
+      callee.erase();
+    } else {
+      // Add the clone with a new name.
+      lowered_callee.setName(
+          llvm::formatv("{0}_tensorarray_decomposed", callee.getName()).str());
+    }
+    SymbolTable(module).insert(lowered_callee);
   }
   if (info.signature_change) return recreate_caller();
   return success();
@@ -812,7 +806,7 @@ LogicalResult HandlePartitionedCallOp(
 LogicalResult DecomposeTensorArrayOps(
     Block* block, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>*
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
     if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
@@ -880,7 +874,7 @@ void TensorArrayOpsDecompositionPass::runOnOperation() {
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   llvm::SmallDenseMap<Value, TensorArrayStats> stats;
-  llvm::SmallDenseMap<FuncOp, PartitionedCallTensorArrayOpsInfo>
+  llvm::StringMap<PartitionedCallTensorArrayOpsInfo>
       decomposed_partitioned_call_callees;
   if (failed(DecomposeTensorArrayOps(&main.front(), module, &stats,
                                      &decomposed_partitioned_call_callees))) {

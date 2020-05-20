@@ -23,6 +23,8 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -106,6 +108,26 @@ class Conv1DTest(keras_parameterized.TestCase):
       inpt2 = np.random.normal(size=[1, 1, 1])
       outp1_shape = layer(inpt1).shape
       _ = layer(inpt2).shape
+      self.assertEqual(outp1_shape, layer(inpt1).shape)
+
+  def test_conv1d_recreate_conv_unknown_dims(self):
+    with self.cached_session(use_gpu=True):
+      layer = keras.layers.Conv1D(filters=1,
+                                  kernel_size=3,
+                                  strides=1,
+                                  dilation_rate=2,
+                                  padding='causal')
+
+      inpt1 = np.random.normal(size=[1, 9, 1]).astype(np.float32)
+      inpt2 = np.random.normal(size=[1, 2, 1]).astype(np.float32)
+      outp1_shape = layer(inpt1).shape
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec([1, None, 1])])
+      def fn(inpt):
+        return layer(inpt)
+
+      fn(inpt2)
       self.assertEqual(outp1_shape, layer(inpt1).shape)
 
 

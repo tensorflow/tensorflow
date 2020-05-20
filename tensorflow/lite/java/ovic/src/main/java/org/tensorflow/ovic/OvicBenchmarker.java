@@ -43,6 +43,7 @@ public abstract class OvicBenchmarker {
 
   /** Dimensions of inputs. */
   protected static final int DIM_BATCH_SIZE = 1;
+
   protected static final int DIM_PIXEL_SIZE = 3;
   protected int imgHeight = 224;
   protected int imgWidth = 224;
@@ -53,38 +54,38 @@ public abstract class OvicBenchmarker {
   /** A ByteBuffer to hold image data, to be feed into classifier as inputs. */
   protected ByteBuffer imgData = null;
 
-  /** Total runtime in ms. */
-  protected double totalRuntime = 0.0;
+  /** Total runtime in ns. */
+  protected double totalRuntimeNano = 0.0;
   /** Total allowed runtime in ms. */
-  protected double wallTime = 20000 * 30.0;
+  protected double wallTimeNano = 20000 * 30 * 1.0e6;
   /** Record whether benchmark has started (used to skip the first image). */
   protected boolean benchmarkStarted = false;
 
   /**
    * Initializes an {@link OvicBenchmarker}
    *
-   * @param wallTime: a double number specifying the total amount of time to benchmark.
+   * @param wallTimeNano: a double number specifying the total amount of time to benchmark.
    */
-  public OvicBenchmarker(double wallTime) {
+  public OvicBenchmarker(double wallTimeNano) {
     benchmarkStarted = false;
-    totalRuntime = 0.0;
-    this.wallTime = wallTime;
+    totalRuntimeNano = 0.0;
+    this.wallTimeNano = wallTimeNano;
   }
 
   /** Return the cumulative latency of all runs so far. */
-  public double getTotalRunTime() {
-    return totalRuntime;
+  public double getTotalRuntimeNano() {
+    return totalRuntimeNano;
   }
 
   /** Check whether the benchmarker should stop. */
   public Boolean shouldStop() {
-    if (totalRuntime >= wallTime) {
+    if (totalRuntimeNano >= wallTimeNano) {
       Log.e(
           TAG,
-          "Total runtime "
-              + Double.toString(totalRuntime)
-              + " exceeded walltime "
-              + Double.toString(wallTime));
+          "Total runtime (ms) "
+              + (totalRuntimeNano * 1.0e-6)
+              + " exceeded wall-time "
+              + (wallTimeNano * 1.0e-6));
       return true;
     }
     return false;
@@ -120,9 +121,9 @@ public abstract class OvicBenchmarker {
   public abstract String getLastResultString();
 
   /**
-   * Loads input buffer from intValues into ByteBuffer for the interpreter.
-   * Input buffer must be loaded in intValues and output will be placed in imgData.
-  */
+   * Loads input buffer from intValues into ByteBuffer for the interpreter. Input buffer must be
+   * loaded in intValues and output will be placed in imgData.
+   */
   protected void loadsInputToByteBuffer() {
     if (imgData == null || intValues == null) {
       throw new RuntimeException("Benchmarker is not yet ready to test.");

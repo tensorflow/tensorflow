@@ -40,6 +40,8 @@ namespace tensorflow {
       Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
       NoOp);                                                                  \
   REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
+  REGISTER_KERNEL_BUILDER(                                                    \
       Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);       \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("AvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);   \

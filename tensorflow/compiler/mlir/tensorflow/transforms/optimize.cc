@@ -62,11 +62,11 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
   func_pm.addPass(createCanonicalizerPass());
+  pm.addPass(CreateTFShapeInferencePass());
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }
   pm.addPass(createSymbolDCEPass());
-  pm.addPass(CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
   pm.addNestedPass<FuncOp>(createCSEPass());
 }

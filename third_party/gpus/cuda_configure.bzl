@@ -603,7 +603,7 @@ def _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries):
         "f = open('script.py', 'wb');" +
         "f.write(script);" +
         "f.close();" +
-        "system('%s script.py %s');" % (python_bin, " ".join(cuda_libraries))
+        "system('\"%s\" script.py %s');" % (python_bin, " ".join(cuda_libraries))
     )
 
     return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
@@ -714,6 +714,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{cuda_is_configured}": "False",
             "%{cuda_extra_copts}": "[]",
+            "%{cuda_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -771,10 +772,6 @@ filegroup(name="cudnn-include")
             "%{cuda_version}": "",
             "%{cuda_lib_version}": "",
             "%{cudnn_version}": "",
-            "%{cuda_compute_capabilities}": ",".join([
-                "CudaVersion(\"%s\")" % c
-                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-            ]),
             "%{cuda_toolkit_path}": "",
         },
         "cuda/cuda/cuda_config.h",
@@ -812,23 +809,35 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
     cmd = \"""%s \""",
 )""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
-def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
-    """Returns a rule to recursively copy a directory."""
+def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None):
+    """Returns a rule to recursively copy a directory.
+    If exceptions is not None, it must be a list of files or directories in
+    'src_dir'; these will be excluded from copying.
+    """
     src_dir = _norm_path(src_dir)
     out_dir = _norm_path(out_dir)
     outs = read_dir(repository_ctx, src_dir)
+    post_cmd = ""
+    if exceptions != None:
+        outs = [x for x in outs if not any([
+            x.startswith(src_dir + "/" + y)
+            for y in exceptions
+        ])]
     outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
 
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
+    if exceptions != None:
+        for x in exceptions:
+            post_cmd += " ; rm -fR " + out_dir + "/" + x
     return """genrule(
     name = "%s",
     outs = [
 %s
     ],
-    cmd = \"""cp -rLf "%s/." "%s/" \""",
-)""" % (name, "\n".join(outs), src_dir, out_dir)
+    cmd = \"""cp -rLf "%s/." "%s/" %s\""",
+)""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
 
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
@@ -844,10 +853,17 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
         "--cuda-gpu-arch=sm_" + cap.replace(".", "")
         for cap in compute_capabilities
     ]
+    return str(capability_flags)
 
-    # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
-    # TODO(csigg): Make this consistent with cuda clang and pass unconditionally.
-    return "if_cuda_clang(%s)" % str(capability_flags)
+def _compute_cuda_gpu_architectures(repository_ctx, compute_capabilities):
+    gpu_architectures = [
+        "sm_" + capability.replace(".", "")
+        for capability in compute_capabilities
+    ]
+
+    # Make the list unique.
+    gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
+    return str(gpu_architectures)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
@@ -980,6 +996,10 @@ def _create_local_cuda_repository(repository_ctx):
                 repository_ctx,
                 cuda_config.compute_capabilities,
             ),
+            "%{cuda_gpu_architectures}": _compute_cuda_gpu_architectures(
+                repository_ctx,
+                cuda_config.compute_capabilities,
+            ),
         },
     )
 
@@ -1096,9 +1116,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{nvcc_path}": nvcc_path,
             "%{gcc_host_compiler_path}": str(cc),
-            "%{cuda_compute_capabilities}": ", ".join(
-                ["\"%s\"" % c for c in cuda_config.compute_capabilities],
-            ),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
         }
         repository_ctx.template(
@@ -1140,10 +1157,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cuda_lib_version}": cuda_config.cuda_lib_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_compute_capabilities}": ", ".join([
-                "CudaVersion(\"%s\")" % c
-                for c in cuda_config.compute_capabilities
-            ]),
             "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
         },
     )

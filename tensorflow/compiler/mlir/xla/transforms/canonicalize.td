@@ -19,25 +19,6 @@ include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
-//===----------------------------------------------------------------------===//
-// DynamicSlice op patterns.
-//===----------------------------------------------------------------------===//
-
-def BuildSliceLimits : NativeCodeCall<
-    "BuildSliceLimits($0.cast<DenseIntElementsAttr>(),"
-    "$1.cast<DenseIntElementsAttr>(), &$_builder)">;
-
-def BuildSliceStrides : NativeCodeCall<
-  "GetI64ElementsAttr(SmallVector<int64_t, 4>("
-  "$0.getType().cast<RankedTensorType>().getRank(), 1), &$_builder)">;
-
-def DynamicSliceToSlice: Pat<(HLO_DynamicSliceOp HLO_Tensor:$input,
-           (HLO_ConstOp I64ElementsAttr:$starting_indices),
-           I64ElementsAttr:$slice_sizes),
-          (HLO_SliceOp $input, (CastIntElementsAttr $starting_indices),
-           (BuildSliceLimits $starting_indices, $slice_sizes),
-            (BuildSliceStrides $input))>;
-
 def UnaryToBinaryEinsumEq : NativeCodeCall<
   "$_builder.getStringAttr(\",\" + $0.getValue().str())">;
 

@@ -61,7 +61,7 @@ class Tensor {
   int Height() const { return shape_.h; }
   int Depth() const { return shape_.d; }
   int Channels() const { return shape_.c; }
-  int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
   // returns int4(width * batch, height, slices, batch)
@@ -75,8 +75,8 @@ class Tensor {
   int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
   int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
 
-  enum DataType DataType() const { return descriptor_.data_type; }
-  TensorStorageType StorageType() const { return descriptor_.storage_type; }
+  DataType GetDataType() const { return descriptor_.data_type; }
+  TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;

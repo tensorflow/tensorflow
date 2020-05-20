@@ -58,10 +58,8 @@ struct ShapeInference
     }
     int64_t producer = producer_or.ValueOrDie();
     for (auto func : module.getOps<FuncOp>()) {
-      InferShapeUntilFixPoint(&func.getBody(), producer);
-      // TODO(yuanzx): Verify that it is always fine to refine a function's
-      // return type, as long as we do not change the argument shapes.
-      InferShapeForFunctionType(func);
+      if (failed(InferShapeForFunction(func, /*arg_shapes=*/{}, producer)))
+        return signalPassFailure();
     }
   }
 };

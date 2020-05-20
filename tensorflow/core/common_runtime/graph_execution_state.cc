@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/graph/validate.h"
@@ -671,32 +671,55 @@ Status GraphExecutionState::OptimizeGraph(
 
     if (!(options.callable_options.feed().empty() &&
           options.callable_options.tensor_connection().empty())) {
-      std::unordered_set<string> feeds;
+      std::vector<SafeTensorId> feeds;
+
       for (const string& feed : options.callable_options.feed()) {
-        TensorId id = ParseTensorName(feed);
-        if (id.second != 0) {
-          return errors::InvalidArgument("Unsupported feed: ", feed);
-        }
-        feeds.emplace(id.first);
+        feeds.emplace_back(ParseTensorName(feed));
       }
       for (const TensorConnection& tensor_connection :
            options.callable_options.tensor_connection()) {
-        TensorId id = ParseTensorName(tensor_connection.to_tensor());
-        if (id.second != 0) {
-          return errors::InvalidArgument("Unsupported feed: ",
-                                         tensor_connection.to_tensor());
-        }
-        feeds.emplace(id.first);
+        feeds.emplace_back(ParseTensorName(tensor_connection.to_tensor()));
       }
-      for (const Node* node : graph_->nodes()) {
-        if (feeds.find(node->name()) == feeds.end()) {
+
+      // For feeds with tensor index 0 we try to find the corresponding node in
+      // the graph to infer feed data type and shape.
+      std::unordered_set<std::string> feed_nodes;
+
+      // For feeds with tensor index larger than 0, we can't infer data type or
+      // shape from the graph. Currently we only support type and shape
+      // inference from a small set of node types: Placeholder, Const, etc...
+      for (const SafeTensorId& feed : feeds) {
+        if (feed.index() > 0) {
+          VLOG(3) << "Add undefined feed for: " << feed.ToString();
+          Tensor fake_input(DT_INVALID, {0});
+          item.feed.emplace_back(feed.ToString(), fake_input);
+        } else {
+          VLOG(3) << "Add node for feed inference: " << feed.ToString();
+          feed_nodes.insert(feed.node());
           continue;
         }
-        // Get the type and shape of the feed node.
+      }
+
+      // For feeds with tensor index == 0 we try to infer data type and tensor
+      // shape from the graph, by looking at the fed node attributes.
+      for (const Node* node : graph_->nodes()) {
+        if (feed_nodes.find(node->name()) == feed_nodes.end()) continue;
+
+        // Try to get the type and shape of the feed node.
         PartialTensorShape partial_shape;
         DataType type;
-        TF_RETURN_IF_ERROR(GetFeedShapeAndTypeFromAttribute(
-            node->def(), &partial_shape, &type));
+        Status st = GetFeedShapeAndTypeFromAttribute(node->def(),
+                                                     &partial_shape, &type);
+
+        // Failed to get type and shape of the feed node.
+        if (!st.ok()) {
+          VLOG(3) << "Failed to infer feed node type and shape."
+                  << " Add undefined feed for: " << node->name();
+          Tensor fake_input(DT_INVALID, {0});
+          item.feed.emplace_back(node->name(), fake_input);
+          continue;
+        }
+
         // If the shape of the placeholder is only partially known, we are free
         // to set unknown dimensions of its shape to any value we desire. We
         // choose 0 to minimize the memory impact. Note that this only matters
@@ -717,6 +740,8 @@ Status GraphExecutionState::OptimizeGraph(
           }
         }
 
+        VLOG(3) << "Add feed for: " << node->name() << "; type: " << type
+                << "; shape: " << shape;
         Tensor fake_input(type, shape);
         item.feed.emplace_back(node->name(), fake_input);
       }

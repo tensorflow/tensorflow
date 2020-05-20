@@ -79,9 +79,9 @@ def NASNet(
     classifier_activation='softmax'):
   """Instantiates a NASNet model.
 
-  Reference paper:
-  - [Learning Transferable Architectures for Scalable Image Recognition]
-    (https://arxiv.org/abs/1707.07012) (CVPR 2018)
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

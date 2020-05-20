@@ -30,7 +30,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -44,6 +43,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -56,7 +56,8 @@ _convert_row_partition = RowPartition._convert_row_partition
 
 
 @tf_export("RaggedTensor")
-class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
+class RaggedTensor(composite_tensor.CompositeTensor,
+                   internal_types.NativeObject):
   """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
@@ -1373,7 +1374,7 @@ class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
     if not outer_axis < inner_axis:
       raise ValueError("Expected outer_axis (%d) to be less than "
                        "inner_axis (%d)" % (outer_axis, inner_axis))
-    return _merge_dims(self, outer_axis, inner_axis)
+    return merge_dims(self, outer_axis, inner_axis)
 
   def _set_shape(self, shape):
     """Updates the static shape of `self` to be `shape`.
@@ -2490,7 +2491,7 @@ def _nrows(tensor, out_type=dtypes.int32):
     return array_ops.shape(tensor, out_type=out_type)[0]
 
 
-def _merge_dims(value, outer_axis, inner_axis):
+def merge_dims(value, outer_axis, inner_axis):
   """Merges value[outer_axis...inner_axis] into a single dimension.
 
   See `RaggedTensor.merge_dims()` for more details.  This helper differs from
@@ -2528,7 +2529,7 @@ def _merge_dims(value, outer_axis, inner_axis):
   # Handle outer_axis>1 via recursion.
   if outer_axis > 1:
     return value.with_values(
-        _merge_dims(value.values, outer_axis - 1, inner_axis - 1))
+        merge_dims(value.values, outer_axis - 1, inner_axis - 1))
 
   # At this point, we know outer_axis == 1, and value is a RaggedTensor.
   # So we need to flatten the values and build a corresponding splits tensor.

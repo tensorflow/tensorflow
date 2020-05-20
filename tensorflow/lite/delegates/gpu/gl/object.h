@@ -153,17 +153,17 @@ inline Object MakeReadonlyBuffer(const ObjectSize& size,
 
 inline Object MakeReadonlyObject(const std::vector<float>& data) {
   return MakeReadonlyObject(
-      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
+      DivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 inline Object MakeReadonlyTexture(const std::vector<float>& data) {
   return MakeReadonlyTexture(
-      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
+      DivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 inline Object MakeReadonlyBuffer(const std::vector<float>& data) {
   return MakeReadonlyBuffer(
-      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
+      DivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 // TODO(akulik): find better place for functions below.
@@ -172,7 +172,7 @@ inline uint3 GetPHWC4Size(const BHWC& shape) {
   uint3 size;
   size.x = shape.w;
   size.y = shape.h;
-  size.z = shape.b * IntegralDivideRoundUp(shape.c, 4);
+  size.z = shape.b * DivideRoundUp(shape.c, 4);
   return size;
 }
 

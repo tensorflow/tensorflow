@@ -36,11 +36,10 @@ void EagerOperation::Clear() {
   ClearInferenceState();
 }
 
-const string& EagerOperation::DeviceName() const {
-  VariantDevice variant_device =
-      (Device() == kVariantDeviceNull) ? EagerContext().HostCPU() : Device();
-  return absl::visit([](auto* d) -> const string& { return d->name(); },
-                     variant_device);
+Status EagerOperation::SetAttrValue(const char* attr_name,
+                                    const AttrValue& value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
 }
 
 Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
@@ -256,7 +255,7 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
 
 Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
   TensorHandle* h = TensorHandleFromInterface(input);
-  AddInput(h);
+  AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
 }
 
@@ -264,7 +263,7 @@ Status EagerOperation::AddInputList(
     absl::Span<AbstractTensorHandleInterface*> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
-    AddInput(h);
+    AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
 }
@@ -311,15 +310,7 @@ Status EagerOperation::Reset(
   executor_ = executor ? executor : &ctx_.Executor();
   remote_func_params_ = remote_func_params;
   op_name_ = op;
-  if (device_name != nullptr && strlen(device_name) > 0) {
-    return SetDeviceName(device_name);
-  } else {
-    last_set_device_name_.clear();
-    device_name_.clear();
-    device_parsed_name_.Clear();
-    device_ = kVariantDeviceNull;
-    return Status::OK();
-  }
+  return SetDeviceName(device_name);
 }
 
 Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
@@ -389,23 +380,22 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   return Status::OK();
 }
 
-Status EagerOperation::SetDeviceName(const char* name) {
-  if (name != nullptr && strlen(name) > 0) {
-    if (name != last_set_device_name_) {
-      if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
-        return errors::InvalidArgument("Malformed device specification '", name,
-                                       "' in eager op: ", DebugString());
-      }
-      last_set_device_name_ = name;
-      device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
-      CustomDevice* custom_device;
-      if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
-        device_ = custom_device;
-      } else {
-        // Device placement for physical devices happens lazily in
-        // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
-        device_ = kVariantDeviceNull;
-      }
+Status EagerOperation::SetDeviceName(const char* c_name) {
+  string name(c_name != nullptr ? c_name : "");
+  if (name != last_set_device_name_) {
+    if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
+      return errors::InvalidArgument("Malformed device specification '", name,
+                                     "' in eager op: ", DebugString());
+    }
+    last_set_device_name_ = name;
+    device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
+    CustomDevice* custom_device;
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+      device_ = custom_device;
+    } else {
+      // Device placement for physical devices happens lazily in
+      // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
+      device_ = kVariantDeviceNull;
     }
   }
   return Status::OK();
@@ -440,6 +430,12 @@ string EagerOperation::DebugString() const {
   Attrs().FillAttrValueMap(ndef.mutable_attr());
   strings::StrAppend(&out, "Attrs: ", ndef.DebugString(), "\n");
   return out;
+}
+
+void EagerOperation::AddTensorHandle(TensorHandle* h) {
+  h->Ref();
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 
 }  // namespace tensorflow

@@ -520,7 +520,10 @@ class StrategyBase(object):
   """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/guide/distributed_training)
-  for overview and examples.
+  for overview and examples. See `tf.distribute.StrategyExtended` and
+  [`tf.distribute`](https://www.tensorflow.org/api_docs/python/tf/distribute)
+  for a glossory of concepts mentioned on this page such as "per-replica",
+  _replica_, and _reduce_.
 
   In short:
 
@@ -736,12 +739,16 @@ class StrategyBase(object):
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
-      strategy.run(train_step, args=(x,))
+      strategy.run(replica_fn, args=(x,))
     ```
 
-    We will assume that the input dataset is batched by the
-    global batch size. With this assumption, we will make a best effort to
-    divide each batch across all the replicas (one or more workers).
+    In the code snippet above, the dataset `dist_dataset` is batched by
+    GLOBAL_BATCH_SIZE, and we iterate through it using `for x in dist_dataset`,
+    where x is one batch of data of GLOBAL_BATCH_SIZE containing N batches of
+    data of per-replica batch size, corresponding to N replicas.
+    `tf.distribute.Strategy.run` will take care of feeding
+    the right per-replica batch to the right `replica_fn` execution on each
+    replica.
 
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
@@ -892,8 +899,13 @@ class StrategyBase(object):
     `tf.distribute.DistributedValues` containing tensors or composite tensors.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
-    whether eager execution is enabled, `fn` may be called one or more times (
-    once for each replica).
+    whether eager execution is enabled, `fn` may be called one or more times. If
+    `fn` is annotated with `tf.function` or `tf.distribute.Strategy.run` is
+    called inside a `tf.function`, eager execution is disabled and `fn` is
+    called once (or once per replica, if you are using MirroredStrategy) to
+    generate a Tensorflow graph, which will then be reused for execution with
+    new inputs. Otherwise, if eager execution is enabled, `fn` will be called
+    every step just like regular python code.
 
     Example usage:
 
@@ -1760,13 +1772,25 @@ class StrategyExtendedV2(object):
       kwargs["distribute_strategy"] = strategy
 
       # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
-      # dereferencing a `Tensor` that is without a `name`.
-      # TODO(b/138130844): Revisit the following check once
-      # `CheckpointInitialValue` class is removed.
+      # dereferencing a `Tensor` that is without a `name`. We still need to
+      # propagate the metadata it's holding.
       if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].checkpoint_position.restore_uid
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+      else:
+        checkpoint_restore_uid = None
 
-      return self._create_variable(next_creator, **kwargs)
+      created = self._create_variable(next_creator, **kwargs)
+
+      if checkpoint_restore_uid is not None:
+        # pylint: disable=protected-access
+        # Let the checkpointing infrastructure know that the variable was
+        # already restored so it doesn't waste memory loading the value again.
+        created._maybe_initialize_trackable()
+        created._update_uid = checkpoint_restore_uid
+        # pylint: enable=protected-access
+      return created
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -1900,9 +1924,8 @@ class StrategyExtendedV2(object):
 
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
-    return self._local_results(
-        self.reduce_to(reduce_op, value,
-                       device_util.current() or "/device:CPU:0"))[0]
+    dst = device_util.current() or self._default_device or "/device:CPU:0"
+    return self._local_results(self.reduce_to(reduce_op, value, dst))[0]
 
   def reduce_to(self, reduce_op, value, destinations, experimental_hints=None):
     """Combine (via e.g. sum or mean) values across replicas.

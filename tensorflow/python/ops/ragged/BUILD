@@ -1108,7 +1108,6 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

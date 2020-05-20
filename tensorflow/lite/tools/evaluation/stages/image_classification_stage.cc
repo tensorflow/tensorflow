@@ -67,12 +67,16 @@ TfLiteStatus ImageClassificationStage::Init(
   }
 
   // ImagePreprocessingStage
-  tflite::evaluation::ImagePreprocessingConfigBuilder builder(
-      "image_preprocessing", input_type);
-  builder.AddCroppingStep(kCroppingFraction, true /*square*/);
-  builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
-  builder.AddDefaultNormalizationStep();
-  preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
+  if (!config_.specification().has_image_preprocessing_params()) {
+    tflite::evaluation::ImagePreprocessingConfigBuilder builder(
+        "image_preprocessing", input_type);
+    builder.AddCroppingStep(kCroppingFraction, true /*square*/);
+    builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
+    builder.AddDefaultNormalizationStep();
+    preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
+  } else {
+    preprocessing_stage_.reset(new ImagePreprocessingStage(config_));
+  }
   if (preprocessing_stage_->Init() != kTfLiteOk) return kTfLiteError;
 
   // TopkAccuracyEvalStage.

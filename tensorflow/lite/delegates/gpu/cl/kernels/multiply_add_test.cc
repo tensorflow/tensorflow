@@ -38,7 +38,7 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMul) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   MultiplyAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> parameters;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   attr.param = parameters;
@@ -68,7 +68,7 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorAdd) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   AddAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> parameters;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   attr.param = parameters;
@@ -152,7 +152,7 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMad) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   MultiplyAttributes mul_attr;
-  Tensor<Linear, DataType::FLOAT32> parameters;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   mul_attr.param = parameters;

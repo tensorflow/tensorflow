@@ -25,8 +25,7 @@ models that have been optimized specifically for mobile and embedded devices.
 
 You can retrain the listed models on your own dataset by using transfer
 learning. Check out our transfer learning tutorial for
-[image classification](https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb)
-and
+[image classification](/lite/tutorials/model_maker_image_classification) and
 [object detection](https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193).
 
 ## Profile your model

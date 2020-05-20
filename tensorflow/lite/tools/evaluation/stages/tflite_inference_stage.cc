@@ -159,6 +159,7 @@ EvaluationStageMetrics TfliteInferenceStage::LatestMetrics() {
   latency_metrics->set_min_us(latency_stats_.min());
   latency_metrics->set_sum_us(latency_stats_.sum());
   latency_metrics->set_avg_us(latency_stats_.avg());
+  latency_metrics->set_std_deviation_us(latency_stats_.std_deviation());
   metrics.set_num_runs(
       static_cast<int>(latency_stats_.count() / params.invocations_per_run()));
   auto* inference_metrics =

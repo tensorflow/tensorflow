@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef CUDA_CUDA_CONFIG_H_
 #define CUDA_CUDA_CONFIG_H_
 
-#define TF_CUDA_CAPABILITIES %{cuda_compute_capabilities}
-
 #define TF_CUDA_VERSION "%{cuda_version}"
 #define TF_CUDA_LIB_VERSION "%{cuda_lib_version}"
 #define TF_CUDNN_VERSION "%{cudnn_version}"

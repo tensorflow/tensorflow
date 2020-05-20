@@ -250,7 +250,7 @@ class OpNode {
 
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
-    op_->MutableAttrs()->CacheKey(op_->GetDeviceName());
+    op_->MutableAttrs()->CacheKey(op_->DeviceName());
 
     return tensorflow::Status::OK();
   }

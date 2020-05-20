@@ -452,6 +452,7 @@ void NcclManager::AddReduceSend(std::unique_ptr<Participant> participant,
 void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
                                 const Context& context,
                                 ncclRedOp_t reduction_op) {
+  participant->root = true;
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 

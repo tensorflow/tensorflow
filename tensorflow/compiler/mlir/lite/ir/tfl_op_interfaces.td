@@ -69,6 +69,14 @@ def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
       [{Returns the indices of sparse operands.}],
       "std::vector<int>", "GetSparseOperands", (ins)
     >,
+    InterfaceMethod<
+      [{Returns the supported block size of float sparse operands.}],
+      "std::vector<std::vector<int>>", "GetFloatBlockSize", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns the supported block size of quantized sparse operands.}],
+      "std::vector<std::vector<int>>", "GetQuantizedBlockSize", (ins)
+    >,
   ];
 }
 

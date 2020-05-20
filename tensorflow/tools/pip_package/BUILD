@@ -28,6 +28,7 @@ transitive_hdrs(
     deps = [
         "//tensorflow/c/experimental:network",
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -95,6 +96,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
+    "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
@@ -111,6 +113,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
+    "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",

@@ -61,7 +61,7 @@ class ArgMaxTest(test.TestCase):
       self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
-    x = np.arange(200, dtype=dtype)
+    x = np.arange(200, dtype=np.float32).astype(np.bool_).astype(dtype)
     np.random.shuffle(x)
 
     # Check that argmin and argmax match numpy along the primary axis
@@ -78,7 +78,9 @@ class ArgMaxTest(test.TestCase):
 
   def _testDim(self, dtype):
     shape = (3, 2, 4, 5, 6, 3, 7)
-    x = np.arange(functools.reduce(lambda x, y: x * y, shape), dtype=dtype)
+    x = np.arange(
+        functools.reduce(lambda x, y: x * y, shape),
+        dtype=np.float32).astype(dtype)
     np.random.shuffle(x)
     x = x.reshape(shape)
 
@@ -123,6 +125,11 @@ class ArgMaxTest(test.TestCase):
     self._testBasic(np.int64)
     self._testTieBreaking(np.int64)
     self._testDim(np.int64)
+
+  def testBool(self):
+    self._testBasic(np.bool_)
+    self._testTieBreaking(np.bool_)
+    self._testDim(np.bool_)
 
   def testEmpty(self):
     with self.cached_session():

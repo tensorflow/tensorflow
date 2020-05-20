@@ -216,6 +216,7 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast. This leads to having to linearize and then delinearize the
       // index.
       options.set_replace_transpose_with_bitcast(false);
+      options.set_enable_conv_operand_swap(false);
       pass.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pass.AddPass<DotDecomposer>();
@@ -321,6 +322,7 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("final_algebraic_simplifier");
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
+    options.set_enable_conv_operand_swap(false);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -399,6 +401,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // bitcast. This leads to having to linearize and then delinearize the
   // index.
   options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||
@@ -406,6 +409,16 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 
+  // GemmRewriter assumes that all transposes are folded into gemms, but,
+  // since commit 7d529df, this is not always true at this point.
+  // Therefore, rerun transpose folding.
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return IsMatrixMultiplication(dot) ? candidate_operands
+                                           : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
 

@@ -265,7 +265,8 @@ def distributions_and_v1_and_v2_optimizers():
 
 strategies_minus_tpu = [
     default_strategy, one_device_strategy, one_device_strategy_gpu,
-    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
+    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus,
+    central_storage_strategy_with_gpu_and_cpu
 ]
 
 strategies_minus_default_and_tpu = [

@@ -187,7 +187,7 @@ int3 GetWorkGroupXY128Simple(const int3& grid) { return int3(16, 8, 1); }
 int3 GetWorkGroup(const int3& grid, int max_size) {
   int wg_z = GetBiggestDividerWithPriority(grid.z, 8);
   int wg_xy_size = max_size / wg_z;
-  int wg_x = std::min(IntegralDivideRoundUp(grid.x, 2), wg_xy_size);
+  int wg_x = std::min(DivideRoundUp(grid.x, 2), wg_xy_size);
   int wg_y = std::min(wg_xy_size / wg_x, grid.y);
   return int3(wg_x, wg_y, wg_z);
 }
@@ -231,12 +231,12 @@ absl::Status GetBestWorkGroupXY128Linear(const TuningParameters& params,
 }
 
 bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
-  int planar_work_groups = IntegralDivideRoundUp(width * height, 128);
+  int planar_work_groups = DivideRoundUp(width * height, 128);
   auto base_work_groups = Get2DWorkgroupsEqualTo128();
   bool have_equal_work_groups = false;
   for (auto& work_group : base_work_groups) {
-    int x_groups = IntegralDivideRoundUp(width, work_group.x);
-    int y_groups = IntegralDivideRoundUp(height, work_group.y);
+    int x_groups = DivideRoundUp(width, work_group.x);
+    int y_groups = DivideRoundUp(height, work_group.y);
     int xy_groups = x_groups * y_groups;
     if (xy_groups == planar_work_groups) {
       have_equal_work_groups = true;

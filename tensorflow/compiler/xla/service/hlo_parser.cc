@@ -784,6 +784,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -849,6 +850,35 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
       break;
     }
+    case HloOpcode::kAllGather: {
+      optional<std::vector<std::vector<int64>>> tmp_groups;
+      optional<std::vector<int64>> replica_group_ids;
+      optional<int64> channel_id;
+      optional<std::vector<int64>> dimensions;
+      optional<bool> constrain_layout;
+      optional<bool> use_global_device_ids;
+      attrs["replica_groups"] = {/*required=*/false,
+                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
+      attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
+                                        &use_global_device_ids};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      std::vector<ReplicaGroup> replica_groups;
+      if (tmp_groups) {
+        replica_groups = CreateReplicaGroups(*tmp_groups);
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
+          shape, operands[0], dimensions->at(0), replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          use_global_device_ids ? *use_global_device_ids : false));
+      break;
+    }
     case HloOpcode::kAllReduce: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
@@ -887,6 +917,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<bool> constrain_layout;
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           (dimensions && dimensions->size() != 1)) {
         return false;
@@ -900,7 +933,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         split_dimension = dimensions->at(0);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups, channel_id, split_dimension));
+          shape, operands, replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          split_dimension));
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -1892,6 +1927,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   if (outer_dimension_partitions) {
     instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
   }
+  if (frontend_attributes) {
+    instruction->set_frontend_attributes(*frontend_attributes);
+  }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
 
@@ -1946,7 +1984,7 @@ bool HloParserImpl::ParseFrontendAttributes(
       if (!ParseAttributeName(&attribute)) {
         return false;
       }
-      if (lexer_.GetKind() != TokKind::kIdent) {
+      if (lexer_.GetKind() != TokKind::kString) {
         return false;
       }
       (*frontend_attributes->mutable_map())[attribute] = lexer_.GetStrVal();

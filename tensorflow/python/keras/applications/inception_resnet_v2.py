@@ -53,7 +53,7 @@ def InceptionResNetV2(include_top=True,
                       **kwargs):
   """Instantiates the Inception-ResNet v2 architecture.
 
-  Reference paper:
+  Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)

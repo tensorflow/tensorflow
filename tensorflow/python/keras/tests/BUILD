@@ -14,6 +14,22 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
+    name = "get_config_test",
+    srcs = ["get_config_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":get_config_samples",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "add_loss_correctness_test",
     srcs = ["add_loss_correctness_test.py"],
     python_version = "PY3",
@@ -245,6 +261,22 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "summary_ops_test",
+    size = "small",
+    srcs = ["summary_ops_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
 tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
@@ -255,4 +287,11 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "get_config_samples",
+    srcs = ["get_config_samples.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )

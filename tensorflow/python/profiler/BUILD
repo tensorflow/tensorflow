@@ -59,6 +59,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
+        "no_rocm",
     ],
     deps = [
         ":profiler_v2",
@@ -223,9 +224,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "@six_archive//:six",
     ],
 )
 
@@ -235,15 +235,5 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":trace",
-    ],
-)
-
-py_library(
-    name = "scoped_annotation",
-    srcs = ["scoped_annotation.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
-        "@six_archive//:six",
     ],
 )

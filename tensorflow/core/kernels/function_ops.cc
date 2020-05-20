@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gradients.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/gradients.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -45,12 +45,27 @@ void ArgOp::Compute(OpKernelContext* ctx) {
   auto frame = ctx->call_frame();
   OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
   const Tensor* val;
-  OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-  OP_REQUIRES(ctx, val->dtype() == dtype_,
-              errors::InvalidArgument("Type mismatch: actual ",
-                                      DataTypeString(val->dtype()),
-                                      " vs. expect ", DataTypeString(dtype_)));
-  ctx->set_output(0, *val);
+
+  auto validate_type = [this](const Tensor& val) {
+    if (val.dtype() == dtype_) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Type mismatch: actual ",
+                                     DataTypeString(val.dtype()),
+                                     " vs. expect ", DataTypeString(dtype_));
+    }
+  };
+
+  if (frame->CanConsumeArg(index_)) {
+    Tensor val;
+    frame->ConsumeArg(index_, &val);
+    OP_REQUIRES_OK(ctx, validate_type(val));
+    ctx->set_output(0, std::move(val));
+  } else {
+    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
+    OP_REQUIRES_OK(ctx, validate_type(*val));
+    ctx->set_output(0, *val);
+  }
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -365,7 +380,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   FunctionLibraryRuntime::Options opts;
-  opts.runner = ctx->runner();
+  opts.runner = nullptr;  // Use default runner at remote device.
   opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts.source_device = source_device;
   if (opts.source_device != target_device) {

@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_BUFFER_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_BUFFER_ASSIGNMENT_H_
 
-#include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Liveness.h"
-#include "mlir/IR/Builders.h"   // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project

@@ -377,7 +377,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           auto result = tensorflow::TF_TryEvaluateConstant_wrapper(
               graph, output, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-          return tensorflow::pyo_or_throw(result);
+          return tensorflow::PyoOrThrow(result);
         });
 
   m.def("ExtendSession", [](TF_Session* session) {
@@ -459,7 +459,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       PyList_SET_ITEM(result, i, py_outputs.at(i));
     }
 
-    return tensorflow::pyo_or_throw(result);
+    return tensorflow::PyoOrThrow(result);
   });
 
   // Do not release GIL.
@@ -509,7 +509,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       PyList_SET_ITEM(result, i, py_outputs.at(i));
     }
 
-    return tensorflow::pyo_or_throw(result);
+    return tensorflow::PyoOrThrow(result);
   });
 
   // Do not release GIL.
@@ -540,7 +540,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     // Return out_values
     py::list py_list;
     for (size_t i = 0; i < out_values.size(); ++i) {
-      py::object obj = tensorflow::pyo(out_values.at(i));
+      py::object obj = tensorflow::Pyo(out_values.at(i));
       py_list.append(obj);
     }
     return py_list;
@@ -610,7 +610,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           // bool.
           // Acquire GIL for returning output returning.
           pybind11::gil_scoped_acquire acquire;
-          return tensorflow::pyo(PyLong_FromLongLong(value));
+          return tensorflow::Pyo(PyLong_FromLongLong(value));
         });
 
   m.def("TF_SetAttrValueProto", [](TF_OperationDescription* desc,
@@ -667,7 +667,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_NewBuffer", TF_NewBuffer, py::return_value_policy::reference);
   m.def("TF_GetBuffer", [](TF_Buffer* buf) {
     TF_Buffer buffer = TF_GetBuffer(buf);
-    return tensorflow::pyo_or_throw(PyBytes_FromStringAndSize(
+    return tensorflow::PyoOrThrow(PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(buffer.data), buffer.length));
   });
   m.def("TF_DeleteBuffer", &TF_DeleteBuffer);
@@ -713,7 +713,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def("TF_GetOpList", [](TF_Library* lib_handle) {
     TF_Buffer output_buffer = TF_GetOpList(lib_handle);
-    return tensorflow::pyo_or_throw(PyBytes_FromStringAndSize(
+    return tensorflow::PyoOrThrow(PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(output_buffer.data),
         output_buffer.length));
   });
@@ -790,7 +790,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
         // Returns a (TF_Operation*, int pos) tuple.
         py::tuple result_tuple = py::make_tuple(
-            py::cast(output), tensorflow::pyo(PyLong_FromSize_t(pos)));
+            py::cast(output), tensorflow::Pyo(PyLong_FromSize_t(pos)));
         return result_tuple;
       },
       py::return_value_policy::reference);
@@ -1094,7 +1094,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           py::gil_scoped_release release;
           TF_OperationGetAttrBool(oper, attr_name, &value, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
-          return tensorflow::pyo(PyBool_FromLong(value));
+          return tensorflow::Pyo(PyBool_FromLong(value));
         });
 
   m.def("TF_NewStatus", TF_NewStatus, py::return_value_policy::reference);

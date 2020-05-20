@@ -31,6 +31,7 @@ ifeq ($(TARGET), stm32f4)
     -Wno-missing-field-initializers \
     -Wno-write-strings \
     -Wno-sign-compare \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
@@ -71,14 +72,11 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/kernels/elementwise_test.cc \
     tensorflow/lite/micro/kernels/strided_slice_test.cc \
     tensorflow/lite/micro/kernels/prelu_test.cc \
-    tensorflow/lite/micro/kernels/pooling_test.cc \
     tensorflow/lite/micro/kernels/pack_test.cc \
     tensorflow/lite/micro/kernels/activations_test.cc \
     tensorflow/lite/micro/kernels/dequantize_test.cc \
     tensorflow/lite/micro/kernels/unpack_test.cc \
     tensorflow/lite/micro/kernels/split_test.cc \
-    tensorflow/lite/micro/kernels/conv_test.cc \
-    tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
     tensorflow/lite/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
   EXCLUDED_EXAMPLE_TESTS := \

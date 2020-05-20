@@ -29,7 +29,7 @@ namespace cl {
 namespace {
 
 absl::Status CreateImageBufferFromBuffer(const CLContext& context,
-                                         cl_mem memory, enum DataType data_type,
+                                         cl_mem memory, DataType data_type,
                                          int width, cl_mem* result) {
   cl_image_format format;
   cl_image_desc desc;
@@ -65,11 +65,10 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
   }
   if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
     cl_mem image_memory;
-    RETURN_IF_ERROR(
-        CreateImageBufferFromBuffer(context, memory, descriptor.data_type,
-                                    shape.b * shape.w * shape.h * shape.d *
-                                        IntegralDivideRoundUp(shape.c, 4),
-                                    &image_memory));
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
     *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
   } else {
     *result = Tensor(memory, memory_owner, shape, descriptor);
@@ -386,7 +385,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                   const CLDevice& device, const BHWDC& shape,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result) {
-  const int slices = IntegralDivideRoundUp(shape.c, 4);
+  const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {

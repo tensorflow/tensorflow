@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -238,6 +239,12 @@ class Tensor {
   /// and can be assigned to, but other calls on it (e.g. shape manipulation)
   /// are not valid.
   Tensor(Tensor&& other);
+
+  // Explicitly delete constructor that take a pointer (except char*)
+  // so that the pointer doesn't get implicitly cast to bool.
+  template <typename T, typename std::enable_if<!std::is_same<T, char>::value,
+                                                T>::type* = nullptr>
+  explicit Tensor(T* t) = delete;
 
   ~Tensor();
 

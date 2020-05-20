@@ -129,35 +129,41 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
   // Bias tensor.
   int bias_tensor_id = inputs->data[2];
-  const auto& bias_tensor = context->tensors[bias_tensor_id];
-  auto* const_bias_node =
-      graph_builder_->AddConstNodeWithData(bias_tensor_id, bias_tensor);
-  graph_builder_->AddTensorWithID(bias_tensor_id, const_bias_node->GetID(), 0);
-  ComputeMinAndMaxQuantValues(bias_tensor, &bias_min_, &bias_max_);
-  auto* bias_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&bias_min_),
-      sizeof(bias_min_));
-  auto* bias_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&bias_max_),
-      sizeof(bias_max_));
+  TensorID matmul_and_bias_out = matmul_out,
+           matmul_and_bias_out_min = matmul_out_min,
+           matmul_and_bias_out_max = matmul_out_max;
+  if (bias_tensor_id != -1) {
+    const auto& bias_tensor = context->tensors[bias_tensor_id];
+    auto* const_bias_node =
+        graph_builder_->AddConstNodeWithData(bias_tensor_id, bias_tensor);
+    graph_builder_->AddTensorWithID(bias_tensor_id, const_bias_node->GetID(),
+                                    0);
+    ComputeMinAndMaxQuantValues(bias_tensor, &bias_min_, &bias_max_);
+    auto* bias_min_const = graph_builder_->AddConstNodeWithData(
+        quant_bound_shape, reinterpret_cast<char*>(&bias_min_),
+        sizeof(bias_min_));
+    auto* bias_max_const = graph_builder_->AddConstNodeWithData(
+        quant_bound_shape, reinterpret_cast<char*>(&bias_max_),
+        sizeof(bias_max_));
 
-  // MatMul + Bias.
-  auto* bias_add_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  bias_add_op->SetOpType(OP_QuantizedBiasAdd_32p32to32);
-  bias_add_op->AddInput(matmul_out);
-  bias_add_op->AddInput(graph_builder_->GetHexagonTensorId(bias_tensor_id));
-  bias_add_op->AddInput(matmul_out_min);
-  bias_add_op->AddInput(matmul_out_max);
-  bias_add_op->AddInput(TensorID(bias_min_const->GetID(), 0));
-  bias_add_op->AddInput(TensorID(bias_max_const->GetID(), 0));
-  const auto& bias_add_out =
-      bias_add_op->AddOutput(sizeof(int32_t), 4,
-                             {output_batch_size, output_height_size,
-                              output_width_size, output_depth_size});
-  const auto& bias_add_out_min =
-      bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  const auto& bias_add_out_max =
-      bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    // MatMul + Bias.
+    auto* bias_add_op = graph_builder_->AddNode(GetTFLiteNodeID());
+    bias_add_op->SetOpType(OP_QuantizedBiasAdd_32p32to32);
+    bias_add_op->AddInput(matmul_out);
+    bias_add_op->AddInput(graph_builder_->GetHexagonTensorId(bias_tensor_id));
+    bias_add_op->AddInput(matmul_out_min);
+    bias_add_op->AddInput(matmul_out_max);
+    bias_add_op->AddInput(TensorID(bias_min_const->GetID(), 0));
+    bias_add_op->AddInput(TensorID(bias_max_const->GetID(), 0));
+    matmul_and_bias_out =
+        bias_add_op->AddOutput(sizeof(int32_t), 4,
+                               {output_batch_size, output_height_size,
+                                output_width_size, output_depth_size});
+    matmul_and_bias_out_min =
+        bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    matmul_and_bias_out_max =
+        bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  }
 
   // Quantize 32-bit result into 8-bit format using output tensor min/max.
   ComputeMinAndMaxQuantValues(context->tensors[outputs->data[0]], &output_min_,
@@ -170,9 +176,9 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       sizeof(output_max_));
   auto* quantize_biasadd_op = graph_builder_->AddNode(GetTFLiteNodeID());
   quantize_biasadd_op->SetOpType(OP_Requantize_32to8);
-  quantize_biasadd_op->AddInput(bias_add_out);
-  quantize_biasadd_op->AddInput(bias_add_out_min);
-  quantize_biasadd_op->AddInput(bias_add_out_max);
+  quantize_biasadd_op->AddInput(matmul_and_bias_out);
+  quantize_biasadd_op->AddInput(matmul_and_bias_out_min);
+  quantize_biasadd_op->AddInput(matmul_and_bias_out_max);
   quantize_biasadd_op->AddInput(TensorID(output_min_const->GetID(), 0));
   quantize_biasadd_op->AddInput(TensorID(output_max_const->GetID(), 0));
   node_output_ =

@@ -34,9 +34,9 @@ void AddCornerCases(const T& grid, int max_work_group_total_size,
   for (int x = 1; x <= 4; ++x) {
     for (int y = 1; y <= 4; ++y) {
       for (int z = 1; z <= 4; ++z) {
-        int wg_x = IntegralDivideRoundUp(grid.x, x);
-        int wg_y = IntegralDivideRoundUp(grid.y, y);
-        int wg_z = IntegralDivideRoundUp(grid.z, z);
+        int wg_x = DivideRoundUp(grid.x, x);
+        int wg_y = DivideRoundUp(grid.y, y);
+        int wg_z = DivideRoundUp(grid.z, z);
         if (wg_x > max_work_group_sizes.x || wg_y > max_work_group_sizes.y ||
             wg_z > max_work_group_sizes.z ||
             wg_x * wg_y * wg_z > max_work_group_total_size) {

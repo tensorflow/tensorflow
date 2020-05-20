@@ -972,8 +972,10 @@ struct PreluParams {
   int32 input_offset;
   int32 alpha_offset;
   int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32 output_multiplier_1;
+  int32 output_shift_1;
+  int32 output_multiplier_2;
+  int32 output_shift_2;
 };
 
 struct PoolParams {
@@ -1007,6 +1009,7 @@ struct ResizeBilinearParams {
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
+  bool half_pixel_centers;
 };
 
 struct SliceParams {
@@ -1030,6 +1033,8 @@ struct SoftmaxParams {
   int32_t zero_point;
   float scale;
   float* table;
+  int16_t* exp_lut;
+  int16_t* one_over_one_plus_x_lut;
 };
 
 struct SpaceToBatchParams {

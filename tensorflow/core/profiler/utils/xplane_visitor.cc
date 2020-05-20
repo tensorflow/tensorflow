@@ -14,7 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -24,11 +33,6 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
       plane_(plane),
       type_(plane->GetStatType(stat->metadata_id())) {}
-
-absl::string_view XStatVisitor::RefValue() const {
-  const XStatMetadata* metadata = plane_->GetStatMetadata(stat_->ref_value());
-  return metadata ? metadata->name() : "";
-}
 
 std::string XStatVisitor::ToString() const {
   switch (stat_->value_case()) {

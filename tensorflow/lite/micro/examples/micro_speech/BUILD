@@ -22,12 +22,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tiny_conv_simple_features_model_data",
+    name = "model",
     srcs = [
-        "simple_features/tiny_conv_simple_features_model_data.cc",
+        "simple_features/model.cc",
     ],
     hdrs = [
-        "simple_features/tiny_conv_simple_features_model_data.h",
+        "simple_features/model.h",
     ],
 )
 
@@ -52,7 +52,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_features_test_data",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -355,7 +355,7 @@ cc_binary(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -376,7 +376,7 @@ cc_binary(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/examples/micro_speech/micro_features:micro_model_settings",
-        "//tensorflow/lite/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
+        "//tensorflow/lite/micro/examples/micro_speech/micro_features:model",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],

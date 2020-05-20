@@ -41,8 +41,8 @@ inline void L2Normalization(int32_t input_zero_point, int32_t outer_size,
     }
     int32_t inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(acc, /*reverse_shift*/ -1,
-                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
+    GetInvSqrtQuantizedMultiplierExp(acc, kReverseShift, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
     for (int inner_index = 0; inner_index < depth; ++inner_index) {
       int32_t input =

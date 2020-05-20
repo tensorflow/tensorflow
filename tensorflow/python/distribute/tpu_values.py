@@ -24,7 +24,6 @@ from __future__ import print_function
 
 import contextlib
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -186,30 +185,35 @@ def enclosing_tpu_context():
 class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
   """Holds a map from replica to TPU variables whose values are kept in sync."""
 
-  def _mirrored_update(self, update_fn, *args, **kwargs):
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
-          (enclosing_tpu_context() is not None)):
-        return self._distribute_strategy.extended.update(
-            self, update_fn, args=args, kwargs=kwargs)
-      else:
-        return values.MirroredVariable._mirrored_update(self, update_fn, *args,
-                                                        **kwargs)
-
-  def assign_sub(self, *args, **kwargs):
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     assign_sub_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_sub_variable_op)
-    return self._mirrored_update(assign_sub_fn, *args, **kwargs)
+    return self._update(
+        update_fn=assign_sub_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
 
-  def assign_add(self, *args, **kwargs):
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
     assign_add_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_add_variable_op)
-    return self._mirrored_update(assign_add_fn, *args, **kwargs)
+    return self._update(
+        update_fn=assign_add_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
 
-  def assign(self, *args, **kwargs):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
-    return self._mirrored_update(assign_fn, *args, **kwargs)
+    return self._update(
+        update_fn=assign_fn,
+        value=value,
+        use_locking=use_locking,
+        name=name,
+        read_value=read_value)
 
   def scatter_sub(self, *args, **kwargs):
     raise NotImplementedError

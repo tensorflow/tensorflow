@@ -33,14 +33,16 @@ class ArithmeticTest : public ClientLibraryTestBase {
  public:
   template <typename NativeT>
   void TestArgMin(std::initializer_list<std::initializer_list<NativeT>> input,
-                  absl::Span<NativeT const> expected_output, int axis) {
-    return TestArgMinMax(input, expected_output, axis, /*is_min=*/true);
+                  absl::Span<NativeT const> expected_output, int axis,
+                  bool tie_low) {
+    TestArgMinMax(input, expected_output, axis, /*is_min=*/true, tie_low);
   }
 
   template <typename NativeT>
   void TestArgMax(std::initializer_list<std::initializer_list<NativeT>> input,
-                  absl::Span<NativeT const> expected_output, int axis) {
-    return TestArgMinMax(input, expected_output, axis, /*is_min=*/false);
+                  absl::Span<NativeT const> expected_output, int axis,
+                  bool tie_low) {
+    TestArgMinMax(input, expected_output, axis, /*is_min=*/false, tie_low);
   }
 
  private:
@@ -48,46 +50,63 @@ class ArithmeticTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void TestArgMinMax(
       std::initializer_list<std::initializer_list<NativeT>> input,
-      absl::Span<NativeT const> expected_output, int axis, bool is_min) {
+      absl::Span<NativeT const> expected_output, int axis, bool is_min,
+      bool tie_low) {
     if (is_min) {
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMin);
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMinTwoPass);
+      TestArgMinMaxImpl(
+          input, expected_output, [=](XlaOp op, PrimitiveType type) {
+            return ArgMin(op, type, axis, /*stable=*/true, tie_low);
+          });
+      TestArgMinMaxImpl(input, expected_output,
+                        [=](XlaOp op, PrimitiveType type) {
+                          return ArgMinTwoPass(op, type, axis, tie_low);
+                        });
     } else {
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMax);
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMaxTwoPass);
+      TestArgMinMaxImpl(
+          input, expected_output, [=](XlaOp op, PrimitiveType type) {
+            return ArgMax(op, type, axis, /*stable=*/true, tie_low);
+          });
+      TestArgMinMaxImpl(input, expected_output,
+                        [=](XlaOp op, PrimitiveType type) {
+                          return ArgMaxTwoPass(op, type, axis, tie_low);
+                        });
     }
   }
 
   template <typename NativeT>
   void TestArgMinMaxImpl(
       std::initializer_list<std::initializer_list<NativeT>> input,
-      absl::Span<NativeT const> expected_output, int axis,
-      std::function<void(XlaOp, PrimitiveType, int)> MinMaxImpl) {
+      absl::Span<NativeT const> expected_output,
+      std::function<void(XlaOp, PrimitiveType)> MinMaxImpl) {
     XlaBuilder builder(TestName());
     XlaOp x = ConstantR2<NativeT>(&builder, input);
-    MinMaxImpl(x, primitive_util::NativeToPrimitiveType<NativeT>(), axis);
+    MinMaxImpl(x, primitive_util::NativeToPrimitiveType<NativeT>());
     ComputeAndCompareR1<NativeT>(&builder, expected_output, {});
   }
 };
 
 XLA_TEST_F(ArithmeticTest, ArgMinR2Axis0) {
   TestArgMin<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 2},
-                    /*axis=*/0);
+                    /*axis=*/0, /*tie_low=*/true);
+  TestArgMin<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 2, 2},
+                    /*axis=*/0, /*tie_low=*/false);
 }
 
 XLA_TEST_F(ArithmeticTest, ArgMinR2Axis1) {
   TestArgMin<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 1},
-                    /*axis=*/1);
+                    /*axis=*/1, /*tie_low=*/true);
+  TestArgMin<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 2},
+                    /*axis=*/1, /*tie_low=*/false);
 }
 
 XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis0) {
   TestArgMax<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {2, 0, 1},
-                    /*axis=*/0);
+                    /*axis=*/0, /*tie_low=*/true);
 }
 
 XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis1) {
   TestArgMax<int32>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {1, 0, 0},
-                    /*axis=*/1);
+                    /*axis=*/1, /*tie_low=*/true);
 }
 
 }  // namespace

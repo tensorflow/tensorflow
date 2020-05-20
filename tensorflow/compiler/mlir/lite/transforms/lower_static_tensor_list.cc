@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -76,8 +75,6 @@ class TensorListPatternRewriter : public PatternRewriter {
  public:
   explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getContext()) {}
-
-  Operation *insert(Operation *op) override { return OpBuilder::insert(op); }
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.
@@ -580,7 +577,7 @@ struct ConvertTensorListResize
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
         /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
-        /*output_shapes=*/rewriter.getStrArrayAttr({"{}"}),
+        /*output_shapes=*/rewriter.getArrayAttr({}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }
@@ -862,6 +859,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
+  target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();
   target.addLegalOp<TFL::UnidirectionalSequenceLSTMOp>();

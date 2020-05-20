@@ -216,6 +216,7 @@ cc_library(
     build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
+        ":cppmath",
         ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",
@@ -459,6 +460,7 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
+        "reference/l2normalization.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -472,6 +474,7 @@ cc_library(
         "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/sparse_ops/fully_connected.h",
@@ -502,6 +505,7 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
@@ -528,6 +532,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/l2normalization.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -541,6 +546,7 @@ cc_library(
         "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
@@ -562,6 +568,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite:string_util",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -622,7 +629,6 @@ cc_library(
         ":cppmath",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
     ],
 )
@@ -647,7 +653,6 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
-        "@ruy//ruy:detect_arm",
     ],
 )
 
@@ -779,7 +784,6 @@ cc_library(
     deps = [
         ":cpu_check",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
         "//third_party/eigen3",
     ],
 )
@@ -809,9 +813,11 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":common",
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -874,6 +880,23 @@ cc_test(
     name = "depthwiseconv_per_channel_quantized_16x8_test",
     srcs = [
         "depthwiseconv_per_channel_quantized_16x8_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_per_channel_quantized_16x8_test",
+    srcs = [
+        "conv_per_channel_quantized_16x8_test.cc",
     ],
     shard_count = 2,
     deps = [
@@ -1014,6 +1037,7 @@ cc_test(
 
 cc_library(
     name = "cpu_check",
+    srcs = ["optimized/cpu_check.cc"],
     hdrs = [
         "optimized/cpu_check.h",
         "optimized/neon_check.h",
@@ -1033,9 +1057,6 @@ cc_library(
         ":windows": tflite_deps_intel,
         "//conditions:default": [],
     },
-    deps = [
-        "//tensorflow/lite/kernels:cpu_backend_context",
-    ],
 )
 
 cc_test(

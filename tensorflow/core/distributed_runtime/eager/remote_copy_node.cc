@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace eager {
@@ -96,7 +98,7 @@ RemoteCopyNode::~RemoteCopyNode() {
 Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(executor_->status());
 
-  op->AddInput(src_);
+  TF_RETURN_IF_ERROR(op->AddInput(src_));
 
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
@@ -145,7 +147,8 @@ void RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_op_inputs()->mutable_remote_handle(),
+        src_, /*wait_until_ready=*/false,
+        remote_op->add_op_inputs()->mutable_remote_handle(),
         absl::get<Device*>(src_->device()),
         absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
     if (!status.ok()) {
@@ -290,6 +293,103 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   }
 }
 
+Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
+                             const Device* target_device, EagerContext* ctx,
+                             SendPackedHandleOp* op) {
+  op->set_op_id(op_id);
+  for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
+    TensorHandle* h = nullptr;
+    TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));
+    if (h->Type() == TensorHandle::LOCAL) {
+      // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
+      // copy it to the CPU before copying it out.
+      Tensor tensor;
+      TF_RETURN_IF_ERROR(h->CopyToDevice(*ctx, ctx->HostCPU(), &tensor));
+      auto* local_handle = op->add_handles()->mutable_local_handle();
+      local_handle->set_device(h->op_device() ? h->op_device()->name()
+                                              : ctx->HostCPU()->name());
+      tensor.AsProtoTensorContent(local_handle->mutable_tensor());
+    } else if (h->Type() == TensorHandle::REMOTE) {
+      // Only serialize the resource dtype and shape of the first handle, since
+      // all handles are of the same resource dtype and shape.
+      Device* src_device = absl::get<Device*>(h->device());
+      const bool serialize_resource_dtype_and_shape =
+          (i == 0) && (h->dtype == DT_RESOURCE) &&
+          (ctx->OnSameTask(src_device, target_device));
+      TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
+          h, /*wait_until_ready=*/false,
+          op->add_handles()->mutable_remote_handle(), src_device,
+          absl::get<Device*>(h->DeviceOrHostCPU(*ctx))->name(),
+          serialize_resource_dtype_and_shape));
+    } else {
+      return errors::InvalidArgument("Nested packed handles are not supported");
+    }
+  }
+  return Status::OK();
+}
+
+void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
+  Status s;
+  const uint64 context_view_id = ctx_->GetContextViewId();
+  if (!send_device_->IsLocal()) {
+    s = errors::InvalidArgument(
+        "Copy a packed handle from a remote device is not supported");
+    captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
+    done(s);
+    return;
+  }
+
+  EnqueueRequest request;
+  uint64 context_id = ctx_->GetContextId();
+  request.set_context_id(context_id);
+  s = SerializePackedHandle(recv_op_id_, src_, recv_device_, ctx_,
+                            request.add_queue()->mutable_send_packed_handle());
+  if (!s.ok()) {
+    captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
+    done(s);
+    return;
+  }
+
+  TensorShape shape;
+  s = src_->Shape(&shape);
+  if (!s.ok()) {
+    captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
+    done(s);
+    return;
+  }
+  captured_state_->SetSrcShape(shape);
+
+  core::RefCountPtr<eager::EagerClient> eager_client;
+  s = ctx_->GetClient(recv_device_, &eager_client);
+  if (!s.ok()) {
+    captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
+    done(s);
+    return;
+  }
+
+  EnqueueResponse* response = new EnqueueResponse;
+  Device* recv_device = recv_device_;
+  const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
+  eager_client->StreamingEnqueueAsync(
+      &request, response,
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
+        if (s.ok()) {
+          Status status = captured_state->dst()->SetRemoteShape(
+              captured_state->GetSrcShape(), recv_device, context_view_id);
+          if (!status.ok()) {
+            LOG(ERROR) << "Ignoring an error encountered when setting remote "
+                          "shape of tensor received by SendPackedHadnle rpc: "
+                       << status.ToString();
+          }
+        } else {
+          captured_state->dst()->PoisonRemote(s, recv_device, context_view_id);
+        }
+        done(s);
+        delete response;
+      });
+}
+
 void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   Status s;
   EnqueueRequest request;
@@ -351,7 +451,11 @@ Status RemoteCopyNode::Prepare() {
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {
   started_ = true;
-  if (ctx_->UseSendTensorRPC() && send_device_->IsLocal() &&
+  if (src_->Type() == TensorHandle::PACKED) {
+    return StartSendPackedHandle(std::move(done));
+  }
+
+  if ((ctx_->UseSendTensorRPC()) && send_device_->IsLocal() &&
       !recv_device_->IsLocal()) {
     return StartRemoteSendTensor(std::move(done));
   }

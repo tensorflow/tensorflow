@@ -114,7 +114,8 @@ namespace {
 
 XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
                                        PrimitiveType value_type,
-                                       PrimitiveType index_type, bool is_min) {
+                                       PrimitiveType index_type, bool is_min,
+                                       bool stable, bool tie_low) {
   auto sub_builder = outer_builder->CreateSubBuilder("minmax_func");
   XlaBuilder* b = sub_builder.get();
   XlaOp lhs_value =
@@ -126,14 +127,21 @@ XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
   XlaOp rhs_index =
       Parameter(b, 3, ShapeUtil::MakeShape(index_type, {}), "rhs_index");
 
-  auto cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
+  XlaOp cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
   XlaOp max = Select(cmp, lhs_value, rhs_value);
   XlaOp arg_max = Select(cmp, lhs_index, rhs_index);
+  if (stable) {
+    XlaOp eq = Eq(lhs_value, rhs_value);
+    XlaOp tie_id =
+        tie_low ? Min(lhs_index, rhs_index) : Max(lhs_index, rhs_index);
+    arg_max = Select(eq, tie_id, arg_max);
+  }
   Tuple(b, {max, arg_max});
   return b->Build().ConsumeValueOrDie();
 }
 
-XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
+XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min,
+                bool stable, bool tie_low) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -150,8 +158,9 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
     iota_shape.set_element_type(index_type);
     XlaOp iota = Iota(builder, iota_shape, axis);
 
-    XlaComputation reducer = CreateMinMaxComputation(
-        builder, input_shape.element_type(), index_type, is_min);
+    XlaComputation reducer =
+        CreateMinMaxComputation(builder, input_shape.element_type(), index_type,
+                                is_min, stable, tie_low);
     XlaOp max_argmax = Reduce(builder, {input, iota},
                               {value_init_value, index_init_value}, reducer,
                               /*dimensions_to_reduce=*/{axis});
@@ -164,7 +173,7 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
 }
 
 XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                       bool is_min) {
+                       bool is_min, bool tie_low) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -180,38 +189,51 @@ XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
 
     XlaOp iota = Iota(
         builder, ShapeUtil::ChangeElementType(input_shape, output_type), axis);
-    XlaOp input_max = Reduce(input, init_value, reducer,
-                             /*dimensions_to_reduce=*/{axis});
+    XlaOp reduced_input = Reduce(input, init_value, reducer,
+                                 /*dimensions_to_reduce=*/{axis});
     std::vector<int64> broadcast_dims(input_shape.rank() - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
     std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-
-    XlaOp max_idx = MaxValue(builder, output_type);
-    XlaOp select_mask = Select(Eq(input, input_max, broadcast_dims),
-                               /*on_true=*/iota,
-                               /*on_false=*/
-                               max_idx);
-
-    return Reduce(select_mask, max_idx,
-                  CreateScalarMinComputation(output_type, builder),
-                  /*dimensions_to_reduce=*/{axis});
+    if (tie_low) {
+      XlaOp max_idx = MaxValue(builder, output_type);
+      XlaOp select_mask = Select(Eq(input, reduced_input, broadcast_dims),
+                                 /*on_true=*/iota,
+                                 /*on_false=*/
+                                 max_idx);
+      return Reduce(select_mask, max_idx,
+                    CreateScalarMinComputation(output_type, builder),
+                    /*dimensions_to_reduce=*/{axis});
+    } else {
+      XlaOp min_idx = MinValue(builder, output_type);
+      XlaOp select_mask = Select(Eq(input, reduced_input, broadcast_dims),
+                                 /*on_true=*/iota,
+                                 /*on_false=*/
+                                 min_idx);
+      return Reduce(select_mask, min_idx,
+                    CreateScalarMaxComputation(output_type, builder),
+                    /*dimensions_to_reduce=*/{axis});
+    }
   });
 }
 }  // namespace
 
-XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/false);
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis, bool stable,
+             bool tie_low) {
+  return ArgMinMax(input, output_type, axis, /*is_min=*/false, stable, tie_low);
 }
 
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis, bool stable,
+             bool tie_low) {
+  return ArgMinMax(input, output_type, axis, /*is_min=*/true, stable, tie_low);
 }
 
-XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/false);
+XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low) {
+  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/false, tie_low);
 }
 
-XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/true);
+XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low) {
+  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/true, tie_low);
 }
 }  // namespace xla

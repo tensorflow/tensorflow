@@ -141,8 +141,8 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
       const string leading_op_name = tensor->name;
       const string new_name_original_input = tensor->name + "_int8";
       tensor->name = new_name_original_input;
-      utils::MakeTensor(leading_op_name, tensor->shape, input_type,
-                        &leading_op_input);
+      utils::MakeTensor(leading_op_name, tensor->shape, tensor->shape_signature,
+                        input_type, &leading_op_input);
     } else {
       // Get scale and zero point from the first tensor.
       const float scale = subgraph->tensors[tensor_idx]->quantization->scale[0];
@@ -156,9 +156,9 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
       const string leading_op_name = tensor->name;
       const string new_name_original_input = tensor->name + "_int8";
       tensor->name = new_name_original_input;
-      utils::MakeTensorWithQuantParam(leading_op_name, tensor->shape,
-                                      input_type, scale, zero_point + 128,
-                                      &leading_op_input);
+      utils::MakeTensorWithQuantParam(
+          leading_op_name, tensor->shape, tensor->shape_signature, input_type,
+          scale, zero_point + 128, &leading_op_input);
     }
     const int32_t leading_op_input_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(leading_op_input));
@@ -193,8 +193,8 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
       const string tailing_op_name = tensor->name;
       const string new_name_original_output = tensor->name + "_int8";
       tensor->name = new_name_original_output;
-      utils::MakeTensor(tailing_op_name, tensor->shape, output_type,
-                        &tailing_op_output);
+      utils::MakeTensor(tailing_op_name, tensor->shape, tensor->shape_signature,
+                        output_type, &tailing_op_output);
     } else {
       // Get scale and zero point from the last tensor.
       const float scale = subgraph->tensors[tensor_idx]->quantization->scale[0];
@@ -208,9 +208,9 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
       const string tailing_op_name = tensor->name;
       const string new_name_original_output = tensor->name + "_int8";
       tensor->name = new_name_original_output;
-      utils::MakeTensorWithQuantParam(tailing_op_name, tensor->shape,
-                                      output_type, scale, zero_point + 128,
-                                      &tailing_op_output);
+      utils::MakeTensorWithQuantParam(
+          tailing_op_name, tensor->shape, tensor->shape_signature, output_type,
+          scale, zero_point + 128, &tailing_op_output);
     }
     const int32_t tailing_op_output_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(tailing_op_output));
@@ -340,8 +340,9 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         std::unique_ptr<TensorT> additional_tensor;
         const string requant_tensor_name = input_tensor->name + "_requantized";
         utils::MakeTensorWithQuantParam(
-            requant_tensor_name, input_tensor->shape, TensorType_INT8,
-            output_scale, output_zp, &additional_tensor);
+            requant_tensor_name, input_tensor->shape,
+            input_tensor->shape_signature, TensorType_INT8, output_scale,
+            output_zp, &additional_tensor);
         const int32_t additional_tensor_idx = subgraph->tensors.size();
         subgraph->tensors.push_back(std::move(additional_tensor));
 
@@ -545,7 +546,7 @@ TfLiteStatus QuantizeOpInput(
         // operation since the preceding op may require a float output.
         std::unique_ptr<TensorT> op_output;
         utils::MakeTensor(tensor->name + "_int8", tensor->shape,
-                          TensorType_INT8, &op_output);
+                          tensor->shape_signature, TensorType_INT8, &op_output);
         op_output->quantization = absl::make_unique<QuantizationParametersT>();
         op_output->quantization->min.push_back(tensor->quantization->min[0]);
         op_output->quantization->max.push_back(tensor->quantization->max[0]);
@@ -573,7 +574,7 @@ TfLiteStatus QuantizeOpInput(
     // since this op is not quantizable.
     std::unique_ptr<TensorT> op_output;
     utils::MakeTensor(tensor->name + "_float", tensor->shape,
-                      TensorType_FLOAT32, &op_output);
+                      tensor->shape_signature, TensorType_FLOAT32, &op_output);
     const int32_t dequant_op_output_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(op_output));
     std::unique_ptr<OperatorT> dequant_op;
@@ -865,17 +866,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
-        }
-        if (bias_idx >= op->inputs.size()) {
-          TF_LITE_REPORT_ERROR(
-              error_reporter,
-              "Required input index %d is larger than the input length of "
-              "op  %s at index %d in subgraph %d",
-              bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
-              op_idx, subgraph_idx);
-          return kTfLiteError;
         }
         // Quantize if it is not quantized already as the
         // output of another op or input of another op.
@@ -1046,7 +1039,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();

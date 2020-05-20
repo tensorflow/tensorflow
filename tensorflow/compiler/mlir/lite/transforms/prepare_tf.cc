@@ -46,9 +46,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
@@ -322,9 +322,10 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
 
     // Create tensor type for the transpose result.
     auto filter_type = filter.getType().cast<RankedTensorType>();
-    auto result_shape = functional::map(
-        [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
-        perm);
+    auto result_shape =
+        llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
+          return filter_type.getDimSize(dim);
+        }));
     auto elem_type = filter_type.getElementType();
     auto result_type = RankedTensorType::get(result_shape, elem_type);
 
@@ -612,10 +613,34 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
+// Returns success if all the operations in the `op`'s regions including `op`
+// itself are legal in a TFLite pipeline.
+LogicalResult ValidateOp(Operation *op) {
+  bool has_illegal_ops = false;
+  op->walk([&](Operation *op) {
+    if (isa<TF::VariableV2Op>(op)) {
+      has_illegal_ops = true;
+      op->emitOpError() << "is illegal in a TFLite pipeline";
+    }
+  });
+
+  return failure(has_illegal_ops);
+}
+
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   MLIRContext *ctx = &getContext();
+
+  // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
+  // PrepareTFPass is the very first TFLite pass in the pipeline.
+  // TODO(jingpu): It might be better to split this check into its own pass
+  // to make things more modular.
+  if (failed(ValidateOp(func))) {
+    func.emitError() << "tfl-prepare-tf pass failed.";
+    signalPassFailure();
+    return;
+  }
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the

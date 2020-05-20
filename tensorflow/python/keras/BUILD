@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
@@ -140,6 +141,7 @@ py_library(
         ":backend",
         "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/profiler:profiler_v2",
@@ -526,7 +528,6 @@ tf_py_test(
     ],
     deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

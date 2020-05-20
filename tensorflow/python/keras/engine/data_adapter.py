@@ -746,7 +746,7 @@ class DatasetAdapter(DataAdapter):
       if size == cardinality.INFINITE and steps is None:
         raise ValueError(
             "When providing an infinite dataset, you must specify "
-            "the number of steps to run (if you did not intend to ."
+            "the number of steps to run (if you did not intend to "
             "create an infinite dataset, make sure to not call "
             "`repeat()` on the dataset).")
 
@@ -849,11 +849,6 @@ class GeneratorDataAdapter(DataAdapter):
                               max_queue_size):
     """Create a callable, possibly including an Enqueuer."""
     if workers > 1 or (workers > 0 and use_multiprocessing):
-      if use_multiprocessing:
-        logging.warning(
-            UserWarning("Using a generator with `use_multiprocessing=True` "
-                        "and multiple workers may duplicate your data. "
-                        "Please consider using the `tf.data.Dataset`."))
       def generator_fn():
         enqueuer = data_utils.GeneratorEnqueuer(
             x, use_multiprocessing=use_multiprocessing)
@@ -1106,20 +1101,21 @@ class DataHandler(object):
                workers=1,
                use_multiprocessing=False,
                model=None,
-               steps_per_execution=1):
+               steps_per_execution=None):
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
     self._insufficient_data = False
     self._model = model
-    self._steps_per_execution = steps_per_execution
 
-    # This `Variable` is assigned to by `DataHandler` to allow partial
-    # executions. Save its original value here to reset after a partial
-    # execution.
-    if isinstance(steps_per_execution, int):
-      self._steps_per_execution_value = steps_per_execution
+    # `steps_per_execution_value` is the cached initial value.
+    # `steps_per_execution` is mutable and may be changed by the DataAdapter
+    # to handle partial executions.
+    if steps_per_execution is None:
+      self._steps_per_execution = 1
+      self._steps_per_execution_value = 1
     else:
+      self._steps_per_execution = steps_per_execution
       self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
@@ -1161,12 +1157,7 @@ class DataHandler(object):
         if self._insufficient_data:  # Set by `catch_stop_iteration`.
           break
         if self._adapter.should_recreate_iterator():
-          if ds_context.has_strategy():
-            # TODO(b/138326910): remove this when MultiDeviceIterator is a
-            # CompositeTensor (unless this is more efficient)
-            data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
-          else:
-            data_iterator = iter(self._dataset)
+          data_iterator = iter(self._dataset)
         yield epoch, data_iterator
         self._adapter.on_epoch_end()
 

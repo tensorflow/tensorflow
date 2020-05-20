@@ -70,6 +70,18 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
+// Define an option subclass in order to enable SO_REUSEPORT for the
+// server socket.
+class ReusePortOption : public ::grpc::ServerBuilderOption {
+ public:
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+    args->SetInt(GRPC_ARG_ALLOW_REUSEPORT, 1);
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+};
+
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
@@ -131,9 +143,11 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-// Look up the port that has been requested for this task in `server_def`.
-Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
+// Look up the requested host name and port for this task in `server_def`.
+Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
+                                  string* host_name, int* port) const {
   *port = -1;
+  *host_name = "localhost";
   for (const auto& job : server_def.cluster().job()) {
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
@@ -152,6 +166,11 @@ Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
           return errors::InvalidArgument(
               "Could not parse port for local server from \"", iter->second,
               "\".");
+        }
+
+        if (colon_index != string::npos &&
+            !iter->second.substr(0, colon_index).empty()) {
+          *host_name = iter->second.substr(0, colon_index);
         }
       }
       break;
@@ -175,7 +194,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // otherwise if 'task_index=-1' the program will abort.
 
   int requested_port;
-  TF_RETURN_IF_ERROR(GetPort(server_def_, &requested_port));
+  TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name_, &requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
@@ -220,8 +239,18 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
 
-  builder.SetOption(
-      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  bool reuse_port = false;
+  const Status status =
+      ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  auto server_build_option =
+      reuse_port
+          ? std::unique_ptr<::grpc::ServerBuilderOption>(new ReusePortOption)
+          : std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption);
+  builder.SetOption(std::move(server_build_option));
+
   // Allow subclasses to specify more args to pass to the gRPC server.
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
@@ -325,7 +354,7 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                        task.second);
       }
       if (job.name() == *options.job_name && task.first == options.task_index) {
-        host_port = strings::StrCat("localhost:", bound_port_);
+        host_port = strings::StrCat(host_name_, ":", bound_port_);
       } else {
         host_port = task.second;
       }
@@ -478,7 +507,7 @@ Status GrpcServer::Join() {
 }
 
 const string GrpcServer::target() const {
-  return strings::StrCat("grpc://localhost:", bound_port_);
+  return strings::StrCat("grpc://", host_name_, ":", bound_port_);
 }
 
 std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(

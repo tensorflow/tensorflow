@@ -160,7 +160,7 @@ class MultiProcessRunnerTest(test.TestCase):
       for i in range(0, 10):
         print(
             'index {}, iteration {}'.format(self._worker_idx(), i), flush=True)
-        time.sleep(1)
+        time.sleep(5)
 
     mpr = multi_process_runner.MultiProcessRunner(
         proc_func,

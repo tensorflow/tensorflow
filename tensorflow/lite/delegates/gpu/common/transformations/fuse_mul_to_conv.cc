@@ -32,6 +32,11 @@ class MergeConvolutionWithMul : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[0];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
+
     auto& mul_node = *sequence[1];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {
@@ -91,6 +96,10 @@ class MergeMulWithConvolution : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[1];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
     auto& mul_node = *sequence[0];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {

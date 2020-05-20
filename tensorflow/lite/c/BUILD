@@ -22,6 +22,9 @@ package(
 tflite_cc_shared_object(
     name = "tensorflowlite_c",
     linkopts = select({
+        "//tensorflow:ios": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
+        ],
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
         ],
@@ -87,6 +90,7 @@ cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
+    copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
@@ -103,6 +107,7 @@ cc_test(
     name = "c_api_experimental_test",
     size = "small",
     srcs = ["c_api_experimental_test.cc"],
+    copts = tflite_copts(),
     data = ["//tensorflow/lite:testdata/add.bin"],
     deps = [
         ":c_api",

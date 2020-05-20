@@ -184,6 +184,14 @@ ifeq ($(BUILD_WITH_RUY),true)
   CXXFLAGS += -DTFLITE_WITH_RUY
 endif
 
+BUILD_WITH_RUY_PROFILER ?= false
+ifeq ($(BUILD_WITH_RUY_PROFILER),true)
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/instrumentation.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/profiler.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/treeview.cc
+  CXXFLAGS += -DRUY_PROFILER
+endif
+
 # Not to include XNNPACK.
 CXXFLAGS += -DTFLITE_WITHOUT_XNNPACK
 
@@ -212,7 +220,7 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
-DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/benchmark
+DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/delegates
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := \
@@ -238,7 +246,7 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
+# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)

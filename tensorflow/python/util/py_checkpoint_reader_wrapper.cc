@@ -112,7 +112,7 @@ static py::object CheckpointReader_GetTensor(
   tensorflow::MaybeRaiseFromStatus(
       tensorflow::TensorToNdarray(*tensor, &py_obj));
 
-  return tensorflow::pyo_or_throw(
+  return tensorflow::PyoOrThrow(
       PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj)));
 }
 

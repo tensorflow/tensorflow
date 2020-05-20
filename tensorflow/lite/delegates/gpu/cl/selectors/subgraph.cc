@@ -26,8 +26,7 @@ namespace gpu {
 namespace cl {
 
 std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-    const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
     GPUOperationsSubgraph* gpu_subgraph) {
   gpu_subgraph->operations.clear();
   gpu_subgraph->new_tensors.clear();

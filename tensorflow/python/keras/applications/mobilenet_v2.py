@@ -106,9 +106,9 @@ def MobileNetV2(input_shape=None,
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
-  Reference paper:
-  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
-  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
+  Reference:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks](
+      https://arxiv.org/abs/1801.04381) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
 

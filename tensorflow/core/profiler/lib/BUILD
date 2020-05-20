@@ -47,18 +47,19 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/util:ptr_util",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_schema",
     ]),
     alwayslink = True,
 )
@@ -67,11 +68,17 @@ tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:device_tracer",
+        # Metadata collector does not compile for Cast,
+        # due to its dependency on human_readable_json.
+        # Also, it is only used for XLA:GPU support and
+        # thus move it inside cuda_deps.
+        # TODO(b/155130190): Gate deps and cuda_deps here so they are empty
+        # when compiling for a mobile platform.
+        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
-        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ],
     alwayslink = True,
 )
@@ -87,12 +94,23 @@ cc_library(
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":traceme_encode",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
         "//tensorflow/core/profiler/internal:traceme_recorder",
     ]),
+)
+
+cc_library(
+    name = "traceme_encode",
+    hdrs = ["traceme_encode.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -104,13 +122,21 @@ cc_library(
         ":traceme",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "scoped_annotation_headers",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":scoped_annotation"],
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":traceme",
+        ":traceme_encode",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -141,6 +167,7 @@ filegroup(
         "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
+        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

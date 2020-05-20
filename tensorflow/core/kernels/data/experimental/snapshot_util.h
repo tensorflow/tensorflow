@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SNAPSHOT_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SNAPSHOT_UTIL_H_
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -114,12 +115,34 @@ class Reader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit Reader(RandomAccessFile* file, const string& compression_type,
-                  int version, const DataTypeVector& dtypes);
+  static Status Create(Env* env, const std::string& filename,
+                       const string& compression_type, int version,
+                       const DataTypeVector& dtypes,
+                       std::unique_ptr<Reader>* out_reader);
+
+  // Returns a nested dataset for a set of given snapshot file names.
+  //
+  // This function takes a vector of snapshot files, and returns a nested
+  // dataset. Each element within the nested dataset is itself a dataset, and
+  // contains all the elements written out to each individual snapshot file.
+  static Status MakeNestedDataset(Env* env,
+                                  const std::vector<std::string>& filenames,
+                                  const string& compression_type, int version,
+                                  const DataTypeVector& dtypes,
+                                  const std::vector<PartialTensorShape>& shapes,
+                                  const int64 start_index,
+                                  DatasetBase** output);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors);
 
+  Status SkipRecords(int64 num_records);
+
  private:
+  explicit Reader(const std::string& filename, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
+
+  Status Initialize(Env* env);
+
   Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
 
   Status SnappyUncompress(
@@ -134,7 +157,8 @@ class Reader {
   Status ReadRecord(absl::Cord* record);
 #endif
 
-  RandomAccessFile* file_;
+  std::string filename_;
+  std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
   const int version_;
@@ -142,6 +166,9 @@ class Reader {
   int num_simple_ = 0;
   int num_complex_ = 0;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
+
+  class Dataset;
+  class NestedDataset;
 };
 
 Status WriteMetadataFile(const string& hash_dir,

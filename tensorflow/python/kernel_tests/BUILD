@@ -1,7 +1,10 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "sycl_py_test", "tf_custom_op_library", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "sycl_py_test", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -120,6 +123,9 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/155406705): flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -477,6 +483,7 @@ tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -857,6 +864,7 @@ cuda_py_test(
     srcs = ["resource_variable_ops_test.py"],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1014,6 +1022,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1215,8 +1224,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )
@@ -1506,7 +1513,7 @@ cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
-    shard_count = 2,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -2917,7 +2924,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
-        "nopug",  # TODO(b/153763253); flaky
+        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [
@@ -3465,7 +3472,7 @@ cuda_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
-    shard_count = 20,
+    shard_count = 30,
     tags = [
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.

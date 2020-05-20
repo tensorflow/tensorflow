@@ -55,6 +55,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 // expressed with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
+                          absl::Span<std::string> exported_names,
                           mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.

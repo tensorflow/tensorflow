@@ -33,7 +33,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
-from tensorflow.python.keras.engine import training
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
@@ -1324,40 +1323,7 @@ class TensorListGradientsTest(test_util.TensorFlowTestCase):
         self.assertEquals(self.evaluate(grad), 5.)
 
 
-class TestKerasModelClass(training.Model):
-  """A simple tensorflow keras Model class definition."""
-
-  def __init__(self, width):
-    super(TestKerasModelClass, self).__init__()
-
-    self.weight = variable_scope.get_variable(
-        name="test_keras_var",
-        shape=width,
-        dtype=dtypes.float32,
-        trainable=True,
-        use_resource=True,
-    )
-
-  def call(self, inputs):
-    return self.weight * inputs
-
-
 class VariablesGradientTest(test_util.TensorFlowTestCase):
-
-  def _TestVariablesGradient(self, inputs, test_model, vars_to_grad):
-    """Returns gradients of `test_model` with respect to `vars_to_grad`."""
-
-    test_model_re = custom_gradient.recompute_grad(test_model)
-
-    with backprop.GradientTape(persistent=True) as tape:
-      tape.watch(vars_to_grad)
-      out_re = test_model_re(inputs)
-      out = test_model(inputs)
-
-    grads_re = tape.gradient(out_re, vars_to_grad)
-    grads = tape.gradient(out, vars_to_grad)
-
-    return grads_re, grads
 
   def _TestFnVariablesGradient(self, inputs, test_fn, vars_to_grad):
     """Returns gradients of `test_model` with respect to `vars_to_grad`."""
@@ -1373,30 +1339,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
     grads = tape.gradient(out, vars_to_grad)
 
     return grads_re, grads
-
-  @test_util.run_in_graph_and_eager_modes
-  def testKerasRecompute(self):
-    """Checks that recompute_grad works for a simple Keras Model."""
-
-    test_model = TestKerasModelClass(10)
-    test_input = constant(np.zeros((10, 10), dtype=np.float32))
-    self.evaluate(variables.global_variables_initializer())
-    test_model(test_input)  # Ensures keras model is initialized.
-    grads_re, grads = self._TestVariablesGradient(test_input, test_model,
-                                                  test_input)
-
-    grads_re = self.evaluate(grads_re)
-    grads = self.evaluate(grads)
-    for g, g_re in zip(grads, grads_re):
-      self.assertAllClose(g, g_re)
-
-    grads_re, grads = self._TestVariablesGradient(test_input, test_model,
-                                                  test_model.variables)
-
-    grads_re = self.evaluate(grads_re)
-    grads = self.evaluate(grads)
-    for g, g_re in zip(grads, grads_re):
-      self.assertAllClose(g, g_re)
 
   @test_util.run_in_graph_and_eager_modes
   def testFnRecompute(self):

@@ -54,15 +54,15 @@ std::unique_ptr<ModelT> CreateModelSingleInputOutput() {
 
   // Op.
   quant_op->opcode_index = 0;
-  quant_op->inputs = {0};
-  quant_op->outputs = {1};
+  quant_op->inputs = {2};
+  quant_op->outputs = {0};
 
   fc_op->opcode_index = 1;
-  fc_op->inputs = {1};
-  fc_op->outputs = {2};
+  fc_op->inputs = {0};
+  fc_op->outputs = {1};
 
   dequant_op->opcode_index = 2;
-  dequant_op->inputs = {2};
+  dequant_op->inputs = {1};
   dequant_op->outputs = {3};
 
   model->subgraphs[0]->operators.push_back(std::move(quant_op));
@@ -74,30 +74,31 @@ std::unique_ptr<ModelT> CreateModelSingleInputOutput() {
   model->operator_codes.push_back(std::move(dequant_op_code));
 
   // Model input/otuput.
-  model->subgraphs[0]->inputs = {0};
+  model->subgraphs[0]->inputs = {2};
   model->subgraphs[0]->outputs = {3};
 
-  // Tensors
+  // Tensors. Float tensors are at the end of the tensor list.
+
   auto tensor_0 = absl::make_unique<TensorT>();
+  tensor_0->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor_0->quantization->scale.push_back(0.35);
+  tensor_0->quantization->zero_point.push_back(28);
   tensor_0->name = "tensor_0";
   tensor_0->shape = {};
-  tensor_0->type = TensorType_FLOAT32;
+  tensor_0->type = TensorType_INT8;
 
   auto tensor_1 = absl::make_unique<TensorT>();
   tensor_1->quantization = absl::make_unique<QuantizationParametersT>();
-  tensor_1->quantization->scale.push_back(0.35);
-  tensor_1->quantization->zero_point.push_back(28);
+  tensor_1->quantization->scale.push_back(0.12);
+  tensor_1->quantization->zero_point.push_back(50);
   tensor_1->name = "tensor_1";
   tensor_1->shape = {};
   tensor_1->type = TensorType_INT8;
 
   auto tensor_2 = absl::make_unique<TensorT>();
-  tensor_2->quantization = absl::make_unique<QuantizationParametersT>();
-  tensor_2->quantization->scale.push_back(0.12);
-  tensor_2->quantization->zero_point.push_back(50);
   tensor_2->name = "tensor_2";
   tensor_2->shape = {};
-  tensor_2->type = TensorType_INT8;
+  tensor_2->type = TensorType_FLOAT32;
 
   auto tensor_3 = absl::make_unique<TensorT>();
   tensor_3->name = "tensor_3";
@@ -310,11 +311,11 @@ TEST(ModelInterface, Uint8SingleInputOutput) {
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 4);
   EXPECT_EQ(model->buffers.size(), 1);
 
-  EXPECT_EQ(model->subgraphs[0]->tensors[0]->name, "tensor_0");
-  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_UINT8);
-  EXPECT_FLOAT_EQ(model->subgraphs[0]->tensors[0]->quantization->scale[0],
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->name, "tensor_2");
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->type, TensorType_UINT8);
+  EXPECT_FLOAT_EQ(model->subgraphs[0]->tensors[2]->quantization->scale[0],
                   0.35);
-  EXPECT_EQ(model->subgraphs[0]->tensors[0]->quantization->zero_point[0], 156);
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->quantization->zero_point[0], 156);
 
   EXPECT_EQ(model->subgraphs[0]->tensors[3]->name, "tensor_3");
   EXPECT_EQ(model->subgraphs[0]->tensors[3]->type, TensorType_UINT8);
@@ -345,9 +346,31 @@ TEST(ModelInterface, Int8SingleInputOutput) {
   EXPECT_EQ(model->buffers.size(), 1);
 
   EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->inputs[0], 1);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 0);
   EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
-  EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 1);
+}
+
+TEST(ModelInterface, MixedTypeSingleInputOutput) {
+  auto model = CreateModelSingleInputOutput();
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_UINT8,
+                                 TensorType_INT8),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
+  EXPECT_EQ(model->buffers.size(), 1);
+
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 2);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 1);
 }
 
 TEST(ModelInterface, Uint8MutipleInputOutput) {

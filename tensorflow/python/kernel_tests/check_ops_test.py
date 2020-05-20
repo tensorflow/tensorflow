@@ -1688,8 +1688,6 @@ class AssertShapesTest(test.TestCase):
         rank_three_shapes, array_ops.constant(1), correct_rank=3, actual_rank=0)
 
   def test_raises_dynamic_incorrect_rank(self):
-    self.skipTest("b/134600611")
-
     x_value = 5
     rank_two_shapes = [(1, 1), (1, 3), ("a", "b"), (None, None)]
     with ops.Graph().as_default():

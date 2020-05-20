@@ -29,8 +29,12 @@ namespace gpu {
 
 // Validates which operations are supported and returns array of operations to
 // replace with GPU kernels. The caller must free the pointer on TfLiteIntArray.
+// 'max_delegated_partitions' limits the maximum number of partitions to
+// delegate as a graph could possibly have multiple partitions (each partition
+// consists of a subset of ops) to be replaced.
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context,
-                                bool allow_quant_ops = false);
+                                bool allow_quant_ops = false,
+                                int max_delegated_partitions = 1);
 
 // Extracts TFLite delegate execution plan from the input TFLite context and
 // converts it into generic graph format.

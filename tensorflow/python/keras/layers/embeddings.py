@@ -121,7 +121,6 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.supports_masking = mask_zero
     self.input_length = input_length
-    self._supports_ragged_inputs = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -130,8 +129,10 @@ class Embedding(Layer):
     # since it knows all kernels using the variable only exist on CPU.
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
+    # TPU codepaths which can handle sparse optimizers. But if we are within
+    # a tf.function, we go back the graph mode logic and rely on the placer.
+    if (context.executing_eagerly() and context.context().num_gpus() and
+        not ops.inside_function()):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),

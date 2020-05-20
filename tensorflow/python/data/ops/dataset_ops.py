@@ -42,6 +42,7 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
@@ -1525,7 +1526,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> result = dataset.map(lambda x: x + 1)
 
     >>> # Each element is a tuple containing two `tf.Tensor` objects.
-    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz)")]
+    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz")]
     >>> dataset = tf.data.Dataset.from_generator(
     ...     lambda: elements, (tf.int32, tf.string))
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
@@ -1577,7 +1578,7 @@ name=None))
 
     Note that irrespective of the context in which `map_func` is defined (eager
     vs. graph), tf.data traces the function and executes it as a graph. To use
-    Python code inside of the function you have two options:
+    Python code inside of the function you have a few options:
 
     1) Rely on AutoGraph to convert Python code into an equivalent graph
     computation. The downside of this approach is that AutoGraph can convert
@@ -1656,7 +1657,8 @@ name=None))
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
 
-    >>> dataset = Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(
+    ...                [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     >>> dataset = dataset.flat_map(lambda x: Dataset.from_tensor_slices(x))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -2818,15 +2820,12 @@ class Options(options_lib.OptionsBase):
       result.extend(
           optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
 
-    if self.experimental_deterministic is False:
+    if self.experimental_deterministic is False:  # pylint: disable=g-bool-id-comparison
       result.append("make_sloppy")
     if self.experimental_stats and self.experimental_stats.latency_all_edges:
       result.append("latency_all_edges")
     if self.experimental_slack:
       result.append("slack")
-    if (self.experimental_distribute and
-        self.experimental_distribute._make_stateless):  # pylint: disable=protected-access
-      result.append("make_stateless")
     return result
 
   def _graph_rewrite_configs(self):
@@ -3050,7 +3049,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @property
   def value_type(self):
-    return _VariantDataset
+    return Dataset
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
@@ -3108,7 +3107,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 class StructuredFunctionWrapper(object):
   """A function wrapper that supports structured arguments and return values."""
 
-  # pylint: disable=protected-access
   def __init__(self,
                func,
                transformation_name,
@@ -3151,6 +3149,7 @@ class StructuredFunctionWrapper(object):
       ValueError: If an invalid combination of `dataset`, `input_classes`,
         `input_shapes`, and `input_types` is passed.
     """
+    # pylint: disable=protected-access
     if input_structure is None:
       if dataset is None:
         if input_classes is None or input_shapes is None or input_types is None:
@@ -3270,7 +3269,14 @@ class StructuredFunctionWrapper(object):
         _warn_if_collections(transformation_name)
 
     else:
+      if def_function.functions_run_eagerly():
+        warnings.warn(
+            "Even though the tf.config.experimental_run_functions_eagerly "
+            "option is set, this option does not apply to tf.data functions. "
+            "tf.data functions are still traced and executed as graphs.")
+
       defun_kwargs.update({"func_name": func_name})
+      defun_kwargs.update({"_tf_data_function": True})
 
       # Note: _wrapper_helper will apply autograph based on context.
       @eager_function.defun_with_attributes(
@@ -3287,9 +3293,9 @@ class StructuredFunctionWrapper(object):
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
         self._function = wrapper_fn.get_concrete_function()
-
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
+
       if resource_tracker.resources:
         _warn_if_collections(transformation_name)
 
@@ -3301,7 +3307,6 @@ class StructuredFunctionWrapper(object):
               "if the random op has not been provided any seed. Explicitly set "
               "the seed in the function if this is not the intended behavior."
               %(outer_graph_seed, func_name), stacklevel=4)
-  # pylint: enable=protected-access
 
   @property
   def output_structure(self):
@@ -3526,6 +3531,8 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCacheDeleter(object):
   """An object which cleans up an anonymous memory cache resource.
 
@@ -3552,15 +3559,20 @@ class _MemoryCacheDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCache(object):
   """Represents a memory cache resource."""
 
   def __init__(self):
     super(_MemoryCache, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
-    self._resource_deleter = _MemoryCacheDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
+    if compat.forward_compatible(2020, 5, 20):
+      self._handle = gen_dataset_ops.dummy_memory_cache()
+    else:
+      self._device = context.context().device_name
+      self._handle, self._deleter = gen_dataset_ops.anonymous_memory_cache()
+      self._resource_deleter = _MemoryCacheDeleter(
+          handle=self._handle, device=self._device, deleter=self._deleter)
 
   @property
   def handle(self):
@@ -3590,6 +3602,8 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/22.
 class _SeedGeneratorDeleter(object):
   """An object which cleans up an anonymous seed generator resource.
 
@@ -3616,63 +3630,22 @@ class _SeedGeneratorDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/22.
 class _SeedGenerator(object):
   """Represents a fixed seed generator resource."""
 
   def __init__(self, seed, seed2, reshuffle):
     super(_SeedGenerator, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (
-        gen_dataset_ops.anonymous_seed_generator(
-            seed=seed, seed2=seed2, reshuffle=reshuffle))
-    self._resource_deleter = _SeedGeneratorDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
-
-
-# TODO(b/151115950): Remove this class after forward compatibility window
-# expires
-class _RandomSeedGeneratorDeleter(object):
-  """An object which cleans up an anonymous random seed generator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_random_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_random_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-
-
-# TODO(b/151115950): Remove this class after forward compatibility window
-# expires
-class _RandomSeedGenerator(object):
-  """Represents a random seed generator resource."""
-
-  def __init__(self, seed, seed2):
-    super(_RandomSeedGenerator, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (
-        gen_dataset_ops.anonymous_random_seed_generator(seed=seed, seed2=seed2))
-    self._resource_deleter = _RandomSeedGeneratorDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
+    if compat.forward_compatible(2020, 5, 22):
+      self._handle = gen_dataset_ops.dummy_seed_generator()
+    else:
+      self._device = context.context().device_name
+      self._handle, self._deleter = (
+          gen_dataset_ops.anonymous_seed_generator(
+              seed=seed, seed2=seed2, reshuffle=reshuffle))
+      self._resource_deleter = _SeedGeneratorDeleter(
+          handle=self._handle, device=self._device, deleter=self._deleter)
 
   @property
   def handle(self):
@@ -3710,25 +3683,29 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
     self._seed, self._seed2 = random_seed.get_seed(seed)
-
     if reshuffle_each_iteration is None:
-      self._reshuffle_each_iteration = True
-    else:
-      self._reshuffle_each_iteration = reshuffle_each_iteration
+      reshuffle_each_iteration = True
+    self._reshuffle_each_iteration = reshuffle_each_iteration
 
-    if (tf2.enabled() and (self._reshuffle_each_iteration or
-                           compat.forward_compatible(2020, 4, 10)) and
+    if (tf2.enabled() and
         (context.executing_eagerly() or ops.inside_function())):
-      if compat.forward_compatible(2020, 4, 10):
-        self._seed_generator = _SeedGenerator(self._seed, self._seed2,
-                                              self._reshuffle_each_iteration)
+      self._seed_generator = _SeedGenerator(self._seed, self._seed2,
+                                            self._reshuffle_each_iteration)
+      if compat.forward_compatible(2020, 5, 22):
+        variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
+            input_dataset._variant_tensor,  # pylint: disable=protected-access
+            buffer_size=self._buffer_size,
+            seed=self._seed,
+            seed2=self._seed2,
+            seed_generator=self._seed_generator.handle,
+            reshuffle_each_iteration=self._reshuffle_each_iteration,
+            **self._flat_structure)
       else:
-        self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
-      variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          buffer_size=self._buffer_size,
-          seed_generator=self._seed_generator.handle,
-          **self._flat_structure)
+        variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
+            input_dataset._variant_tensor,  # pylint: disable=protected-access
+            buffer_size=self._buffer_size,
+            seed_generator=self._seed_generator.handle,
+            **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.shuffle_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -4138,29 +4115,17 @@ class ParallelMapDataset(UnaryDataset):
     else:
       self._deterministic = "false"
     self._preserve_cardinality = preserve_cardinality
-    if deterministic is not None or compat.forward_compatible(2020, 3, 6):
-      self._num_parallel_calls = ops.convert_to_tensor(
-          num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-      variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          f=self._map_func.function,
-          num_parallel_calls=self._num_parallel_calls,
-          deterministic=self._deterministic,
-          use_inter_op_parallelism=self._use_inter_op_parallelism,
-          preserve_cardinality=self._preserve_cardinality,
-          **self._flat_structure)
-    else:
-      self._num_parallel_calls = ops.convert_to_tensor(
-          num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
-      variant_tensor = gen_dataset_ops.parallel_map_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          f=self._map_func.function,
-          num_parallel_calls=self._num_parallel_calls,
-          use_inter_op_parallelism=self._use_inter_op_parallelism,
-          preserve_cardinality=self._preserve_cardinality,
-          **self._flat_structure)
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+    variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        num_parallel_calls=self._num_parallel_calls,
+        deterministic=self._deterministic,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
+        **self._flat_structure)
     super(ParallelMapDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
@@ -4287,30 +4252,17 @@ class ParallelInterleaveDataset(UnaryDataset):
     else:
       deterministic_string = "false"
 
-    if (buffer_output_elements != AUTOTUNE or
-        prefetch_input_elements != AUTOTUNE or
-        compat.forward_compatible(2020, 3, 6)):
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          self._num_parallel_calls,
-          f=self._map_func.function,
-          deterministic=deterministic_string,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v3(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._num_parallel_calls,
-          f=self._map_func.function,
-          deterministic=deterministic_string,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,  # pylint: disable=protected-access
+        self._cycle_length,
+        self._block_length,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        self._num_parallel_calls,
+        f=self._map_func.function,
+        deterministic=deterministic_string,
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 

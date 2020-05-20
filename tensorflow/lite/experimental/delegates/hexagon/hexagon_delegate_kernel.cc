@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/utils.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -144,24 +143,6 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
     // Const tensors should have been handled at delegation time..
     if (tensor->allocation_type != kTfLiteMmapRo) {
       char* data_ptr = tensor->data.raw;
-      if (tensor->type == kTfLiteInt8) {
-        // If input is int8, we first re-quantize it to uint8 for Hexagon.
-        if (int8_to_uint8_tensors_.size() <= input_idx ||
-            !int8_to_uint8_tensors_[input_idx]) {
-          TF_LITE_KERNEL_LOG(context,
-                             "Found int8 input %d with no uint8 version",
-                             tensor_index);
-          return kTfLiteError;
-        }
-        TfLiteTensor* uint8_tensor = int8_to_uint8_tensors_[input_idx];
-        optimized_ops::Requantize(
-            tensor->data.int8, NumElements(tensor),
-            kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
-            tensor->params.zero_point,
-            tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
-            uint8_tensor->data.uint8);
-        data_ptr = uint8_tensor->data.raw;
-      }
 
       if (tensor->dims->size > 4) {
         ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
@@ -213,27 +194,51 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
     return kTfLiteError;
   }
 
-  // Requantize uint8->int8 for eligible output tensors.
-  for (auto tensor_index : TfLiteIntArrayView(node->outputs)) {
-    TfLiteTensor* tensor = &context->tensors[tensor_index];
-    if (tensor->allocation_type != kTfLiteMmapRo &&
-        tensor->type == kTfLiteInt8) {
-      optimized_ops::Requantize(
-          tensor->data.uint8, NumElements(tensor),
-          kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
-          tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
-          tensor->params.zero_point, tensor->data.int8);
-    }
-  }
-
   if (params_.print_graph_profile) {
     PrintPerformanceData(reinterpret_cast<Profiler*>(context->profiler));
   }
   return kTfLiteOk;
 }
 
+TfLiteStatus HexagonDelegateKernel::ResizeOutputTensors(TfLiteContext* context,
+                                                        TfLiteNode* node) {
+  if (!params_.enable_dynamic_batch_size) return kTfLiteError;
+  int new_batch = -1;
+  for (int i = 0; i < params_.input_batch_dimensions->size; ++i) {
+    // If this input has no dynamic shape skip it.
+    if (params_.input_batch_dimensions->data[i] == -1) continue;
+    int input_tensor_index = node->inputs->data[i];
+    TfLiteTensor* input_tensor = &context->tensors[input_tensor_index];
+    new_batch =
+        input_tensor->dims->data[params_.input_batch_dimensions->data[i]];
+    break;
+  }
+  if (new_batch == -1) {
+    TF_LITE_KERNEL_LOG(context, "Invalid Batch size.");
+    return kTfLiteError;
+  }
+  for (int i = 0; i < node->outputs->size; ++i) {
+    // If this output has no dynamic shape skip it.
+    if (params_.output_batch_dimensions->data[i] == -1) continue;
+    int output_tensor_index = node->outputs->data[i];
+    TfLiteTensor* output_tensor = &context->tensors[output_tensor_index];
+    TfLiteIntArray* new_shape = TfLiteIntArrayCopy(output_tensor->dims);
+    new_shape->data[params_.output_batch_dimensions->data[i]] = new_batch;
+    TF_LITE_ENSURE_OK(context,
+                      context->ResizeTensor(context, output_tensor, new_shape));
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
                                             TfLiteNode* node) {
+  if (graph_prepared_) {
+    if (!params_.enable_dynamic_batch_size)
+      TF_LITE_KERNEL_LOG(context, "Calling prepare multiple times");
+    // Graph already prepared, but we must resize TFLite output tensors
+    // based on the new input shape.
+    return ResizeOutputTensors(context, node);
+  }
   if (hexagon_nn_ == nullptr) {
     context->ReportError(context, "Hexagon interface not available. prepare");
     return kTfLiteError;
@@ -266,38 +271,12 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
     }
   }
 
-  // Assign temporary tensors for any input int8 tensors.
-  std::vector<int> temporary_tensors;
-  int8_to_uint8_tensors_.clear();
-  int8_to_uint8_tensors_.reserve(node->inputs->size);
-  for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
-    TfLiteTensor* tensor = &context->tensors[tensor_index];
-    // For every int8 tensor, we need to create a new temporary uint8 tensor.
-    if (tensor->allocation_type != kTfLiteMmapRo &&
-        tensor->type == kTfLiteInt8) {
-      TfLiteTensor* uint8_tensor;
-      int uint8_tensor_index;
-      TF_LITE_ENSURE_STATUS(delegates::CreateNewTensorWithDifferentType(
-          context, tensor_index, kTfLiteUInt8, &uint8_tensor,
-          &uint8_tensor_index));
-      int8_to_uint8_tensors_.push_back(uint8_tensor);
-      temporary_tensors.push_back(uint8_tensor_index);
-    } else {
-      int8_to_uint8_tensors_.push_back(nullptr);
-    }
-  }
-  if (!temporary_tensors.empty()) {
-    // This ensures the runtime allocates memory for every required temporary
-    // tensor.
-    node->temporaries = TfLiteIntArrayCreate(temporary_tensors.size());
-    for (int i = 0; i < temporary_tensors.size(); ++i) {
-      node->temporaries->data[i] = temporary_tensors[i];
-    }
-  }
-
   if (params_.print_graph_debug) {
     PrintDebuggingGraph();
   }
+
+  // Mark graph as prepared, since we can't prepare it multiple times.
+  graph_prepared_ = true;
 
   return kTfLiteOk;
 }
@@ -307,8 +286,13 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
     const TfLiteIntArray* output_tensors) {
   builder_.reset(
       new delegates::hexagon::GraphBuilder(hexagon_nn_, context, graph_id_));
+  if (params_.enable_dynamic_batch_size) {
+    builder_->AddBatchSeqConfig(params_.max_batch_size,
+                                params_.input_batch_dimensions,
+                                params_.output_batch_dimensions);
+  }
   // Add inputs to the graph.
-  builder_->AddInputTensors(input_tensors, context);
+  TF_LITE_ENSURE_STATUS(builder_->AddInputTensors(input_tensors, context));
 
   // Add all ops.
   TfLiteNode* node;
@@ -324,7 +308,7 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
   }
 
   // Add Outputs.
-  builder_->AddOutputTensors(output_tensors, context);
+  TF_LITE_ENSURE_STATUS(builder_->AddOutputTensors(output_tensors, context));
 
   builder_->Build();
 

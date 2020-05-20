@@ -27,7 +27,7 @@ void SingleOpModelWithCoreMlDelegate::ApplyDelegateAndInvoke() {
       delegate_ptr, [](TfLiteDelegate* delegate) { TfLiteCoreMlDelegateDelete(delegate); });
   // Add delegate.
   // TODO(karimnosseir): This doesn't actually make the test fail, switch to something else.
-  ASSERT_TRUE(interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteError);
+  ASSERT_TRUE(interpreter_->ModifyGraphWithDelegate(delegate_.get()) == kTfLiteOk);
 
   Invoke();
 }

@@ -65,16 +65,16 @@ namespace tflite {
 class Flag {
  public:
   enum FlagType {
-    POSITIONAL = 0,
-    REQUIRED,
-    OPTIONAL,
+    kPositional = 0,
+    kRequired,
+    kOptional,
   };
 
   // The order of the positional flags is the same as they are added.
   // Positional flags are supposed to be required.
   template <typename T>
   static Flag CreateFlag(const char* name, T* val, const char* usage,
-                         FlagType flag_type = OPTIONAL) {
+                         FlagType flag_type = kOptional) {
     return Flag(
         name, [val](const T& v) { *val = v; }, *val, usage, flag_type);
   }

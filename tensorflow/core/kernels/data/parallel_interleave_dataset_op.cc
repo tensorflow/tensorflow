@@ -714,6 +714,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Thread responsible for launching all worker threads. The thread stays
     // around after startup in case autotuning increases num_parallel_calls.
     void WorkerManagerThread() TF_LOCKS_EXCLUDED(mu_) {
+      RecordStart(ctx_.get());
+      auto cleanup = gtl::MakeCleanup([this]() {
+        RecordStop(ctx_.get());
+        mutex_lock l(*mu_);
+        DecrementOutstandingThreads();
+      });
       int initial_current_workers;
       // When elements are moved from `future_elements_` to `current_elements_`,
       // the future worker which created the element may continue to process
@@ -748,7 +754,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             RecordStart(ctx_.get());
           }
           if (cancelled_ || end_of_input_) {
-            DecrementOutstandingThreads();
             return;
           }
           IncrementOutstandingThreads();
@@ -1323,16 +1328,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int idx = 0; idx < size; ++idx) {
         threadpool->Schedule(
             [this, ctx, reader, idx, name, &s, &counter, elements] {
+              RecordStart(ctx);
+              auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
+                RecordStop(ctx);
+                counter.DecrementCount();
+              });
               std::shared_ptr<Element> elem;
               Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
               mutex_lock l(*mu_);
               if (!ret_status.ok()) {
                 s.Update(ret_status);
-                counter.DecrementCount();
                 return;
               }
               (*elements)[idx] = elem;
-              counter.DecrementCount();
             });
       }
       counter.Wait();

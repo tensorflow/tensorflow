@@ -410,6 +410,8 @@ class DebuggedGraph(object):
     self._inner_graph_ids = []
     # A dictionary from op name to GraphOpCreationDigest.
     self._op_by_name = dict()
+    # A dictionary mapping op to immediate downstream consumers.
+    self._op_consumers = collections.defaultdict(list)
 
   def add_inner_graph_id(self, inner_graph_id):
     """Add the debugger-generated ID of a graph nested within this graph.
@@ -434,6 +436,18 @@ class DebuggedGraph(object):
     self._op_by_name[
         graph_op_creation_digest.op_name] = graph_op_creation_digest
 
+  def add_op_consumer(self, src_op_name, src_slot, dst_op_name, dst_slot):
+    """Add a consuming op for this op.
+
+    Args:
+      src_op_name: Name of the op of which the output tensor is being consumed.
+      src_slot: 0-based output slot of the op being consumed.
+      dst_op_name: Name of the consuming op (e.g., "Conv2D_3/BiasAdd")
+      dst_slot: 0-based input slot of the consuming op that receives the tensor
+        from this op.
+    """
+    self._op_consumers[src_op_name].append((src_slot, dst_op_name, dst_slot))
+
   @property
   def name(self):
     return self._name
@@ -450,14 +464,40 @@ class DebuggedGraph(object):
   def inner_graph_ids(self):
     return self._inner_graph_ids
 
-  def get_op_type(self, op_name):
-    return self._op_by_name[op_name].op_type
-
   def get_tensor_id(self, op_name, output_slot):
     """Get the ID of a symbolic tensor in this graph."""
     return self._op_by_name[op_name].output_tensor_ids[output_slot]
 
-  # TODO(cais): Implement to_json().
+  def get_op_creation_digest(self, op_name):
+    """Get the GraphOpCreationDigest for a op in the graph."""
+    return self._op_by_name[op_name]
+
+  def get_op_consumers(self, src_op_name):
+    """Get all the downstream consumers of this op.
+
+    Only data (non-control) edges are tracked.
+
+    Args:
+      src_op_name: Name of the op providing the tensor being consumed.
+
+    Returns:
+      A list of (src_slot, dst_op_name, dst_slot) tuples. In each item of
+      the list:
+        src_slot: 0-based output slot of the op of which the output tensor
+          is being consumed.
+        dst_op_name: Name of the consuming op (e.g., "Conv2D_3/BiasAdd")
+        dst_slot: 0-based input slot of the consuming op that receives
+          the tensor from this op.
+    """
+    return self._op_consumers[src_op_name]
+
+  def to_json(self):
+    return {
+        "name": self.name,
+        "graph_id": self.graph_id,
+        "outer_graph_id": self._outer_graph_id,
+        "inner_graph_ids": self._inner_graph_ids,
+    }
 
 
 class DebuggedDevice(object):
@@ -483,7 +523,11 @@ class DebuggedDevice(object):
   def device_id(self):
     return self._device_id
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    return {
+        "device_name": self._device_name,
+        "device_id": self._device_id,
+    }
 
 
 class GraphOpCreationDigest(BaseDigest):
@@ -500,6 +544,9 @@ class GraphOpCreationDigest(BaseDigest):
     output_tensor_ids: Debugger-generated IDs for the output(s) of the op.
     input_names: Names of the input tensors to the op.
     device_name: The name of the device that the op is placed on (if available).
+    host_name: Name of the host on which the op is created.
+    stack_frame_ids: IDs of the frames of the stack trace at which the op
+      is created.
   """
 
   def __init__(self,
@@ -509,6 +556,8 @@ class GraphOpCreationDigest(BaseDigest):
                op_type,
                op_name,
                output_tensor_ids,
+               host_name,
+               stack_frame_ids,
                input_names=None,
                device_name=None):
     super(GraphOpCreationDigest, self).__init__(wall_time, offset)
@@ -516,6 +565,8 @@ class GraphOpCreationDigest(BaseDigest):
     self._op_type = op_type
     self._op_name = op_name
     self._output_tensor_ids = _tuple_or_none(output_tensor_ids)
+    self._host_name = host_name
+    self._stack_frame_ids = stack_frame_ids
     self._input_names = _tuple_or_none(input_names)
     self._device_name = device_name
 
@@ -547,6 +598,14 @@ class GraphOpCreationDigest(BaseDigest):
   def device_name(self):
     return self._device_name
 
+  @property
+  def host_name(self):
+    return self._host_name
+
+  @property
+  def stack_frame_ids(self):
+    return self._stack_frame_ids
+
   def to_json(self):
     output = super(GraphOpCreationDigest, self).to_json()
     output.update({
@@ -554,6 +613,8 @@ class GraphOpCreationDigest(BaseDigest):
         "op_type": self.op_type,
         "op_name": self.op_name,
         "output_tensor_ids": self.output_tensor_ids,
+        "host_name": self.host_name,
+        "stack_frame_ids": self.stack_frame_ids,
         "input_names": self.input_names,
         "device_name": self.device_name,
     })
@@ -849,9 +910,17 @@ class DebugDataReader(object):
             op_creation_proto.op_type,
             op_creation_proto.op_name,
             tuple(op_creation_proto.output_tensor_ids),
+            op_creation_proto.code_location.host_name,
+            tuple(op_creation_proto.code_location.stack_frame_ids),
             input_names=tuple(op_creation_proto.input_names))
         self._graph_op_digests.append(op_digest)
-        self._graph_by_id[op_creation_proto.graph_id].add_op(op_digest)
+        debugged_graph = self._graph_by_id[op_creation_proto.graph_id]
+        debugged_graph.add_op(op_digest)
+        for dst_slot, input_name in enumerate(op_creation_proto.input_names):
+          src_op_name, src_slot = input_name.split(":")
+          debugged_graph.add_op_consumer(src_op_name, int(src_slot),
+                                         op_creation_proto.op_name, dst_slot)
+
       elif debug_event.debugged_graph.ByteSize():
         graph_proto = debug_event.debugged_graph
         graph = DebuggedGraph(
@@ -936,7 +1005,7 @@ class DebugDataReader(object):
     Returns:
       Op type as a str.
     """
-    return self._graph_by_id[graph_id].get_op_type(op_name)
+    return self._graph_by_id[graph_id].get_op_creation_digest(op_name).op_type
 
   def _load_execution(self):
     """Incrementally read the .execution file."""
@@ -1030,48 +1099,61 @@ class DebugDataReader(object):
     else:
       return self._graph_op_digests
 
-  def graph_execution_traces(self, digest=False):
+  def graph_execution_traces(self, digest=False, begin=None, end=None):
     """Get all the intra-graph execution tensor traces read so far.
-
-    TODO(cais): Support begin and end to enable partial loading.
 
     Args:
       digest: Whether the results will be returned in the more light-weight
         digest form.
+      begin: Optional beginning index for the requested traces or their digests.
+        Python-style negative indices are supported.
+      end: Optional ending index for the requested traces or their digests.
+        Python-style negative indices are supported.
 
     Returns:
       If `digest`: a `list` of `GraphExecutionTraceDigest` objects.
       Else: a `list` of `GraphExecutionTrace` objects.
     """
+    digests = self._graph_execution_trace_digests
+    if begin is not None or end is not None:
+      begin = begin or 0
+      end = end or len(digests)
+      digests = digests[begin:end]
     if digest:
-      return self._graph_execution_trace_digests
+      return digests
     else:
-      return [self.read_graph_execution_trace(digest)
-              for digest in self._graph_execution_trace_digests]
+      return [self.read_graph_execution_trace(digest) for digest in digests]
 
   def num_graph_execution_traces(self):
     """Get the number of graph execution traces read so far."""
     return len(self._graph_execution_trace_digests)
 
-  def executions(self, digest=False):
+  def executions(self, digest=False, begin=None, end=None):
     """Get `Execution`s or `ExecutionDigest`s this reader has read so far.
-
-    # TODO(cais): Support begin index and end index to support partial loading.
 
     Args:
       digest: Whether the results are returned in a digest form, i.e.,
         `ExecutionDigest` format, instead of the more detailed `Execution`
         format.
+      begin: Optional beginning index for the requested execution data objects
+        or their digests. Python-style negative indices are supported.
+      end: Optional ending index for the requested execution data objects or
+        their digests. Python-style negative indices are supported.
 
     Returns:
       If `digest`: a `list` of `ExecutionDigest` objects.
       Else: a `list` of `Execution` objects.
     """
+    digests = self._execution_digests
+    if begin is not None or end is not None:
+      begin = begin or 0
+      end = end or len(digests)
+      digests = digests[begin:end]
     if digest:
-      return self._execution_digests
+      return digests
     else:
       # TODO(cais): Optimizer performance removing repeated file open/close.
-      return [self.read_execution(digest) for digest in self._execution_digests]
+      return [self.read_execution(digest) for digest in digests]
 
   def num_executions(self):
     """Get the number of execution events read so far."""
@@ -1123,13 +1205,10 @@ class DebugDataReader(object):
         1. The host name.
         2. The stack trace, as a list of (file_path, lineno, func) tuples.
     """
-    debug_event = self._reader.read_graphs_event(
-        graph_op_creation_digest.offset)
-    graph_op_creation = debug_event.graph_op_creation
-    host_name = graph_op_creation.code_location.host_name
-    return host_name, [
+    return graph_op_creation_digest.host_name, [
         self._stack_frame_by_id[frame_id][1:]
-        for frame_id in graph_op_creation.code_location.stack_frame_ids]
+        for frame_id in graph_op_creation_digest.stack_frame_ids
+    ]
 
   # TODO(cais): Add graph_execution_digests() with an ExecutionDigest
   #   as a kwarg, to establish the association between top-level and intra-graph

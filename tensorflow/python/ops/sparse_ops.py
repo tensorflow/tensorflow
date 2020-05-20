@@ -860,14 +860,19 @@ def sparse_reshape(sp_input, shape, name=None):
       original_reshaped_shape = list(reshaped_shape_const)  # A copy
       in_shape_size = np.prod(sp_input.shape.as_list())
       num_implied = sum(dim is None for dim in reshaped_shape_const)
-      if num_implied == 1:
+
+      # If there is a 0 dim in the user-provided shape, we cannot infer the
+      # unknown dim reliably. This is why we skip the `if` branch below when
+      # a 0 is present in `reshaped_shape_const`. Same below.
+      if num_implied == 1 and 0 not in reshaped_shape_const:
         implied_idx = original_reshaped_shape.index(None)
         non_implied_idx = (
             original_reshaped_shape[:implied_idx] +
             original_reshaped_shape[implied_idx + 1:])
         reshaped_shape_const[implied_idx] = int(
             in_shape_size // np.prod(non_implied_idx))
-      if num_implied <= 1:
+      if num_implied == 0 or (num_implied == 1 and
+                              0 not in reshaped_shape_const):
         reshaped_size = np.prod(reshaped_shape_const)
         if reshaped_size != in_shape_size:
           raise ValueError(
@@ -1060,6 +1065,7 @@ def sparse_slice(sp_input, start, size, name=None):
 
 
 @tf_export(v1=["sparse_to_dense"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     None,
     "Create a `tf.sparse.SparseTensor` and use `tf.sparse.to_dense` instead.")
@@ -1989,6 +1995,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
 
 
 @tf_export(v1=["io.serialize_sparse", "serialize_sparse"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("serialize_sparse")
 def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
@@ -2009,6 +2016,7 @@ def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
 
 
 @tf_export("io.serialize_sparse", v1=[])
+@dispatch.add_dispatch_support
 def serialize_sparse_v2(sp_input, out_type=dtypes.string, name=None):
   """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
 
@@ -2035,6 +2043,7 @@ def serialize_sparse_v2(sp_input, out_type=dtypes.string, name=None):
 
 
 @tf_export(v1=["io.serialize_many_sparse", "serialize_many_sparse"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("serialize_many_sparse")
 def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
@@ -2064,6 +2073,7 @@ def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
 
 
 @tf_export("io.serialize_many_sparse", v1=[])
+@dispatch.add_dispatch_support
 def serialize_many_sparse_v2(sp_input, out_type=dtypes.string, name=None):
   """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
 
@@ -2167,6 +2177,7 @@ def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
 @tf_export(
     "io.deserialize_many_sparse",
     v1=["io.deserialize_many_sparse", "deserialize_many_sparse"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("deserialize_many_sparse")
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.

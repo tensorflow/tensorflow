@@ -333,11 +333,22 @@ func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i1>) {
 
 // -----
 
-// Check that a switch always takes two arguments.
+// Check that a switch always needs at least two arguments.
 func @invalid_switch(%arg0: tensor<*xf32>) {
   tf_executor.graph {
     %true, %false, %ctlSwitch = "tf_executor.Switch"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
 // expected-error@-1 {{'tf_executor.Switch' op expected 2 or more operands}}
+  }
+  return
+}
+
+// -----
+
+// Check that a switch always needs at least two arguments.
+func @invalid_switch(%arg0: tensor<*xf32>) {
+  tf_executor.graph {
+    %true, %false, %ctlSwitch = tf_executor.Switch %arg0 : tensor<*xf32>
+// expected-error@-1 {{custom op 'tf_executor.Switch'  expects a single data type and a predicate}}
   }
   return
 }

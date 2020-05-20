@@ -24,8 +24,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 template <typename input_type, typename index_type>
@@ -39,7 +39,7 @@ class SliceOpModel : public SingleOpModel {
                TensorType tensor_index_type, TensorType tensor_input_type,
                TestType input_tensor_types) {
     input_ = AddInput(tensor_input_type);
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       begin_ = AddInput(tensor_index_type);
       size_ = AddInput(tensor_index_type);
     } else {
@@ -52,7 +52,7 @@ class SliceOpModel : public SingleOpModel {
                  CreateSliceOptions(builder_).Union());
     BuildInterpreter({input_shape, begin_shape, size_shape});
 
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<index_type>(begin_, begin_data);
       PopulateTensor<index_type>(size_, size_data);
     }
@@ -239,7 +239,8 @@ TEST_P(SliceOpTest, SliceString) {
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
-                         ::testing::Values(TestType::CONST, TestType::DYNAMIC));
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
 
 }  // namespace
 }  // namespace tflite

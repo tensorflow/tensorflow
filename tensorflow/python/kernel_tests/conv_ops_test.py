@@ -2662,6 +2662,8 @@ class SeparableConv2DTest(test.TestCase):
       if data_format == "NCHW":
         real_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
+        if isinstance(padding, list):
+          padding = [padding[0], padding[3], padding[1], padding[2]]
 
       conv = nn_impl.separable_conv2d(
           real_t1,
@@ -2755,6 +2757,45 @@ class SeparableConv2DTest(test.TestCase):
     if not test.is_gpu_available():
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
+
+  def _testSeparableConv2dExplicitPadding(self, data_format):
+    tensor_in_sizes = [1, 4, 4, 2]
+    depthwise_filter_in_sizes = [2, 2, 2, 3]
+    pointwise_filter_in_sizes = [1, 1, 6, 7]
+    padding = [[0, 0], [1, 2], [3, 4], [0, 0]]
+    with self.cached_session(use_gpu=True):
+      # Compute the 'expected' values by manually padding before calling
+      # separable_conv2d
+      t1 = self._InitValues(tensor_in_sizes)
+      t1 = array_ops.pad(t1, padding)
+      f1 = self._InitValues(depthwise_filter_in_sizes)
+      f1.set_shape(depthwise_filter_in_sizes)
+      f2 = self._InitValues(pointwise_filter_in_sizes)
+      conv = nn_impl.separable_conv2d(
+          t1,
+          f1,
+          f2,
+          strides=[1, 1, 1, 1],
+          padding="VALID",
+          data_format="NHWC")
+      expected = self.evaluate(conv)
+      expected = np.ravel(expected)
+    self._VerifyValues(
+        tensor_in_sizes=tensor_in_sizes,
+        depthwise_filter_in_sizes=depthwise_filter_in_sizes,
+        pointwise_filter_in_sizes=pointwise_filter_in_sizes,
+        stride=1,
+        padding=padding,
+        expected=expected,
+        data_format=data_format)
+
+  def testSeparableConv2dExplicitPadding(self):
+    self._testSeparableConv2dExplicitPadding("NHWC")
+
+  def testSeparableConv2dExplicitPaddingNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2dExplicitPadding("NCHW")
 
 
 class DeepConv2DTest(test.TestCase):

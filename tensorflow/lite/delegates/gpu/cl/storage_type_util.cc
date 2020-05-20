@@ -28,7 +28,7 @@ namespace cl {
 bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
                               const BHWDC& shape,
                               const TensorDescriptor& descriptor) {
-  const int slices = IntegralDivideRoundUp(shape.c, 4);
+  const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
     case TensorStorageType::BUFFER: {
       const int flt4_size =

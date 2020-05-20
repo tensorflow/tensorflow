@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -26,13 +27,12 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
 
+using llvm::interleaveComma;
 using llvm::raw_ostream;
 using llvm::RecordKeeper;
 using llvm::StringRef;
-using mlir::interleaveComma;
 using mlir::tblgen::Attribute;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::NamedTypeConstraint;

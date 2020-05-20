@@ -86,23 +86,26 @@ else ifeq ($(BUILD_TYPE), release)
 	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
 	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
 else
-	CXXFLAGS += -O3
-	CCFLAGS  += -O3
+	CXXFLAGS += -DNDEBUG -O3
+	CCFLAGS  += -DNDEBUG -O3
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
-MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -name Makefile.inc)
+
+MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
+# TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/kernels/benchmarks/*.cc)
+$(wildcard tensorflow/lite/micro/benchmarks/*.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -156,7 +159,9 @@ tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
@@ -167,6 +172,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/sub.h \
@@ -265,6 +271,9 @@ AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
+
+# Load the benchmarks.
+include $(MICRO_LITE_BENCHMARKS)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=

@@ -38,15 +38,19 @@ final class ModelMetadataInfo {
   /** Metadata array of output tensors. */
   private final List</* @Nullable */ TensorMetadata> outputsMetadata;
 
+  /** The minimum parser version required to fully understand the metadata flatbuffer. */
+  private final String /* @Nullable */ minVersion;
+
   /**
    * Creates a {@link ModelMetadataInfo} with the metadata FlatBuffer, {@code buffer}.
    *
-   * @param buffer The TFLite metadata FlatBuffer.
-   * @throws NullPointerException if {@code buffer} is null.
-   * @throws IllegalArgumentException if the metadata does not contain any subgraph metadata.
+   * @param buffer the TFLite metadata FlatBuffer
+   * @throws NullPointerException if {@code buffer} is null
+   * @throws IllegalArgumentException if {@code buffer} does not contain any subgraph metadata, or
+   *     it does not contain the expected identifier
    */
   ModelMetadataInfo(ByteBuffer buffer) {
-    checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
+    assertTFLiteMetadata(buffer);
 
     modelMetadata = ModelMetadata.getRootAsModelMetadata(buffer);
     checkArgument(
@@ -55,6 +59,7 @@ final class ModelMetadataInfo {
 
     inputsMetadata = getInputsMetadata(modelMetadata);
     outputsMetadata = getOutputsMetadata(modelMetadata);
+    minVersion = modelMetadata.minParserVersion();
   }
 
   /** Gets the count of input tensors with metadata in the metadata FlatBuffer. */
@@ -74,6 +79,15 @@ final class ModelMetadataInfo {
         inputIndex >= 0 && inputIndex < inputsMetadata.size(),
         "The inputIndex specified is invalid.");
     return inputsMetadata.get(inputIndex);
+  }
+
+  /**
+   * Gets the minimum parser version of the metadata. It can be {@code null} if the version is not
+   * populated.
+   */
+  @Nullable
+  String getMininumParserVersion() {
+    return minVersion;
   }
 
   /** Gets the root handler for the model metadata. */
@@ -98,6 +112,21 @@ final class ModelMetadataInfo {
         outputIndex >= 0 && outputIndex < outputsMetadata.size(),
         "The outputIndex specified is invalid.");
     return outputsMetadata.get(outputIndex);
+  }
+
+  /**
+   * Verifies if the buffer is a valid TFLite metadata flatbuffer.
+   *
+   * @param buffer the TFLite metadata flatbuffer
+   * @throws NullPointerException if {@code buffer} is null.
+   * @throws IllegalArgumentException if {@code buffer} does not contain the expected identifier
+   */
+  private static void assertTFLiteMetadata(ByteBuffer buffer) {
+    checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
+    checkArgument(
+        ModelMetadata.ModelMetadataBufferHasIdentifier(buffer),
+        "The identifier of the metadata is invalid. The buffer may not be a valid TFLite metadata"
+            + " flatbuffer.");
   }
 
   /** Gets metadata for all input tensors. */

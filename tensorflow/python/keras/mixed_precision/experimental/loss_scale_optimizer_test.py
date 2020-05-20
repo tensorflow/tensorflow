@@ -305,20 +305,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       opt.set_weights([np.array(2.)])
       self.assertEqual(self.evaluate(opt.variables()[0]), 2)
 
-  def testSlotMethodErrors(self):
-    opt = gradient_descent.SGD(1.0, momentum=1.0)
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
-    with self.assertRaisesRegexp(
-        AttributeError,
-        'You cannot call get_slot on a LossScaleOptimizer. This limitation '
-        'will be removed in the future.'):
-      opt.get_slot(None, None)
-    with self.assertRaisesRegexp(
-        AttributeError,
-        'You cannot call add_slot on a LossScaleOptimizer. This limitation '
-        'will be removed in the future.'):
-      opt.add_slot(None, None)
-
   def testPassingNoneToLossScale(self):
     opt = gradient_descent.SGD()
     with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
@@ -394,9 +380,49 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       run_fn = lambda: opt.minimize(loss, [var])
       strategy.experimental_run(run_fn)
 
-  @parameterized.named_parameters(*TESTCASES)
-  def testCheckpoint(self, strategy_fn):
+  @parameterized.named_parameters({
+      'testcase_name': 'SaveAndRestoreBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': True,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'SaveAndRestoreDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': True,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'SaveBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': True,
+      'restore_with_ls': False,
+  }, {
+      'testcase_name': 'SaveDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': True,
+      'restore_with_ls': False,
+  }, {
+      'testcase_name': 'RestoreBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': False,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'RestoreDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': False,
+      'restore_with_ls': True,
+  })
+  def testCheckpoint(self, strategy_fn, save_with_ls, restore_with_ls):
+
+    class MySGD(gradient_descent.SGD):
+      """A custom optimizer that tracks an extra variable."""
+
+      def __init__(self, *args, **kwargs):
+        super(MySGD, self).__init__(*args, **kwargs)
+        self.my_var = variables.Variable(0.)
+        self._track_trackable(self.my_var, 'my_var')
+
     strategy = strategy_fn()
+    replicas = strategy.num_replicas_in_sync
     if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
         not context.executing_eagerly()):
       # TODO(b/121381184): Enable running the test in this case.
@@ -405,38 +431,89 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     with self.test_session(), strategy.scope():
       # Build and run a simple model.
       var = variables.Variable([2.0])
-      loss_scale = loss_scale_module.DynamicLossScale(
-          initial_loss_scale=1., increment_period=2.,
-          multiplier=2.)
-      opt = gradient_descent.SGD(1., momentum=1.)
-      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-      run_fn = lambda: opt.minimize(lambda: var + 1., var_list=[var])
+      opt = inner_opt = MySGD(1., momentum=1.)
+      if save_with_ls:
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=1., increment_period=2.,
+            multiplier=2.)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      run_fn = lambda: opt.minimize(lambda: var / replicas + 1., var_list=[var])
       opt_op = strategy.experimental_run(run_fn)
       self.evaluate(variables.global_variables_initializer())
-      self.evaluate(opt_op)
-      self.assertEqual(self.evaluate(loss_scale()), 1.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
-      slot_var = opt._optimizer.get_slot(var, 'momentum')
-      slot_value = self.evaluate(slot_var).item()
+      self.evaluate(strategy.experimental_local_results(opt_op))
+
+      # Assert values.
+      self.assertEqual(self.evaluate(var), 1.)
+      if save_with_ls:
+        self.assertEqual(self.evaluate(loss_scale()), 1.)
+        self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+      slot_var = opt.get_slot(var, 'momentum')
+      self.assertEqual(self.evaluate(slot_var).item(), -1)
+      self.assertEqual(self.evaluate(opt.iterations), 1)
+
+      # Set optimizer variable to check arbitrary optimizer attributes can be
+      # saved/restored
+      self.evaluate(inner_opt.my_var.assign(1.))
 
       # Save a checkpoint.
       checkpoint = trackable_utils.Checkpoint(optimizer=opt, var=var)
       prefix = os.path.join(self.get_temp_dir(), 'ckpt')
       save_path = checkpoint.save(prefix)
 
-      # Run model again.
-      self.evaluate(strategy.experimental_run(run_fn))
-      self.assertEqual(self.evaluate(loss_scale()), 2.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 0)
-      self.assertNotAlmostEqual(self.evaluate(slot_var).item(), slot_value)
+      # Create new model
+      var = variables.Variable([2.0])
+      opt = inner_opt = MySGD(1., momentum=1.)
+      if restore_with_ls:
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=1., increment_period=2.,
+            multiplier=2.)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
 
-      # Load checkpoint and ensure loss scale is back to it's original value.
+      # Restore new model.
+      checkpoint = trackable_utils.Checkpoint(optimizer=opt, var=var)
       status = checkpoint.restore(save_path)
-      status.assert_consumed()
+      if save_with_ls:
+        status.assert_existing_objects_matched()
+      else:
+        status.assert_nontrivial_match()
+
+      # Assert restored values. We can only assert in eager mode since the
+      # variables are uninitialized in graph mode
+      if context.executing_eagerly():
+        self.assertEqual(self.evaluate(var), 1.)
+        if save_with_ls and restore_with_ls:
+          self.assertEqual(self.evaluate(loss_scale()), 1.)
+          self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+        elif restore_with_ls:
+          self.assertEqual(self.evaluate(loss_scale()), 1.)
+          self.assertEqual(self.evaluate(loss_scale._num_good_steps), 0)
+        self.assertEqual(self.evaluate(opt.iterations), 1)
+
+      # Run the model again.
+      run_fn = lambda: opt.minimize(lambda: var / replicas + 1., var_list=[var])
+      opt_op = strategy.experimental_run(run_fn)
+
+      # Assert new values.
+      self.evaluate(variables.global_variables_initializer())
       status.run_restore_ops()
-      self.assertEqual(self.evaluate(loss_scale()), 1.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
-      self.assertAlmostEqual(self.evaluate(slot_var).item(), slot_value)
+      self.evaluate(strategy.experimental_local_results(opt_op))
+      self.assertEqual(self.evaluate(var), -1)
+      slot_var = opt.get_slot(var, 'momentum')
+      self.assertEqual(self.evaluate(slot_var).item(), -2)
+      self.assertEqual(self.evaluate(opt.iterations), 2)
+      self.assertEqual(self.evaluate(inner_opt.my_var), 1)
+
+      # Restore model again to test restoring after slots are created
+      status = checkpoint.restore(save_path)
+      if save_with_ls and restore_with_ls:
+        status.assert_consumed()
+      elif save_with_ls:
+        status.assert_existing_objects_matched()
+      elif restore_with_ls:
+        status.assert_nontrivial_match()
+      status.run_restore_ops()
+      self.assertEqual(self.evaluate(var), 1)
+      self.assertEqual(self.evaluate(slot_var).item(), -1)
 
   def testGetConfig(self):
     opt = gradient_descent.SGD(2., momentum=0.5)

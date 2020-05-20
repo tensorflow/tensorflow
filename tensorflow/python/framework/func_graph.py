@@ -1190,13 +1190,6 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
 
     flattened = nest.flatten(arg_value, expand_composites=True)
-    tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
-    ]
-    specified_names = [arg.name for arg in tensor_specs if arg.name]
-    if specified_names and len(specified_names) < len(tensor_specs):
-      raise ValueError("If specifying TensorSpec names for nested structures, "
-                       "either zero or all names have to be specified.")
 
     for arg in flattened:
       # We have a shape entry for each arg, regardless of whether it's a real

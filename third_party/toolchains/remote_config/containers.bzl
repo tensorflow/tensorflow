@@ -24,6 +24,13 @@ containers = {
         "digest": container_digests["cuda10.1-cudnn7-ubuntu16.04-manylinux2010"],
     },
 
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.1-cudnn7-ubuntu16.04-manylinux2010-multipython.
+    "cuda10.1-cudnn7-ubuntu16.04-manylinux2010-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda10.1-cudnn7-ubuntu16.04-manylinux2010-multipython",
+        "digest": container_digests["cuda10.1-cudnn7-ubuntu16.04-manylinux2010-multipython"],
+    },
+
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.rocm-ubuntu16.04
     "rocm-ubuntu16.04": {
         "registry": "gcr.io",

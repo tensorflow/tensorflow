@@ -517,10 +517,24 @@ package_group(
         "//perftools/accelerators/xprof/api/...",
         "//third_party/py/autograph/...",
         "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
     ],
+)
+
+package_group(name = "ndarray_tensor_allow_list")
+
+# Packages that use composite tensors or dispatch.
+# TODO(b/154762408) Remove this package group once it's no longer needed.
+package_group(name = "composite_tensor_whitelist")
+
+# Packages that use private types symbols, until they are exported.
+# TODO(b/154650521) Remove.
+package_group(
+    name = "types_whitelist",
+    packages = ["//learning/deepmind/tensorflow/replicator/..."],
 )
 
 filegroup(
@@ -709,8 +723,8 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
 )
 

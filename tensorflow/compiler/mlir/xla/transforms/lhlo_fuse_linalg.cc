@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"

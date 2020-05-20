@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -78,11 +80,18 @@ void BM_Execute(int iters, int async) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  TFE_Op* matmul = MatMulOp(ctx, m, m);
+  TFE_Op* matmul = TFE_NewOp(ctx, "MatMul", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
+    TFE_OpReset(matmul, "MatMul", nullptr, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(matmul, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
@@ -113,11 +122,15 @@ void BM_Execute_Identity(int iters, int async) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  TFE_Op* identity = IdentityOp(ctx, m);
+  TFE_Op* identity = TFE_NewOp(ctx, "Identity", status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
+    TFE_OpReset(identity, "Identity", nullptr, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(identity, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(identity, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
@@ -405,6 +418,13 @@ void TensorHandleSilentCopy(bool async,
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
+    auto cpu_arg =
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hcpu));
+    auto gpu_arg =
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hgpu));
+    auto gpu_device = absl::get<tensorflow::Device*>(gpu_arg->device());
+    ASSERT_FALSE(cpu_arg->HasLocalMirror(gpu_device));
+
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
     if (cpu_op) {
       string cpu_device_name;
@@ -420,15 +440,8 @@ void TensorHandleSilentCopy(bool async,
     TFE_Execute(matmul, &retvals[0], &num_retvals, status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
-    // Validate if the input was replaced with a different TensorHandle
-    auto arg0 = tensorflow::TensorHandleFromInterface(hcpu->handle);
-    auto arg1 = tensorflow::TensorHandleFromInterface(hgpu->handle);
-    tensorflow::EagerOperation* op =
-        tensorflow::OperationFromInterface(matmul->operation);
-
-    // The input handles should never change since they have been mirrored.
-    EXPECT_EQ(op->Inputs()[0], arg0);
-    EXPECT_EQ(op->Inputs()[1], arg1);
+    // The CPU handle should have been copied and have a mirror on the GPU
+    ASSERT_TRUE(cpu_arg->HasLocalMirror(gpu_device));
 
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
@@ -626,17 +639,6 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
 
   int num_retvals = 1;
-
-  if (async) {
-    // Enqueue dummy ops so we backlog async execution & actually test async.
-    for (int i = 0; i < 10000; ++i) {
-      TFE_TensorHandle* dummy = nullptr;
-      TFE_Execute(add_op, &dummy, &num_retvals, status);
-      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-      TFE_DeleteTensorHandle(dummy);
-    }
-  }
-
   TFE_TensorHandle* retval = nullptr;
   TFE_Execute(add_op, &retval, &num_retvals, status);
   EXPECT_EQ(1, num_retvals);
@@ -1130,51 +1132,6 @@ void BM_ExecuteFunction(int iters, int async) {
 }
 BENCHMARK(BM_ExecuteFunction)->Arg(0)->Arg(1);
 
-TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
-                                 TF_Status* status) {
-  // Create the variable handle.
-  TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "", 0);
-  TFE_OpSetAttrString(op, "shared_name", "", 0);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_TensorHandle* var_handle = nullptr;
-  int num_retvals = 1;
-  TFE_Execute(op, &var_handle, &num_retvals, status);
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(1, num_retvals);
-
-  // Assign 'value' to it.
-  op = TFE_NewOp(ctx, "AssignVariableOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpAddInput(op, var_handle, status);
-
-  // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
-      TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)), TF_DeleteTensor);
-  memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
-
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      value_handle(TFE_NewTensorHandle(t.get(), status),
-                   TFE_DeleteTensorHandle);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  TFE_OpAddInput(op, value_handle.get(), status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  num_retvals = 0;
-  TFE_Execute(op, nullptr, &num_retvals, status);
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(0, num_retvals);
-
-  return var_handle;
-}
-
 TEST(CAPI, Variables) {
   // Variables use resource handles, so this is really a test for resource
   // tensor handling.
@@ -1184,7 +1141,7 @@ TEST(CAPI, Variables) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
+  TFE_TensorHandle* var_handle = TestVariable(ctx, 12.0);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
@@ -1225,7 +1182,7 @@ void BM_ReadVariable(int iters) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
+  TFE_TensorHandle* var_handle = TestVariable(ctx, 5.0);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
@@ -1246,6 +1203,8 @@ void BM_ReadVariable(int iters) {
     CHECK_EQ(0, TFE_TensorHandleNumDims(h, status));
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     h = nullptr;
+    TFE_OpAddInput(op, var_handle, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteOp(op);
@@ -1348,7 +1307,7 @@ TEST(CAPI, TestTFE_TensorHandleCopySharingUnderlyingTensorHandle) {
 tensorflow::AttrValueMap ExtractAttrs(TFE_Op* op) {
   tensorflow::AttrValueMap attr_values;
   tensorflow::EagerOperation* operation =
-      tensorflow::OperationFromInterface(op->operation);
+      tensorflow::OperationFromInterface(tensorflow::unwrap(op));
   operation->Attrs().FillAttrValueMap(&attr_values);
   return attr_values;
 }
@@ -1484,10 +1443,10 @@ TEST(CAPI, TestTFE_OpAttrsInferenceDisabledWhenNotCallingOpAddInputList) {
   TFE_TensorHandle* inputs[] = {input1, input2};
   TFE_OpAddInput(concatOp, dim, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  CHECK(concatOp->operation->OpDef());
+  CHECK(tensorflow::unwrap(concatOp)->OpDef());
   TFE_OpAddInput(concatOp, inputs[0], status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  EXPECT_FALSE(concatOp->operation->OpDef())
+  EXPECT_FALSE(tensorflow::unwrap(concatOp)->OpDef())
       << "Inference context is still present";
   TFE_OpAddInput(concatOp, inputs[1], status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -1579,7 +1538,7 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
   TFE_DeleteContext(ctx);
 }
 
-TEST(CAPI, TestTFE_OpGetAttrs) {
+TEST(CAPI, TestTFE_OpAddAttrs) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
@@ -1589,12 +1548,11 @@ TEST(CAPI, TestTFE_OpGetAttrs) {
   TFE_Op* var_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  TFE_OpAttrs attributes;
-  TFE_OpGetAttrs(var_op, &attributes);
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TFE_Op* copy_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(copy_op, "dtype", TF_FLOAT);
-  TFE_OpAddAttrs(copy_op, &attributes);
+  TFE_OpAddAttrs(copy_op, attributes);
   unsigned char is_list = 0;
   ASSERT_EQ(TF_ATTR_TYPE,
             TFE_OpGetAttrType(copy_op, "dtype", &is_list, status));
@@ -1605,7 +1563,7 @@ TEST(CAPI, TestTFE_OpGetAttrs) {
 
   tensorflow::AttrValueMap attr_values;
   tensorflow::EagerOperation* op =
-      tensorflow::OperationFromInterface(copy_op->operation);
+      tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
   op->Attrs().FillAttrValueMap(&attr_values);
   EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
 
@@ -1626,11 +1584,10 @@ TEST(CAPI, TestTFE_OpAttrsSerialize) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  TFE_OpAttrs attributes;
-  TFE_OpGetAttrs(var_op, &attributes);
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TF_Buffer* serialized_attr_values = TF_NewBuffer();
-  TFE_OpAttrsSerialize(&attributes, serialized_attr_values, status);
+  TFE_OpAttrsSerialize(attributes, serialized_attr_values, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   tensorflow::NameAttrList name_and_attrs;
   ASSERT_TRUE(name_and_attrs.ParseFromArray(serialized_attr_values->data,
@@ -1653,7 +1610,7 @@ TEST(CAPI, TestTFE_OpAttrsSerialize) {
 
   tensorflow::AttrValueMap attr_values;
   tensorflow::EagerOperation* op =
-      tensorflow::OperationFromInterface(var_op_2->operation);
+      tensorflow::OperationFromInterface(tensorflow::unwrap(var_op_2));
   op->Attrs().FillAttrValueMap(&attr_values);
   EXPECT_EQ(tensorflow::DT_INT64, attr_values.find("dtype")->second.type());
 

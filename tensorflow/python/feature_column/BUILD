@@ -13,6 +13,7 @@ py_library(
         ":feature_column",
         ":feature_column_v2",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/feature_column",
     ],
 )
 
@@ -54,8 +55,6 @@ py_library(
 py_library(
     name = "feature_column_v2",
     srcs = [
-        "dense_features.py",
-        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -80,16 +79,20 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:data_structures",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -116,15 +119,6 @@ tf_py_test(
         "no_rocm",
         "no_windows",
     ],
-    deps = [
-        ":feature_column_test_main_lib",
-    ],
-)
-
-tf_py_test(
-    name = "dense_features_test",
-    srcs = ["dense_features_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":feature_column_test_main_lib",
     ],
@@ -170,15 +164,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [":feature_column_v2_test_main_lib"],
-)
-
-tf_py_test(
-    name = "dense_features_v2_test",
-    srcs = ["dense_features_v2_test.py"],
-    tags = ["no_pip"],
-    deps = [
-        ":feature_column_v2_test_main_lib",
-    ],
 )
 
 py_library(
@@ -266,6 +251,40 @@ tf_py_test(
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "keras_integration_test",
+    size = "medium",
+    srcs = ["keras_integration_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
+    deps = [
+        ":feature_column_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "save_test",
+    size = "medium",
+    srcs = ["save_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":feature_column_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

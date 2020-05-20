@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"

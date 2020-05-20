@@ -95,9 +95,10 @@ def MobileNet(input_shape=None,
               **kwargs):
   """Instantiates the MobileNet architecture.
 
-  Reference paper:
-  - [MobileNets: Efficient Convolutional Neural Networks for Mobile Vision
-    Applications](https://arxiv.org/abs/1704.04861)
+  Reference:
+  - [MobileNets: Efficient Convolutional Neural Networks
+     for Mobile Vision Applications](
+      https://arxiv.org/abs/1704.04861)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

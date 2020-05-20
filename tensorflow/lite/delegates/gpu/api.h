@@ -54,7 +54,7 @@ namespace gpu {
 //   H  - height
 //   W  - width
 //   C  - channels
-//   D  - depth := IntegralDivideRoundUp(C, 4)
+//   D  - depth := DivideRoundUp(C, 4)
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
@@ -164,7 +164,7 @@ struct Dimensions {
   Dimensions(int32_t batch, int32_t height, int32_t width, int32_t channels)
       : b(batch), h(height), w(width), c(channels) {}
 
-  int32_t d() const { return IntegralDivideRoundUp(c, 4); }
+  int32_t d() const { return DivideRoundUp(c, 4); }
 
   int32_t product() const { return b * h * w * c; }
 

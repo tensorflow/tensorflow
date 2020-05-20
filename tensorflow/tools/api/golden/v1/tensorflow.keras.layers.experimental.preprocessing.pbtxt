@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers.experimental.preprocessing"
 tf_module {
   member {
+    name: "CategoryCrossing"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CenterCrop"
     mtype: "<type \'type\'>"
   }

@@ -330,8 +330,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         communication=self._communication)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
+    host_device = device_util.get_host_for_device(self._worker_device)
     self._input_workers = input_lib.InputWorkers(
-        [(self._worker_device, self.worker_devices)])
+        [(host_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.

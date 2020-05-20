@@ -92,13 +92,15 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, /*control_output_arrays=*/"",
         prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+        /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+        /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, /*control_output_arrays=*/"",
       prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+      /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+      /*enable_shape_inference=*/false, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -172,7 +174,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     return module;
   } else if (saved_model_version == 1) {
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, context);
+        input_filename, tags, exported_names, context);
 
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");
