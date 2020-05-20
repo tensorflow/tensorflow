@@ -285,6 +285,25 @@ class CategoricalEncodingInputTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_int32_input_with_int64_keys(self):
+    vocab_data = np.array([10, 11, 12, 13], dtype=np.int64)
+    input_array = ragged_factory_ops.constant([[10, 11, 13], [13, 12, 10, 42]],
+                                              dtype=np.int32)
+    expected_output = [[2, 3, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+    layer = get_layer_class()(
+        max_tokens=None,
+        dtype=dtypes.int64,
+        num_oov_indices=1,
+        mask_token=0,
+        oov_token=-1)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
 
 @keras_parameterized.run_all_keras_modes
 class CategoricalEncodingMultiOOVTest(
