@@ -2261,7 +2261,7 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = float(K.get_value(self.model.optimizer.lr))
+          old_lr = K.get_value(self.model.optimizer.lr)
           if old_lr > self.min_lr:
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
