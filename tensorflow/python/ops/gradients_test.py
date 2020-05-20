@@ -1471,7 +1471,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
             shape=10,
             trainable=True,
         )
-        self.evaluate(test_var.assign(np.ones([10])))
         return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
@@ -1482,6 +1481,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       out_re = test_fn_re(test_input_t)
       out = TestFn(test_input_t)
 
+    init = tf.compat.v1.global_variables_initializer()
+    self.evaluate(init)
     grads_re = gradients.gradients(out_re, variables.trainable_variables())
     grads = gradients.gradients(out, variables.trainable_variables())
 
