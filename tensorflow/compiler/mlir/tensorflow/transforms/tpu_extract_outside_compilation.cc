@@ -17,9 +17,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -176,7 +176,7 @@ void MoveOutsideCompiledOps(
     host_output_types.push_back(external_input.getType());
 
   std::string communication_key =
-      absl::StrCat("host_compute_channel_", outside_cluster_name.str());
+      llvm::formatv("host_compute_channel_{0}", outside_cluster_name).str();
   // XlaRecvAtHostOp takes both the program key(dynamic_key) from the
   // _TpuCompileMlirOp and the communication_key.
   auto recv_at_host = builder.create<TF::_XlaRecvAtHostOp>(
