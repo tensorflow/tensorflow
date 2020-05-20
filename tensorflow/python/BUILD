@@ -4179,6 +4179,7 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
+        ":variables",
         "//third_party/py/numpy",
     ],
 )
