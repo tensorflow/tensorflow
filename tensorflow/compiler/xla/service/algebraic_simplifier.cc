@@ -1488,6 +1488,22 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return ReplaceInstruction(divide, new_divide);
   }
 
+  // If X is a convert from pred, then
+  // X / broadcast(Y) => broadcast(1/Y) * X
+  if (Match(divide,
+            m::Divide(
+                m::Convert(&a,
+                           m::Op().WithShape(m::Shape().WithElementType(PRED))),
+                m::Broadcast(m::Op(&b).WithShape(m::Shape().IsScalar()))))) {
+    TF_ASSIGN_OR_RETURN(
+        auto recip, MakeBinaryHlo(HloOpcode::kDivide, MakeScalarLike(b, 1), b));
+    auto recip_bcast = computation_->AddInstruction(
+        HloInstruction::CreateBroadcast(divide->shape(), recip, {}));
+    TF_ASSIGN_OR_RETURN(auto mul,
+                        MakeBinaryHlo(HloOpcode::kMultiply, recip_bcast, a));
+    return ReplaceInstruction(divide, mul);
+  }
+
   return Status::OK();
 }
 

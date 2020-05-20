@@ -6481,5 +6481,25 @@ TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
   EXPECT_EQ(conv->window().dimensions(1).padding_high(), 1);
 }
 
+TEST_F(AlgebraicSimplifierTest, ScalarDividePredicate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[2] parameter(0)
+      cvt = f32[2] convert(p0)
+      p1 = f32[] parameter(1)
+      bcast = f32[2] broadcast(p1), dimensions={}
+      ROOT div = f32[2] divide(cvt, bcast)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MultiplyAnyOrder(
+          m::Convert(m::Parameter(0)),
+          m::Broadcast(m::Divide(m::ConstantScalar(1), m::Parameter(1))))));
+}
+
 }  // namespace
 }  // namespace xla
