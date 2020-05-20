@@ -149,7 +149,7 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       .def(
           "SetNumThreads",
           [](InterpreterWrapper& self, int i) {
-            return tensorflow::pyo_or_throw(self.SetNumThreads(i));
+            return tensorflow::PyoOrThrow(self.SetNumThreads(i));
           },
           R"pbdoc(
              ask the interpreter to set the number of threads to use.

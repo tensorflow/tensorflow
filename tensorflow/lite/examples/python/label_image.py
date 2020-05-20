@@ -57,13 +57,13 @@ if __name__ == '__main__':
       help='input standard deviation')
   parser.add_argument(
       '--num_threads',
-      default=1,
+      default=1, type=int,
       help='number of threads')
   args = parser.parse_args()
 
   interpreter = tf.lite.Interpreter(
       model_path=args.model_file,
-      num_threads=int(args.num_threads))
+      num_threads=args.num_threads)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -100,4 +100,5 @@ if __name__ == '__main__':
     else:
       print('{:08.6f}: {}'.format(float(results[i] / 255.0), labels[i]))
 
-  print("time: ", stop_time - start_time)
+  #print("time: ", stop_time - start_time)
+  print('time: {:.3f}ms'.format((stop_time - start_time) * 1000))

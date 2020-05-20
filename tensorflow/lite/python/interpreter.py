@@ -523,6 +523,7 @@ class Interpreter(object):
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
 
+
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
 
