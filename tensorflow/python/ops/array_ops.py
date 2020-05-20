@@ -562,19 +562,16 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   
   See also `tf.size`, `tf.rank`.
 
-  This operation returns a 1-D integer tensor representing the shape of `input`.
-  This represents the minimal set of known information at definition time.
+  `tf.shape` returns a 1-D integer tensor representing the shape of `input`.
 
   For example:
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
   <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 3], dtype=int32)>
-  >>> tf.shape(t).numpy()
-  array([2, 2, 3], dtype=int32)
 
-  Note: When using symbolic tensors, such as when using the Keras functional
-  API, tf.shape() will return the shape of the symbolic tensor.
+  Note: When using symbolic tensors, such as when using the Keras API,
+  tf.shape() will return the shape of the symbolic tensor.
 
   >>> a = tf.keras.layers.Input((None, 10))
   >>> tf.shape(a)
@@ -584,10 +581,13 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
+  
+  (The first `None` represents the as yet unknown batch size.)
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
-  known until execution time.
+  known until execution time. Hence when defining custom layers and models
+  for graph mode, prefer the dynamic `tf.shape(x)` over the static `x.shape`.
 
   Args:
     input: A `Tensor` or `SparseTensor`.
