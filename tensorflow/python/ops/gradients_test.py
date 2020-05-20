@@ -1371,6 +1371,7 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
                                                                  delta=delta)
     self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
   
+  @test_util.run_v2_only
   def testCustomGradientRecomputeGradHigherOrder(self):
 
     @custom_gradient.recompute_grad
