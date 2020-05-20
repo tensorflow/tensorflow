@@ -21,9 +21,10 @@ from __future__ import print_function
 
 import contextlib
 
-import numpy as np
 import traceback
 import weakref
+
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -985,22 +986,20 @@ class TensorArray(object):
 
   Example 3: A simple loop interacting with a `tf.Variable`.
 
-  # TODO(b/153898334) reenable this one flakyness is removed
-  # >>> v = tf.Variable(1)
-  # >>>
-  # >>> @tf.function
-  # ... def f(x):
-  # ...   ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
-  # ...
-  # ...   for i in tf.range(x):
-  # ...     v.assign_add(i)
-  # ...     ta = ta.write(i, v)
-  # ...
-  # ...   return ta.stack()
-  # >>>
-  # >>> f(5)
-  # <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
-  # dtype=int32)>
+  # TODO(b/153898334): Convert back to doctest once bug is resolved.
+  ```
+  v = tf.Variable(1)
+  @tf.function
+  def f(x):
+    ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+    for i in tf.range(x):
+      v.assign_add(i)
+      ta = ta.write(i, v)
+    return ta.stack()
+  f(5)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
+  dtype=int32)>
+  ```
   """
 
   def __init__(self,
