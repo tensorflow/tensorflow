@@ -2441,6 +2441,7 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
   size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
   for (int r = 0; r < num_returned_algos; r++) {
     if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo != CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
         perf_results[r].memory <= mem_limit) {
       return perf_results[r].algo;
     }
@@ -2481,6 +2482,8 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
   size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
   for (int r = 0; r < num_returned_algos; r++) {
     if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo !=
+            CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED &&
         perf_results[r].memory <= mem_limit) {
       return perf_results[r].algo;
     }
@@ -2521,6 +2524,8 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
   size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
   for (int r = 0; r < num_returned_algos; r++) {
     if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo !=
+            CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED &&
         perf_results[r].memory <= mem_limit) {
       return perf_results[r].algo;
     }
