@@ -213,6 +213,8 @@ class Interpreter(object):
     if num_threads:
       if not isinstance(num_threads, int):
         raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
       self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
