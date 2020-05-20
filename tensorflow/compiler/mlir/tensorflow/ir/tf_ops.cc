@@ -3674,10 +3674,18 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
   if (!const_perm) return {};
 
   auto const_value = const_perm.value();
-  const auto &elements = const_value.getValues<APInt>();
+  const auto elements = const_value.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
+  }
+
+  // TODO(jpienaar): Remove if/when we handle this more generally.
+  if (op.getType() != op.x().getType()) {
+    // If the types don't match then only fold if all the operands are in the TF
+    // dialect.
+    for (auto user : op.getOperation()->getUsers())
+      if (user->getDialect() != op.getDialect()) return {};
   }
 
   return op.x();
