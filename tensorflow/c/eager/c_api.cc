@@ -102,6 +102,15 @@ string DeviceName(const tensorflow::Device* d) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
+bool AreLocalDevicesCompatible(const tensorflow::EagerContext* context,
+                               const tensorflow::ServerDef& server_def) {
+  if (server_def.job_name() != context->HostCPU()->parsed_name().job) {
+    return false;
+  }
+  return server_def.default_session_config().SerializeAsString() ==
+         context->session_options().config.SerializeAsString();
+}
+
 tensorflow::Status AddRemoteDevicesToMgr(
     const std::vector<string>& added_remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
@@ -469,10 +478,15 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   tensorflow::GrpcServer* grpc_server;
   if (reset_context) {
-    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    const tensorflow::DeviceMgr* device_mgr =
+        AreLocalDevicesCompatible(context, server_def)
+            ? context->local_device_mgr()
+            : nullptr;
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServerWithOptions(
+        server_def, {device_mgr}, &new_server));
     grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
     LOG_AND_RETURN_IF_ERROR(
-        ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
+        ListRemoteWorkers(new_server.get(), worker_name, &remote_workers));
   } else {
     LOG_AND_RETURN_IF_ERROR(ListRemoteWorkers(context->GetServer(), worker_name,
                                               &curr_remote_workers));
