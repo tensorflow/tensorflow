@@ -59,6 +59,84 @@ class IntegerLookup(index_lookup.IndexLookup):
       error will be thrown.
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
+
+  Examples:
+
+  Creating a lookup layer with a known vocabulary
+
+  This example creates a lookup layer with a pre-existing vocabulary.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
+  >>> layer = IntegerLookup(vocabulary=vocab)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[2, 4, 5],
+         [5, 1, 3]])>
+
+
+  Creating a lookup layer with an adapted vocabulary
+
+  This example creates a lookup layer and generates the vocabulary by analyzing
+  the dataset.
+
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
+  >>> layer = IntegerLookup()
+  >>> layer.adapt(data)
+  >>> layer.get_vocabulary()
+  [0, -1, 42, 1138, 1000, 36, 12]
+
+  Note how the mask value 0 and the OOV value -1 have been added to the
+  vocabulary. The remaining tokens are sorted by frequency (1138, which has
+  2 occurrences, is first) then by inverse sort order.
+
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
+  >>> layer = IntegerLookup()
+  >>> layer.adapt(data)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[6, 3, 2],
+         [2, 4, 5]])>
+
+
+  Inverse lookup
+
+  This example demonstrates how to map indices to values using this layer. (You
+  can also use adapt() with inverse=True, but for simplicity we'll pass the
+  vocab in this example.)
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[1, 3, 4], [4, 5, 2]])
+  >>> layer = IntegerLookup(vocabulary=vocab, invert=True)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[  12, 1138,   42],
+         [  42,   -1,   36]])>
+
+  Note that the integer 5, which is out of the vocabulary space, returns an OOV
+  token.
+
+
+  Forward and inverse lookup pairs
+
+  This example demonstrates how to use the vocabulary of a standard lookup
+  layer to create an inverse lookup layer.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
+  >>> layer = IntegerLookup(vocabulary=vocab)
+  >>> i_layer = IntegerLookup(vocabulary=layer.get_vocabulary(), invert=True)
+  >>> int_data = layer(data)
+  >>> i_layer(int_data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[  12, 1138,   42],
+         [  42,   -1,   36]])>
+
+  In this example, the input value 1000 resulted in an output of -1, since
+  1000 was not in the vocabulary - it got represented as an OOV, and all OOV
+  values are returned as -1 in the inverse layer. Also, note that for the
+  inverse to work, you must have already set the forward layer vocabulary
+  either directly or via fit() before calling get_vocabulary().
   """
 
   def __init__(self,
