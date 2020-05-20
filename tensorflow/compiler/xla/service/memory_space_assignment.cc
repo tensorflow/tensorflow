@@ -1847,26 +1847,27 @@ MemorySpaceAssignment::CalculateAsyncCopyStats() const {
   int64 current_copies = 0;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
                       HloDataflowAnalysis::Run(*module_));
-  for (HloInstruction* instruction : module_->schedule()
-                                         .sequence(module_->entry_computation())
-                                         .instructions()) {
-    if (instruction->opcode() == HloOpcode::kCopyStart) {
-      current_copies++;
-    } else if (instruction->opcode() == HloOpcode::kCopyDone) {
-      current_copies--;
-      int64 size =
-          options_.size_fn(dataflow_analysis->GetUniqueValueAt(instruction));
-      if (instruction->shape().layout().memory_space() ==
-          options_.alternate_memory_space) {
-        ++stats.num_prefetches;
-        stats.prefetch_bytes += size;
-      } else {
-        ++stats.num_evictions;
-        stats.eviction_bytes += size;
+  for (const HloComputation* computation :
+       module_->MakeNonfusionComputations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopyStart) {
+        current_copies++;
+      } else if (instruction->opcode() == HloOpcode::kCopyDone) {
+        current_copies--;
+        int64 size =
+            options_.size_fn(dataflow_analysis->GetUniqueValueAt(instruction));
+        if (instruction->shape().layout().memory_space() ==
+            options_.alternate_memory_space) {
+          ++stats.num_prefetches;
+          stats.prefetch_bytes += size;
+        } else {
+          ++stats.num_evictions;
+          stats.eviction_bytes += size;
+        }
       }
+      stats.max_outstanding_async_copies =
+          std::max(stats.max_outstanding_async_copies, current_copies);
     }
-    stats.max_outstanding_async_copies =
-        std::max(stats.max_outstanding_async_copies, current_copies);
   }
   return stats;
 }
