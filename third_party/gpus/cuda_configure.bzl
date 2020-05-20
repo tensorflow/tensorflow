@@ -976,7 +976,7 @@ def _create_local_cuda_repository(repository_ctx):
                        "cudnn_cnn_train.h",
                        "cudnn_ops_infer.h",
                        "cudnn_ops_train.h",
-                       "cudnn.h",          
+                       "cudnn.h",
                        "cudnn_version.h",
                       ]
 
