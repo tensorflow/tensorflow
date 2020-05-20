@@ -118,7 +118,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
-      1 - (1 if output == "int" else 0))`
+      1 - (1 if output == "int" else 0))`.
     standardize: Optional specification for standardization to apply to the
       input text. Values can be None (no standardization),
       'lower_and_strip_punctuation' (lowercase and remove punctuation) or a
