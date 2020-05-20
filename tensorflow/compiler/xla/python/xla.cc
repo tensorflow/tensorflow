@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
@@ -62,15 +63,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/python/profiler/internal/traceme_context_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
+namespace {
 
 namespace py = pybind11;
 
-namespace {
+using ::tensorflow::profiler::TraceMeContextManager;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -620,43 +622,6 @@ void BuildOpsSubmodule(py::module* m) {
 #undef UNARY_OP
 }
 
-// Helper to implement TraceMe as a context manager in Python.
-class TraceMeContextManager {
- public:
-  explicit TraceMeContextManager(py::str name, py::kwargs kwargs)
-      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
-
-  void Enter() {
-    if (IsEnabled()) {
-      std::string name(name_);
-      if (!kwargs_.empty()) {
-        absl::StrAppend(&name, "#");
-        bool first = true;
-        for (const auto entry : kwargs_) {
-          absl::StrAppend(&name, first ? "" : ",",
-                          std::string(py::str(entry.first)), "=",
-                          std::string(py::str(entry.second)));
-          first = false;
-        }
-        absl::StrAppend(&name, "#");
-      }
-      traceme_.emplace(std::move(name));
-    }
-  }
-  py::object Exit(const py::object& ex_type, const py::object& ex_value,
-                  const py::object& traceback) {
-    traceme_.reset();
-    return py::none();
-  }
-
-  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
-
- private:
-  py::str name_;
-  py::kwargs kwargs_;
-  absl::optional<tensorflow::profiler::TraceMe> traceme_;
-};
-
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
       m->def_submodule("profiler", "TensorFlow profiler integration");
@@ -672,10 +637,22 @@ void BuildProfilerSubmodule(py::module* m) {
       },
       py::arg("port"));
 
-  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe");
+  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe",
+                                                  py::module_local());
   traceme_class.def(py::init<py::str, py::kwargs>())
-      .def("__enter__", &TraceMeContextManager::Enter)
-      .def("__exit__", &TraceMeContextManager::Exit)
+      .def("__enter__",
+           [](py::object self) -> py::object {
+             py::cast<TraceMeContextManager*>(self)->Enter();
+             return self;
+           })
+      .def("__exit__",
+           [](py::object self, const py::object& ex_type,
+              const py::object& ex_value,
+              const py::object& traceback) -> py::object {
+             py::cast<TraceMeContextManager*>(self)->Exit();
+             return py::none();
+           })
+      .def("set_metadata", &TraceMeContextManager::SetMetadata)
       .def_static("is_enabled", &TraceMeContextManager::IsEnabled);
 }
 

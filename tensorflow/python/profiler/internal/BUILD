@@ -80,11 +80,23 @@ cuda_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
-    features = ["-layering_check"],
     module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
+    ],
+    deps = [
+        ":traceme_context_manager",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "traceme_context_manager",
+    hdrs = ["traceme_context_manager.h"],
+    features = ["-layering_check"],
+    visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
     ],
     deps = [
         "//tensorflow/core:lib",
