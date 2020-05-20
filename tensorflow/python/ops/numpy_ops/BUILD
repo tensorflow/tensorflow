@@ -8,7 +8,7 @@ package(
 )
 
 py_library(
-    name = "numpy",
+    name = "numpy_ops",
     srcs = [
         "__init__.py",
     ],
