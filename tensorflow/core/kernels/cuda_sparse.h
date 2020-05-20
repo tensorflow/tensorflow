@@ -35,7 +35,7 @@ using gpusparseMatDescr_t = cusparseMatDescr_t;
 using gpusparseAction_t = cusparseAction_t;
 using gpusparseHandle_t = cusparseHandle_t;
 using gpuStream_t = cudaStream_t;
-#if CUDA_VERSION >= 10020
+#if (CUDA_VERSION >= 10020) && !defined(_WIN32)
 using gpusparseDnMatDescr_t = cusparseDnMatDescr_t;
 using gpusparseSpMatDescr_t = cusparseSpMatDescr_t;
 using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
@@ -259,7 +259,8 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-coo2csr.
   Status Coo2csr(const int* cooRowInd, int nnz, int m, int* csrRowPtr) const;
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
+#if (GOOGLE_CUDA && ((CUDA_VERSION < 10020) || defined(_WIN32))) || \
+    TENSORFLOW_USE_ROCM
   // Sparse-dense matrix multiplication C = alpha * op(A) * op(B)  + beta * C,
   // where A is a sparse matrix in CSR format, B and C are dense tall
   // matrices.  This routine allows transposition of matrix B, which
@@ -311,7 +312,8 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrmv_mergepath
   //
   // **NOTE** This is an in-place operation for data in y.
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
+#if (GOOGLE_CUDA && ((CUDA_VERSION < 10020) || defined(_WIN32))) || \
+    TENSORFLOW_USE_ROCM
   template <typename Scalar>
   Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
                const Scalar* alpha_host, const gpusparseMatDescr_t descrA,
@@ -324,7 +326,7 @@ class GpuSparse {
                const Scalar* alpha_host, const Scalar* csrSortedValA,
                const int* csrSortedRowPtrA, const int* csrSortedColIndA,
                const Scalar* x, const Scalar* beta_host, Scalar* y) const;
-#endif  // CUDA_VERSION < 10020
+#endif  // CUDA_VERSION < 10020 || defined(_WIN32)
 
   // Computes workspace size for sparse - sparse matrix addition of matrices
   // stored in CSR format.

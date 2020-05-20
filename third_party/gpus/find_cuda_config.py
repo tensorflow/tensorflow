@@ -318,10 +318,6 @@ def _find_cublas_config(base_paths, required_version, cuda_version):
     # cuBLAS uses the major version only.
     cublas_version = header_version.split(".")[0]
 
-    if not _matches_version(cuda_version, cublas_version):
-      raise ConfigError("cuBLAS version %s does not match CUDA version %s" %
-                        (cublas_version, cuda_version))
-
   else:
     # There is no version info available before CUDA 10.1, just find the file.
     header_path = _find_file(base_paths, _header_paths(), "cublas_api.h")

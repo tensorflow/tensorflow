@@ -829,7 +829,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       // transB: b is row-major, and cusparse requires col-major b (or
       // equivalently transB == transpose).  this version is actually more
       // efficient.
-#if GOOGLE_CUDA && CUDA_VERSION >= 10020
+#if GOOGLE_CUDA && CUDA_VERSION >= 10020 && !defined(_WIN32)
 
       const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
       gpusparseSpMatDescr_t matA;
@@ -898,7 +898,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
                             a.values.data(), a.row_ptr.data(), a.col_ind.data(),
                             b.data(), ldb, &beta, c.data(), ldc));
 
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
+#endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020 && !defined(_WIN32)
     }
 
     return Status::OK();
@@ -931,7 +931,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const T alpha = 1;
       const T beta = 0;
 
-#if GOOGLE_CUDA && CUDA_VERSION < 10020
+#if GOOGLE_CUDA && (CUDA_VERSION < 10020 || defined(_WIN32))
       gpusparseMatDescr_t descrA;
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
@@ -951,7 +951,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const int n = a.dense_shape_host(1);
       const int nnz = a.values.size();
       DCHECK_EQ(nnz, a.col_ind.size());
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10020)
+#if GOOGLE_CUDA && (CUDA_VERSION >= 10020) && !defined(_WIN32)
       TF_RETURN_IF_ERROR(cuda_sparse.Csrmv(transA_, m, n, nnz, &alpha,
                                            a.values.data(), a.row_ptr.data(),
                                            a.col_ind.data(), x, &beta, y));

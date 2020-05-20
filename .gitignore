@@ -47,3 +47,6 @@ gradleBuild
 Podfile.lock
 Pods
 xcuserdata
+
+# Visual Studio
+/.vs

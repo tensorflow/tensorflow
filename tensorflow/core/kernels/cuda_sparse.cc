@@ -386,7 +386,7 @@ Status GpuSparse::CsrgeamNnz(
   return Status::OK();
 }
 
-#if CUDA_VERSION < 10020
+#if (CUDA_VERSION < 10020) || defined(_WIN32)
 
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmmImpl(
@@ -465,7 +465,7 @@ TF_CALL_CUSPARSE_DTYPES(SPMM_INSTANCE);
 
 #endif
 
-#if CUDA_VERSION < 10020
+#if (CUDA_VERSION < 10020) || defined(_WIN32)
 
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmvImpl(
@@ -611,7 +611,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
 
 TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
 
-#endif  // CUDA_VERSION < 10020
+#endif  // (CUDA_VERSION < 10020) || defined(_WIN32)
 
 #if CUDA_VERSION < 10000
 
