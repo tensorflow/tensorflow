@@ -24,46 +24,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns the DebugString when available, or a stub message otherwise. Useful
-// for messages that are incompatible with proto_text (e.g. those using Any).
-#ifdef TENSORFLOW_LITE_PROTOS
-template <class T>
-string DebugStringIfAvailable(T proto) {
-  return "[DebugString not available with lite protos]";
-}
-#else
-template <class T>
-auto DebugStringIfAvailable(T proto) -> decltype(proto.DebugString()) {
-  return proto.DebugString();
-}
-#endif  // defined(TENSORFLOW_LITE_PROTOS)
-
 // Utility for parsing an Any value with full or lite protos.
 template <class T>
 Status ParseAny(const google::protobuf::Any& any, T* message,
                 const string& type_name) {
-#ifdef TENSORFLOW_LITE_PROTOS
-  if (any.type_url() != strings::StrCat("type.googleapis.com/", type_name)) {
-    return errors::FailedPrecondition(
-        "Expected Any type_url for: ", type_name,
-        ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
-  }
-  if (!message->ParseFromString(ProtobufStringToString(any.value()))) {
-    return errors::FailedPrecondition("Failed to unpack: ",
-                                      DebugStringIfAvailable(any));
-  }
-#else
-  CHECK_EQ(type_name, message->descriptor()->full_name());
+  CHECK_EQ(type_name, message->GetTypeName());
   if (!any.Is<T>()) {
     return errors::FailedPrecondition(
-        "Expected Any type_url for: ", message->descriptor()->full_name(),
+        "Expected Any type_url for: ", message->GetTypeName(),
         ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
   }
   if (!any.UnpackTo(message)) {
-    return errors::FailedPrecondition("Failed to unpack: ",
-                                      DebugStringIfAvailable(any));
+    return errors::FailedPrecondition("Failed to unpack: ", any.DebugString());
   }
-#endif
   return Status::OK();
 }
 

@@ -16,6 +16,12 @@ cc_library(
     deps = ["//tensorflow/core:test_main"],
 )
 
+filegroup(
+    name = "quantize_header",
+    srcs = ["quantize.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "tfcompile_lib",
     srcs = [
@@ -27,6 +33,7 @@ cc_library(
         "codegen.h",
         "compile.h",
         "flags.h",
+        "quantize.h",
     ],
     defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
     visibility = ["//tensorflow/python:__pkg__"],

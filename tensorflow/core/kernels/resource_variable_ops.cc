@@ -141,28 +141,21 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   ". This could mean that the variable was uninitialized. ",
                   status.ToString()));
 
-  {
-    tf_shared_lock ml(*variable->mu());
-    // We're acquiring a reference to the underlying buffer while
-    // holding a shared lock to guarantee ordering of reads and
-    // writes when in copy-on-write mode.
-    if (!variable->copy_on_read_mode.load()) {
-      const Tensor* t = variable->tensor();
-      OP_REQUIRES(
-          ctx, dtype_ == t->dtype(),
-          errors::InvalidArgument(
-              "Trying to read variable with wrong dtype. Expected ",
-              DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
-      ctx->set_output(0, *t);
-      return;
-    }
-  }
-  // Note: no need to check copy_on_read_mode again here as it only changes from
-  // false to true, never the other way around. We here do the copy under an
-  // exclusive lock to avoid racing writes.
-  mutex_lock ml(*variable->mu());
+  tf_shared_lock ml(*variable->mu());
+  // We're acquiring a reference to the underlying buffer while
+  // holding a shared lock to guarantee ordering of reads and
+  // writes when in copy-on-write mode.
   const Tensor* t = variable->tensor();
-  OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
+  if (!variable->copy_on_read_mode.load()) {
+    OP_REQUIRES(
+        ctx, dtype_ == t->dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+    ctx->set_output(0, *t);
+  } else {
+    OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
+  }
 }
 
 ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {

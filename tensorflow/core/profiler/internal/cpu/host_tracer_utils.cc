@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
 namespace tensorflow {
@@ -78,6 +82,10 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
       Annotation annotation = ParseAnnotation(event.name);
       XEventMetadata* xevent_metadata =
           xplane.GetOrCreateEventMetadata(annotation.name);
+      std::string tf_op_event_name = TfOpEventName(annotation.name);
+      if (tf_op_event_name != annotation.name) {
+        xevent_metadata->set_display_name(std::move(tf_op_event_name));
+      }
       XEventBuilder xevent = xline.AddEvent(*xevent_metadata);
       xevent.SetTimestampNs(event.start_time);
       xevent.SetEndTimestampNs(event.end_time);

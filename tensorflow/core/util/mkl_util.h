@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -48,7 +49,6 @@ using mkldnn::padding_kind;
 using mkldnn::primitive;
 using mkldnn::reorder;
 using mkldnn::stream;
-
 using CPUDevice = Eigen::ThreadPoolDevice;
 using MemoryArgsMap = std::unordered_map<int, memory>;
 using ReorderPd = mkldnn::reorder::primitive_desc;
@@ -230,6 +230,27 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
   for (size_t i = 0; i < size; ++i)
     if (a1[i] != a2[i]) return false;
   return true;
+}
+
+inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
+                                    const engine& engine) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+  stream_attr tp_stream_attr(ENGINE_CPU);
+  if (ctx != nullptr) {
+    auto eigen_tp =
+        MklDnnThreadPoolWrapper::GetInstance().CreateThreadPoolPtr(ctx);
+    tp_stream_attr.set_threadpool(eigen_tp);
+    stream* tp_stream =
+        new stream(engine, stream::flags::default_flags, tp_stream_attr);
+    return tp_stream;
+  } else {
+    stream* tp_stream = new CPU_STREAM(engine);
+    return tp_stream;
+  }
+#else
+  stream* tp_stream = new CPU_STREAM(engine);
+  return tp_stream;
+#endif  // ENABLE_MKLDNN_THREADPOOL
 }
 
 class MklDnnShape {
@@ -679,20 +700,21 @@ class MklDnnData;
 // TODO merge with the execute_primitives.
 inline void ExecutePrimitive(const std::vector<primitive>& net,
                              const std::vector<MemoryArgsMap>* net_args,
-                             const engine& cpu_engine) {
+                             const engine& cpu_engine,
+                             OpKernelContext* context = nullptr) {
 #ifdef ENABLE_MKLDNN_V1
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
-  stream cpu_stream(cpu_engine);
+  stream* cpu_stream = CreateStream(context, cpu_engine);
   for (size_t i = 0; i < net.size(); ++i) {
-    net.at(i).execute(cpu_stream, net_args->at(i));
+    net.at(i).execute(*cpu_stream, net_args->at(i));
   }
-  cpu_stream.wait();
+  cpu_stream->wait();
+  delete cpu_stream;
 #else
   stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 }
-
 template <typename T>
 inline Status ConvertMklToTF(OpKernelContext* context,
                              const Tensor& input_mkl_tensor,
@@ -731,7 +753,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
         return Status(error::Code::INTERNAL,
                       "ConvertMklToTF(): Failed to create reorder for input");
       }
-      ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
+      ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine, context);
     } else {
       // If not, just forward input tensor to output tensor.
       bool status =
@@ -1301,8 +1323,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
 
 inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
                                     const memory& src_mem,
-                                    const memory& dst_mem,
-                                    const engine& engine) {
+                                    const memory& dst_mem, const engine& engine,
+                                    OpKernelContext* ctx = nullptr) {
   std::vector<primitive> net;
 #ifdef ENABLE_MKLDNN_V1
   net.push_back(mkldnn::reorder(reorder_desc));
@@ -1311,7 +1333,7 @@ inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
 #else
   net.push_back(mkldnn::reorder(reorder_desc, src_mem, dst_mem));
 #endif  // ENABLE_MKLDNN_V1
-  ExecutePrimitive(net, NET_ARGS_PTR, engine);
+  ExecutePrimitive(net, NET_ARGS_PTR, engine, ctx);
 }
 
 class MklReorderPrimitive;
@@ -1629,22 +1651,26 @@ class MklDnnData {
 
 #ifdef ENABLE_MKLDNN_V1
   inline bool CheckReorderToOpMem(const memory::desc& op_md,
-                                  const engine& engine) {
+                                  const engine& engine,
+                                  OpKernelContext* context = nullptr) {
     DCHECK(user_memory_);
     if (IsReorderNeeded(op_md)) {
       // TODO(nhasabni): can we remove dynamic memory allocation?
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
       reorder_memory_ = new memory(op_md, engine);
-      std::vector<primitive> net;
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
       net_args.push_back({{MKLDNN_ARG_FROM, *user_memory_},
                           {MKLDNN_ARG_TO, *reorder_memory_}});
-      execute_primitives(net, prim->GetStream(), net_args);
+      execute_primitives(net, cpu_stream, net_args);
 #else
-  inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd) {
+  inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
+                                  OpKernelContext* ctx = nullptr) {
     CHECK_NOTNULL(user_memory_);
     if (IsReorderNeeded(op_pd)) {
       reorder_memory_ = new memory(op_pd);
@@ -1708,7 +1734,8 @@ class MklDnnData {
   /// TODO(bhavanis): Need to use reorder cache here for better performance.
   inline bool CheckReorderToOpMem(const memory::desc& op_md,
                                   void* reorder_data_handle,
-                                  const engine& engine) {
+                                  const engine& engine,
+                                  OpKernelContext* context = nullptr) {
     DCHECK(reorder_data_handle);
     DCHECK(user_memory_);
     if (IsReorderNeeded(op_md)) {
@@ -1716,16 +1743,19 @@ class MklDnnData {
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
-      std::vector<primitive> net;
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
       net_args.push_back({{MKLDNN_ARG_FROM, *user_memory_},
                           {MKLDNN_ARG_TO, *reorder_memory_}});
-      execute_primitives(net, prim->GetStream(), net_args);
+      execute_primitives(net, cpu_stream, net_args);
 #else
   inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
-                                  void* reorder_data_handle) {
+                                  void* reorder_data_handle,
+                                  OpKernelContext* context = nullptr) {
     CHECK_NOTNULL(reorder_data_handle);
     CHECK_NOTNULL(user_memory_);
     if (IsReorderNeeded(op_pd)) {
@@ -1778,13 +1808,14 @@ class MklDnnData {
   /// remove
   /// slow path in the future
   inline bool CheckReorderToOpMem(const MEMORY_PRIMITIVE_DESC& op_pd,
-                                  Tensor* reorder_tensor) {
+                                  Tensor* reorder_tensor,
+                                  OpKernelContext* ctx = nullptr) {
     DCHECK(reorder_tensor);
 #ifdef ENABLE_MKLDNN_V1
     return CheckReorderToOpMem(op_pd, GetTensorBuffer(reorder_tensor),
-                               *cpu_engine_);
+                               *cpu_engine_, ctx);
 #else
-    return CheckReorderToOpMem(op_pd, GetTensorBuffer(reorder_tensor));
+    return CheckReorderToOpMem(op_pd, GetTensorBuffer(reorder_tensor), ctx);
 #endif  // ENABLE_MKLDNN_V1
   }
 
@@ -1843,7 +1874,7 @@ class MklDnnData {
   /// TODO: this is a faster path with reorder primitive cache compared with
   ///       InsertReorderToUserMem(net, net_args), will remove
   ///       slow path in the future
-  inline void InsertReorderToUserMem() {
+  inline void InsertReorderToUserMem(OpKernelContext* ctx = nullptr) {
     DCHECK(user_memory_);
     DCHECK(reorder_memory_);
     DCHECK(cpu_engine_);
@@ -1857,8 +1888,8 @@ class MklDnnData {
     net_args.push_back(
         {{MKLDNN_ARG_FROM, *reorder_memory_}, {MKLDNN_ARG_TO, *user_memory_}});
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(new stream(*cpu_engine_));
-    execute_primitives(net, prim->GetStream(), net_args);
+    cpu_stream.reset(CreateStream(ctx, prim->GetEngine()));
+    execute_primitives(net, cpu_stream, net_args);
 #else
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
     ExecutePrimitive(net, NET_ARGS_PTR, *cpu_engine_);
@@ -1870,9 +1901,12 @@ class MklDnnData {
 class MklPrimitive {
  public:
   virtual ~MklPrimitive() {}
-
+  MklPrimitive() {}
+  MklPrimitive(const engine& cpu_engine) { cpu_engine_ = cpu_engine; }
   // Dummy data which MKL DNN never operates on
   unsigned char* DummyData = nullptr;
+  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  const engine& GetEngine() { return cpu_engine_; }
 };
 
 const mkldnn::memory::dims NONE_DIMS = {};
@@ -2058,7 +2092,8 @@ class FactoryKeyCreator {
 
 class MklReorderPrimitive : public MklPrimitive {
  public:
-  explicit MklReorderPrimitive(const memory* from, const memory* to) {
+  explicit MklReorderPrimitive(const memory* from, const memory* to)
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     Setup(from, to);
   }
   ~MklReorderPrimitive() {}
@@ -2081,7 +2116,6 @@ class MklReorderPrimitive : public MklPrimitive {
         : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
   } context_;
 
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
   std::shared_ptr<mkldnn::stream> stream_;
 
   void Setup(const memory* from, const memory* to) {

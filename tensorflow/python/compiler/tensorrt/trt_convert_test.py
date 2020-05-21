@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import gc
 import os
+import re
 import tempfile
 
 from absl.testing import parameterized
@@ -310,6 +311,24 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       converter.save(output_saved_model_dir=output_saved_model_dir)
     return output_graph_def
 
+  # Remove the graph sequence number prefix from the name only if the name has
+  # a prefix TRTEngineOp_n_.
+  def _MayRemoveGraphSequenceNumber(self, name):
+    prefix = re.search(r"TRTEngineOp_\d+_", name)
+    if prefix and name.startswith(prefix.group(0)):
+      parts = name.split("_", maxsplit=2)
+      assert len(parts) == 3
+      return parts[0] + "_" + parts[2]
+    return name
+
+  # Return the unique TRTEngineOp in the given graph def.
+  def _GetUniqueTRTEngineOp(self, graph_def):
+    trt_engine_nodes = [
+        node for node in graph_def.node if node.op == "TRTEngineOp"
+    ]
+    assert len(trt_engine_nodes) == 1
+    return trt_engine_nodes[0]
+
   def _TestTrtGraphConverter(self,
                              device,
                              output_saved_model_dir=None,
@@ -330,7 +349,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       graph_defs_to_verify.append(saved_model_graph_def)
 
     for graph_def in graph_defs_to_verify:
-      node_name_to_op = {node.name: node.op for node in graph_def.node}
+      node_name_to_op = {
+          self._MayRemoveGraphSequenceNumber(node.name): node.op
+          for node in graph_def.node
+      }
       self.assertEqual(
           {
               "input1": "Placeholder",
@@ -434,13 +456,13 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     trt_op_names = []
     for node in graph_def.node:
       if node.op == "TRTEngineOp":
-        trt_op_names.append(node.name)
+        trt_op_names.append(self._MayRemoveGraphSequenceNumber(node.name))
         if check_fn:
           check_fn(node)
     for func in graph_def.library.function:
       for node in func.node_def:
         if node.op == "TRTEngineOp":
-          trt_op_names.append(node.name)
+          trt_op_names.append(self._MayRemoveGraphSequenceNumber(node.name))
           if check_fn:
             check_fn(node)
     self.assertEqual(1, len(trt_op_names))
@@ -473,11 +495,15 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Verify the converted GraphDef and ConcreteFunction.
     self._CheckTrtOps(converter._converted_func)  # pylint: disable=protected-access
 
+    trt_engine_name = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).name
+
     # Save the converted model without any TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     unexpected_asset_file = os.path.join(
-        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+        output_saved_model_dir,
+        "assets/trt-serialized-engine." + trt_engine_name)
     self.assertFalse(os.path.exists(unexpected_asset_file))
 
     # Run the converted function to populate the engine cache.
@@ -490,7 +516,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     expected_asset_file = os.path.join(
-        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+        output_saved_model_dir,
+        "assets/trt-serialized-engine." + trt_engine_name)
     self.assertTrue(os.path.exists(expected_asset_file))
     self.assertTrue(os.path.getsize(expected_asset_file))
 
@@ -566,6 +593,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     converter.convert(calibration_input_fn=_CalibrationInputFn)
 
+    trt_engine_name = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).name
+
     def _CheckFn(node):
       self.assertTrue(len(node.attr["calibration_data"].s), node.name)
 
@@ -583,7 +613,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     expected_asset_file = os.path.join(
-        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+        output_saved_model_dir,
+        "assets/trt-serialized-engine." + trt_engine_name)
     self.assertTrue(os.path.exists(expected_asset_file))
     self.assertTrue(os.path.getsize(expected_asset_file))
 
@@ -635,6 +666,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     converter = self._CreateConverterV2(input_saved_model_dir)
     converter.convert()
 
+    trt_engine_name = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).name
+
     def _InputFn():
       yield np_input1, np_input2
 
@@ -645,7 +679,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def _DestroyCache():
       with ops.device("GPU:0"):
         handle = gen_trt_ops.create_trt_resource_handle(
-            resource_name="TRTEngineOp_0")
+            resource_name=trt_engine_name)
         gen_resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=False)
 

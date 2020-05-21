@@ -23,7 +23,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import layers
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.utils import generic_utils
@@ -35,9 +35,9 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testResidualWrapper(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
     x = ops.convert_to_tensor_v2(np.array([[1., 1., 1.]]), dtype="float32")
@@ -60,7 +60,6 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     # States are left untouched
     self.assertAllClose(res[2], res[3])
 
-  @test_util.run_in_graph_and_eager_modes
   def testResidualWrapperWithSlice(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
     x = ops.convert_to_tensor_v2(
@@ -102,7 +101,6 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       [[rnn_cell_impl.DropoutWrapper, rnn_cell_wrapper_v2.DropoutWrapper],
        [rnn_cell_impl.ResidualWrapper, rnn_cell_wrapper_v2.ResidualWrapper]])
-  @test_util.run_in_graph_and_eager_modes
   def testWrapperKerasStyle(self, wrapper, wrapper_v2):
     """Tests if wrapper cell is instantiated in keras style scope."""
     wrapped_cell_v2 = wrapper_v2(rnn_cell_impl.BasicRNNCell(1))
@@ -113,7 +111,6 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       [rnn_cell_wrapper_v2.DropoutWrapper, rnn_cell_wrapper_v2.ResidualWrapper])
-  @test_util.run_in_graph_and_eager_modes
   def testWrapperWeights(self, wrapper):
     """Tests that wrapper weights contain wrapped cells weights."""
     base_cell = layers.SimpleRNNCell(1, name="basic_rnn_cell")
@@ -136,7 +133,6 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       [rnn_cell_wrapper_v2.DropoutWrapper, rnn_cell_wrapper_v2.ResidualWrapper])
-  @test_util.run_in_graph_and_eager_modes
   def testWrapperV2Caller(self, wrapper):
     """Tests that wrapper V2 is using the LayerRNNCell's caller."""
 
@@ -153,7 +149,6 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       [rnn_cell_wrapper_v2.DropoutWrapper, rnn_cell_wrapper_v2.ResidualWrapper])
-  @test_util.run_in_graph_and_eager_modes
   def testWrapperV2Build(self, wrapper):
     cell = rnn_cell_impl.LSTMCell(10)
     wrapper = wrapper(cell)

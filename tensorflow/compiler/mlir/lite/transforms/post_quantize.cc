@@ -16,8 +16,8 @@ limitations under the License.
 // This transformation pass applies some clean up steps after quantization.
 
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -30,7 +30,7 @@ namespace TFL {
 namespace {
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass : public FunctionPass<PostQuantizePass> {
+class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {}
@@ -125,7 +125,8 @@ void PostQuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  applyPatternsGreedily(func, patterns);
+  patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
@@ -135,7 +136,7 @@ void PostQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }

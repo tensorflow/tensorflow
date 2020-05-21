@@ -98,6 +98,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleCholesky(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandleAllGather(HloInstructionPtr crs) override {
+    return DefaultAction(crs);
+  }
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }

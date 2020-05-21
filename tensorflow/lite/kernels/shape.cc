@@ -54,19 +54,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
 
+  // By design, the input shape is always known at the time of Prepare, even
+  // if the preceding op that generates |input| is dynamic. Thus, we can
+  // always compute the shape immediately, without waiting for Eval.
+  SetTensorToPersistentRo(output);
+
   // Shape always produces a 1-dimensional output tensor, where each output
   // element is the length of the corresponding input tensor's dimension.
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(1);
   output_size->data[0] = NumDimensions(input);
-  return context->ResizeTensor(context, output, output_size);
-}
+  TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_size));
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TFLITE_DCHECK_EQ(NumDimensions(output), 1);
   TFLITE_DCHECK_EQ(SizeOfDimension(output, 0), NumDimensions(input));
 
+  // Immediately propagate the known shape to the output tensor. This allows
+  // downstream ops that rely on the value to use it during prepare.
   switch (output->type) {
     case kTfLiteInt32:
       ExtractShape(input, GetTensorData<int32_t>(output));
@@ -78,6 +81,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 

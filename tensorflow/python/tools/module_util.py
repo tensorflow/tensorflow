@@ -59,7 +59,7 @@ def get_parent_dir_for_name(module_name):
       spec = importlib.util.find_spec(name_split[0])
     except ValueError:
       return None
-    if not spec.origin:
+    if not spec or not spec.origin:
       return None
     base_path = os.path.dirname(spec.origin)
   return os.path.join(base_path, *name_split[1:-1])

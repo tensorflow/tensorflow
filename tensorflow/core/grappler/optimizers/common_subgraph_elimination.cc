@@ -217,8 +217,8 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
       if (rep == node) {
         continue;
       }
-      const std::set<NodeDef*>& tmp = node_map.GetOutputs(node->name());
-      std::vector<NodeDef*> fanouts(tmp.begin(), tmp.end());
+      // Make a copy since we mutate the set below.
+      const auto fanouts = node_map.GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
         // Update consumers of node.
         bool updated_fanout = false;
@@ -250,6 +250,9 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
           node_map.UpdateInput(fanout->name(), node->name(), rep->name());
           CanonicalizeNode(fanout);
         }
+      }
+      if (fetch_nodes_known_) {
+        node->Clear();
       }
       duplicates.insert(i);
       stop = false;

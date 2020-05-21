@@ -41,6 +41,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteString:
       break;
     default:
       context->ReportError(
@@ -104,6 +105,15 @@ TfLiteStatus GatherNd(const TfLiteTensor* params, const TfLiteTensor* indices,
 }
 
 template <typename IndicesT>
+TfLiteStatus GatherNdString(const TfLiteTensor* params,
+                            const TfLiteTensor* indices, TfLiteTensor* output) {
+  reference_ops::GatherNdString(
+      GetTensorShape(params), params, GetTensorShape(indices),
+      GetTensorData<IndicesT>(indices), GetTensorShape(output), output);
+  return kTfLiteOk;
+}
+
+template <typename IndicesT>
 TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
                           const TfLiteTensor* indices, TfLiteTensor* output) {
   switch (params->type) {
@@ -117,6 +127,8 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       return GatherNd<int32_t, IndicesT>(params, indices, output);
     case kTfLiteInt64:
       return GatherNd<int64_t, IndicesT>(params, indices, output);
+    case kTfLiteString:
+      return GatherNdString<IndicesT>(params, indices, output);
     default:
       context->ReportError(context,
                            "Params type '%s' are not supported by gather_nd.",

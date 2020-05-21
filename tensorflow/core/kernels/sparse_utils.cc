@@ -79,11 +79,14 @@ std::vector<Tindices> GetStartIndicesOfEachDenseRow(
   std::vector<Tindices> segment_indices;
   const Tindices num_entries_in_sparse_tensor = indices_mat.dimension(0);
   const Tindices num_dense_rows_in_sparse_tensor =
-      1 + indices_mat(num_entries_in_sparse_tensor - 1, 0) - indices_mat(0, 0);
+      1 + indices_mat(num_entries_in_sparse_tensor - 1, 0);
   // Reserve an extra slot for the 0 we store in the first entry by convention.
   segment_indices.reserve(1 + num_dense_rows_in_sparse_tensor);
   segment_indices.push_back(0);
-  *contains_empty_rows = false;
+  for (Tindices i = 0; i < indices_mat(0, 0); ++i) {
+    segment_indices.push_back(0);
+  }
+  *contains_empty_rows = indices_mat(0, 0) > 0;
   while (true) {
     const Tindices start_sparse_index_of_next_dense_row =
         FindNextDenseRowStartIndex<Tindices>(
@@ -127,9 +130,9 @@ std::vector<Tindices> ParseRowStartIndices(
 
 template <typename Tindices>
 bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices) {
-  // Skip checking the lengths of the first and last dense rows since those are
+  // Skip checking the length of the last dense row since it is
   // always non-empty.
-  for (size_t i = 2; i < row_start_indices.size() - 1; ++i) {
+  for (size_t i = 1; i < row_start_indices.size() - 1; ++i) {
     if (row_start_indices.at(i) - row_start_indices.at(i - 1) == 0) {
       return true;
     }

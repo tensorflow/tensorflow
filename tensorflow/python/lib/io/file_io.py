@@ -165,7 +165,7 @@ class FileIO(object):
     self._read_buf.seek(offset)
 
   def readline(self):
-    r"""Reads the next line from the file. Leaves the '\n' at the end."""
+    r"""Reads the next line, keeping \n. At EOF, returns ''."""
     self._preread_check()
     return self._prepare_value(self._read_buf.readline())
 
@@ -345,14 +345,52 @@ def get_matching_files(filename):
     A list of strings containing filenames that match the given pattern(s).
 
   Raises:
-    errors.OpError: If there are filesystem / directory listing errors.
+  *  errors.OpError: If there are filesystem / directory listing errors.
   """
   return get_matching_files_v2(filename)
 
 
 @tf_export("io.gfile.glob")
 def get_matching_files_v2(pattern):
-  """Returns a list of files that match the given pattern(s).
+  r"""Returns a list of files that match the given pattern(s).
+
+  The patterns are defined as strings. Supported patterns are defined
+  here. Note that the pattern can be a Python iteratable of string patterns.
+
+  The format definition of the pattern is:
+
+  **pattern**: `{ term }`
+
+  **term**:
+    * `'*'`: matches any sequence of non-'/' characters
+    * `'?'`: matches a single non-'/' character
+    * `'[' [ '^' ] { match-list } ']'`: matches any single
+      character (not) on the list
+    * `c`: matches character `c`  where `c != '*', '?', '\\', '['`
+    * `'\\' c`: matches character `c`
+
+  **character range**:
+    * `c`: matches character `c` while `c != '\\', '-', ']'`
+    * `'\\' c`: matches character `c`
+    * `lo '-' hi`: matches character `c` for `lo <= c <= hi`
+
+  Examples:
+
+  >>> tf.io.gfile.glob("*.py")
+  ... # For example, ['__init__.py']
+
+  >>> tf.io.gfile.glob("__init__.??")
+  ... # As above
+
+  >>> files = {"*.py"}
+  >>> the_iterator = iter(files)
+  >>> tf.io.gfile.glob(the_iterator)
+  ... # As above
+
+  See the C++ function `GetMatchingPaths` in
+  [`core/platform/file_system.h`]
+  (../../../core/platform/file_system.h)
+  for implementation details.
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).

@@ -46,16 +46,27 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True],
           "constant_crops": [True],
       },
-      # Non-4D use case: 1 batch dimension, 3 spatial dimensions, 2 others.
+      # 3D use case.
       {
           "dtype": [tf.float32],
-          "input_shape": [[8, 2, 2, 2, 1, 1]],
-          "block_shape": [[2, 2, 2]],
-          "crops": [[[0, 0], [0, 0], [0, 0]]],
-          "constant_block_shape": [True, False],
-          "constant_crops": [True, False],
+          "input_shape": [[1, 3, 3]],
+          "block_shape": [[1]],
+          "crops": [[[0, 0]], [[1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
       },
   ]
+
+  if options.run_with_flex:
+    # Non-4D use case: 1 batch dimension, 3 spatial dimensions, 2 others.
+    test_parameters = test_parameters + [{
+        "dtype": [tf.float32],
+        "input_shape": [[8, 2, 2, 2, 1, 1]],
+        "block_shape": [[2, 2, 2]],
+        "crops": [[[0, 0], [0, 0], [0, 0]]],
+        "constant_block_shape": [True, False],
+        "constant_crops": [True, False],
+    }]
 
   def build_graph(parameters):
     """Build a batch_to_space graph given `parameters`."""

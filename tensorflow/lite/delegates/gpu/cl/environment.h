@@ -57,7 +57,7 @@ class Environment {
   std::vector<TensorStorageType> GetSupportedStorages() const;
   bool IsSupported(TensorStorageType storage_type) const;
 
-  Status Init();
+  absl::Status Init();
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -75,7 +75,7 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu);
 TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
     const CLDevice& gpu);
 
-Status CreateEnvironment(Environment* result);
+absl::Status CreateEnvironment(Environment* result);
 
 }  // namespace cl
 }  // namespace gpu

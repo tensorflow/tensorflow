@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -33,7 +34,8 @@ namespace metal {
 //   will be inefficient
 std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const RuntimeOptions& options);
+    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
+    const RuntimeOptions& options);
 
 }  // namespace metal
 }  // namespace gpu

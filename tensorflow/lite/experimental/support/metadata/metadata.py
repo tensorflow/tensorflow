@@ -97,8 +97,9 @@ class MetadataPopulator(object):
 
     Raises:
       IOError: File not found.
+      ValueError: the model does not have the expected flatbuffer identifer.
     """
-    _assert_exist(model_file)
+    _assert_model_file_identifier(model_file)
     self._model_file = model_file
     self._metadata_buf = None
     self._associated_files = set()
@@ -115,6 +116,7 @@ class MetadataPopulator(object):
 
     Raises:
       IOError: File not found.
+      ValueError: the model does not have the expected flatbuffer identifer.
     """
     return cls(model_file)
 
@@ -129,6 +131,9 @@ class MetadataPopulator(object):
 
     Returns:
       A MetadataPopulator(_MetadataPopulatorWithBuffer) object.
+
+    Raises:
+      ValueError: the model does not have the expected flatbuffer identifer.
     """
     return _MetadataPopulatorWithBuffer(model_buf)
 
@@ -211,12 +216,13 @@ class MetadataPopulator(object):
       metadata_buf: metadata buffer (in bytearray) to be populated.
 
     Raises:
-      ValueError:
-        The metadata to be populated is empty.
+      ValueError: The metadata to be populated is empty.
+      ValueError: The metadata does not have the expected flatbuffer identifer.
     """
     if not metadata_buf:
       raise ValueError("The metadata to be populated is empty.")
 
+    _assert_metadata_buffer_identifier(metadata_buf)
     self._metadata_buf = metadata_buf
 
   def load_metadata_file(self, metadata_file):
@@ -226,8 +232,8 @@ class MetadataPopulator(object):
       metadata_file: path to the metadata file to be populated.
 
     Raises:
-      IOError:
-        File not found.
+      IOError: File not found.
+      ValueError: The metadata does not have the expected flatbuffer identifer.
     """
     _assert_exist(metadata_file)
     with open(metadata_file, "rb") as f:
@@ -391,6 +397,7 @@ class _MetadataPopulatorWithBuffer(MetadataPopulator):
 
     Raises:
       ValueError: model_buf is empty.
+      ValueError: model_buf does not have the expected flatbuffer identifer.
     """
     if not model_buf:
       raise ValueError("model_buf cannot be empty.")
@@ -423,6 +430,8 @@ class MetadataDisplayer(object):
       metadata_file: valid path to the metadata file.
       associated_file_list: list of associate files in the model file.
     """
+    _assert_model_file_identifier(model_file)
+    _assert_metadata_file_identifier(metadata_file)
     self._model_file = model_file
     self._metadata_file = metadata_file
     self._associated_file_list = associated_file_list
@@ -445,6 +454,26 @@ class MetadataDisplayer(object):
     metadata_file = cls._save_temporary_metadata_file(model_file)
     associated_file_list = cls._parse_packed_associted_file_list(model_file)
     return cls(model_file, metadata_file, associated_file_list)
+
+  @classmethod
+  def with_model_buffer(cls, model_buffer):
+    """Creates a MetadataDisplayer object for a file buffer.
+
+    Args:
+      model_buffer: TensorFlow Lite model buffer in bytearray.
+
+    Returns:
+      MetadataDisplayer object.
+    """
+    if not model_buffer:
+      raise ValueError("model_buffer cannot be empty.")
+
+    with tempfile.NamedTemporaryFile() as temp:
+      model_file = temp.name
+
+    with open(model_file, "wb") as f:
+      f.write(model_buffer)
+    return cls.with_model_file(model_file)
 
   def get_metadata_json(self):
     """Converts the metadata into a json string."""
@@ -533,3 +562,32 @@ def _assert_exist(filename):
   """Checks if a file exists."""
   if not os.path.exists(filename):
     raise IOError("File, '{0}', does not exist.".format(filename))
+
+
+def _assert_model_file_identifier(model_file):
+  """Checks if a model file has the expected TFLite schema identifier."""
+  _assert_exist(model_file)
+  with open(model_file, "rb") as f:
+    model_buf = f.read()
+
+  if not _schema_fb.Model.ModelBufferHasIdentifier(model_buf, 0):
+    raise ValueError(
+        "The model provided does not have the expected identifier, and "
+        "may not be a valid TFLite model.")
+
+
+def _assert_metadata_file_identifier(metadata_file):
+  """Checks if a metadata file has the expected Metadata schema identifier."""
+  _assert_exist(metadata_file)
+  with open(metadata_file, "rb") as f:
+    metadata_buf = f.read()
+  _assert_metadata_buffer_identifier(metadata_buf)
+
+
+def _assert_metadata_buffer_identifier(metadata_buf):
+  """Checks if a metadata buffer has the expected Metadata schema identifier."""
+  if not _metadata_fb.ModelMetadata.ModelMetadataBufferHasIdentifier(
+      metadata_buf, 0):
+    raise ValueError(
+        "The metadata buffer does not have the expected identifier, and may not"
+        " be a valid TFLite Metadata.")

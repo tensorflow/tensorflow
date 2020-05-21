@@ -546,6 +546,174 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
   EXPECT_EQ(should_cache_model_compilation_model_create_count, 1);
 }
 
+TEST_F(UnsupportedOperationOnDeviceTest,
+       ShouldNotApplySupportedOperationsFilterBeforeAndroidSdk29) {
+  nnapi_mock_->SetAndroidSdkVersion(28, /*set_unsupported_ops_to_null=*/true);
+  nnapi_mock_->ModelCreateReturns<0>();
+  AddSubOpsAcceleratedModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
+  std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
+  std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  m.PopulateTensor<float>(m.input3(), input2);
+  m.Invoke();
+
+  // Delegation succeded without failures and all nodes have been delegated.
+  ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+}
+
+// This is a model with two ops:
+//
+//  input1 ---->
+//                ADD --
+//  input2   -->        |
+//                       -->
+//                          SUB --> output
+//  input3 ---------------->
+//
+class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
+                                        public AcceleratedModel {
+ public:
+  HardSwishAddOpsAcceleratedModel(const TensorData& input1,
+                                  const TensorData& input2,
+                                  const TensorData& output,
+                                  ActivationFunctionType activation_type,
+                                  const NnApi* nnapi,
+                                  const std::string& accelerator_name,
+                                  bool allow_fp32_relax_to_fp16 = false)
+      : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
+    auto* delegate = GetDelegate();
+    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(delegate);
+    });
+    Init(input1, input2, output, activation_type, allow_fp32_relax_to_fp16);
+  }
+
+  int input1() { return input1_; }
+  int input2() { return input2_; }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input1_;
+  int input2_;
+  int output_;
+
+ private:
+  // Performs initialization logic shared across all constructors.
+  void Init(const TensorData& input1, const TensorData& input2,
+            const TensorData& output, ActivationFunctionType activation_type,
+            bool allow_fp32_relax_to_fp16 = false) {
+    input1_ = AddInput(input1);
+    input2_ = AddInput(input2);
+    const int hard_swish_output = AddInnerTensor<float>(output);
+    output_ = AddOutput(output);
+    AddBuiltinOp(BuiltinOperator_HARD_SWISH, BuiltinOptions_HardSwishOptions,
+                 CreateHardSwishOptions(builder_).Union(), {input1_},
+                 {hard_swish_output});
+    AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                 CreateAddOptions(builder_, activation_type).Union(),
+                 {input1_, hard_swish_output}, {output_});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     allow_fp32_relax_to_fp16);
+  }
+};
+
+struct TfLiteOpMappedToMultipleNnApiOps
+    : ::tflite::delegate::nnapi::NnApiDelegateMockTest {};
+
+TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllCostituentOpsNotSupported) {
+  nnapi_mock_->ModelCreateReturns<0>();
+
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        // HardSwish is mapped to 4 NNAPI ops, none of which supported.
+        std::fill(supportedOps, supportedOps + 4, false);
+        // After that we have the ADD op that is supported.
+        supportedOps[4] = true;
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+
+  HardSwishAddOpsAcceleratedModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+      nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
+  std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
+  std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  m.Invoke();
+
+  // Delegation succeded without failures and HardSwish has not been delegated
+  // but Add has been correctly delegated.
+  ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
+}
+
+TEST_F(TfLiteOpMappedToMultipleNnApiOps, NotAllConstitutentOpsSupported) {
+  nnapi_mock_->ModelCreateReturns<0>();
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        // HardSwish is mapped to 4 NNAPI ops (the first 4 ones), so we have 5
+        // ops in the NNAPI model.
+        std::fill(supportedOps, supportedOps + 5, true);
+        // One of the NNAPI ops required by HardSwish is not supported.
+        supportedOps[2] = false;
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+
+  HardSwishAddOpsAcceleratedModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+      nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
+  std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
+  std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  m.Invoke();
+
+  // Delegation succeded without failures. HardSwish has not been delegated
+  // but Add is delegated.
+  ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
+}
+
+TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllConstitutentOpsSupported) {
+  nnapi_mock_->ModelCreateReturns<0>();
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        // HardSwish is mapped to 4 NNAPI ops (the first 4 ones), so we have 5
+        // ops in the NNAPI model.
+        // All ops are supported by the accelerator.
+        std::fill(supportedOps, supportedOps + 5, true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+
+  HardSwishAddOpsAcceleratedModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+      nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
+  std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
+  std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  m.Invoke();
+
+  // Delegation succeded without failures and all nodes have been delegated.
+  ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+}
+
 // Model with a chain of no-op (add with zero operations)
 // interleaved with no-op custom nodes.
 class LongIdentityModel : public MultiOpModel, public AcceleratedModel {

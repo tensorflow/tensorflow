@@ -247,6 +247,93 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
   EXPECT_EQ("", result);
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
+  // In this test, there is only one backend request since we cache the file
+  // size.
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+      "Auth Token: fake_token\n"
+      "Range: 0-9\n"
+      "Timeouts: 5 1 20\n",
+      "012345678")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[5];
+  StringPiece result;
+
+  // Read the first chunk. Even though the backend response is out-of-range,
+  // we should get a OK status since we're just reading the first 5 bytes.
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("01234", result);
+
+  TF_EXPECT_OK(file->Read(4, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("45678", result);
+
+  // Return the cached error once the user starts reading out of range.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(5, sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("5678", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedNotSequential) {
+  // In this test, the second read is seeking backwards, so it should trigger
+  // a backend request.
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 1-10\n"
+           "Timeouts: 5 1 20\n",
+           "12345678"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-9\n"
+           "Timeouts: 5 1 20\n",
+           "012345678")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[5];
+  StringPiece result;
+
+  TF_EXPECT_OK(file->Read(1, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("12345", result);
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("01234", result);
+}
+
 TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
@@ -282,7 +369,9 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
   char scratch[10];
   StringPiece result;
 
-  // Read the first chunk.
+  // Read the first chunk. Since the first read is out-of-range,
+  // we don't cache the out-of-range flag and each subsequent read triggers a
+  // backend call.
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
             file->Read(0, sizeof(scratch), &result, scratch).code());
   EXPECT_EQ("012345678", result);

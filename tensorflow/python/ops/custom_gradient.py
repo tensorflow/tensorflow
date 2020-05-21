@@ -315,7 +315,7 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
   ])
-  with backprop.GradientTape() as tape:
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
@@ -332,8 +332,9 @@ def _graph_mode_decorator(f, args, kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   inputs = args
-  variables_in_tape = frozenset([v.ref() for v in tape.watched_variables()
-                                ]) - frozenset(v.ref() for v in inputs)
+  variables_in_tape = frozenset([
+      v.ref() for v in variable_watcher.watched_variables()
+  ]) - frozenset(v.ref() for v in inputs)
   variables_in_subgraph = frozenset([
       v.ref()
       for v in get_dependent_variables(input_ops=inputs, output_ops=result)
@@ -405,14 +406,14 @@ def _graph_mode_decorator(f, args, kwargs):
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with backprop.GradientTape() as tape:
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.ref() for v in tape.watched_variables())
+      for v in set(v.ref() for v in variable_watcher.watched_variables())
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)

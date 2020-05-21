@@ -25,6 +25,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,6 +43,9 @@ def _convert_external_state_policy_to_enum(external_state_policy):
 
 
 @tf_export("data.experimental.make_saveable_from_iterator")
+@deprecation.deprecated(
+    None, "`make_saveable_from_iterator` is intended for use in TF1 with "
+    "`tf.compat.v1.Saver`. In TF2, use `tf.train.Checkpoint` instead.")
 def make_saveable_from_iterator(iterator, external_state_policy="fail"):
   """Returns a SaveableObject for saving/restoring iterator state using Saver.
 

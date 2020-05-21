@@ -30,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -125,7 +125,7 @@ Status FunctionalizeControlFlowForFunction(
       nodes_to_associated_functions.push_back({n, associated_functions});
     }
   }
-  for (auto iter : nodes_to_associated_functions) {
+  for (const auto& iter : nodes_to_associated_functions) {
     Node* n = iter.first;
     auto associated_functions = iter.second;
     for (auto& associated_function : associated_functions) {

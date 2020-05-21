@@ -44,7 +44,7 @@ def create_examples(num_examples, input_mean):
   examples = []
   for row in range(num_examples):
     ex = example_pb2.Example()
-    ex.features.feature["id"].bytes_list.value.append(str(ids[row, 0]))
+    ex.features.feature["id"].bytes_list.value.append(bytes(ids[row, 0]))
     ex.features.feature["target"].float_list.value.append(target[row, 0])
     ex.features.feature["inputs"].float_list.value.append(inputs[row, 0])
     examples.append(ex)

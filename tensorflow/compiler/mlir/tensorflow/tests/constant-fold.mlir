@@ -18,6 +18,76 @@ func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0
   return %0, %1, %2 : tensor<0xi32>, tensor<?xi32>, tensor<?xi32>
 }
 
+// CHECK-LABEL: func @testPow
+// CHECK-SAME:(%[[ARG_0:.*]]: tensor<4xf32>, %[[ARG_1:.*]]: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>)
+func @testPow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
+
+  %cst_zero = constant dense<0.0> : tensor<f32>
+  %cst_one = constant dense<1.0> : tensor<f32>
+
+  // CHECK-DAG: %[[RES_NO_FOLD:.*]] = "tf.Pow"(%arg0, %arg1)
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK-DAG: %[[POW_ZERO:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<4xf32>} : () -> tensor<4xf32>
+  %1 = "tf.Pow"(%arg0, %cst_zero) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK-NOT: "tf.Pow"
+  %2 = "tf.Pow"(%arg0, %cst_one) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK: return %[[RES_NO_FOLD]], %[[POW_ZERO]], %[[ARG_0]]
+  return %0, %1, %2 : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: func @testEmpty32
+func @testEmpty32() -> (tensor<5xi32>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value = dense<0> : tensor<5xi32>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<5xi32>)
+  return %1 : tensor<5xi32>
+}
+
+// CHECK-LABEL: func @testEmpty64
+func @testEmpty64() -> (tensor<5xi64>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value = dense<0> : tensor<5xi64>}
+  // CHECK: return [[VAL]] : tensor<5xi64>
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<5xi64>)
+  return %1 : tensor<5xi64>
+}
+
+// CHECK-LABEL: func @testEmptyFloat
+func @testEmptyFloat() -> (tensor<5xf64>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xf64>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<5xf64>)
+  return %1 : tensor<5xf64>
+}
+
+// CHECK-LABEL: func @testEmptyf16
+func @testEmptyf16() -> (tensor<5xf16>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xf16>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<5xf16>)
+  return %1 : tensor<5xf16>
+}
+
+// CHECK-LABEL: func @testEmptybf16
+func @testEmptybf16() -> (tensor<5xbf16>) {
+  %0 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: [[VAL:%.+]] = "tf.Const"() {value =  dense<0.000000e+00> : tensor<5xbf16>}
+  // CHECK: return [[VAL]]
+  %1 = "tf.Empty"(%0) : (tensor<i32>) -> (tensor<5xbf16>)
+  return %1 : tensor<5xbf16>
+}
+
 // CHECK-LABEL: func @testShapeN
 func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>) {
 
@@ -230,4 +300,145 @@ func @testTensorListElementShape(%arg0: tensor<!tf.variant<tensor<2x4xf32>>>) ->
   // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
   // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
   return %0: tensor<2xi32>
+}
+
+func @RemoveTrivialAdd(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %0 = "tf.Add"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialAdd
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialAddBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %cst = constant dense<0.0> : tensor<2x2xbf16>
+  %0 = "tf.Add"(%arg0, %cst) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+
+  // CHECK-LABEL: RemoveTrivialAdd
+  // CHECK-NEXT: return %arg0 : tensor<2x2xbf16>
+}
+
+func @RemoveTrivialAddBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %cst = constant dense<0.0> : tensor<2x2xbf16>
+  %0 = "tf.Add"(%cst, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+
+  // CHECK-LABEL: RemoveTrivialAdd
+  // CHECK-NEXT: return %arg0 : tensor<2x2xbf16>
+}
+
+func @RemoveTrivialAddV2(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %0 = "tf.AddV2"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialAddV2
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialSub(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %0 = "tf.Sub"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialSub
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialSubInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
+  %cst = constant dense<0> : tensor<2x2xi8>
+  %0 = "tf.Sub"(%arg0, %cst) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
+  return %0 : tensor<2x2xi8>
+
+  // CHECK-LABEL: RemoveTrivialSubInt8
+  // CHECK-NEXT: return %arg0 : tensor<2x2xi8>
+}
+
+func @RemoveTrivialMul(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tf.Mul"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialMul
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialDiv(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tf.Div"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialDiv
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialRealDiv(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tf.RealDiv"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveTrivialRealDiv
+  // CHECK-NEXT: return %arg0 : tensor<2x2xf32>
+}
+
+func @RemoveTrivialDivBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %cst = constant dense<1.0> : tensor<2x2xbf16>
+  %0 = "tf.Div"(%arg0, %cst) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+
+  // CHECK-LABEL: RemoveTrivialDiv
+  // CHECK-NEXT: return %arg0 : tensor<2x2xbf16>
+}
+
+func @RemoveTrivialMulInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
+  %cst = constant dense<1> : tensor<2x2xi8>
+  %0 = "tf.Mul"(%cst, %arg0) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
+  return %0 : tensor<2x2xi8>
+
+  // CHECK-LABEL: RemoveTrivialMulInt8
+  // CHECK-NEXT: return %arg0 : tensor<2x2xi8>
+}
+
+func @DivBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  %cst = constant dense<1.0> : tensor<2x2xbf16>
+  %0 = "tf.Div"(%cst, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+
+  // CHECK-LABEL: DivBf16LHS
+  // CHECK: tf.Div
+}
+
+func @DontRemoveTrivialAdd(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %0 = "tf.AddV2"(%arg0, %cst) : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+  // CHECK-LABEL: DontRemoveTrivialAdd
+  // CHECK: %[[CONST:.*]] = constant dense<0.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %[[CONST]]) : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %[[RESULT]] : tensor<2x2xf32>
+}
+
+func @DontRemoveTrivialAdd2(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %0 = "tf.AddV2"(%arg0, %cst) : (tensor<?x?xf32> , tensor<2x2xf32>) -> tensor<?x?xf32>
+  return %0 :tensor<?x?xf32>
+
+  // CHECK-LABEL: DontRemoveTrivialAdd2
+  // CHECK: %[[CONST:.*]] = constant dense<0.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %[[CONST]]) : (tensor<?x?xf32>, tensor<2x2xf32>) -> tensor<?x?xf32>
+  // CHECK: return %[[RESULT]] : tensor<?x?xf32>
+}
+
+// Test no fold because of the broadcast.
+func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
+  %0 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  %1 = "tf.Mul"(%arg0, %0) : (tensor<1x6x8x1xf32>, tensor<f32>) -> tensor<1x6x8x1xf32>
+  return %1 : tensor<1x6x8x1xf32>
+  // CHECK-LABEL: DontRemoveTrivialMul
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "tf.Mul"(%arg0, %[[CONST]]) : (tensor<1x6x8x1xf32>, tensor<f32>) -> tensor<1x6x8x1xf32>
+  // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }

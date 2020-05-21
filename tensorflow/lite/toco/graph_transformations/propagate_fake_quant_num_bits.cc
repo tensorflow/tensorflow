@@ -245,7 +245,7 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
 // This can be thought of as a bidirectional flood-fill of the num_bits implied
 // final_data_type that terminates at other FakeQuant ops (and a few others as
 // determined by DoesOpBlockBackwardPropagation/DoesOpBlockForwardPropagation).
-// Once all FakeQuant ops have been visted the arrays should all have
+// Once all FakeQuant ops have been visited the arrays should all have
 // appropriate final_data_types if the source graph was annotated with the
 // proper FakeQuant ops.
 //

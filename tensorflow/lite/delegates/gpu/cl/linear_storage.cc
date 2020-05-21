@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 
+#include "tensorflow/lite/delegates/gpu/common/status.h"
+
 namespace tflite {
 namespace gpu {
 namespace cl {
@@ -73,29 +75,31 @@ LinearStorageType DeduceLinearStorageType(
   }
 }
 
-Status CreateBufferLinearStorage(int size, DataType data_type, void* data,
-                                 CLContext* context, LinearStorage* result) {
+absl::Status CreateBufferLinearStorage(int size, DataType data_type, void* data,
+                                       CLContext* context,
+                                       LinearStorage* result) {
   const int float4_size =
       data_type == DataType::FLOAT32 ? sizeof(float4) : sizeof(half4);
   *result = LinearStorage(size, LinearStorageType::BUFFER, data_type);
   RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * size, data, context,
                                        &result->buffer_storage_));
   result->memory_ = result->buffer_storage_.GetMemoryPtr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateTextureLinearStorage(int size, DataType data_type, void* data,
-                                  CLContext* context, LinearStorage* result) {
+absl::Status CreateTextureLinearStorage(int size, DataType data_type,
+                                        void* data, CLContext* context,
+                                        LinearStorage* result) {
   *result = LinearStorage(size, LinearStorageType::TEXTURE_2D, data_type);
   RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, size, 1, data, context,
                                       &result->texture_storage_));
   result->memory_ = result->texture_storage_.GetMemoryPtr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
-                           int size, void* data, CLContext* context,
-                           LinearStorage* result) {
+absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
+                                 int size, void* data, CLContext* context,
+                                 LinearStorage* result) {
   if (creation_info.storage_type == LinearStorageType::BUFFER) {
     return CreateBufferLinearStorage(size, creation_info.data_type, data,
                                      context, result);

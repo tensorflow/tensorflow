@@ -250,6 +250,10 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
 
+    # Support hcc based off clang 11.0.0, included in ROCm3.1
+    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/11.0.0/include/")
+    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/11.0.0/include")
+
     return inc_dirs
 
 def _enable_rocm(repository_ctx):
@@ -611,6 +615,7 @@ def _create_local_rocm_repository(repository_ctx):
             name = "rocm-include",
             src_dir = rocm_toolkit_path + "/include",
             out_dir = "rocm/include",
+            exceptions = ["gtest", "gmock"],
         ),
         make_copy_dir_rule(
             repository_ctx,

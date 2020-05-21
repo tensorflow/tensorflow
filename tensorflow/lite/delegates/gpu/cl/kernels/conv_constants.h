@@ -35,10 +35,10 @@ namespace cl {
 class ConvConstants : public GPUOperation {
  public:
   ConvConstants() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ConvConstants(ConvConstants&& kernel);
@@ -47,10 +47,9 @@ class ConvConstants : public GPUOperation {
   ConvConstants& operator=(const ConvConstants&) = delete;
 
  private:
-  friend Status CreateConvConstants(const CreationContext& creation_context,
-                                    const OperationDef& definition,
-                                    const Convolution2DAttributes& attr,
-                                    ConvConstants* result);
+  friend absl::Status CreateConvConstants(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, ConvConstants* result);
   explicit ConvConstants(const OperationDef& definition,
                          const Convolution2DAttributes& attr)
       : GPUOperation(definition),
@@ -62,14 +61,14 @@ class ConvConstants : public GPUOperation {
         dst_channels_(attr.weights.shape.o) {}
 
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   Buffer weights_;
@@ -87,9 +86,9 @@ class ConvConstants : public GPUOperation {
 };
 
 template <DataType T>
-Status ConvConstants::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+absl::Status ConvConstants::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
@@ -112,9 +111,9 @@ Status ConvConstants::UploadWeights(
 
 template <DataType S, typename T>
 void ConvConstants::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
@@ -157,10 +156,10 @@ bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr);
 
-Status CreateConvConstants(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvConstants* result);
+absl::Status CreateConvConstants(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvConstants* result);
 
 }  // namespace cl
 }  // namespace gpu

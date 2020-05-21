@@ -43,19 +43,21 @@ std::vector<cl_image_format> GetSupportedImage2DFormats(cl_context context,
   return result;
 }
 
-Status CreateCLContext(const CLDevice& device,
-                       cl_context_properties* properties, CLContext* result) {
+absl::Status CreateCLContext(const CLDevice& device,
+                             cl_context_properties* properties,
+                             CLContext* result) {
   int error_code;
   cl_device_id device_id = device.id();
   cl_context context =
       clCreateContext(properties, 1, &device_id, nullptr, nullptr, &error_code);
   if (!context) {
-    return UnknownError(absl::StrCat("Failed to create a compute context - ",
-                                     CLErrorCodeToString(error_code)));
+    return absl::UnknownError(
+        absl::StrCat("Failed to create a compute context - ",
+                     CLErrorCodeToString(error_code)));
   }
 
   *result = CLContext(context, true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -99,15 +101,16 @@ bool CLContext::IsFloatTexture2DSupported(int num_channels, DataType data_type,
   return false;
 }
 
-Status CreateCLContext(const CLDevice& device, CLContext* result) {
+absl::Status CreateCLContext(const CLDevice& device, CLContext* result) {
   return CreateCLContext(device, nullptr, result);
 }
 
-Status CreateCLGLContext(const CLDevice& device,
-                         cl_context_properties egl_context,
-                         cl_context_properties egl_display, CLContext* result) {
+absl::Status CreateCLGLContext(const CLDevice& device,
+                               cl_context_properties egl_context,
+                               cl_context_properties egl_display,
+                               CLContext* result) {
   if (!device.SupportsExtension("cl_khr_gl_sharing")) {
-    return UnavailableError("Device doesn't support CL-GL sharing.");
+    return absl::UnavailableError("Device doesn't support CL-GL sharing.");
   }
   cl_context_properties platform =
       reinterpret_cast<cl_context_properties>(device.platform());

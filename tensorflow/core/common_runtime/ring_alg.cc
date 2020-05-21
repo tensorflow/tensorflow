@@ -254,14 +254,9 @@ string RingAlg::TensorDebugString(const Tensor& tensor) {
       col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
   if (gpu_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Notification note;
-    gpu_device_info->default_context->CopyDeviceTensorToCPU(
-        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor,
-        [&note](const Status& s) {
-          DCHECK(s.ok());
-          note.Notify();
-        });
-    note.WaitForNotification();
+    Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(
+        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
+    DCHECK(st.ok());
     return cpu_tensor.SummarizeValue(64);
   } else {
     return tensor.SummarizeValue(64);

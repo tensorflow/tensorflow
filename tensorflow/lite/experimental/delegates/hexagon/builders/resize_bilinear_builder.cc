@@ -50,9 +50,7 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
 
   // Input min/max
   TF_LITE_ENSURE_OK(context, ComputeMinAndMaxQuantValues(
-                                 input_tensor, &input_min_, &input_max_,
-                                 std::numeric_limits<uint8_t>::min(),
-                                 std::numeric_limits<uint8_t>::max()));
+                                 input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&input_min_),
       sizeof(input_min_));

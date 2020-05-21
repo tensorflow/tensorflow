@@ -202,7 +202,7 @@ The next steps assume that the
 
 *   The `IDF_PATH` environment variable is set
 *   `idf.py` and Xtensa-esp32 tools (e.g. `xtensa-esp32-elf-gcc`) are in `$PATH`
-*   `esp32-camera` should be downloaded in `comopnents/` dir of example as
+*   `esp32-camera` should be downloaded in `components/` dir of example as
     explained in `Building the example`(below)
 
 ### Generate the examples

@@ -84,8 +84,8 @@ class ProcessState : public ProcessStateInterface {
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.
-  static const bool FLAGS_brain_mem_reg_gpu_dma = true;
-  static const bool FLAGS_brain_gpu_record_mem_types = false;
+  static constexpr bool FLAGS_brain_mem_reg_gpu_dma = true;
+  static constexpr bool FLAGS_brain_gpu_record_mem_types = false;
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.

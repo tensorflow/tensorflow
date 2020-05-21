@@ -1,0 +1,21 @@
+path: "tensorflow.initializers.lecun_uniform"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v2.LecunUniform\'>"
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v2.VarianceScaling\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.VarianceScaling\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v2.Initializer\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -58,6 +58,7 @@ cc_library(
         "xrt_state.h",
         "xrt_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":xrt_proto_cc",
         "//tensorflow/compiler/jit:xla_device",

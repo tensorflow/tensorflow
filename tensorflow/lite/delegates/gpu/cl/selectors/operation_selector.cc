@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -36,20 +37,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool IsWidthBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+
+bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
          inputs[1]->tensor.shape.w == 1;
 }
-bool IsHeightBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
          inputs[1]->tensor.shape.h == 1;
 }
-bool IsChannelsBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
          inputs[1]->tensor.shape.c == 1;
@@ -58,10 +57,10 @@ bool IsChannelsBroadcastedForSecondInput(
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const CLDevice& device,
                                    const BHWC& dst_shape) {
-  const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+  const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
@@ -74,18 +73,18 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   return suitable_attributes && recommended_channels && recommended_hw;
 }
 
-Status WinogradFromNode(const CreationContext& creation_context,
-                        const OperationDef& op_def, ModelHints hints,
-                        const BHWC& input_shape, const BHWC& output_shape,
-                        const Convolution2DAttributes& attr,
-                        GPUOperationsSubgraph* gpu_subgraph) {
+absl::Status WinogradFromNode(const CreationContext& creation_context,
+                              const OperationDef& op_def, ModelHints hints,
+                              const BHWC& input_shape, const BHWC& output_shape,
+                              const Convolution2DAttributes& attr,
+                              GPUOperationsSubgraph* gpu_subgraph) {
   if (!IsSuitableForWinograd4x4To6x6(attr, *creation_context.device,
                                      output_shape)) {
-    return UnimplementedError("No implementation for this case.");
+    return absl::UnimplementedError("No implementation for this case.");
   }
 
-  const int tiles_x = IntegralDivideRoundUp(output_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(output_shape.h, 4);
+  const int tiles_x = DivideRoundUp(output_shape.w, 4);
+  const int tiles_y = DivideRoundUp(output_shape.h, 4);
   const BHWC shape_0{input_shape.b, 36, tiles_x * tiles_y, input_shape.c};
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;
@@ -140,18 +139,17 @@ Status WinogradFromNode(const CreationContext& creation_context,
   }
   RETURN_IF_ERROR(SelectWinograd36To4x4(creation_context, winograd_down_def,
                                         bias_copy, &winograd_down.operation));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status GPUOperationFromNode(const CreationContext& creation_context,
-                            const OperationDef& op_def, ModelHints hints,
-                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
-                            const Node& node,
-                            GPUOperationsSubgraph* gpu_subgraph) {
+absl::Status GPUOperationFromNode(const CreationContext& creation_context,
+                                  const OperationDef& op_def, ModelHints hints,
+                                  const std::vector<Value*>& inputs,
+                                  const std::vector<Value*>& outputs,
+                                  const Node& node,
+                                  GPUOperationsSubgraph* gpu_subgraph) {
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
   auto op_type = OperationTypeFromString(node.operation.type);
@@ -160,7 +158,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       const auto attr =
           absl::any_cast<AddAttributes>(node.operation.attributes);
       const auto* adds =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
+          absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
               &attr.param);
       const auto* adds_scalar = absl::get_if<float>(&attr.param);
       if (adds || adds_scalar) {
@@ -183,7 +181,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
           }
           SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     case OperationType::CONCAT: {
@@ -199,14 +197,52 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
           absl::any_cast<Convolution2DAttributes>(node.operation.attributes);
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
-      if (WinogradFromNode(creation_context, op_def, hints, input_shape,
-                           output_shape, attr, gpu_subgraph)
-              .ok()) {
-        return OkStatus();
+      if (inputs.size() == 1) {
+        if (WinogradFromNode(creation_context, op_def, hints, input_shape,
+                             output_shape, attr, gpu_subgraph)
+                .ok()) {
+          return absl::OkStatus();
+        } else {
+          gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
+          return SelectConvolution(attr, output_shape, creation_context, op_def,
+                                   hints, gpu_op);
+        }
       } else {
-        gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-        return SelectConvolution(attr, output_shape, creation_context, op_def,
-                                 hints, gpu_op);
+        auto weights_shape = inputs[1]->tensor.shape;
+        TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
+                                         TensorStorageType::BUFFER,
+                                         Layout::UNKNOWN};
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(2);
+        auto& converter_op = gpu_subgraph->operations[0];
+        auto& conv_op = gpu_subgraph->operations[1];
+        conv_op.input_ids = {0, -1};
+        conv_op.output_ids = {0};
+        OperationDef conv_def = op_def;
+        conv_def.src_tensors[1] = weights_desc;
+        ConvWeightsDescription conv_weights_desc;
+        RETURN_IF_ERROR(SelectConvolutionWithDynamicWeights(
+            attr, weights_shape, output_shape, creation_context, conv_def,
+            hints, &conv_op.operation, &conv_weights_desc));
+
+        int aligned_output =
+            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        int aligned_input = AlignByN(weights_shape.c, 4);
+        gpu_subgraph->new_tensors = {
+            {BHWC(1, 1, 1,
+                  aligned_output * aligned_input * weights_shape.h *
+                      weights_shape.w),
+             weights_desc}};
+        OperationDef converter_def;
+        converter_def.precision = op_def.precision;
+        converter_def.src_tensors.push_back(op_def.src_tensors[1]);
+        converter_def.dst_tensors.push_back(weights_desc);
+
+        converter_op.input_ids = {1};
+        converter_op.output_ids = {-1};
+        return SelectConverterToConvWeights(conv_weights_desc, creation_context,
+                                            converter_def, hints,
+                                            &converter_op.operation);
       }
     }
     case OperationType::CONVOLUTION_TRANSPOSED: {
@@ -228,13 +264,13 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::LSTM: {
       SelectLSTM(op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
       SelectMaxUnpooling(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
@@ -256,39 +292,45 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
               CreateElementwiseTwoInput(op_def, op_type, broadcast);
           *gpu_op =
               absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return OkStatus();
+          return absl::OkStatus();
         } else {
-          return UnimplementedError(
+          return absl::UnimplementedError(
               "No support of multiply with more than 2 inputs");
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
       SelectPadding(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
       SelectPooling(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::PRELU: {
       auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
       return SelectPReLU(attr, creation_context, op_def, gpu_op);
     }
+    case OperationType::QUANTIZE_AND_DEQUANTIZE: {
+      auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
+          node.operation.attributes);
+      return SelectQuantizeAndDequantize(attr, creation_context, op_def,
+                                         gpu_op);
+    }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
       SelectReLU(creation_context, attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::RESHAPE: {
       const int src_channels = inputs[0]->tensor.shape.c;
       auto attr = absl::any_cast<ReshapeAttributes>(node.operation.attributes);
       SelectReshape(src_channels, attr.new_shape.c, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::RESIZE: {
       auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
@@ -297,23 +339,23 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::SLICE: {
       auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
       SelectStridedSlice(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::SOFTMAX: {
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::SPACE_TO_DEPTH: {
       auto attr =
           absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
       SelectSpaceToDepth(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::TRANSPOSE: {
       auto attr =
           absl::any_cast<TransposeAttributes>(node.operation.attributes);
       SelectTranspose(attr, op_def, gpu_op);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::ABS:
     case OperationType::COS:
@@ -329,7 +371,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, op_type);
       *gpu_op = absl::make_unique<ElementwiseOneInput>(std::move(operation));
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OperationType::DIV:
     case OperationType::MAXIMUM:
@@ -346,7 +388,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       ElementwiseTwoInput operation = CreateElementwiseTwoInput(
           creation_context, op_def, op_type, broadcast, attr);
       *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-      return OkStatus();
+      return absl::OkStatus();
     }
     default:
       return SelectDefault(creation_context, op_def, hints, inputs, outputs,

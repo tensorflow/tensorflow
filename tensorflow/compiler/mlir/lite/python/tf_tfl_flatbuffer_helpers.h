@@ -18,7 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
@@ -47,7 +47,7 @@ Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
                                      mlir::OwningModuleRef module,
-                                     mlir::TFL::QuantizationSpecs quant_specs,
+                                     const mlir::TFL::PassConfig& pass_config,
                                      string* result);
 
 // Give a warning for any unused flags that have been specified.

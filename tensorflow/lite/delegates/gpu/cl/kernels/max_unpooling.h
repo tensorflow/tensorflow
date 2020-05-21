@@ -29,10 +29,10 @@ class MaxUnpooling : public GPUOperation {
  public:
   MaxUnpooling(const OperationDef& definition,
                const MaxUnpooling2DAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   MaxUnpooling(MaxUnpooling&& kernel);
@@ -41,7 +41,7 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   int2 stride_;
@@ -59,10 +59,10 @@ class MaxUnpooling3D : public GPUOperation {
  public:
   MaxUnpooling3D(const OperationDef& definition,
                  const MaxUnpooling3DAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   MaxUnpooling3D(MaxUnpooling3D&& kernel);
@@ -71,7 +71,7 @@ class MaxUnpooling3D : public GPUOperation {
   MaxUnpooling3D& operator=(const MaxUnpooling3D&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   int3 stride_;

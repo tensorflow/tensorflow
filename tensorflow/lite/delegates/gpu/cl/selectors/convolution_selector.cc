@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -29,11 +30,12 @@ namespace gpu {
 namespace cl {
 namespace {
 
-Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
-                               const BHWC& dst_shape,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def, ModelHints hints,
-                               std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
+                                     const BHWC& dst_shape,
+                                     const CreationContext& creation_context,
+                                     const OperationDef& op_def,
+                                     ModelHints hints,
+                                     std::unique_ptr<GPUOperation>* ptr) {
   if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
     ConvConstants conv;
     RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
@@ -43,28 +45,37 @@ Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
     RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvTexture>(std::move(conv));
   }
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectConvolutionWinogradAdreno(const Convolution2DAttributes& attr,
-                                       const BHWC& dst_shape,
-                                       const CreationContext& creation_context,
-                                       const OperationDef& op_def,
-                                       ModelHints hints,
-                                       std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionWinogradAdreno(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
   ConvTexture conv;
   RETURN_IF_ERROR(
       CreateConvTextureWino4x4To6x6(creation_context, op_def, attr, &conv));
   *ptr = absl::make_unique<ConvTexture>(std::move(conv));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def,
-                               std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionDynamicWeightsAdreno(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const CreationContext& creation_context,
+    const OperationDef& op_def, ModelHints hints,
+    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+  ConvPowerVR conv;
+  RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
+      creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+  *weights_desc = conv.GetConvWeightsDescription();
+  *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+  return absl::OkStatus();
+}
+
+absl::Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
+                                     const CreationContext& creation_context,
+                                     const OperationDef& op_def,
+                                     std::unique_ptr<GPUOperation>* ptr) {
   if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
     ConvConstants conv;
     RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
@@ -74,24 +85,24 @@ Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectConvolutionPowerVR(const Convolution2DAttributes& attr,
-                                const CreationContext& creation_context,
-                                const OperationDef& op_def,
-                                std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionPowerVR(const Convolution2DAttributes& attr,
+                                      const CreationContext& creation_context,
+                                      const OperationDef& op_def,
+                                      std::unique_ptr<GPUOperation>* ptr) {
   ConvPowerVR conv;
   RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
   *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectConvolutionMali(const Convolution2DAttributes& attr,
-                             const BHWC& dst_shape,
-                             const CreationContext& creation_context,
-                             const OperationDef& op_def,
-                             std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionMali(const Convolution2DAttributes& attr,
+                                   const BHWC& dst_shape,
+                                   const CreationContext& creation_context,
+                                   const OperationDef& op_def,
+                                   std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, attr)) {
     ConvBuffer1x1 conv;
@@ -104,14 +115,13 @@ Status SelectConvolutionMali(const Convolution2DAttributes& attr,
         CreateConvPowerVR(creation_context, op_def, attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectConvolutionWinogradMali(const Convolution2DAttributes& attr,
-                                     const BHWC& dst_shape,
-                                     const CreationContext& creation_context,
-                                     const OperationDef& op_def,
-                                     std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionWinogradMali(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
     ConvBuffer1x1 conv;
     RETURN_IF_ERROR(CreateConvBuffer1x1Wino4x4To6x6(creation_context, op_def,
@@ -123,17 +133,38 @@ Status SelectConvolutionWinogradMali(const Convolution2DAttributes& attr,
                                                   attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
+  return absl::OkStatus();
+}
 
-  return OkStatus();
+absl::Status SelectConvolutionDynamicWeightsMali(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const CreationContext& creation_context,
+    const OperationDef& op_def, ModelHints hints,
+    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+      IsConvBuffer1x1Supported(op_def, weights_shape, attr)) {
+    ConvBuffer1x1 conv;
+    RETURN_IF_ERROR(CreateConvBuffer1x1DynamicWeights(
+        creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+    *weights_desc = conv.GetConvWeightsDescription();
+    *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
+  } else {
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
+        creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+    *weights_desc = conv.GetConvWeightsDescription();
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status SelectConvolution(const Convolution2DAttributes& attr,
-                         const BHWC& dst_shape,
-                         const CreationContext& creation_context,
-                         const OperationDef& op_def, ModelHints hints,
-                         std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolution(const Convolution2DAttributes& attr,
+                               const BHWC& dst_shape,
+                               const CreationContext& creation_context,
+                               const OperationDef& op_def, ModelHints hints,
+                               std::unique_ptr<GPUOperation>* ptr) {
   switch (creation_context.device->vendor()) {
     case Vendor::QUALCOMM:
       return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
@@ -152,12 +183,10 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
   }
 }
 
-Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
-                                    const BHWC& dst_shape,
-                                    const CreationContext& creation_context,
-                                    const OperationDef& op_def,
-                                    ModelHints hints,
-                                    std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectConvolutionForWinograd(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
   switch (creation_context.device->vendor()) {
     case Vendor::QUALCOMM:
       return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
@@ -169,7 +198,7 @@ Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
       RETURN_IF_ERROR(
           CreateConvPowerVRWino4x4To6x6(creation_context, op_def, attr, &conv));
       *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-      return OkStatus();
+      return absl::OkStatus();
     }
     case Vendor::MALI:
       return SelectConvolutionWinogradMali(attr, dst_shape, creation_context,
@@ -178,6 +207,41 @@ Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
       return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
                                              op_def, hints, ptr);
   }
+}
+
+absl::Status SelectConvolutionWithDynamicWeights(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const CreationContext& creation_context,
+    const OperationDef& op_def, ModelHints hints,
+    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+  switch (creation_context.device->vendor()) {
+    case Vendor::QUALCOMM:
+      return SelectConvolutionDynamicWeightsAdreno(
+          attr, weights_shape, dst_shape, creation_context, op_def, hints, ptr,
+          weights_desc);
+    case Vendor::MALI:
+      return SelectConvolutionDynamicWeightsMali(attr, weights_shape, dst_shape,
+                                                 creation_context, op_def,
+                                                 hints, ptr, weights_desc);
+    default: {
+      ConvPowerVR conv;
+      RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
+          creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+      *weights_desc = conv.GetConvWeightsDescription();
+      *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+      return absl::OkStatus();
+    }
+  }
+}
+
+absl::Status SelectConverterToConvWeights(
+    const ConvWeightsDescription& weights_desc,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
+  ConverterToConvWeights converter =
+      ConverterToConvWeights(op_def, weights_desc);
+  *ptr = absl::make_unique<ConverterToConvWeights>(std::move(converter));
+  return absl::OkStatus();
 }
 
 }  // namespace cl

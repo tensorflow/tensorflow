@@ -76,6 +76,8 @@ namespace data {
     ParallelInterleaveDatasetOp::kDeterministic;
 /* static */ constexpr const char* const ParallelInterleaveDatasetOp::kSloppy;
 
+namespace {
+
 constexpr char kTfDataParallelInterleaveWorkerPool[] =
     "tf_data_parallel_interleave_worker_pool";
 constexpr char kParallelism[] = "parallelism";
@@ -113,7 +115,10 @@ constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
 
-namespace {
+inline int64 CeilDiv(int64 numerator, int64 denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
+
 int64 ComputeBufferOutputElements(int64 configured_buffer_output_elements,
                                   int64 block_length) {
   if (configured_buffer_output_elements != model::kAutotune) {
@@ -140,6 +145,7 @@ int64 OpVersionFromOpName(absl::string_view op_name) {
     return 4;
   }
 }
+
 }  // namespace
 
 // The motivation for creating an alternative implementation of parallel
@@ -377,8 +383,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for
     // `IteratorContext` when saving the state of the iterator.
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
       wait_for_checkpoint_ = true;
       // Wait for all in-flight calls to complete.
@@ -400,7 +408,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       wait_for_checkpoint_ = false;
       DCHECK_EQ(num_active_workers_, 0);
       VLOG(4) << "State before save:\n" << DebugString();
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kBlockIndex, block_index_));
       TF_RETURN_IF_ERROR(
@@ -410,8 +418,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kElementIdCounter,
                                              element_id_counter_));
-      TF_RETURN_IF_ERROR(WriteCurrentElements(writer));
-      TF_RETURN_IF_ERROR(WriteFutureElements(writer));
+      TF_RETURN_IF_ERROR(WriteCurrentElements(ctx, writer));
+      TF_RETURN_IF_ERROR(WriteFutureElements(ctx, writer));
       // Wake workers back up.
       current_workers_cond_var_.notify_all();
       future_workers_cond_var_.notify_all();
@@ -447,7 +455,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           initial_elements_created_ = true;
         }
       }
-      for (auto element : future_elements_) {
+      for (const auto& element : future_elements_) {
         element->initialized = true;
       }
       last_valid_current_element_ = current_elements_.size() - 1;
@@ -536,7 +544,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       cancelled_ = true;
       // Wake up all threads so that they can exit. This will also wake up any
       // threads waiting in GetNextInternal.
-      for (auto element : current_elements_) {
+      for (const auto& element : current_elements_) {
         if (element) {
           element->cond_var.notify_all();
         }
@@ -706,6 +714,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Thread responsible for launching all worker threads. The thread stays
     // around after startup in case autotuning increases num_parallel_calls.
     void WorkerManagerThread() TF_LOCKS_EXCLUDED(mu_) {
+      RecordStart(ctx_.get());
+      auto cleanup = gtl::MakeCleanup([this]() {
+        RecordStop(ctx_.get());
+        mutex_lock l(*mu_);
+        DecrementOutstandingThreads();
+      });
       int initial_current_workers;
       // When elements are moved from `future_elements_` to `current_elements_`,
       // the future worker which created the element may continue to process
@@ -740,7 +754,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             RecordStart(ctx_.get());
           }
           if (cancelled_ || end_of_input_) {
-            DecrementOutstandingThreads();
             return;
           }
           IncrementOutstandingThreads();
@@ -1124,13 +1137,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::StrCat(kResultsSuffix, "[", idx, "]", kErrorMessageSuffix);
     }
 
-    Status WriteElement(std::shared_ptr<Element> element, int idx,
+    Status WriteElement(SerializationContext* ctx,
+                        std::shared_ptr<Element> element, int idx,
                         const string& key_prefix, IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       const auto& iterator_name =
           absl::StrCat(prefix(), "::", key_prefix, "::", idx);
       if (element->iterator) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, element->iterator));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, element->iterator));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(iterator_name, kIdSuffix, element->id));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -1165,26 +1179,28 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status WriteCurrentElements(IteratorStateWriter* writer)
+    Status WriteCurrentElements(SerializationContext* ctx,
+                                IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentElementsSize,
                                              current_elements_.size()));
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx]) {
-          TF_RETURN_IF_ERROR(WriteElement(current_elements_[idx], idx,
+          TF_RETURN_IF_ERROR(WriteElement(ctx, current_elements_[idx], idx,
                                           kCurrentElements, writer));
         }
       }
       return Status::OK();
     }
 
-    Status WriteFutureElements(IteratorStateWriter* writer)
+    Status WriteFutureElements(SerializationContext* ctx,
+                               IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kFutureElementsSize,
                                              future_elements_.size()));
       for (int idx = 0; idx < future_elements_.size(); idx++) {
         if (future_elements_[idx]) {
-          TF_RETURN_IF_ERROR(WriteElement(future_elements_[idx], idx,
+          TF_RETURN_IF_ERROR(WriteElement(ctx, future_elements_[idx], idx,
                                           kFutureElements, writer));
         }
       }
@@ -1312,16 +1328,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int idx = 0; idx < size; ++idx) {
         threadpool->Schedule(
             [this, ctx, reader, idx, name, &s, &counter, elements] {
+              RecordStart(ctx);
+              auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
+                RecordStop(ctx);
+                counter.DecrementCount();
+              });
               std::shared_ptr<Element> elem;
               Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
               mutex_lock l(*mu_);
               if (!ret_status.ok()) {
                 s.Update(ret_status);
-                counter.DecrementCount();
                 return;
               }
               (*elements)[idx] = elem;
-              counter.DecrementCount();
             });
       }
       counter.Wait();
@@ -1492,10 +1511,8 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
     OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx),
       op_version_(OpVersionFromOpName(ctx->def().op())) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
+                                               &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   if (op_version_ == 2) {
@@ -1519,14 +1536,6 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
 void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               DatasetBase* input,
                                               DatasetBase** output) {
-  int64 cycle_length = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
-  if (cycle_length == model::kAutotune) {
-    cycle_length = port::NumSchedulableCPUs();
-  }
-  OP_REQUIRES(ctx, cycle_length > 0,
-              errors::InvalidArgument("`cycle_length` must be > 0"));
-
   int64 block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
@@ -1558,6 +1567,24 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
       errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  int64 cycle_length = 0;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
+  if (cycle_length == model::kAutotune) {
+    if (num_parallel_calls != model::kAutotune) {
+      cycle_length = std::min(num_parallel_calls,
+                              static_cast<int64>(port::MaxParallelism()));
+    } else {
+      // If parallelism is to be autotuned, we set the cycle length so that
+      // the number of thread created for the current and future cycle elements
+      // roughly matches the number of schedulable cores.
+      const int num_threads_per_cycle_length = kDefaultCyclePrefetchFactor + 1;
+      cycle_length =
+          CeilDiv(port::MaxParallelism(), num_threads_per_cycle_length);
+    }
+  }
+  OP_REQUIRES(ctx, cycle_length > 0,
+              errors::InvalidArgument("`cycle_length` must be > 0"));
+
   OP_REQUIRES(
       ctx, num_parallel_calls <= cycle_length,
       errors::InvalidArgument(

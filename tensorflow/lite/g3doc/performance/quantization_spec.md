@@ -73,7 +73,10 @@ multiplied by dynamic input and activation values. This means that there is a
 unavoidable runtime cost of multiplying the zero-point of the weight with the
 activation value. By enforcing that zero-point is 0 we can avoid this cost.
 
-Explanation of the math:
+Explanation of the math: this is similar to section 2.3 in
+[arXiv:1712.05877](https://arxiv.org/abs/1712.05877), except for the difference
+that we allow the scale values to be per-axis. This generalizes readily, as
+follows:
 
 $A$ is a $m \times n$ matrix of quantized activations. <br />
 $B$ is a $n \times p$ matrix of quantized weights. <br />
@@ -539,3 +542,7 @@ QUANTIZE (Requantization)
     range      : [-128, 127]
     granularity: per-tensor
 ```
+
+## References
+
+[arXiv:1712.05877](https://arxiv.org/abs/1712.05877)

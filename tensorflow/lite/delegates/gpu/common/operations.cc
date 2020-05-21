@@ -118,6 +118,8 @@ std::string ToString(enum OperationType op) {
       return "pow";
     case OperationType::PRELU:
       return "prelu";
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      return "quantize_and_dequantize";
     case OperationType::RELU:
       return "relu";
     case OperationType::RESHAPE:
@@ -183,6 +185,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
+          {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
@@ -206,7 +209,7 @@ OperationType OperationTypeFromString(const std::string& name) {
 namespace {
 
 template <typename T>
-T IntegralDivideRoundUp(T n, T divisor) {
+T DivideRoundUp(T n, T divisor) {
   return (n - 1) / divisor + 1;
 }
 
@@ -269,7 +272,7 @@ int32_t CalculateOutput(const BHWDC& input,
 }
 
 inline int32_t StridedSize(int32_t size, int32_t stride) {
-  return stride == 0 ? -1 : IntegralDivideRoundUp(size, stride);
+  return stride == 0 ? -1 : DivideRoundUp(size, stride);
 }
 
 template <Axis AxisT, typename AttrT>
@@ -503,6 +506,14 @@ BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
               attr.appended.c + attr.prepended.c + input.c);
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr) {
+  return BHWDC(attr.appended.b + attr.prepended.b + input.b,
+               attr.appended.h + attr.prepended.h + input.h,
+               attr.appended.w + attr.prepended.w + input.w,
+               attr.appended.d + attr.prepended.d + input.d,
+               attr.appended.c + attr.prepended.c + input.c);
+}
+
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr) {
   return BHWC(input.b, 1, 1, attr.weights.shape.o);
@@ -516,14 +527,15 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   return BHWC(b, h, w, c);
 }
 
-Status CalculateOutputShape(const std::vector<BHWC>& input,
-                            const ConcatAttributes& attr, BHWC* output_shape) {
+absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWC* output_shape) {
   BHWC new_shape = input[0];
   switch (attr.axis) {
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Height and Width must be the same when concatenating "
               "by channels axis");
         }
@@ -533,7 +545,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Channels and Width must be the same when concatenating "
               "by height axis");
         }
@@ -543,7 +555,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Height and Channels must be the same when concatenating "
               "by width axis");
         }
@@ -551,11 +563,67 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
       }
       break;
     default:
-      return InvalidArgumentError("Invalid axis");
+      return absl::InvalidArgumentError("Invalid axis");
       break;
   }
   *output_shape = new_shape;
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape) {
+  BHWDC new_shape = input[0];
+  switch (attr.axis) {
+    case Axis::CHANNELS:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Height, Width and Depth must be the same when concatenating "
+              "by channels axis");
+        }
+        new_shape.c += input[i].c;
+      }
+      break;
+    case Axis::HEIGHT:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Width, Depth and Channels must be the same when concatenating "
+              "by height axis");
+        }
+        new_shape.h += input[i].h;
+      }
+      break;
+    case Axis::WIDTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Height, Depth and Channels must be the same when concatenating "
+              "by width axis");
+        }
+        new_shape.w += input[i].w;
+      }
+      break;
+    case Axis::DEPTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
+            input[i].c != new_shape.c) {
+          return absl::InvalidArgumentError(
+              "Width, Height and Channels must be the same when concatenating "
+              "by depth axis");
+        }
+        new_shape.d += input[i].d;
+      }
+      break;
+    default:
+      return absl::InvalidArgumentError("Invalid axis");
+  }
+  *output_shape = new_shape;
+  return absl::OkStatus();
 }
 
 Padding2D CalculateSamePadding(const BHWC& input,

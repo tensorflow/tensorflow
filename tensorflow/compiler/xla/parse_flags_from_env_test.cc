@@ -143,6 +143,9 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     string stdout_str;
     int child_status = child.Communicate(nullptr, &stdout_str, nullptr);
     CHECK_EQ(child_status, 0) << "test " << i;
+    // On windows, we get CR characters. Remove them.
+    stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
+                     stdout_str.end());
     CHECK_EQ(stdout_str, test[i].expected_value) << "test " << i;
   }
 }

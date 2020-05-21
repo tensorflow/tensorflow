@@ -29,9 +29,7 @@ TfLiteStatus NegOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_,
-                              std::numeric_limits<uint8_t>::min(),
-                              std::numeric_limits<uint8_t>::max());
+  ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_);
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
       scalar_shape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(

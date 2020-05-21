@@ -1,13 +1,15 @@
 # Settings for XMOS XS3 based processors (xcore.ai, ...)
 
-#IMPORTANT: 
-# either install xmos tools 15.x on your system
-# OR (assumes docker installed and docker daemon running)
-# simply run the docker container before calling make, etc.:
-# $ docker run -it -v$(pwd):/home/builder:z --rm xcoreai/build-tools:latest make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" <your make target>
+#IMPORTANT: to set up environment variables correctly run the following from the top tensorflow directory:
+# $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" clean clean_downloads test
+# $ pushd tensorflow/lite/micro/tools/make/downloads/xtimecomposer/xTIMEcomposer/15.0.0/ && source SetEnv && popd
+# $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test
 
 ifeq ($(TARGET), xcore)
-  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
+  XTIME_URL := "https://www.xmos.com/download/Tools-15---Linux-64%2815.0.0_rc1%29.tgz?key=132D-9DC9-E913-0229-ECE6-D5AB-F511-2B19"
+  XTIME_MD5 := "8f6543c8ac4af7583edf75e62df322a2"
+  $(eval $(call add_third_party_download,$(XTIME_URL),$(XTIME_MD5),xtimecomposer))
+  PLATFORM_FLAGS = -target=XU316-1024-FB265-C32 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   

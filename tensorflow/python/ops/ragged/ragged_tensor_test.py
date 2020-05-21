@@ -41,6 +41,7 @@ from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import nest
 
 
 def int32array(values):
@@ -1483,6 +1484,73 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError, 'only supported in eager mode'):
         rt.numpy()
 
+  @parameterized.parameters([
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, None),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [None, None, None]),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, None),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [None, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, 3]),
+      ([[[1, 2, 3]]], 1, [1, 1, None]),
+      ([[[1, 2, 3]]], 1, [1, 1, 3]),
+  ])
+  def testRaggedTensorSetShape(self, rt, rt_ragged_rank, shape):
+    rt1 = ragged_factory_ops.constant(rt, ragged_rank=rt_ragged_rank)
+    rt1._set_shape(shape)
+    rt1.shape.assert_is_compatible_with(shape)
+    if shape is not None:
+      self.assertIsNot(rt1.shape.rank, None)
+      for a, b in zip(rt1.shape, shape):
+        if b is not None:
+          self.assertEqual(a, b)
+
+  @parameterized.parameters([
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, None),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [None, None, None]),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, None),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [None, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, 3]),
+      ([[[1, 2, 3]]], 1, [1, 1, None]),
+      ([[[1, 2, 3]]], 1, [1, 1, 3]),
+  ])
+  def testRaggedTensorSetShapeWithPlaceholders(self, rt, rt_ragged_rank, shape):
+    rt2 = nest.map_structure(
+        lambda x: array_ops.placeholder_with_default(x, None),
+        ragged_factory_ops.constant(rt, ragged_rank=rt_ragged_rank),
+        expand_composites=True)
+    rt2._set_shape(shape)
+    rt2.shape.assert_is_compatible_with(shape)
+    if shape is not None:
+      self.assertIsNot(rt2.shape.rank, None)
+      for a, b in zip(rt2.shape, shape):
+        if b is not None:
+          self.assertEqual(a, b)
+
+  def testRaggedTensorSetShapeUniformRowLength(self):
+    rt = [[[1], [2], [3]], [[4], [5], [6]]]
+
+    rt1 = RaggedTensor.from_tensor(rt, ragged_rank=1)
+    rt1._set_shape([2, 3, 1])
+
+    rt2 = nest.map_structure(
+        lambda x: array_ops.placeholder_with_default(x, None),
+        rt1, expand_composites=True)
+    rt2._set_shape([2, 3, 1])
+
+  def testRaggedTensorSetShapeInconsistentShapeError(self):
+    rt = RaggedTensor.from_tensor([[[1], [2], [3]], [[4], [5], [6]]],
+                                  ragged_rank=1)
+    self.assertEqual(rt.shape.as_list(), [2, 3, 1])
+    with self.assertRaises(ValueError):
+      rt._set_shape([None, None, 5])
+    with self.assertRaisesRegex(ValueError, 'Inconsistent size'):
+      rt._set_shape([None, 5, None])
+    with self.assertRaises(ValueError):
+      rt._set_shape([5, None, None])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
@@ -1664,6 +1732,17 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     first_row = rt_spec._unbatch()._from_tensor_list(
         [t[0] for t in tensor_list])
     self.assertAllEqual(rt[0], first_row)
+
+  def testToFromBatchedTensorListPreservesUniformRowLengths(self):
+    rt = RaggedTensor.from_tensor(array_ops.zeros([3, 4, 5]),
+                                  ragged_rank=2)
+    rt_spec = rt._type_spec
+    tensor_list = rt_spec._to_batched_tensor_list(rt)
+    rt_reconstructed = rt_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(rt, rt_reconstructed)
+    self.assertTrue(rt.shape.is_fully_defined())
+    self.assertTrue(rt_reconstructed.shape.is_fully_defined())
+    self.assertEqual(rt.shape.as_list(), rt_reconstructed.shape.as_list())
 
   @parameterized.parameters([
       (RaggedTensorSpec([2, None], dtypes.float32, 1), 32,

@@ -22,8 +22,8 @@ limitations under the License.
 #include <sys/types.h>
 
 extern "C" {
-#include "jerror.h"  // TF:libjpeg_turbo
-#include "jpeglib.h"  // TF:libjpeg_turbo
+#include "jerror.h"  // from @libjpeg_turbo
+#include "jpeglib.h"  // from @libjpeg_turbo
 }
 
 #endif  // TENSORFLOW_CORE_PLATFORM_JPEG_H_

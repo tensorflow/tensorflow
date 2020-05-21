@@ -20,11 +20,12 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -32,8 +33,11 @@ namespace mlir {
 namespace TFDevice {
 
 namespace {
+
+constexpr char kDeviceAttr[] = "device";
+
 struct ReplicateInvariantOpHoistingPass
-    : public FunctionPass<ReplicateInvariantOpHoistingPass> {
+    : public PassWrapper<ReplicateInvariantOpHoistingPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -108,19 +112,38 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   }
 }
 
-// Checks if op and inner op operands are all replicate invariant.
-bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
-  auto result = op->walk([&](Operation* inner_op) {
-    for (Value operand : inner_op->getOperands()) {
-      Region* parent_region = operand.getParentRegion();
-      if (!parent_region || !parent_region->isProperAncestor(replicate_region))
-        return WalkResult::interrupt();
-    }
+// Check if op uses a device from a list of virtual devices.
+bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
+                       Operation* operation) {
+  if (!virtual_devices.hasValue()) return false;
 
+  auto result = operation->walk([&](Operation* op) {
+    StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
+    if (!op_device) return WalkResult::advance();
+
+    if (virtual_devices.getValue().get(op_device.getValue()))
+      return WalkResult::interrupt();
     return WalkResult::advance();
   });
+  return result.wasInterrupted();
+}
 
-  return !result.wasInterrupted();
+// Checks if op and inner op operands are all replicate invariant.
+bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
+  auto ancestor_of_replicate = [&](Region* region) {
+    return region && region->isProperAncestor(replicate_region);
+  };
+
+  for (Value operand : op->getOperands())
+    if (!ancestor_of_replicate(operand.getParentRegion())) return false;
+
+  bool has_replicate_operands = false;
+  visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
+    if (!ancestor_of_replicate(operand->get().getParentRegion()))
+      has_replicate_operands = true;
+  });
+
+  return !has_replicate_operands;
 }
 
 // Hoists replicate invariant ops out of associated `tf_device.replicate` op.
@@ -136,9 +159,13 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   });
 
   Region* replicate_region = &replicate_op.body();
+  Optional<DictionaryAttr> virtual_device_list = replicate_op.devices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;
+    // Skip hoisting if the inner op device attribute is a virtual device
+    // defined by tf_device.replicate.
+    if (UsesVirtualDevice(virtual_device_list, &inner_op)) continue;
 
     if (IsOpReplicateInvariant(replicate_region, &inner_op))
       inner_op.moveBefore(replicate_op);
@@ -151,7 +178,8 @@ void ReplicateInvariantOpHoistingPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }
 

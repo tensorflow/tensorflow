@@ -224,5 +224,30 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
                   "MyAwesomeCustomOp::VERSION:1"));
 }
 
+TEST(ConversionLogUtilTest, TestSanitizeErrorMessage) {
+  const string error =
+      "error: failed while converting: 'main': Ops that can be supported by "
+      "the flex runtime (enabled via setting the -emit-select-tf-ops flag): "
+      "ResizeNearestNeighbor,ResizeNearestNeighbor. Ops that need custom "
+      "implementation (enabled via setting the -emit-custom-ops flag): "
+      "CombinedNonMaxSuppression.\nTraceback (most recent call last): File "
+      "/usr/local/bin/toco_from_protos, line 8, in <module>";
+  const string pruned_error =
+      "Ops that can be supported by "
+      "the flex runtime (enabled via setting the -emit-select-tf-ops flag): "
+      "ResizeNearestNeighbor,ResizeNearestNeighbor.Ops that need custom "
+      "implementation (enabled via setting the -emit-custom-ops flag): "
+      "CombinedNonMaxSuppression.";
+  EXPECT_EQ(SanitizeErrorMessage(error), pruned_error);
+}
+
+TEST(ConversionLogUtilTest, TestSanitizeErrorMessageNoMatching) {
+  const string error =
+      "error: failed while converting: 'main': Traceback (most recent call "
+      "last): File "
+      "/usr/local/bin/toco_from_protos, line 8, in <module>";
+  EXPECT_EQ(SanitizeErrorMessage(error), "");
+}
+
 }  // namespace
 }  // namespace toco

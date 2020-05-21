@@ -793,7 +793,7 @@ struct base {
   // operation. Each functor for which this is enabled increases the
   // code size, so by default this is disabled for binary functors and
   // is enabled on a per-op basis as needed.
-  static const bool use_bcast_optimization = false;
+  static constexpr bool use_bcast_optimization = false;
 
   // operator() has the signature:
   //  out_type operator()(in_type in0, in_type in1 ...)
@@ -811,24 +811,24 @@ struct base {
 
   // Whether the functor can error out.  Currently applies only to integer
   // div and mod.
-  static const bool has_errors = false;
+  static constexpr bool has_errors = false;
 };
 
 // For now, we only apply certain speed optimization for
 // float/double's broadcast binary op.
 template <typename T>
 struct use_bcast_optimization {
-  static const bool value = false;
+  static constexpr bool value = false;
 };
 
 template <>
 struct use_bcast_optimization<float> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 template <>
 struct use_bcast_optimization<double> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1007,17 +1007,17 @@ struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
@@ -1029,7 +1029,7 @@ struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_quotient_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1044,7 +1044,7 @@ struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 template <typename T>
 struct safe_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_mod2_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1053,7 +1053,7 @@ struct floor_fmod : base<T, Eigen::internal::google_floor_fmod<T>> {};
 template <typename T>
 struct safe_floor_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_mod<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1062,7 +1062,7 @@ struct floor_div : base<T, Eigen::internal::google_floor_div<T>> {};
 template <typename T>
 struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_div<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1073,7 +1073,7 @@ struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>

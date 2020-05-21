@@ -937,7 +937,7 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.contrib.eager.defun, Python functions "
+              "To be compatible with tf.eager.defun, Python functions "
               "must return zero or more Tensors; in compilation of %s, found "
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
@@ -1190,13 +1190,6 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
 
     flattened = nest.flatten(arg_value, expand_composites=True)
-    tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
-    ]
-    specified_names = [arg.name for arg in tensor_specs if arg.name]
-    if specified_names and len(specified_names) < len(tensor_specs):
-      raise ValueError("If specifying TensorSpec names for nested structures, "
-                       "either zero or all names have to be specified.")
 
     for arg in flattened:
       # We have a shape entry for each arg, regardless of whether it's a real
@@ -1281,3 +1274,7 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
+
+
+def override_func_graph_name_scope(func_graph, name_scope):
+  func_graph._name_stack = name_scope  # pylint: disable=protected-access

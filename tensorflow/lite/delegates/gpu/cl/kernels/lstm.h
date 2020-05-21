@@ -28,9 +28,9 @@ namespace cl {
 class LSTM : public GPUOperation {
  public:
   explicit LSTM(const OperationDef& definition);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   LSTM(LSTM&& kernel);
@@ -39,7 +39,7 @@ class LSTM : public GPUOperation {
   LSTM& operator=(const LSTM&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   CLKernel kernel_;

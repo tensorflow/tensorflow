@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -121,9 +122,9 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
         const float scale = input_scale[i] * inverse_output_scale;
         const float bias = -input_zeropoint[i] * scale;
         for (int j = 0; j < copy_size; ++j) {
-          const int32_t value =
-              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
-              output_zeropoint;
+          const int32_t value = static_cast<int32_t>(tflite::TfLiteRound(
+                                    input_ptr[j] * scale + bias)) +
+                                output_zeropoint;
           output_ptr[j] = static_cast<uint8_t>(
               std::max<int32_t>(std::min<int32_t>(255, value), 0));
         }

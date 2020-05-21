@@ -39,15 +39,15 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column.dense_features import DenseFeatures
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import generic_utils
@@ -86,7 +86,7 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
     return inputs * 2
 
 
@@ -391,6 +391,37 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.evaluate(loaded.get_updates_for(input_arr2))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
+  def testDisablingBatchNormTrainableBeforeSaving(self):
+    # We disable trainable on the batchnorm layers before saving
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    model.trainable = False
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+
+    # Trainable should still be disabled after loading
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.0])
+
+    # Re-enabling trainable on the loaded model should cause the batchnorm
+    # layer to start training again.
+    # Note: this only works in v2.
+    if context.executing_eagerly():
+      loaded.trainable = True
+      self.evaluate(loaded(input_arr, training=True))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+      self.evaluate(loaded(input_arr2, training=False))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
   def testSaveWithSignatures(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(5, input_shape=(3,),
@@ -547,7 +578,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         else:
           return inputs
 
-    t = array_ops.sequence_mask(1)
+    t = self.evaluate(array_ops.sequence_mask(1))
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 
@@ -700,7 +731,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(model(input_arr), loaded(input_arr))
 
 
-class TestLayerCallTracing(test.TestCase):
+class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
 
   def test_functions_have_same_trace(self):
 
@@ -773,7 +804,7 @@ class TestLayerCallTracing(test.TestCase):
 
     assert_num_traces(LayerWithChildLayer, training_keyword=False)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_maintains_losses(self):
     layer = LayerWithLoss()
     layer(np.ones((2, 3)))
@@ -786,7 +817,7 @@ class TestLayerCallTracing(test.TestCase):
     self.assertAllEqual(previous_losses, layer.losses)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MetricTest(test.TestCase, parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -870,28 +901,30 @@ class MetricTest(test.TestCase, parameterized.TestCase):
         # while returning nothing.
         super(CustomMetric, self).update_state(*args)
 
-    metric = CustomMetric()
-    save_dir = self._save_model_dir('first_save')
+    with self.cached_session():
+      metric = CustomMetric()
+      save_dir = self._save_model_dir('first_save')
 
-    if requires_build:
-      metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
+      if requires_build:
+        metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
 
-    self.evaluate([v.initializer for v in metric.variables])
+      self.evaluate([v.initializer for v in metric.variables])
 
-    with self.assertRaisesRegexp(ValueError, 'Unable to restore custom object'):
-      self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
-    with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
-      loaded = self._test_metric_save_and_load(
-          metric,
-          save_dir,
-          num_tensor_args,
-          test_sample_weight=False)
+      with self.assertRaisesRegexp(ValueError,
+                                   'Unable to restore custom object'):
+        self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
+      with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
+        loaded = self._test_metric_save_and_load(
+            metric,
+            save_dir,
+            num_tensor_args,
+            test_sample_weight=False)
 
-      self._test_metric_save_and_load(
-          loaded,
-          self._save_model_dir('second_save'),
-          num_tensor_args,
-          test_sample_weight=False)
+        self._test_metric_save_and_load(
+            loaded,
+            self._save_model_dir('second_save'),
+            num_tensor_args,
+            test_sample_weight=False)
 
   def test_custom_metric_wrapped_call(self):
 

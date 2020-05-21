@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
 import six
 
 from tensorflow.python import tf2
@@ -28,12 +26,11 @@ from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
-if sys.version_info >= (3, 4):
-  import pathlib
 try:
   import h5py
 except ImportError:
@@ -115,8 +112,7 @@ def save_model(model,
   default_format = 'tf' if tf2.enabled() else 'h5'
   save_format = save_format or default_format
 
-  if sys.version_info >= (3, 4) and isinstance(filepath, pathlib.Path):
-    filepath = str(filepath)
+  filepath = path_to_string(filepath)
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
@@ -140,7 +136,7 @@ def save_model(model,
 
 @keras_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
-  """Loads a model saved via `save_model`.
+  """Loads a model saved via `model.save()`.
 
   Usage:
 
@@ -154,7 +150,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
-  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
   Arguments:
@@ -183,8 +179,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
         isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
       return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
-    if sys.version_info >= (3, 4) and isinstance(filepath, pathlib.Path):
-      filepath = str(filepath)
+    filepath = path_to_string(filepath)
     if isinstance(filepath, six.string_types):
       loader_impl.parse_saved_model(filepath)
       return saved_model_load.load(filepath, compile)

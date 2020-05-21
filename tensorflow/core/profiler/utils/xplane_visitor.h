@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 
+#include <stddef.h>
+
 #include <functional>
-#include <unordered_map>
-#include <utility>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -53,15 +55,19 @@ class XStatVisitor {
 
   double DoubleValue() const { return stat_->double_value(); }
 
-  absl::string_view StrValue() const { return stat_->str_value(); }
+  // Returns a string view.
+  // REQUIRED: the value type should be string type or reference type.
+  absl::string_view StrOrRefValue() const;
 
   const XStat& RawStat() const { return *stat_; }
 
+  // Return a string representation of all value type.
   std::string ToString() const;
 
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
+  const XPlaneVisitor* plane_;
   absl::optional<int64> type_;
 };
 

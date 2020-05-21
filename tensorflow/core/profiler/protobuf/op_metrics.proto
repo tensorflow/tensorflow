@@ -26,7 +26,7 @@ message LayoutAnalysis {
 }
 
 // Metrics for an operation (accumulated over all occurrences).
-// Next ID: 18
+// Next ID: 19
 message OpMetrics {
   // HLO module id. 0 for TF ops.
   uint64 hlo_module_id = 13;
@@ -36,6 +36,8 @@ message OpMetrics {
   string category = 11;
   // Provenance of this op (e.g., if HLO op, original TF op).
   string provenance = 12;
+  // Whether it is executed eagerly.
+  bool is_eager = 18;
   // Number of executions.
   uint32 occurrences = 3;
   // Total time (self + children) in picoseconds.

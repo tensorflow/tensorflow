@@ -26,8 +26,7 @@
 
 func @main(%arg0 : tensor<16xf32>) {
   tf_executor.graph {
-    %0:2 = tf_executor.island wraps "tf.Placeholder.input"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
-    %1:2 = tf_executor.island wraps "tf.MlirPassthroughOp"(%0#0) {extra_type_attr = [tensor<5xi32>, tensor<16xf32>], Tinputs = [tensor<16xf32>], Toutputs = [tensor<16xf32>], mlir_module = ""} : (tensor<16xf32>) -> tensor<16xf32>
+    %1:2 = tf_executor.island wraps "tf.MlirPassthroughOp"(%arg0) {extra_type_attr = [tensor<5xi32>, tensor<16xf32>], Tinputs = [tensor<16xf32>], Toutputs = [tensor<16xf32>], mlir_module = ""} : (tensor<16xf32>) -> tensor<16xf32>
     tf_executor.fetch
   }
   return

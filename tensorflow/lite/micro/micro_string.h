@@ -15,17 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_STRING_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_STRING_H_
 
-#include <cstdint>
-
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/micro/micro_string.h"
+#include <cstdarg>
 
 // Implements simple string formatting for numeric types.  Returns the number of
 // bytes written to output.
 extern "C" {
 // Functionally equivalent to vsnprintf, trimmed down for TFLite Micro.
 // MicroSnprintf() is implemented using MicroVsnprintf().
-int MicroVsnprintf(char* output, int len, const char* format, va_list);
+int MicroVsnprintf(char* output, int len, const char* format, va_list args);
 // Functionally equavalent to snprintf, trimmed down for TFLite Micro.
 // For example, MicroSnprintf(buffer, 10, "int %d", 10) will put the string
 // "int 10" in the buffer.

@@ -9,7 +9,7 @@ ifneq ($(TCF_FILE), )
   TARGET = $(basename $(notdir $(TCF_FILE)))
 else
   TARGET = em7d_voice_audio
-  TCF_FILE = em7d_voice_audio 
+  TCF_FILE = em7d_voice_audio
 endif
 
 # The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), this variable is used later to add the option to the linker/compiler flags.

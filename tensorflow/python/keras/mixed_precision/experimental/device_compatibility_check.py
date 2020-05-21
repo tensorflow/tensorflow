@@ -22,6 +22,7 @@ import itertools
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.platform import tf_logging
 
@@ -133,7 +134,7 @@ def _log_device_compatibility_check(policy_name, device_attr_list):
 _logged_compatibility_check = False
 
 
-def log_device_compatibility_check(policy_name):
+def log_device_compatibility_check(policy_name, skip_local):
   """Logs a compatibility check if the devices support the policy.
 
   Currently only logs for the policy mixed_float16. A log is shown only the
@@ -141,6 +142,11 @@ def log_device_compatibility_check(policy_name):
 
   Args:
     policy_name: The name of the dtype policy.
+    skip_local: If True, do not call list_local_devices(). This is useful since
+      if list_local_devices() and tf.config.set_visible_devices() are both
+      called, TensorFlow will crash. However, since GPU names and compute
+      capabilities cannot be checked without list_local_devices(), setting this
+      to True means the function will only warn if there are no GPUs.
   """
   global _logged_compatibility_check
   # In graph mode, calling list_local_devices may initialize some session state,
@@ -148,6 +154,17 @@ def log_device_compatibility_check(policy_name):
   if not context.executing_eagerly() or _logged_compatibility_check:
     return
   _logged_compatibility_check = True
-  device_attr_list = device_lib.list_local_devices()
-  _log_device_compatibility_check(policy_name, device_attr_list)
+  if not skip_local:
+    device_attr_list = device_lib.list_local_devices()
+    _log_device_compatibility_check(policy_name, device_attr_list)
+    return
 
+  # TODO(b/146009447): Create an API to replace list_local_devices(), then
+  # remove the skip_local paramater.
+  gpus = config.list_physical_devices('GPU')
+  if not gpus and policy_name == 'mixed_float16':
+    tf_logging.warn(
+        '%s\n'
+        'The dtype policy mixed_float16 may run slowly because '
+        'this machine does not have a GPU.\n%s' %
+        (_COMPAT_CHECK_WARNING_PREFIX, _COMPAT_CHECK_WARNING_SUFFIX))

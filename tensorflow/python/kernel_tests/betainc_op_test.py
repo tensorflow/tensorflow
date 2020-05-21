@@ -55,8 +55,8 @@ class BetaincTest(test.TestCase):
       # the scipy version of betainc uses a double-only implementation.
       # TODO(ebrevdo): identify reasons for (sometime) precision loss
       # with doubles
-      rtol = 1e-4 if dtype == dtypes.float32 else 5e-5
-      atol = 9e-6 if dtype == dtypes.float32 else 3e-6
+      rtol = 1e-4
+      atol = 1e-5
       self.assertAllCloseAccordingToType(
           scipy_out, tf_out, rtol=rtol, atol=atol)
 
@@ -66,7 +66,8 @@ class BetaincTest(test.TestCase):
       with self.cached_session():
         tf_comb = math_ops.betainc(a_comb, b_comb, x_comb).eval()
       scipy_comb = special.betainc(a_comb, b_comb, x_comb, dtype=np_dt)
-      self.assertAllCloseAccordingToType(scipy_comb, tf_comb)
+      self.assertAllCloseAccordingToType(
+          scipy_comb, tf_comb, rtol=rtol, atol=atol)
 
       # Test broadcasting between scalars and other shapes
       with self.cached_session():

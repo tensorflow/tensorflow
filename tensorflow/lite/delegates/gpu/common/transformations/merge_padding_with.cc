@@ -62,11 +62,11 @@ class MergePaddingWith2DOperation : public SequenceTransformation {
     }
 
     Attr* node_attr = absl::any_cast<Attr>(&op_node->operation.attributes);
-    Status status = RemovePrecedingNode(graph, pad_node, op_node);
+    absl::Status status = RemovePrecedingNode(graph, pad_node, op_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove Pad node with Operation node: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
 
     node_attr->padding.appended.h += pad_attr.appended.h;
@@ -154,10 +154,10 @@ class MergePaddingWithAddOperation : public NodeTransformation {
               "Cannot remove padding when this broadcast/scalar ADD"};
     }
 
-    Status status = RemovePrecedingNode(graph, node, add_node);
+    absl::Status status = RemovePrecedingNode(graph, node, add_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove Pad node " + status.error_message()};
+              "Unable to remove Pad node " + std::string(status.message())};
     }
 
     return {TransformStatus::APPLIED,

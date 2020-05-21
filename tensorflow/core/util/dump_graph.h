@@ -50,6 +50,16 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname = "");
 
+// Sets a custom Graph dumper. If set, this dumper will be used to dump graphs
+// instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
+// allow specifying a file suffix/extension too.
+void SetGraphDumper(
+    std::function<Status(const Graph& graph,
+                         const FunctionLibraryDefinition* flib_def,
+                         WritableFile*)>
+        dumper,
+    string suffix = ".pbtxt");
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_

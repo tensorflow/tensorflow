@@ -208,6 +208,7 @@ class RandomGammaOp : public OpKernel {
                    alpha_flat](int start_output, int limit_output) {
       using Eigen::numext::exp;
       using Eigen::numext::log;
+      using Eigen::numext::log1p;
       using Eigen::numext::pow;
 
       // Capturing "rng" by-value would only make a copy for the _shared_
@@ -241,7 +242,7 @@ class RandomGammaOp : public OpKernel {
             gen.Skip(kReservedSamplesPerOutput * output_idx);
             int16 uniform_remaining = 0;
             UNIFORM(u);
-            const double res = -log(1.0 - u);
+            const double res = -log1p(-u);
             samples_alpha_offset[sample_idx * num_alphas] = static_cast<T>(res);
           }       // for (sample_idx)
         } else {  // if alpha != 1.0

@@ -70,7 +70,8 @@ TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
   return kTfLiteOk;
 }
 
-TfLiteStatus TfliteInferenceStage::Init() {
+TfLiteStatus TfliteInferenceStage::Init(
+    const DelegateProviders* delegate_providers) {
   if (!config_.specification().has_tflite_inference_params()) {
     LOG(ERROR) << "TfliteInferenceParams not provided";
     return kTfLiteError;
@@ -95,34 +96,21 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  if (params.delegate() == TfliteInferenceParams::NNAPI) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
+  if (!delegate_providers) {
+    std::string error_message;
+    auto delegate = CreateTfLiteDelegate(params, &error_message);
     if (delegate) {
       delegates_.push_back(std::move(delegate));
+      LOG(INFO) << "Successfully created "
+                << params.Delegate_Name(params.delegate()) << " delegate.";
     } else {
-      LOG(WARNING) << "NNAPI not supported";
+      LOG(WARNING) << error_message;
     }
-  } else if (params.delegate() == TfliteInferenceParams::GPU) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate();
-    if (delegate) {
-      delegates_.push_back(std::move(delegate));
-    } else {
-      LOG(WARNING) << "GPU not supported";
-    }
-  } else if (params.delegate() == TfliteInferenceParams::HEXAGON) {
-    const std::string libhexagon_path("/data/local/tmp");
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateHexagonDelegate(libhexagon_path, false);
-    if (!delegate) {
-      // Refer to the Tensorflow Lite Hexagon delegate documentation for more
-      // information about how to get the required libraries.
-      LOG(WARNING)
-          << "Could not create Hexagon delegate: platform may not support "
-             "delegate or required libraries are missing";
-    } else {
-      delegates_.push_back(std::move(delegate));
-    }
+  } else {
+    auto delegates = delegate_providers->CreateAllDelegates(params);
+    for (auto& one : delegates) delegates_.push_back(std::move(one));
   }
+
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {
@@ -171,6 +159,7 @@ EvaluationStageMetrics TfliteInferenceStage::LatestMetrics() {
   latency_metrics->set_min_us(latency_stats_.min());
   latency_metrics->set_sum_us(latency_stats_.sum());
   latency_metrics->set_avg_us(latency_stats_.avg());
+  latency_metrics->set_std_deviation_us(latency_stats_.std_deviation());
   metrics.set_num_runs(
       static_cast<int>(latency_stats_.count() / params.invocations_per_run()));
   auto* inference_metrics =

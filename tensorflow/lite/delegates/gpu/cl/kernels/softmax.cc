@@ -79,14 +79,14 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
   return *this;
 }
 
-Status Softmax::Compile(const CreationContext& creation_context) {
+absl::Status Softmax::Compile(const CreationContext& creation_context) {
   const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Softmax::BindArguments() {
+absl::Status Softmax::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -94,7 +94,7 @@ Status Softmax::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Softmax::GetGridSize() const {
@@ -104,12 +104,12 @@ int3 Softmax::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Softmax::Tune(const TuningParameters& params) {
+absl::Status Softmax::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Softmax::AddToQueue(CLCommandQueue* queue) {
+absl::Status Softmax::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

@@ -1,0 +1,41 @@
+op {
+  name: "ComputeAccidentalHits"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "ids"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}

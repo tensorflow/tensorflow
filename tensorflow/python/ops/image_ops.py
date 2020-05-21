@@ -245,6 +245,7 @@ def _image_projective_transform_grad(op, grad):
   images = op.inputs[0]
   transforms = op.inputs[1]
   interpolation = op.get_attr("interpolation")
+  fill_mode = op.get_attr("fill_mode")
 
   image_or_images = ops.convert_to_tensor(images, name="images")
   transform_or_transforms = ops.convert_to_tensor(
@@ -267,5 +268,6 @@ def _image_projective_transform_grad(op, grad):
       images=grad,
       transforms=transforms,
       output_shape=array_ops.shape(image_or_images)[1:3],
-      interpolation=interpolation)
+      interpolation=interpolation,
+      fill_mode=fill_mode)
   return [output, None, None]

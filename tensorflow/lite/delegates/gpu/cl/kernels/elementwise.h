@@ -75,7 +75,7 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
+  absl::Status BindArguments(CLKernel* kernel) override;
   inline void SetScalarPara(FLT scalar) {
     scalar_para_ = scalar;
     use_scalar_para_ = true;

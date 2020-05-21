@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -79,7 +79,7 @@ TEST_F(WhileTest, TestPadLoop) {
   TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
   CheckIntTensor(output2, {11}, {0, 0, 0, 5, 7, 0, 0, 0, 0, 0, 0});
 
-  // The extra invocation serves as a regiression test: There was a bug that
+  // The extra invocation serves as a regression test: There was a bug that
   // invoking a while loop with dynamic shaped body makes the interpreter
   // state uninvokable.
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);

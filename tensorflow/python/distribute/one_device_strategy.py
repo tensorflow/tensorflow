@@ -78,6 +78,8 @@ class OneDeviceStrategy(distribute_lib.Strategy):
         used. Examples: "/cpu:0", "/gpu:0", "/device:CPU:0", "/device:GPU:0"
     """
     super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "OneDeviceStrategy")
 
   def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
@@ -240,6 +242,8 @@ class OneDeviceStrategyV1(distribute_lib.StrategyV1):
 
   def __init__(self, device):
     super(OneDeviceStrategyV1, self).__init__(OneDeviceExtended(self, device))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "OneDeviceStrategy")
   __init__.__doc__ = OneDeviceStrategy.__init__.__doc__
 
 

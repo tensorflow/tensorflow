@@ -161,7 +161,7 @@ func @_functionalize_if_else_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>
 }
 
 func @_functionalize_if_then_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1> {
-  %0 = "my_unknown_op.blah"() : () -> tensor<i1>
+  %0 = "tf.blah"() : () -> tensor<i1>
   return %0 : tensor<i1>
 }
 
@@ -199,7 +199,7 @@ func @_functionalize_if_else_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>
 }
 
 func @_functionalize_if_then_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1> {
-  %0 = "my_unknown_op.blah"() : () -> tensor<i1>
+  %0 = "tf.blah"() : () -> tensor<i1>
   return %0 : tensor<i1>
 }
 

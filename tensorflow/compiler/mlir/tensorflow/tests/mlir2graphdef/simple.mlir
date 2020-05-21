@@ -5,7 +5,7 @@ func @main() {
   // CHECK-NEXT: name: "Empty/shape"
   // CHECK-NEXT: op: "Const"
   // CHECK: attr {
-  // CHECK-NEXT: key: "dtype"
+  // CHECK:        key: "dtype"
   // CHECK-NEXT:   value {
   // CHECK-NEXT:     type: DT_INT32
   // CHECK-NEXT:   }

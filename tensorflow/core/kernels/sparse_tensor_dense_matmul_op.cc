@@ -244,7 +244,7 @@ Status MOutOfBoundsError(int64 m, std::size_t i, int lhs_index_a,
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
   // Vectorize certain operations above this size.
-  static const std::size_t kNumVectorize = 32;
+  static constexpr std::size_t kNumVectorize = 32;
 
   static Status Compute(const CPUDevice& d, typename TTypes<T>::Matrix out,
                         typename TTypes<Tindices>::ConstMatrix a_indices,

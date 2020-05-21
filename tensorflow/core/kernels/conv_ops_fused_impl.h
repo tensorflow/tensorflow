@@ -334,7 +334,7 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
       WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
   std::vector<tensorflow::AutotuneResult> results;
-  for (auto profile_algorithm : algorithms) {
+  for (const auto& profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     se::RedzoneAllocator rz_scratch_allocator(
         stream, &tf_allocator_adapter, se::GpuAsmOpts(),

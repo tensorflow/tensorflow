@@ -143,6 +143,7 @@ class AttrSlice {
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
   const AttrValue* Find(StringPiece attr_name) const;
+  const AttrValue* FindByString(const string& attr_name) const;
 
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.

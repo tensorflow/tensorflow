@@ -25,8 +25,7 @@ models that have been optimized specifically for mobile and embedded devices.
 
 You can retrain the listed models on your own dataset by using transfer
 learning. Check out our transfer learning tutorial for
-[image classification](https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb)
-and
+[image classification](/lite/tutorials/model_maker_image_classification) and
 [object detection](https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193).
 
 ## Profile your model
@@ -52,7 +51,7 @@ operator is executed. Check out our
 
 Model optimization aims to create smaller models that are generally faster and
 more energy efficient, so that they can be deployed on mobile devices. There are
-multiple optimization techniques suppored by TensorFlow Lite, such as
+multiple optimization techniques supported by TensorFlow Lite, such as
 quantization.
 
 Check out our [model optimization docs](model_optimization.md) for details.

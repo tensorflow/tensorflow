@@ -165,16 +165,6 @@ void NodeExecStatsWrapper::SetOutput(int slot, const Tensor* tensor) {
   tensor->FillDescription(node_output->mutable_tensor_description());
 }
 
-void NodeExecStatsWrapper::SetReferencedTensors(
-    const TensorReferenceVector& tensors) {
-  // be careful not to increment the reference count on any tensor
-  // while recording the information
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    AllocationDescription* description = stats_->add_referenced_tensor();
-    tensors.at(i).FillDescription(description);
-  }
-}
-
 void NodeExecStatsWrapper::AddAllocation(
     Allocator* allocator, TrackingAllocator* tracking_allocator) {
   AllocatorMemoryUsed* memory = stats_->add_memory();
@@ -315,7 +305,7 @@ void StepStatsCollector::BuildCostModel(
     }
   }
 
-  for (auto itr : device_map) {
+  for (const auto& itr : device_map) {
     const StringPiece device = itr.first;
     if (per_device_stats.find(device) == per_device_stats.end()) {
       continue;

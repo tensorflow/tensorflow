@@ -50,6 +50,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 
@@ -193,7 +194,7 @@ def create_in_process_cluster(num_workers,
         protocol=rpc_layer)
   except errors.UnknownError as e:
     if 'Could not start gRPC server' in e.message:
-      test.TestCase.skipTest('Cannot start std servers.')
+      raise unittest.SkipTest('Cannot start std servers.')
     else:
       raise
   return cluster
@@ -559,6 +560,10 @@ class MultiWorkerMultiProcessTest(test.TestCase):
     return subprocess.Popen(
         cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
 
+  @deprecation.deprecated(
+      None, '`run_multiple_tasks_in_processes` is deprecated; any new test '
+      'requiring multiple processes should use `multi_process_runner` for '
+      'better support of log printing, streaming, and more functionality.')
   def run_multiple_tasks_in_processes(self, cmd_args, cluster_spec):
     """Run `cmd_args` in a process for each task in `cluster_spec`."""
     processes = {}
@@ -570,6 +575,10 @@ class MultiWorkerMultiProcessTest(test.TestCase):
         processes[task_type].append(p)
     return processes
 
+  @deprecation.deprecated(
+      None, '`join_independent_workers` is deprecated; any new test '
+      'requiring multiple processes should use `multi_process_runner` for '
+      'better support of log printing, streaming, and more functionality.')
   def join_independent_workers(self, worker_processes):
     return_codes = []
     for p in nest.flatten(worker_processes):
@@ -585,6 +594,10 @@ class MultiWorkerMultiProcessTest(test.TestCase):
     for return_code in return_codes:
       self.assertEqual(return_code, 0)
 
+  @deprecation.deprecated(
+      None, '`stream_stderr` is deprecated; any new test '
+      'requiring multiple processes should use `multi_process_runner` for '
+      'better support of log printing, streaming, and more functionality.')
   def stream_stderr(self, processes, print_only_first=False):
     """Consume stderr of all processes and print to stdout.
 

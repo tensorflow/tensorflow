@@ -29,19 +29,19 @@ namespace gpu {
 
 // PHWC4 layout is where channels are grouped by 4 in a row and P stands for
 // a plane that was derived by dividing channels by 4.
-Status ConvertToPHWC4(absl::Span<const float> in, const BHWC& shape,
-                      absl::Span<float> out);
-Status ConvertToPHWC4Half(absl::Span<const float> in, const BHWC& shape,
-                          absl::Span<HalfBits> out);
+absl::Status ConvertToPHWC4(absl::Span<const float> in, const BHWC& shape,
+                            absl::Span<float> out);
+absl::Status ConvertToPHWC4Half(absl::Span<const float> in, const BHWC& shape,
+                                absl::Span<HalfBits> out);
 
 // @return number of elements when shape is converted into PHWC4.
 uint32_t GetElementsSizeForPHWC4(const BHWC& shape);
 
 // Operation is opposite to ConvertToPHWC4.
-Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
-                        absl::Span<float> out);
-Status ConvertFromPHWC4Half(absl::Span<const HalfBits> in, const BHWC& shape,
-                            absl::Span<float> out);
+absl::Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
+                              absl::Span<float> out);
+absl::Status ConvertFromPHWC4Half(absl::Span<const HalfBits> in,
+                                  const BHWC& shape, absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWC4(
@@ -53,8 +53,8 @@ uint32_t GetElementsSizeForPIOHW4(const OHWI& shape);
 
 // PIOHW4 layout re-arranges weights in groups by 4, where outer dimension is
 // P which is OxI/4.
-Status ConvertToPIOHW4(absl::Span<const float> in, const OHWI& shape,
-                       absl::Span<float> out);
+absl::Status ConvertToPIOHW4(absl::Span<const float> in, const OHWI& shape,
+                             absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPIOHW4(
@@ -79,8 +79,8 @@ uint3 Get3DSizeForPHWO4I4(const OHWI& shape);
 uint32_t GetElementsSizeForPHWO4I4(const IHWO& shape);
 
 // Layout is Po,H,W,OI4x4.
-Status ConvertToPHWO4I4(absl::Span<const float> in, const IHWO& shape,
-                        absl::Span<float> out);
+absl::Status ConvertToPHWO4I4(absl::Span<const float> in, const IHWO& shape,
+                              absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWO4I4(

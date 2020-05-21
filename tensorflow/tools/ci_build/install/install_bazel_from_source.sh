@@ -18,7 +18,7 @@
 # It will compile bazel from source and install it in /usr/local/bin
 
 # Select bazel version.
-BAZEL_VERSION="2.0.0"
+BAZEL_VERSION="3.0.0"
 
 set +e
 local_bazel_ver=$(bazel version 2>&1 | grep -i label | awk '{print $3}')

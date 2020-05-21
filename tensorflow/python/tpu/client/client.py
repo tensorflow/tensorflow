@@ -29,7 +29,7 @@ from six.moves.urllib.error import HTTPError
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
-  from apiclient import discovery  # pylint: disable=g-import-not-at-top
+  from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
   from oauth2client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
@@ -280,8 +280,15 @@ class Client(object):
 
     logging.warning('TPU "%s" is healthy.', self.name())
 
-  def configure_tpu_version(self, version):
-    """Configure TPU software version."""
+  def configure_tpu_version(self, version, restart_type='always'):
+    """Configure TPU software version.
+
+    Args:
+      version (string): Version of software to configure the TPU with.
+      restart_type (string): Restart behaviour when switching versions,
+        defaults to always restart. Options are 'always', 'ifNeeded'.
+
+    """
 
     def configure_worker(worker):
       """Configure individual TPU worker.
@@ -291,7 +298,8 @@ class Client(object):
           be sent.
       """
       ip_address = worker['ipAddress']
-      url = 'http://{}:8475/requestversion/{}'.format(ip_address, version)
+      url = 'http://{}:8475/requestversion/{}?restartType={}'.format(
+          ip_address, version, restart_type)
       req = request.Request(url, data=b'')
       try:
         request.urlopen(req)

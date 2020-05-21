@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -46,15 +47,30 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
+// Creates an XEvent with int64 stats.
 XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
-
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats = {});
 XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     HostEventType event_type, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
+
+// Creates an XEvent with string stats.
+XEventBuilder CreateXEventWithStringViewMetadataValue(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
+        stats);
+
+// Creates an XEvent with int64 and string stats.
+XEventBuilder CreateXEventWithIntAndStringViewMetadataValue(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& int_stats,
+    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
+        str_stats);
 
 void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
@@ -73,8 +89,9 @@ void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
 
-// Normalize the XLines by time-shifting to start_time_ns_ as origin.
-void NormalizeTimeLine(XSpace* space, uint64 start_time_ns);
+// Normalize timestamps by time-shifting to start_time_ns_ as origin.
+void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
+void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
 
 // Merge Xplane src_plane into Xplane dst_plane, both plane level stats, lines,
 // events and event level stats are merged; If src_plane and dst_plane both have
@@ -86,6 +103,13 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
 
+// Creates a Xevent in the given plane & line for a tf-function.
+void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
+                               XLineBuilder* line_builder,
+                               absl::string_view function_name, int64 offset_ps,
+                               int64 duration_ps,
+                               absl::string_view execution_mode,
+                               int64 tracing_count = -1);
 }  // namespace profiler
 }  // namespace tensorflow
 

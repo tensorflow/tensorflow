@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BATCHMATMUL_TO_EINSUM_H_
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -32,11 +32,7 @@ class ConvertTFBatchMatMulToEinsumOp
     : public OpRewritePattern<BatchMatMulOpType> {
   using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
 
-  static TF::TransposeOp createTransposeOp(
-      Value value, Location loc,
-      PatternRewriter& rewriter);  // NOLINT
-
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       BatchMatMulOpType op,
       PatternRewriter& rewriter) const override;  // NOLINT
 };

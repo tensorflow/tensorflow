@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "HM01B0.h"
 
 #include "HM01B0_Walking1s_01.h"
@@ -756,3 +762,5 @@ uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg) {
                    HM01B0_REG_MODE_SELECT_STREAMING_NFRAMES, 1);
   hm01b0_write_reg(psCfg, HM01B0_REG_GRP_PARAM_HOLD, 0x01, 1);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

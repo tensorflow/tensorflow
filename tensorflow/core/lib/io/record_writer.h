@@ -55,8 +55,8 @@ class RecordWriter {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static constexpr size_t kFooterSize = sizeof(uint32);
 
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.

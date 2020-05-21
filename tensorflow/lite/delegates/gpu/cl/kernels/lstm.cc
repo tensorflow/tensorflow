@@ -121,14 +121,14 @@ LSTM& LSTM::operator=(LSTM&& kernel) {
   return *this;
 }
 
-Status LSTM::Compile(const CreationContext& creation_context) {
+absl::Status LSTM::Compile(const CreationContext& creation_context) {
   const auto code = GetLSTMCode(definition_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status LSTM::BindArguments() {
+absl::Status LSTM::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
@@ -137,8 +137,7 @@ Status LSTM::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 LSTM::GetGridSize() const {
@@ -148,12 +147,12 @@ int3 LSTM::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status LSTM::Tune(const TuningParameters& params) {
+absl::Status LSTM::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status LSTM::AddToQueue(CLCommandQueue* queue) {
+absl::Status LSTM::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

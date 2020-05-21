@@ -88,6 +88,38 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuIndexTest,
+       ReuseMultidimIndexWithTrivialReshapeAndNonContiguousBroadcast) {
+  HloModuleConfig config;
+  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY CompatibleUseLinearIndexWithReshape {
+      x = f32[1,7,2,5,3]{4,3,2,1,0} parameter(0)
+      y = f32[2,1,3]{2,1,0} parameter(1)
+      reshape = f32[1,2,3]{2,1,0} reshape(y)
+      broadcast = f32[1,7,2,5,3]{4,3,2,1,0} broadcast(reshape), dimensions={0,2,4}
+      ROOT gte = pred[1,7,2,5,3]{4,3,2,1,0} compare(x, broadcast), direction=GE
+    })",
+                                             config)
+                    .ValueOrDie();
+  CompileAndVerifyIr(std::move(module),
+                     R"(
+; CHECK: %[[tmp4:.*]] = udiv i32 %[[linear_index:.*]], 1
+; CHECK: %[[dim4:.*]] = urem i32 %[[tmp4]], 3
+; CHECK: %[[tmp3:.*]] = udiv i32 %[[linear_index]], 3
+; CHECK: %[[dim3:.*]] = urem i32 %[[tmp3]], 5
+; CHECK: %[[tmp2:.*]] = udiv i32 %[[linear_index]], 15
+; CHECK: %[[dim2:.*]] = urem i32 %[[tmp2]], 2
+; CHECK: %[[tmp1:.*]] = udiv i32 %[[linear_index]], 30
+; CHECK: %[[dim1:.*]] = urem i32 %[[tmp1]], 7
+; CHECK: %[[dim0:.*]] = udiv i32 %[[linear_index]], 210
+; CHECK: %{{.*}} = getelementptr inbounds [2 x [1 x [3 x float]]], [2 x [1 x [3 x float]]]* %{{.*}}, i32 0, i32 %[[dim2]], i32 0, i32 %[[dim4]]
+      )",
+                     /*match_optimized_ir=*/false);
+}
+
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   HloModuleConfig config;
   config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
@@ -147,6 +179,32 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
 ; CHECK: store half {{.*}}, half* %[[st_addr]]
       )",
                      /*match_optimized_ir=*/false);
+}
+
+TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
+  HloModuleConfig config;
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  config.set_debug_options(debug_options);
+
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule  test_module
+
+    ENTRY CompatibleUseLinearIndexWithTranspose  {
+      x = f32[2,1024,3,256]{3,2,1,0} parameter(0)
+      y = f32[1024,2,256,3]{2,3,0,1} parameter(1)
+      transpose = f32[1024,2,256,3]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
+      ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
+    })",
+                                             config)
+                    .ValueOrDie();
+  // Check the optimized IR contains no udiv and urem.
+  CompileAndVerifyIr(std::move(module),
+                     R"(
+; CHECK-NOT: udiv
+; CHECK-NOT: urem
+      )",
+                     /*match_optimized_ir=*/true);
 }
 
 }  // namespace gpu

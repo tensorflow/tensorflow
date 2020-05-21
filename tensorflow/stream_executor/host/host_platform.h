@@ -49,7 +49,7 @@ class HostPlatform : public Platform {
   // base::NumCPUs().
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
@@ -71,7 +71,7 @@ class HostPlatform : public Platform {
 
  private:
   // This platform's name.
-  string name_;
+  std::string name_;
 
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;

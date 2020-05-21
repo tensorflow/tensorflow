@@ -59,26 +59,28 @@ float ExponentialRandomPositiveFloat(float percentile, float percentile_val,
 // Fills a vector with random floats between |min| and |max|.
 void FillRandom(std::vector<float>* vec, float min, float max);
 
+template <typename T>
+void FillRandom(typename std::vector<T>::iterator begin_it,
+                typename std::vector<T>::iterator end_it, T min, T max) {
+  // Workaround for compilers that don't support (u)int8_t uniform_distribution.
+  typedef typename std::conditional<sizeof(T) >= sizeof(int16_t), T,
+                                    std::int16_t>::type rand_type;
+  std::uniform_int_distribution<rand_type> dist(min, max);
+  // TODO(b/154540105): use std::ref to avoid copying the random engine.
+  auto gen = std::bind(dist, RandomEngine());
+  std::generate(begin_it, end_it, [&gen] { return static_cast<T>(gen()); });
+}
+
 // Fills a vector with random numbers between |min| and |max|.
 template <typename T>
 void FillRandom(std::vector<T>* vec, T min, T max) {
-  std::uniform_int_distribution<T> dist(min, max);
-  auto gen = std::bind(dist, RandomEngine());
-  std::generate(std::begin(*vec), std::end(*vec), gen);
+  return FillRandom(std::begin(*vec), std::end(*vec), min, max);
 }
 
 // Fills a vector with random numbers.
 template <typename T>
 void FillRandom(std::vector<T>* vec) {
   FillRandom(vec, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
-}
-
-template <typename T>
-void FillRandom(typename std::vector<T>::iterator begin_it,
-                typename std::vector<T>::iterator end_it, T min, T max) {
-  std::uniform_int_distribution<T> dist(min, max);
-  auto gen = std::bind(dist, RandomEngine());
-  std::generate(begin_it, end_it, gen);
 }
 
 // Fill with a "skyscraper" pattern, in which there is a central section (across

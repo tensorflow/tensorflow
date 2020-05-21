@@ -81,7 +81,7 @@ implementation project(":classify_wrapper")
 ### Step 3: Using the model
 
 ```java
-// 1. Initiatize the Model
+// 1. Initialize the Model
 MyClassifierModel myImageClassifier = null;
 
 try {

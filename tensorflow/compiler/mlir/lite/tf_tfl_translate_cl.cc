@@ -105,7 +105,7 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::init(""));
 
 // NOLINTNEXTLINE
-opt<bool> legalize_while(
-    "legalize-tf-while",
+opt<bool> convert_tf_while_to_tfl_while(
+    "convert_tf_while_to_tfl_while",
     llvm::cl::desc("Whether to legalize TF While to TFL While."),
-    llvm::cl::init(false));
+    llvm::cl::init(true));

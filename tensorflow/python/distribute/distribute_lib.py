@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=line-too-long
 """Library for running a computation across multiple devices.
 
 See the guide for overview and examples:
 [TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training),
-[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).  # pylint: disable=line-too-long
+[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).
 
 The intent of this library is that you can write an algorithm in a stylized way
 and it will be usable with a variety of different `tf.distribute.Strategy`
@@ -519,7 +520,10 @@ class StrategyBase(object):
   """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/guide/distributed_training)
-  for overview and examples.
+  for overview and examples. See `tf.distribute.StrategyExtended` and
+  [`tf.distribute`](https://www.tensorflow.org/api_docs/python/tf/distribute)
+  for a glossory of concepts mentioned on this page such as "per-replica",
+  _replica_, and _reduce_.
 
   In short:
 
@@ -735,12 +739,16 @@ class StrategyBase(object):
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
-      strategy.run(train_step, args=(x,))
+      strategy.run(replica_fn, args=(x,))
     ```
 
-    We will assume that the input dataset is batched by the
-    global batch size. With this assumption, we will make a best effort to
-    divide each batch across all the replicas (one or more workers).
+    In the code snippet above, the dataset `dist_dataset` is batched by
+    GLOBAL_BATCH_SIZE, and we iterate through it using `for x in dist_dataset`,
+    where x is one batch of data of GLOBAL_BATCH_SIZE containing N batches of
+    data of per-replica batch size, corresponding to N replicas.
+    `tf.distribute.Strategy.run` will take care of feeding
+    the right per-replica batch to the right `replica_fn` execution on each
+    replica.
 
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
@@ -891,8 +899,13 @@ class StrategyBase(object):
     `tf.distribute.DistributedValues` containing tensors or composite tensors.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
-    whether eager execution is enabled, `fn` may be called one or more times (
-    once for each replica).
+    whether eager execution is enabled, `fn` may be called one or more times. If
+    `fn` is annotated with `tf.function` or `tf.distribute.Strategy.run` is
+    called inside a `tf.function`, eager execution is disabled and `fn` is
+    called once (or once per replica, if you are using MirroredStrategy) to
+    generate a Tensorflow graph, which will then be reused for execution with
+    new inputs. Otherwise, if eager execution is enabled, `fn` will be called
+    every step just like regular python code.
 
     Example usage:
 
@@ -1035,15 +1048,16 @@ class StrategyBase(object):
         if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, array_ops.constant(dim, dtype=dtypes.int64)
+          # TODO(b/151871486): Remove array_ops.identity after we fallback to
+          # simple reduction if inputs are all on CPU.
+          return numer, array_ops.identity(
+              constant_op.constant(dim, dtype=dtypes.int64))
       elif axis < 0:
         axis = axis + array_ops.rank(v)
-      if v.shape.rank == 1:
-        # TODO(b/139422050): Currently tf.shape is not supported in TPU dynamic
-        # padder, use tf.size instead to workaround if the rank is 1.
-        denom = array_ops.size(v, out_type=dtypes.int64)
-      else:
-        denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      # TODO(b/151871486): Remove array_ops.identity after we fallback to simple
+      # reduction if inputs are all on CPU.
+      denom = array_ops.identity(
+          array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -1377,7 +1391,7 @@ class Strategy(StrategyBase):
         multiple_values.append(tf.constant(1.0))
 
     def value_fn(ctx):
-      return multiple_values[ctx.replica_id]
+      return multiple_values[ctx.replica_id_in_sync_group]
 
     distributed_values = strategy.
       experimental_distribute_values_from_function(
@@ -1579,7 +1593,7 @@ class StrategyExtendedV2(object):
   * Unwrapping and merging: Consider calling a function `fn` on multiple
     replicas, like `run(fn, args=[w])` with an
     argument `w` that is a wrapped value. This means `w` will have a map taking
-    replica id `0` to `w0`, replica id `11` to `w1`, etc.
+    replica id `0` to `w0`, replica id `1` to `w1`, etc.
     `run()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges the return
     values from `fn()`, which can possibly result in wrapped values. For
@@ -1758,13 +1772,25 @@ class StrategyExtendedV2(object):
       kwargs["distribute_strategy"] = strategy
 
       # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
-      # dereferencing a `Tensor` that is without a `name`.
-      # TODO(b/138130844): Revisit the following check once
-      # `CheckpointInitialValue` class is removed.
+      # dereferencing a `Tensor` that is without a `name`. We still need to
+      # propagate the metadata it's holding.
       if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].checkpoint_position.restore_uid
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+      else:
+        checkpoint_restore_uid = None
 
-      return self._create_variable(next_creator, **kwargs)
+      created = self._create_variable(next_creator, **kwargs)
+
+      if checkpoint_restore_uid is not None:
+        # pylint: disable=protected-access
+        # Let the checkpointing infrastructure know that the variable was
+        # already restored so it doesn't waste memory loading the value again.
+        created._maybe_initialize_trackable()
+        created._update_uid = checkpoint_restore_uid
+        # pylint: enable=protected-access
+      return created
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -1898,9 +1924,8 @@ class StrategyExtendedV2(object):
 
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
-    return self._local_results(
-        self.reduce_to(reduce_op, value,
-                       device_util.current() or "/device:CPU:0"))[0]
+    dst = device_util.current() or self._default_device or "/device:CPU:0"
+    return self._local_results(self.reduce_to(reduce_op, value, dst))[0]
 
   def reduce_to(self, reduce_op, value, destinations, experimental_hints=None):
     """Combine (via e.g. sum or mean) values across replicas.

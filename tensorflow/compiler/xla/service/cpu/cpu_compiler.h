@@ -136,6 +136,12 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
+  StatusOr<
+      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+  RunHloPassesAndBufferAssignement(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+      se::DeviceMemoryAllocator* device_allocator) override;
+
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
