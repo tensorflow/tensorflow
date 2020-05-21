@@ -11935,6 +11935,108 @@ func CropAndResizeGradBoxes(scope *Scope, grads tf.Output, image tf.Output, boxe
 	return op.Output(0)
 }
 
+// ExtractGlimpseV2Attr is an optional argument to ExtractGlimpseV2.
+type ExtractGlimpseV2Attr func(optionalAttr)
+
+// ExtractGlimpseV2Centered sets the optional centered attribute to value.
+//
+// value: indicates if the offset coordinates are centered relative to
+// the image, in which case the (0, 0) offset is relative to the center
+// of the input images. If false, the (0,0) offset corresponds to the
+// upper left corner of the input images.
+// If not specified, defaults to true
+func ExtractGlimpseV2Centered(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["centered"] = value
+	}
+}
+
+// ExtractGlimpseV2Normalized sets the optional normalized attribute to value.
+//
+// value: indicates if the offset coordinates are normalized.
+// If not specified, defaults to true
+func ExtractGlimpseV2Normalized(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["normalized"] = value
+	}
+}
+
+// ExtractGlimpseV2UniformNoise sets the optional uniform_noise attribute to value.
+//
+// value: indicates if the noise should be generated using a
+// uniform distribution or a Gaussian distribution.
+// If not specified, defaults to true
+func ExtractGlimpseV2UniformNoise(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["uniform_noise"] = value
+	}
+}
+
+// ExtractGlimpseV2Noise sets the optional noise attribute to value.
+//
+// value: indicates if the noise should `uniform`, `gaussian`, or
+// `zero`. The default is `uniform` which means the the noise type
+// will be decided by `uniform_noise`.
+// If not specified, defaults to "uniform"
+func ExtractGlimpseV2Noise(value string) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["noise"] = value
+	}
+}
+
+// Extracts a glimpse from the input tensor.
+//
+// Returns a set of windows called glimpses extracted at location
+// `offsets` from the input tensor. If the windows only partially
+// overlaps the inputs, the non overlapping areas will be filled with
+// random noise.
+//
+// The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+// glimpse_width, channels]`. The channels and batch dimensions are the
+// same as that of the input tensor. The height and width of the output
+// windows are specified in the `size` parameter.
+//
+// The argument `normalized` and `centered` controls how the windows are built:
+//
+// * If the coordinates are normalized but not centered, 0.0 and 1.0
+//   correspond to the minimum and maximum of each height and width
+//   dimension.
+// * If the coordinates are both normalized and centered, they range from
+//   -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+//   left corner, the lower right corner is located at (1.0, 1.0) and the
+//   center is at (0, 0).
+// * If the coordinates are not normalized they are interpreted as
+//   numbers of pixels.
+//
+// Arguments:
+//	input: A 4-D float tensor of shape `[batch_size, height, width, channels]`.
+//	size: A 1-D tensor of 2 elements containing the size of the glimpses
+// to extract.  The glimpse height must be specified first, following
+// by the glimpse width.
+//	offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
+// the y, x locations of the center of each window.
+//
+// Returns A tensor representing the glimpses `[batch_size,
+// glimpse_height, glimpse_width, channels]`.
+func ExtractGlimpseV2(scope *Scope, input tf.Output, size tf.Output, offsets tf.Output, optional ...ExtractGlimpseV2Attr) (glimpse tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExtractGlimpseV2",
+		Input: []tf.Input{
+			input, size, offsets,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ExtractGlimpseAttr is an optional argument to ExtractGlimpse.
 type ExtractGlimpseAttr func(optionalAttr)
 
