@@ -456,7 +456,7 @@ def _features(cpu, compiler, ctx):
                                 expand_if_available = "linker_param_file",
                                 flags = ["@%{linker_param_file}"],
                             ),
-                            flag_group(flags = ["rcsD"]),
+                            flag_group(flags = ["-o"]),
                             flag_group(
                                 flags = ["%{output_execpath}"],
                                 expand_if_available = "output_execpath",
