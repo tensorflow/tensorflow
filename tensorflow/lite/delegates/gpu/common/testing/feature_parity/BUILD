@@ -43,7 +43,6 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
-        "no_rocm",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -61,7 +60,6 @@ cc_test(
     tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "no_rocm",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -79,7 +77,6 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
-        "no_rocm",
         "tflite_not_portable_ios",
     ],
     deps = [

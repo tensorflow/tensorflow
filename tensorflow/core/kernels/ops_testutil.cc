@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/node_properties.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -122,7 +122,8 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   }
 #else
   CHECK_NE(device_type, DEVICE_GPU)
-      << "Requesting GPU on binary compiled without GOOGLE_CUDA or TENSORFLOW_USE_ROCM.";
+      << "Requesting GPU on binary compiled without GOOGLE_CUDA or "
+         "TENSORFLOW_USE_ROCM.";
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
 }
