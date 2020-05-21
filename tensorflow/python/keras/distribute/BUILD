@@ -431,10 +431,11 @@ py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],  # TODO(b/156029134)
+        "noasan",  # TODO(b/156029134)
+        "nomsan",  # TODO(b/156029134)
+        "notap",  # TODO(b/157253858)
+        "notsan",  # TODO(b/156029134)
+    ],
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python/data/ops:dataset_ops",
