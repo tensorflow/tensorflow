@@ -47,6 +47,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -882,6 +883,115 @@ class TensorArrayTest(PForTestCase):
     with session.Session() as sess:
       actual_grad, computed_grad = sess.run([t1, actual_grad])
       self.assertAllClose(actual_grad, computed_grad)
+
+
+class TensorListTest(PForTestCase):
+
+  def test_create_outside_and_write(self):
+    handle1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    handle2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+
+    def loop_fn(i):
+      h1 = list_ops.tensor_list_set_item(handle1, 0, i)
+      h1 = list_ops.tensor_list_set_item(h1, 1, 1)
+      h2 = list_ops.tensor_list_set_item(handle2, 0, 1)
+      return (list_ops.tensor_list_stack(h1, dtypes.int32),
+              list_ops.tensor_list_stack(h2, dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_write(self):
+
+    def loop_fn(i):
+      h1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      h1 = list_ops.tensor_list_set_item(h1, 0, i)
+      h1 = list_ops.tensor_list_set_item(h1, 1, 1)
+      h2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      h2 = list_ops.tensor_list_set_item(h2, 0, 1)
+      return (list_ops.tensor_list_stack(h1, dtypes.int32),
+              list_ops.tensor_list_stack(h2, dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_outside_and_read(self):
+    handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    handle = list_ops.tensor_list_set_item(handle, 0, 0)
+    handle = list_ops.tensor_list_set_item(handle, 1, 1)
+
+    def loop_fn(i):
+      return (list_ops.tensor_list_get_item(handle, i, dtypes.int32),
+              list_ops.tensor_list_get_item(handle, 0, dtypes.int32),
+              list_ops.tensor_list_length(handle),
+              list_ops.tensor_list_element_shape(handle, dtypes.int32),
+              list_ops.tensor_list_element_shape(handle, dtypes.int64))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_inside_and_read(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      handle = list_ops.tensor_list_set_item(handle, 0, i)
+      handle = list_ops.tensor_list_set_item(handle, 1, 1)
+      return (list_ops.tensor_list_get_item(handle, 0, dtypes.int32),
+              list_ops.tensor_list_get_item(handle, i, dtypes.int32),
+              list_ops.tensor_list_length(handle),
+              list_ops.tensor_list_element_shape(handle, dtypes.int32),
+              list_ops.tensor_list_element_shape(handle, dtypes.int64))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_outside_and_scatter(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=h)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_scatter(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_outside_and_gather(self):
+    handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+    handle = list_ops.tensor_list_scatter([[2, 3]], [0], input_handle=handle)
+    handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+
+    def loop_fn(i):
+      return (list_ops.tensor_list_gather(handle, [0, 1], dtypes.int32),
+              list_ops.tensor_list_gather(handle, [i], dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_inside_and_gather(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return (list_ops.tensor_list_gather(handle, [0, 1], dtypes.int32),
+              list_ops.tensor_list_gather(handle, [i], dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_from_tensor(self):
+    t = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_from_tensor(array_ops.gather(t, i), [4])
+      return list_ops.tensor_list_stack(handle, t.dtype)
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class StackTest(PForTestCase):
