@@ -132,6 +132,7 @@ TEST_F(ProfilerTest, Basics) {
       has_gpu = true;
     }
   }
+
   GraphNodeProto ret = profiler.ProfileNameScope(Default());
   const GraphNodeProto* matmul = ExtractNode(ret, "y");
   EXPECT_TRUE(matmul);
@@ -173,4 +174,4 @@ TEST_F(ProfilerTest, Basics) {
 }
 
 }  // namespace tfprof
-  }  // namespace tensorflow
+}  // namespace tensorflow

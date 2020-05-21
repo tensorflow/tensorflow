@@ -523,6 +523,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_oss",
         "notsan",
     ],
     deps = [
@@ -538,9 +539,7 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_v1_test.py"],
     python_version = "PY3",
-    tags = [
-        "notsan",
-    ],
+    tags = ["notsan"],
     deps = [
         ":callbacks",
         ":callbacks_v1",
