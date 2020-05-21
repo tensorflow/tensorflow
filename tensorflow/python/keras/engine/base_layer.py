@@ -34,6 +34,7 @@ from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
@@ -590,7 +591,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if isinstance(
+        variable,
+        (tf_variables.PartitionedVariable, sharded_variable.ShardedVariable)):
       for v in variable:
         backend.track_variable(v)
         if trainable:
