@@ -121,6 +121,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_STRING;
     case toco::IODataType::BOOL:
       return DT_BOOL;
+    case toco::IODataType::COMPLEX64:
+      return DT_COMPLEX64;
     default:
       return DT_INVALID;
   }
