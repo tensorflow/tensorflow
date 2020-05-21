@@ -11417,6 +11417,32 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 	return op.Output(0)
 }
 
+// Uncompresses a compressed dataset element.
+func UncompressElement(scope *Scope, compressed tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "UncompressElement",
+		Input: []tf.Input{
+			compressed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("UncompressElement", err)
+		return
+	}
+	return components
+}
+
 // Records the bytes size of each element of `input_dataset` in a StatsAggregator.
 func BytesProducedStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -30408,6 +30434,21 @@ func ResourceScatterMul(scope *Scope, resource tf.Output, indices tf.Output, upd
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Compresses a dataset element.
+func CompressElement(scope *Scope, components []tf.Output) (compressed tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CompressElement",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // MatMulAttr is an optional argument to MatMul.
