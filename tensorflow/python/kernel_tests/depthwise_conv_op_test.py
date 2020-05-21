@@ -312,7 +312,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph) as sess, ops.device("/gpu:0" if use_gpu else "/cpu:0"):
       tolerance = {
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
@@ -501,7 +501,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.cached_session(use_gpu=use_gpu) as sess:
+    with self.session() as sess, ops.device("/gpu:0" if use_gpu else "/cpu:0"):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
@@ -607,7 +607,7 @@ class DepthwiseConv2DTest(test.TestCase):
     filter_np = np.array(filter_data).reshape(filter_shape)
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph) as sess, ops.device("/gpu:0" if use_gpu else "/cpu:0"):
       tolerance = {
           dtypes.float16: 4e-0,
           dtypes.float32: 8e-4,
@@ -675,7 +675,7 @@ class DepthwiseConv2DTest(test.TestCase):
       self.assertLess(err, tolerance)
 
   @test_util.run_v1_only("b/120545219")
-  @test_util.run_cuda_only
+  #@test_util.run_cuda_only
   def testDepthwiseConv2DInputGradCudnn(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding, dilations) in enumerate(CheckGradConfigsToTest()):
@@ -905,7 +905,7 @@ class DepthwiseConv2DTest(test.TestCase):
       padding = [(0, 0)] + padding + [(0, 0)]
 
     def _GetVal(use_gpu):
-      with self.cached_session(use_gpu=use_gpu):
+      with self.session() as sess, ops.device("/gpu:0" if use_gpu else "/cpu:0"):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
@@ -957,24 +957,26 @@ class DepthwiseConv2DTest(test.TestCase):
 
   def _CompareBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                              stride, padding, dtype):
-    x0 = np.random.rand(*input_sizes).astype(dtype)
-    x2 = np.random.rand(*output_sizes).astype(dtype)
+    x0 = np.linspace(start=0,stop=1,num=np.prod(input_sizes)).reshape(input_sizes).astype(dtype)
+    x2 = np.linspace(start=0,stop=1,num=np.prod(output_sizes)).reshape(output_sizes).astype(dtype)
     if isinstance(padding, list):
       padding = [(0, 0)] + padding + [(0, 0)]
 
     def _GetVal(use_gpu):
-      with self.cached_session(use_gpu=use_gpu):
+      with self.session() as sess, ops.device("/gpu:0" if use_gpu else "/cpu:0"):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
+            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding, data_format='NHWC')
         ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
     gpu_value = _GetVal(use_gpu=True)
+    #print(gpu_value)
     cpu_value = _GetVal(use_gpu=False)
+    #print(cpu_value)
     self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
   def testDepthwiseConv2DFilterGradCompare(self):

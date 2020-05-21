@@ -307,7 +307,7 @@ template <>
 void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
     XlaBuilder* builder, const Array2D<Eigen::half>& expected,
     absl::Span<GlobalData* const> arguments) {
-  ErrorSpec error_spec(0.3, 5e-3);
+  ErrorSpec error_spec(0.3, 7e-3);
   ComputeAndCompareR2(builder, expected, arguments, error_spec);
 }
 
@@ -541,7 +541,7 @@ XLA_TYPED_TEST(NonsquareMatrixDot, TestFT) { this->TestImpl(false, true); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTF) { this->TestImpl(true, false); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTT) { this->TestImpl(true, true); }
 
-XLA_TEST_F(DotOperationTest, DISABLED_ON_GPU_ROCM(MatrixVectorC64)) {
+XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
   auto lhs_handle =
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
@@ -1463,7 +1463,7 @@ ENTRY TransposeOutput {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(MatrixVectorComplex)) {
+XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
   absl::string_view hlo_string =
       R"(
 HloModule MatrixVectorComplex

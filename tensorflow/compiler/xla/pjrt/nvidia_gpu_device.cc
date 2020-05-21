@@ -57,11 +57,19 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 
 // Builds an xla::LocalClient for the GPU platform.
 StatusOr<LocalClient*> GetGpuXlaClient() {
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("CUDA"));
   if (platform->VisibleDeviceCount() <= 0) {
     return FailedPrecondition("No visible NVidia GPU devices.");
   }
+#else
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform("ROCm"));
+  if (platform->VisibleDeviceCount() <= 0) {
+    return FailedPrecondition("No visible AMD GPU devices.");
+  }
+#endif
   LocalClientOptions options;
   options.set_platform(platform);
   return ClientLibrary::GetOrCreateLocalClient(options);

@@ -1277,7 +1277,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
           for (int delta = 16; delta >= kBlockDepth; delta /= 2) {
             val += GpuShuffleXorSync(active_threads, val, delta);
           }
-          if (!(thread_idx & 32 - kBlockDepth) /* lane_idx < kBlockDepth */) {
+          if (!(thread_idx & (32 - kBlockDepth)) /* lane_idx < kBlockDepth */) {
             *accum_ptr = val;
           }
           shared_offset += kBlockDepth;
@@ -1300,7 +1300,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
         S val = accum_data[i];
         // Warp-accumulate the pixels of the same depth from the accumulator.
         val = WarpSumReduce<kAccumPixels>(val);
-        if (!(thread_idx & kAccumPixels - 1)) {
+        if (!(thread_idx & (kAccumPixels - 1))) {
           GpuAtomicAdd(filter_offset + filter, static_cast<T>(val));
         }
       }
@@ -1735,13 +1735,21 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
+    /*
+    // The kernel DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall does not 
+    // work correctly. The test which is supposed to catch its failure
+    // (//tensorflow/python/kernel_tests:depthwise_conv_op_test) itself fails,
+    // because it uses self.cached_session(use_gpu=use_gpu) to compare CPU 
+    // and GPU results, and ends up comparing the GPU result against itself.
+    // TODO: fix the kernel, fix the test, fix any other tests using the same
+    // pattern (of which there are many).
     if (TryLaunchDepthwiseConv2dBackpropFilterGPUSmall<T, kKnownFilterWidth,
                                                        kKnownFilterHeight>(
             ctx, args, out_backprop, input, filter_backprop, data_format)
             .ok()) {
       return Status::OK();
     }
-
+    */
     return LaunchDepthwiseConv2dBackpropFilterGPU<T, kKnownFilterWidth,
                                                   kKnownFilterHeight, 1>(
         ctx, args, out_backprop, input, filter_backprop, data_format);

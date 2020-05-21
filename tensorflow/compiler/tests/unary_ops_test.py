@@ -262,13 +262,14 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # ROCM TODO: Disable test l2_loss for now. Re-enable it after properly
       # optimize perf for HLO reduction on ROCm
       # Tests for tf.nn ops.
-      #self._assertOpOutputMatchesExpected(
-      #    nn_ops.l2_loss, np.array([[[]]], dtype=dtype), expected=dtype(0))
+      #if not (test.is_built_with_rocm() and dtype==dtypes.bfloat16.as_numpy_dtype):
+      self._assertOpOutputMatchesExpected(
+        nn_ops.l2_loss, np.array([[[]]], dtype=dtype), expected=dtype(0))
 
-      #self._assertOpOutputMatchesExpected(nn_ops.l2_loss, dtype(4), dtype(8))
+      self._assertOpOutputMatchesExpected(nn_ops.l2_loss, dtype(4), dtype(8))
 
-      #self._assertOpOutputMatchesExpected(
-      #    nn_ops.l2_loss, np.array([[-2, 4]], dtype=dtype), expected=dtype(10))
+      self._assertOpOutputMatchesExpected(
+        nn_ops.l2_loss, np.array([[-2, 4]], dtype=dtype), expected=dtype(10))
 
       self._assertOpOutputMatchesExpected(
           math_ops.reciprocal,
@@ -722,7 +723,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # abs(inf+0j) returns "nan" instead of "inf" for complex64 type
       # curiously this fails only in the "_cpu" version, which is why
       # we will come to this later
-      if not test.is_built_with_rocm():
+      if True: #not test.is_built_with_rocm():
         self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[3 - 4j, -1j, np.inf]], dtype=dtype),

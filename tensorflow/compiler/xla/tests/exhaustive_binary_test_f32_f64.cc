@@ -113,7 +113,7 @@ BINARY_TEST_FLOAT_32(Min, {
 // implement Abs(complex) as unary conveniently.
 //
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(AbsComplex), {
+BINARY_TEST_FLOAT_32(DISABLED_ON_GPU_ROCM(DISABLED_ON_CPU(AbsComplex)), {
   auto host_abs_complex = [](float x, float y) {
     return std::abs(std::complex<float>(x, y));
   };
