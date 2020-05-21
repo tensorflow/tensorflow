@@ -71,6 +71,7 @@ __global__ void concat_variable_kernel(
 
   // verbose declaration needed due to template
   GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
+ 
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
