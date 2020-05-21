@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip --no-cache-dir install \
     enum34
 
- # Build and install bazel
+# Build and install bazel
 ENV BAZEL_VERSION 3.0.0
 WORKDIR /
 RUN mkdir /bazel && \
