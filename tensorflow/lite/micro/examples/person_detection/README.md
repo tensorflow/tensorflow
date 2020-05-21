@@ -28,7 +28,7 @@ This example is quantized with symmetric uint8 scheme. As noted in
 embARC MLI supports optimized kernels for int8 quantization only. Therefore,
 this example will only use TFLM reference kernels.
 
-The ARC EM SDP board contains the reach set of extension interfaces. You can
+The ARC EM SDP board contains a rich set of extension interfaces. You can
 choose any compatible camera and modify
 [image_provider.cc](/tensorflow/lite/micro/examples/person_detection/image_provider.cc)
 file accordingly to use input from your specific camera. By default, results of

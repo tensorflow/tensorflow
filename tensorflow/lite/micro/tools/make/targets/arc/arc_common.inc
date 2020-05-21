@@ -113,7 +113,7 @@ endif
   
   PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) 
   
-  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=2K 
+  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=24K 
 
 ifneq ($(LCF_FILE), )
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
