@@ -199,6 +199,7 @@ def _test_gradients(testcase,
   # And the symbolic computations should be much closer.
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
 
+
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testJVPFunction(self):
@@ -360,17 +361,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
-  # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly fails around this test?
-  def testExceptionCustomGradientRecomputeGradForward(self):
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testCustomGradientRecomputeGrad(self):
 
     @custom_gradient.recompute_grad
     def f(x):
       return math_ops.reduce_prod(math_ops.tanh(x)**2)
 
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 "recompute_grad tried to transpose"):
-      primals = [constant_op.constant([1.])]
-      sym_jac_fwd = _jacfwd(f, primals)
+    _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
   def testExceptionInCustomGradientNotSwallowed(self):
 

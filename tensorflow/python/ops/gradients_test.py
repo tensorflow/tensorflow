@@ -59,7 +59,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
-from tensorflow.python.ops import gradient_checker_v2
 
 
 class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -1341,46 +1340,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
 
     return grads_re, grads
 
-  def _grad(self, f, argnums=0):
-    """Return a function which computes the gradient of `f`."""
-
-    def _f(*params):
-      with backprop.GradientTape() as tape:
-        tape.watch(params)
-        outputs = f(*params)
-      return tape.gradient(
-          outputs,
-          params[argnums],
-          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO)
-
-    return _f
-
-  def _test_gradients(self, f, inputs, order, delta=1e-3, rtol=1e-2, atol=1e-6):
-    """Tests backward jacobians of `f`'s [0, `order`)-order gradients."""
-    if order < 1:
-      raise ValueError(
-          "`order` should be a positive integer, got '{}'.".format(order))
-    if order > 1:
-      self._test_gradients(
-          f=self._grad(f),
-          inputs=inputs,
-          order=order - 1,
-          delta=delta,
-          rtol=rtol,
-          atol=atol)
-    sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
-        f, inputs, delta=delta)
-    self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
-
-  @test_util.run_v2_only
-  def testCustomGradientRecomputeGradHigherOrder(self):
-
-    @custom_gradient.recompute_grad
-    def f(x):
-      return math_ops.reduce_prod(math_ops.tanh(x)**2)
-
-    self._test_gradients(f, [constant_op.constant([1.])], order=3)
-
   @test_util.run_in_graph_and_eager_modes
   def testFnRecompute(self):
     """Checks that recompute_grad works grads of function args."""
@@ -1397,8 +1356,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
           shape=10,
           trainable=True,
       )
-      self.evaluate(test_var.assign(np.ones([10])))
-      test_input = constant(np.ones((10, 10), dtype=np.float32))
+
+      test_input = constant(np.zeros((10, 10), dtype=np.float32))
 
       grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
                                                       test_input)
@@ -1441,7 +1400,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
             shape=10,
             trainable=True,
         )
-        self.evaluate(test_var.assign(np.ones([10])))
         return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
@@ -1484,8 +1442,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       out_re = test_fn_re(test_input_t)
       out = TestFn(test_input_t)
 
-    init = variables.global_variables_initializer()
-    self.evaluate(init)
     grads_re = gradients.gradients(out_re, variables.trainable_variables())
     grads = gradients.gradients(out, variables.trainable_variables())
 
