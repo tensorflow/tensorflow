@@ -309,18 +309,8 @@ class TextVectorization(CombinerPreprocessingLayer):
   def _get_vectorization_class(self):
     return categorical_encoding.CategoricalEncoding
 
-  def _get_table_data(self):
-    keys, values = self._table.export()
-    return (keys.numpy(), values.numpy())
-
   def _get_index_lookup_class(self):
     return string_lookup.StringLookup
-
-  def _to_numpy(self, preprocessed_data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(preprocessed_data, np.ndarray):
-      return preprocessed_data
-    return np.array(preprocessed_data.to_list())
   # End of V1/V2 shim points.
 
   def _assert_same_type(self, expected_type, values, value_name):
