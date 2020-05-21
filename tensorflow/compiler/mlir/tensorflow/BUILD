@@ -430,6 +430,7 @@ cc_library(
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/readonly_references_to_resources.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
         "transforms/resource_device_inference.cc",
