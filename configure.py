@@ -1170,7 +1170,8 @@ def system_specific_test_config(env):
     write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
     write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
   elif is_linux():
-    if env.get('TF_NEED_CUDA', None) == '1':
+    if ((env.get('TF_NEED_CUDA', None) == '1') or
+        (env.get('TF_NEED_ROCM', None) == '1')):
       write_to_bazelrc('test --test_tag_filters=-no_gpu')
       write_to_bazelrc('test --build_tag_filters=-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
@@ -1413,6 +1414,10 @@ def main():
       environ_cp.get('LD_LIBRARY_PATH') != '1'):
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
+
+  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
+    write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
+    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
