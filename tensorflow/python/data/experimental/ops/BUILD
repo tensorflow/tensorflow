@@ -34,6 +34,15 @@ py_library(
 )
 
 py_library(
+    name = "compression_ops",
+    srcs = ["compression_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+    ],
+)
+
+py_library(
     name = "counter",
     srcs = ["counter.py"],
     srcs_version = "PY2AND3",
@@ -475,6 +484,7 @@ py_library(
     deps = [
         ":batching",
         ":cardinality",
+        ":compression_ops",
         ":counter",
         ":data_service_ops",
         ":distribute",

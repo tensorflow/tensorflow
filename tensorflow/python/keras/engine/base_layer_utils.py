@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -121,7 +122,7 @@ def make_variable(name,
         initializer,
         (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
       initializer = initializer()
-    init_val = lambda: initializer(shape, dtype=dtype)
+    init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
@@ -676,15 +677,7 @@ def enable_v2_dtype_behavior():
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  >>> tf.compat.v1.keras.layers.disable_v2_dtype_behavior()
   >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
-  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  >>> print(layer.dtype)  # None since V2 behavior is disabled
-  None
-  >>> y = layer(x)  # Doesn't cast inputs since V2 dtype behavior is disabled
-  >>> print(y.dtype.name)
-  float64
-  >>> tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
   >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
   >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
   float32

@@ -40,6 +40,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.server_lib import ClusterSpec
@@ -323,6 +324,36 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
       return c
 
     self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+  def testMultiDeviceFunctionWithPackedVariable(self):
+    with ops.device('/job:worker/replica:0/task:0/device:CPU:0'):
+      var0 = resource_variable_ops.ResourceVariable(1.0)
+    with ops.device('/job:worker/replica:0/task:1/device:CPU:0'):
+      var1 = resource_variable_ops.ResourceVariable(2.0)
+
+    packed_var = ops.pack_eager_tensors([var0.handle, var1.handle])
+    self.assertEqual(packed_var.device,
+                     '/job:localhost/replica:0/task:0/device:COMPOSITE:0')
+    self.assertEqual(packed_var.backing_device,
+                     '/job:localhost/replica:0/task:0/device:COMPOSITE:0')
+
+    @def_function.function
+    def add_variables():
+      with ops.device('/job:worker/replica:0/task:0/device:CPU:0'):
+        read0 = resource_variable_ops.read_variable_op(
+            packed_var, dtype=dtypes.float32)
+      with ops.device('/job:worker/replica:0/task:1/device:CPU:0'):
+        read1 = resource_variable_ops.read_variable_op(
+            packed_var, dtype=dtypes.float32)
+
+      return read0 + read1
+
+    # Run the function on a remote device
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(add_variables().numpy(), 3.0)
+
+    # Run the function on a local worker
+    self.assertAllEqual(add_variables().numpy(), 3.0)
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnRemoteDeviceWithWait(self):

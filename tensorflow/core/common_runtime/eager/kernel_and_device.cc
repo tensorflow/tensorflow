@@ -35,8 +35,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -158,6 +160,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
@@ -280,6 +283,8 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
+    port::ScopedFlushDenormal flush;
+    port::ScopedSetRound round(FE_TONEAREST);
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
@@ -425,7 +430,9 @@ Device* KernelAndDeviceOp::InputDevice(int i) const {
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
-  if (input_dtypes_[i] == DT_RESOURCE) {
+  if ((input_dtypes_[i] == DT_RESOURCE) &&
+      (composite_devices_.find(input_devices_[i]->name()) ==
+       composite_devices_.end())) {
     return host_cpu_device_;
   } else {
     return input_devices_[i];

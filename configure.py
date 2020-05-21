@@ -144,7 +144,7 @@ def write_to_bazelrc(line):
 
 
 def write_action_env_to_bazelrc(var_name, var):
-  write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
+  write_to_bazelrc('build --action_env {}="{}"'.format(var_name, str(var)))
 
 
 def run_shell(cmd, allow_non_zero=False, stderr=None):
@@ -205,7 +205,7 @@ def setup_python(environ_cp):
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
   ask_python_bin_path = ('Please specify the location of python. [Default is '
-                         '%s]: ') % default_python_bin_path
+                         '{}]: ').format(default_python_bin_path)
   while True:
     python_bin_path = get_from_env_or_user_or_default(environ_cp,
                                                       'PYTHON_BIN_PATH',
@@ -215,9 +215,10 @@ def setup_python(environ_cp):
     if os.path.isfile(python_bin_path) and os.access(python_bin_path, os.X_OK):
       break
     elif not os.path.exists(python_bin_path):
-      print('Invalid python path: %s cannot be found.' % python_bin_path)
+      print('Invalid python path: {} cannot be found.'.format(python_bin_path))
     else:
-      print('%s is not executable.  Is it the python binary?' % python_bin_path)
+      print('{} is not executable.  Is it the python binary?'.format(
+          python_bin_path))
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
@@ -236,7 +237,7 @@ def setup_python(environ_cp):
       default_python_lib_path = python_lib_paths[0]
       python_lib_path = get_input(
           'Please input the desired Python library path to use.  '
-          'Default is [%s]\n' % python_lib_paths[0])
+          'Default is [{}]\n'.format(python_lib_paths[0]))
       if not python_lib_path:
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
@@ -252,7 +253,7 @@ def setup_python(environ_cp):
   # Set-up env variables used by python_configure.bzl
   write_action_env_to_bazelrc('PYTHON_BIN_PATH', python_bin_path)
   write_action_env_to_bazelrc('PYTHON_LIB_PATH', python_lib_path)
-  write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
+  write_to_bazelrc('build --python_path=\"{}"'.format(python_bin_path))
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
   # If choosen python_lib_path is from a path specified in the PYTHONPATH
@@ -266,7 +267,7 @@ def setup_python(environ_cp):
   with open(
       os.path.join(_TF_WORKSPACE_ROOT, 'tools', 'python_bin_path.sh'),
       'w') as f:
-    f.write('export PYTHON_BIN_PATH="%s"' % python_bin_path)
+    f.write('export PYTHON_BIN_PATH="{}"'.format(python_bin_path))
 
 
 def reset_tf_configure_bazelrc():
@@ -320,11 +321,12 @@ def get_var(environ_cp,
       Raise the error to avoid infinitely looping.
   """
   if not question:
-    question = 'Do you wish to build TensorFlow with %s support?' % query_item
+    question = 'Do you wish to build TensorFlow with {} support?'.format(
+        query_item)
   if not yes_reply:
-    yes_reply = '%s support will be enabled for TensorFlow.' % query_item
+    yes_reply = '{} support will be enabled for TensorFlow.'.format(query_item)
   if not no_reply:
-    no_reply = 'No %s' % yes_reply
+    no_reply = 'No {}'.format(yes_reply)
 
   yes_reply += '\n'
   no_reply += '\n'
@@ -368,7 +370,7 @@ def get_var(environ_cp,
         print(no_reply)
         var = False
     else:
-      print('Invalid selection: %s' % user_input_origin)
+      print('Invalid selection: {}'.format(user_input_origin))
   return var
 
 
@@ -479,13 +481,13 @@ def check_bazel_version(min_version, max_version):
   if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
-  curr_version = run_shell(
-      ['bazel', '--batch', '--bazelrc=/dev/null', 'version'])
 
-  for line in curr_version.split('\n'):
-    if 'Build label: ' in line:
-      curr_version = line.split('Build label: ')[1]
-      break
+  stderr = open(os.devnull, 'wb')
+  curr_version = run_shell(['bazel', '--version'],
+                           allow_non_zero = True,
+                           stderr = stderr)
+  if curr_version.startswith('bazel '):
+    curr_version = curr_version.split('bazel ')[1]
 
   min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
@@ -1366,8 +1368,13 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
-                                              _TF_MAX_BAZEL_VERSION)
+  try:
+    current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
+                                                _TF_MAX_BAZEL_VERSION)
+  except subprocess.CalledProcessError as e:
+    print("Error checking bazel version: ", e.output.decode('UTF-8').strip())
+    raise e
+
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1385,7 +1392,6 @@ def main():
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
-    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'

@@ -260,8 +260,8 @@ pybind_extension(
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/python/profiler/internal:traceme_context_manager",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",
     ] + select({

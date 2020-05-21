@@ -74,14 +74,22 @@ void setup() {
   //
   // tflite::ops::micro::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroOpResolver<3> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  static tflite::MicroOpResolver<3> micro_op_resolver(error_reporter);
+  if (micro_op_resolver.AddBuiltin(
+          tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+          tflite::ops::micro::Register_DEPTHWISE_CONV_2D()) != kTfLiteOk) {
+    return;
+  }
+  if (micro_op_resolver.AddBuiltin(
+          tflite::BuiltinOperator_FULLY_CONNECTED,
+          tflite::ops::micro::Register_FULLY_CONNECTED()) != kTfLiteOk) {
+    return;
+  }
+  if (micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                                   tflite::ops::micro::Register_SOFTMAX()) !=
+      kTfLiteOk) {
+    return;
+  }
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(

@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -144,6 +147,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      // XPlane semantics related.
+      {"$pt", kProducerType},
+      {"$ct", kConsumerType},
+      {"$p", kProducerId},
+      {"$c", kConsumerId},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},

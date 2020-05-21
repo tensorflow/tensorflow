@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/experimental/public/concrete_function_list.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // SavedModelAPI offers a way to load Tensorflow Saved Models
@@ -155,6 +156,7 @@ inline std::vector<ConcreteFunction*> SavedModelAPI::ListFunctions() {
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_EXPERIMENTAL_PUBLIC_SAVED_MODEL_API_H_

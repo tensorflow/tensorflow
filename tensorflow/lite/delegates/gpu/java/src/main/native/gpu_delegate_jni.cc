@@ -23,13 +23,17 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
-    jint inference_preference) {
+    jboolean quantized_models_allowed, jint inference_preference) {
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   if (precision_loss_allowed == JNI_TRUE) {
     options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
     options.inference_priority2 =
         TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
     options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  }
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
+  if (quantized_models_allowed) {
+    options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
   }
   options.inference_preference = static_cast<int32_t>(inference_preference);
   return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));

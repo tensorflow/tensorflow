@@ -30,10 +30,12 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('sort')
+@dispatch.add_dispatch_support
 def sort(values, axis=-1, direction='ASCENDING', name=None):
   """Sorts a tensor.
   
@@ -67,6 +69,7 @@ def sort(values, axis=-1, direction='ASCENDING', name=None):
 
 
 @tf_export('argsort')
+@dispatch.add_dispatch_support
 def argsort(values, axis=-1, direction='ASCENDING', stable=False, name=None):
   """Returns the indices of a tensor that give its sorted order along an axis.
 

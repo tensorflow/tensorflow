@@ -48,6 +48,7 @@ namespace xla {
   V(kAdd, "add", 2)                                                    \
   V(kAddDependency, "add-dependency", 2)                               \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                      \
+  V(kAllGather, "all-gather", 1)                                       \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                    \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                     \
   V(kAtan2, "atan2", 2)                                                \

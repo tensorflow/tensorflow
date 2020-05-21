@@ -17,10 +17,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -286,19 +284,14 @@ void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
           << reinterpret_cast<uintptr_t>(buffer) << std::dec
           << " size: " << size << " valid_size: " << valid_size;
 
-  // Ensure buffer is free when this function returns.
-  auto buffer_cleanup =
-      gtl::MakeCleanup([buffer] { port::AlignedFree(buffer); });
+  if (valid_size > 0) {
+    VLOG(3) << "Activity profile for stream " << stream_id;
 
-  if (valid_size <= 0) {
-    return;
+    CuptiTracer *cupti_tracer = CuptiTracer::GetCuptiTracerSingleton();
+    cupti_tracer->ProcessActivityBuffer(context, stream_id, buffer, valid_size)
+        .IgnoreError();
   }
-
-  VLOG(3) << "Activity profile for stream " << stream_id;
-
-  CuptiTracer *cupti_tracer = CuptiTracer::GetCuptiTracerSingleton();
-  cupti_tracer->ProcessActivityBuffer(context, stream_id, buffer, valid_size)
-      .IgnoreError();
+  port::AlignedFree(buffer);
 }
 
 void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
@@ -984,7 +977,7 @@ class CudaEventRecorder {
   using StreamKey = std::pair<CUcontext, CUstream>;
 
   absl::node_hash_map<CUcontext, ContextInfo> context_infos_;
-  absl::flat_hash_map<StreamKey, StreamInfo, hash<StreamKey>> stream_infos_;
+  absl::flat_hash_map<StreamKey, StreamInfo> stream_infos_;
 };
 
 // This hook uses cuda events to measure device side activities.

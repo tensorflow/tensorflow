@@ -102,6 +102,10 @@ class Node(object):
       tensor._keras_history = KerasHistory(
           layer=layer, node_index=node_index, tensor_index=i)
 
+    # Cached for performance.
+    self.flat_input_ids = [str(id(t)) for t in self._keras_inputs]
+    self.flat_output_ids = [str(id(t)) for t in nest.flatten(self.outputs)]
+
   @property
   def keras_inputs(self):
     """Tensors input to this node that can be traced back to a `keras.Input`."""

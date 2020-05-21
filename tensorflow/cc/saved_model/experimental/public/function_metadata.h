@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // FunctionMetadata stores additional function information, including
@@ -40,6 +41,7 @@ class FunctionMetadata final {
 };
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_EXPERIMENTAL_PUBLIC_FUNCTION_METADATA_H_

@@ -269,9 +269,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                                   [out_tensor])
     converter.inference_input_type = lite_constants.QUANTIZED_UINT8
     converter.inference_type = lite_constants.FLOAT
-    converter.quantized_input_stats = {
-        'Placeholder': (0., 1.)
-    }  # mean, std_dev
+    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1327,6 +1325,41 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def testResizeWithShape(self):
+    with ops.Graph().as_default():
+      # Construct a graph with a dynamically shapped input and an internal node
+      # that relies on the output of that input's shape.
+      in_tensor = array_ops.placeholder(
+          shape=[None, None], dtype=dtypes.float32)
+      in_tensor2 = [[1, 2], [3, 4]]
+      out_tensor = array_ops.reshape(in_tensor2, array_ops.shape(in_tensor))
+      sess = session.Session()
+
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertTrue(([1, 1] == input_details[0]['shape']).all())
+    self.assertTrue(([-1, -1] == input_details[0]['shape_signature']).all())
+
+    # Resize tensor and invoke.
+    interpreter.resize_tensor_input(0, [4])
+    interpreter.allocate_tensors()
+    interpreter.invoke()
+
+    # The output should be reshaped properly according to the resized input.
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([4] == output_details[0]['shape']).all())
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue(([1, 2, 3, 4] == output_data).all())
+
   def testResizingIntermediateDynamicTensor(self):
     # This is a regression test for the case where shape of dynamic output
     # tensors changes between invocations.
@@ -1895,7 +1928,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
@@ -1990,7 +2023,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertTrue(([2, 3] == input_details[0]['shape']).all())
 
   def testSequentialModelOutputArray(self):
@@ -2109,12 +2142,12 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    self.assertEqual('input_a', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'input_a')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('input_b', input_details[1]['name'])
+    self.assertEndsWith(input_details[1]['name'], 'input_b')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
@@ -2165,7 +2198,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])

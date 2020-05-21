@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -64,13 +66,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   core::RefCountPtr<eager::EagerClient> eager_client;
-  Device* device;
-  s = ctx_->FindDeviceFromName(target.c_str(), &device);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  s = ctx_->GetClient(device, &eager_client);
+  s = ctx_->GetClient(target, &eager_client);
   if (!s.ok()) {
     done(s);
     return;
@@ -189,13 +185,31 @@ void EagerClusterFunctionLibraryRuntime::Run(
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
 
+  CancellationManager* cm = opts.cancellation_manager;
+  CancellationToken token = 0;
+  auto call_opts = std::make_shared<CallOptions>();
+  if (cm != nullptr) {
+    token = cm->get_cancellation_token();
+    const bool already_cancelled = !cm->RegisterCallback(
+        token,
+        [call_opts, request, response, done]() { call_opts->StartCancel(); });
+    if (already_cancelled) {
+      done(errors::Cancelled("EagerClusterFunctionLibraryRuntime::Run"));
+      return;
+    }
+  }
+
   // Execute component function on remote worker using RunComponentFunction RPC.
   // Different from executing remote functions with Enqueue, this method runs
   // a function on remote worker without tying up a thread (i.e., pure
   // asynchronously).
   eager_client->RunComponentFunctionAsync(
-      request.get(), response.get(),
-      [request, response, rets, done = std::move(done)](const Status& s) {
+      call_opts.get(), request.get(), response.get(),
+      [request, response, rets, call_opts, cm, token,
+       done = std::move(done)](const Status& s) {
+        if (cm != nullptr) {
+          cm->TryDeregisterCallback(token);
+        }
         if (!s.ok()) {
           done(s);
           return;

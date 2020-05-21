@@ -86,8 +86,8 @@ else ifeq ($(BUILD_TYPE), release)
 	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
 	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
 else
-	CXXFLAGS += -O3
-	CCFLAGS  += -O3
+	CXXFLAGS += -DNDEBUG -O3
+	CCFLAGS  += -DNDEBUG -O3
 endif
 
 # This library is the main target for this makefile. It will contain a minimal

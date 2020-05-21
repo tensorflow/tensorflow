@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
@@ -62,15 +63,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/python/profiler/internal/traceme_context_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
+namespace {
 
 namespace py = pybind11;
 
-namespace {
+using ::tensorflow::profiler::TraceMeContextManager;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -620,43 +622,6 @@ void BuildOpsSubmodule(py::module* m) {
 #undef UNARY_OP
 }
 
-// Helper to implement TraceMe as a context manager in Python.
-class TraceMeContextManager {
- public:
-  explicit TraceMeContextManager(py::str name, py::kwargs kwargs)
-      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
-
-  void Enter() {
-    if (IsEnabled()) {
-      std::string name(name_);
-      if (!kwargs_.empty()) {
-        absl::StrAppend(&name, "#");
-        bool first = true;
-        for (const auto entry : kwargs_) {
-          absl::StrAppend(&name, first ? "" : ",",
-                          std::string(py::str(entry.first)), "=",
-                          std::string(py::str(entry.second)));
-          first = false;
-        }
-        absl::StrAppend(&name, "#");
-      }
-      traceme_.emplace(std::move(name));
-    }
-  }
-  py::object Exit(const py::object& ex_type, const py::object& ex_value,
-                  const py::object& traceback) {
-    traceme_.reset();
-    return py::none();
-  }
-
-  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
-
- private:
-  py::str name_;
-  py::kwargs kwargs_;
-  absl::optional<tensorflow::profiler::TraceMe> traceme_;
-};
-
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
       m->def_submodule("profiler", "TensorFlow profiler integration");
@@ -672,10 +637,22 @@ void BuildProfilerSubmodule(py::module* m) {
       },
       py::arg("port"));
 
-  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe");
+  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe",
+                                                  py::module_local());
   traceme_class.def(py::init<py::str, py::kwargs>())
-      .def("__enter__", &TraceMeContextManager::Enter)
-      .def("__exit__", &TraceMeContextManager::Exit)
+      .def("__enter__",
+           [](py::object self) -> py::object {
+             py::cast<TraceMeContextManager*>(self)->Enter();
+             return self;
+           })
+      .def("__exit__",
+           [](py::object self, const py::object& ex_type,
+              const py::object& ex_value,
+              const py::object& traceback) -> py::object {
+             py::cast<TraceMeContextManager*>(self)->Exit();
+             return py::none();
+           })
+      .def("set_metadata", &TraceMeContextManager::SetMetadata)
       .def_static("is_enabled", &TraceMeContextManager::IsEnabled);
 }
 
@@ -872,11 +849,7 @@ PYBIND11_MODULE(xla_extension, m) {
         DebugOptions* debug_options =
             options.executable_build_options.mutable_debug_options();
         // Sets fast-math-disabling default options expected by JAX.
-        // TODO(phawkins): make these XLA-wide defaults.
-        debug_options->set_xla_cpu_fast_math_honor_infs(true);
-        debug_options->set_xla_cpu_fast_math_honor_nans(true);
-        debug_options->set_xla_cpu_fast_math_honor_division(true);
-        debug_options->set_xla_cpu_fast_math_honor_functions(true);
+        debug_options->set_xla_cpu_enable_fast_min_max(false);
         debug_options->set_xla_gpu_enable_fast_min_max(false);
         return options;
       }))
@@ -934,34 +907,6 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<Device>& device) { return device.client; })
       .def("__str__", &Device::DebugString)
-      // TODO(phawkins): remove capitalized names after updating callers.
-      .def("TransferToInfeed",
-           [](const Device& device, const LiteralSlice& literal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                 device.GetLocalDeviceState());
-             return local_device->client()->TransferToInfeedLocal(
-                 literal, local_device->device_ordinal());
-           })
-      .def(
-          "TransferFromOutfeed",
-          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            std::shared_ptr<Literal> literal_shared;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                  device.GetLocalDeviceState());
-              TF_ASSIGN_OR_RETURN(
-                  Literal literal,
-                  local_device->client()->TransferFromOutfeedLocal(
-                      shape, local_device->device_ordinal()));
-
-              literal_shared = std::make_shared<Literal>(std::move(literal));
-            }
-            return LiteralToPython(std::move(literal_shared));
-          })
       .def("transfer_to_infeed",
            [](const Device& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -1248,28 +1193,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("size_of_generated_code_in_bytes",
            &PjRtExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PjRtExecutable::Delete)
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def("Delete", &PjRtExecutable::Delete)
-      .def(
-          "Execute",
-          [](const PjRtExecutable& executable,
-             absl::Span<PjRtBuffer* const> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PjRtBuffer>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                executable.Execute(args, options));
-            std::vector<ClientAndUniquePtr<PjRtBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffer : output_buffers) {
-              outputs.push_back(WrapWithClient(
-                  executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
       .def(
           "execute",
           [](const PjRtExecutable& executable,
@@ -1286,33 +1209,6 @@ PYBIND11_MODULE(xla_extension, m) {
             for (auto& buffer : output_buffers) {
               outputs.push_back(WrapWithClient(
                   executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def(
-          "ExecuteOnLocalDevices",
-          [](const PjRtExecutable& executable,
-             absl::Span<const std::vector<PjRtBuffer*>> args)
-              -> StatusOr<
-                  std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
-                    output_buffers,
-                executable.ExecuteOnLocalDevices(args, options));
-            std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>> outputs;
-            outputs.resize(output_buffers.size());
-            for (int computation = 0; computation < output_buffers.size();
-                 ++computation) {
-              for (auto& buffer : output_buffers[computation]) {
-                outputs[computation].push_back(
-                    WrapWithClient(executable.client()->shared_from_this(),
-                                   std::move(buffer)));
-              }
             }
             return outputs;
           },
@@ -1406,7 +1302,10 @@ PYBIND11_MODULE(xla_extension, m) {
                              options.device_assignment())
                        : absl::nullopt;
           },
-          &ExecutableBuildOptions::set_device_assignment);
+          &ExecutableBuildOptions::set_device_assignment)
+      .def_property("use_spmd_partitioning",
+                    &ExecutableBuildOptions::use_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_spmd_partitioning);
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
@@ -1415,12 +1314,6 @@ PYBIND11_MODULE(xla_extension, m) {
         proto.ParseFromString(serialized_hlo_module_proto);
         return absl::make_unique<XlaComputation>(proto);
       }))
-      // TODO(phawkins): delete capitalized names after updating callers.
-      .def("GetProgramShape", &XlaComputation::GetProgramShape)
-      .def("GetSerializedProto", &GetComputationSerializedProto)
-      .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph)
-      .def("Hash", &HashComputation)
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
@@ -1513,28 +1406,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Builds a computation from the contents of the builder.",
           py::arg("root") = absl::nullopt)
-      .def("ClearOpMetadata", &XlaBuilder::ClearOpMetadata)
       .def("GetShape", &XlaBuilder::GetShape)
-      .def(
-          "GetProgramShape",
-          [](const XlaBuilder& builder,
-             absl::optional<XlaOp> root) -> StatusOr<ProgramShape> {
-            return root ? builder.GetProgramShape(*root)
-                        : builder.GetProgramShape();
-          },
-          py::arg("root") = absl::nullopt)
-      .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
-      .def("SetSharding", &XlaBuilder::SetSharding)
-      .def("ClearSharding", &XlaBuilder::ClearSharding)
-      .def("SetUpAlias",
-           [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64 param_number, const std::vector<int64>& param_index) {
-             builder.SetUpAlias(
-                 ShapeIndex(output_index.begin(), output_index.end()),
-                 param_number,
-                 ShapeIndex(param_index.begin(), param_index.end()));
-           })
       .def(
           "build",
           [](XlaBuilder& builder, absl::optional<XlaOp> root) {
@@ -1565,17 +1437,7 @@ PYBIND11_MODULE(xla_extension, m) {
                  ShapeIndex(param_index.begin(), param_index.end()));
            });
 
-  // TODO(phawkins): delete capitalized names after updating callers
-  m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
-  m.def("DLPackManagedTensorToBuffer",
-        [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
-            -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
-          TF_ASSIGN_OR_RETURN(
-              std::unique_ptr<PjRtBuffer> buffer,
-              DLPackManagedTensorToBuffer(tensor, client.get()));
-          return WrapWithClient(std::move(client), std::move(buffer));
-        });
   m.def("dlpack_managed_tensor_to_buffer",
         [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
             -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {

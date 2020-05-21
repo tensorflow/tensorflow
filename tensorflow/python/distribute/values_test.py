@@ -56,6 +56,7 @@ from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 
@@ -623,10 +624,10 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       v = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
     # In cross replica context.
-    self.assertTrue(ops.is_dense_tensor_like(v))
+    self.assertIsInstance(v, core.Tensor)
     # In replica context.
     distribution.run(
-        lambda v: self.assertTrue(ops.is_dense_tensor_like(v)), args=(v,))
+        lambda v: self.assertIsInstance(v, core.Tensor), args=(v,))
 
   def testAssignReturnValueIsTensorLike(self, distribution, synchronization,
                                         aggregation):
@@ -645,12 +646,15 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       # values is not allowed when aggregation is SUM. See
       # `cross_device_ops.reduce_non_distributed_value`.
       delta = array_ops.identity(1.)
-      self.assertTrue(ops.is_dense_tensor_like(v.assign(delta)))
-      self.assertTrue(ops.is_dense_tensor_like(v.assign_sub(delta)))
-      self.assertTrue(ops.is_dense_tensor_like(v.assign_add(delta)))
+      self.assertIsInstance(v.assign(delta), core.Tensor)
+      self.assertIsInstance(v.assign_sub(delta), core.Tensor)
+      self.assertIsInstance(v.assign_add(delta), core.Tensor)
 
     # In cross replica context we return a PerReplica which is not Tensor like
-    # yet.
+    # all the time yet.
+    if (synchronization == variables_lib.VariableSynchronization.ON_READ and
+        aggregation != variables_lib.VariableAggregation.SUM):
+      assert_is_tensor_like(v)
 
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
@@ -1609,10 +1613,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1646,10 +1656,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1721,8 +1737,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
                                          experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+        # variables_lib.VariableAggregation.MEAN,
+        # variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):

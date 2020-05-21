@@ -618,7 +618,7 @@ LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
   auto& value_map = *ctx.values;
@@ -633,6 +633,33 @@ LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
       xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
                        true_branch, value_map[op.false_arg()], false_branch);
 
+  return success();
+}
+
+LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
+  llvm::DenseMap<mlir::Value, xla::XlaOp>& value_map = *ctx.values;
+  OperandRange operands = op.branch_operands();
+  MutableArrayRef<Region> branches = op.branches();
+  llvm::SmallVector<xla::XlaOp, 4> branch_operands(branches.size());
+  std::vector<xla::XlaComputation> computations(branches.size());
+  std::vector<xla::XlaComputation*> computations_p(branches.size());
+
+  for (unsigned i = 0; i < branches.size(); ++i) {
+    branch_operands[i] = value_map[operands[i]];
+    computations_p[i] = &computations[i];
+    if (failed(ctx.converter->LowerRegionAsComputation(&branches[i],
+                                                       computations_p[i])))
+      return failure();
+  }
+  xla::XlaOp result =
+      xla::Conditional(value_map[op.index()], computations_p, branch_operands);
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    for (auto item : llvm::enumerate(op.getResults())) {
+      value_map[item.value()] = xla::GetTupleElement(result, item.index());
+    }
+  }
   return success();
 }
 
@@ -933,6 +960,8 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
     case xla::PrimitiveType::F16: {
       llvm::SmallVector<xla::half, 16> values;
       values.reserve(attr.getNumElements());
@@ -982,6 +1011,21 @@ LogicalResult ConvertToHloModule::Lower(
 
   if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
     return LowerFunctionCall(&call_op, builder, &value_map);
+  }
+
+  if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
+    Value operand = op.getOperand();
+    auto ty = operand.getType().dyn_cast<ShapedType>();
+    // If this was a cast from a static shaped tensors, then it is a noop for
+    // export to HLO and we can use the operand.
+    if (!ty || !ty.hasStaticShape()) {
+      inst->emitOpError()
+          << "requires static shaped operand for HLO translation";
+      return failure();
+    }
+
+    value_map[op.getResult()] = value_map[operand];
+    return success();
   }
 
   // TODO(jpienaar): This doesn't support layouts yet.

@@ -462,9 +462,8 @@ def _check_cuda_lib_params(lib, cpu_value, basedir, version, static = False):
         _lib_path(lib, cpu_value, basedir, version, static),
         _should_check_soname(version, static),
     )
-# Tom: The implementation does not work at macOS since command objdump return different information from linux.
-# The implementation uses a script.py to detect CUDA libraries. But I think the previous version (v2.1.0 or before) is
-# better to generalize to both Linux and macOS. I provide a separate and working version on macOS here.
+# Tom: The original implementation does not work at macOS since command objdump return different information from linux.
+# I provide a separate and working version on macOS here.
 def _check_cuda_libs_macOS(repository_ctx, script_path, paths, check_soname = True):
     """
       Finds a library among a list of potential paths.
@@ -749,6 +748,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{cuda_is_configured}": "False",
             "%{cuda_extra_copts}": "[]",
+            "%{cuda_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -843,24 +843,35 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
     cmd = \"""%s \""",
 )""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
-def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
-    """Returns a rule to recursively copy a directory."""
+def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None):
+    """Returns a rule to recursively copy a directory.
+    If exceptions is not None, it must be a list of files or directories in
+    'src_dir'; these will be excluded from copying.
+    """
     src_dir = _norm_path(src_dir)
     out_dir = _norm_path(out_dir)
     outs = read_dir(repository_ctx, src_dir)
+    post_cmd = ""
+    if exceptions != None:
+        outs = [x for x in outs if not any([
+            x.startswith(src_dir + "/" + y)
+            for y in exceptions
+        ])]
     outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
 
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
-    # Tom: parameter '-rLf' is not valid on macOS. Therefore, I replace it with '-r -f'.
+    if exceptions != None:
+        for x in exceptions:
+            post_cmd += " ; rm -fR " + out_dir + "/" + x
     return """genrule(
     name = "%s",
     outs = [
 %s
     ],
-    cmd = \"""cp -r -f "%s/." "%s/" \""", 
-)""" % (name, "\n".join(outs), src_dir, out_dir)
+    ccmd = \"""cp -r -f "%s/." "%s/" \""",
+)""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
 
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
@@ -876,10 +887,17 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
         "--cuda-gpu-arch=sm_" + cap.replace(".", "")
         for cap in compute_capabilities
     ]
+    return str(capability_flags)
 
-    # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
-    # TODO(csigg): Make this consistent with cuda clang and pass unconditionally.
-    return "if_cuda_clang(%s)" % str(capability_flags)
+def _compute_cuda_gpu_architectures(repository_ctx, compute_capabilities):
+    gpu_architectures = [
+        "sm_" + capability.replace(".", "")
+        for capability in compute_capabilities
+    ]
+
+    # Make the list unique.
+    gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
+    return str(gpu_architectures)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
@@ -1012,6 +1030,10 @@ def _create_local_cuda_repository(repository_ctx):
                 repository_ctx,
                 cuda_config.compute_capabilities,
             ),
+            "%{cuda_gpu_architectures}": _compute_cuda_gpu_architectures(
+                repository_ctx,
+                cuda_config.compute_capabilities,
+            ),
         },
     )
 
@@ -1128,9 +1150,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{nvcc_path}": nvcc_path,
             "%{gcc_host_compiler_path}": str(cc),
-            "%{cuda_compute_capabilities}": ", ".join(
-                ["\"%s\"" % c for c in cuda_config.compute_capabilities],
-            ),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
         }
         repository_ctx.template(

@@ -22,7 +22,7 @@ using testing::ElementsAreArray;
 class FullyConnectedOpModel : public SingleOpModelWithHexagon {
  public:
   FullyConnectedOpModel(int units, int batches, const TensorData& input,
-                        const TensorData& output)
+                        const TensorData& output, bool optional_bias = false)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -34,9 +34,13 @@ class FullyConnectedOpModel : public SingleOpModelWithHexagon {
     weights_ =
         AddInput({input.type, {units_, input_size_}, input.min, input.max});
 
-    auto bias_scale = GetScale(input_) * GetScale(weights_);
-    TensorData bias{TensorType_INT32, {units_}, 0, 0, bias_scale};
-    bias_ = AddInput(bias);
+    if (optional_bias) {
+      bias_ = AddNullInput();
+    } else {
+      auto bias_scale = GetScale(input_) * GetScale(weights_);
+      TensorData bias{TensorType_INT32, {units_}, 0, 0, bias_scale};
+      bias_ = AddInput(bias);
+    }
 
     output_ = AddOutput(output);
 
@@ -46,15 +50,16 @@ class FullyConnectedOpModel : public SingleOpModelWithHexagon {
                                     FullyConnectedOptionsWeightsFormat_DEFAULT,
                                     /*keep_num_dims=*/false)
             .Union());
-
-    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+    BuildInterpreter({GetShape(input_), GetShape(weights_)});
 
     // Weights & bias tensors need to be constant.
     // We don't use AddConstInput to allow setting filter values later.
     auto* weights_tensor = interpreter_->tensor(weights_);
     weights_tensor->allocation_type = kTfLiteMmapRo;
-    auto* bias_tensor = interpreter_->tensor(bias_);
-    bias_tensor->allocation_type = kTfLiteMmapRo;
+    if (!optional_bias) {
+      auto* bias_tensor = interpreter_->tensor(bias_);
+      bias_tensor->allocation_type = kTfLiteMmapRo;
+    }
   }
 
   void SetBias(const std::vector<float>& data) {
@@ -144,6 +149,58 @@ TEST(QuantizedFullyConnectedOpTest, TestQuantizedUint8) {
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(151, 152, 153, 185, 186, 187));
+}
+
+TEST(QuantizedFullyConnectedOpTest, TestQuantizedUint8_NoBias) {
+  FullyConnectedOpModel m(
+      /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_UINT8, {2, 10}, -63.5, 64},
+      /*output=*/{TensorType_UINT8, {}, -127, 128}, /*optional_bias*/ true);
+
+  m.SetWeights<uint8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+
+  m.SetInput<uint8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput<uint8_t>();
+
+  m.ApplyDelegateAndInvoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(reference_output)));
+}
+
+TEST(QuantizedFullyConnectedOpTest, TestQuantizedInt8_NoBias) {
+  FullyConnectedOpModel m(/*units=*/3, /*batches*/ 2,
+                          /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+                          /*output=*/{TensorType_INT8, {}, -127, 128},
+                          /*optional_bias*/ true);
+
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+
+  m.SetInput<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput<int8_t>();
+
+  m.ApplyDelegateAndInvoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(reference_output)));
 }
 
 }  // namespace tflite

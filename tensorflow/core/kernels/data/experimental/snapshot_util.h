@@ -125,9 +125,12 @@ class Reader {
                                   const string& compression_type, int version,
                                   const DataTypeVector& dtypes,
                                   const std::vector<PartialTensorShape>& shapes,
+                                  const int64 start_index,
                                   DatasetBase** output);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors);
+
+  Status SkipRecords(int64 num_records);
 
  private:
   explicit Reader(const std::string& filename, const string& compression_type,

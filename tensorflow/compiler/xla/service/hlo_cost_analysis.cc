@@ -707,6 +707,10 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.

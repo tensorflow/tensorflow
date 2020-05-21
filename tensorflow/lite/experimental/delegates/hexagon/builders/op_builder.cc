@@ -43,6 +43,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateReduceBuilder(this, OP_QuantizedSum_8to32);
     case kTfLiteBuiltinPad:
       return CreatePadBuilder(this, OP_QuantizedPad_8);
+    case kTfLiteBuiltinMirrorPad:
+      return CreateMirrorPadBuilder(this, OP_MirrorPad_8);
     case kTfLiteBuiltinFullyConnected:
       return CreateMatMulBuilder(this, OP_QuantizedMatMul_8x8to32);
     case kTfLiteBuiltinAveragePool2d:
@@ -91,6 +93,14 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateQuantizeBuilder(this, OP_Requantize_8to8);
     case kTfLiteBuiltinHardSwish:
       return CreateHardSwishBuilder(this, OP_QuantizedHardSwish_8);
+    case kTfLiteBuiltinMinimum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMinimum_8);
+    case kTfLiteBuiltinMaximum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMaximum_8);
+    case kTfLiteBuiltinSlice:
+      return CreateSliceOpBuilder(this, OP_QuantizedSlice_8);
+    case kTfLiteBuiltinPack:
+      return CreatePackBuilder(this, OP_QuantizedPack_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;

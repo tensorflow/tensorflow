@@ -460,6 +460,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_sharding_util",
+    srcs = [
+        "hlo_sharding_util.cc",
+    ],
+    hdrs = [
+        "hlo_sharding_util.h",
+    ],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_sharding_util_test",
+    srcs = [
+        "hlo_sharding_util_test.cc",
+    ],
+    deps = [
+        ":hlo_sharding_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "dynamic_parameter_binding_test",
     srcs = ["dynamic_parameter_binding_test.cc"],
@@ -2398,6 +2429,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_gather_decomposer",
+    srcs = ["all_gather_decomposer.cc"],
+    hdrs = ["all_gather_decomposer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "all_gather_decomposer_test",
+    srcs = ["all_gather_decomposer_test.cc"],
+    deps = [
+        ":all_gather_decomposer",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
     hdrs = ["tuple_simplifier.h"],
@@ -3217,6 +3284,7 @@ cc_library(
         ":heap_simulator",
         ":hlo_cost_analysis",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core/lib/math:math_util",
     ],
 )
 
@@ -3810,6 +3878,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:transform_utils",
     ],
@@ -4429,6 +4498,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

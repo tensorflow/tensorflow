@@ -23,7 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import network
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_v1
@@ -31,7 +31,6 @@ from tensorflow.python.keras.engine.base_layer import AddMetric
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
@@ -45,6 +44,7 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
+Functional = functional.Functional  # pylint: disable=invalid-name
 save_model = save.save_model
 load_model = save.load_model
 model_from_config = model_config.model_from_config
@@ -193,12 +193,12 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
-  model_config, created_layers = _clone_layers_and_model_config(
+  model_configs, created_layers = _clone_layers_and_model_config(
       model, new_input_layers, layer_fn)
   # Reconstruct model from the config, using the cloned layers.
   input_tensors, output_tensors, created_layers = (
-      network.reconstruct_from_config(model_config,
-                                      created_layers=created_layers))
+      functional.reconstruct_from_config(model_configs,
+                                         created_layers=created_layers))
   metrics_names = model.metrics_names
   model = Model(input_tensors, output_tensors, name=model.name)
   # Layers not directly tied to outputs of the Model, such as loss layers
@@ -209,8 +209,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if ancillary_layers:
     new_nodes = nest.flatten([
         layer.inbound_nodes[1:]
-        if network._should_skip_first_node(layer) else layer.inbound_nodes
-        for layer in created_layers.values()
+        if functional._should_skip_first_node(layer)
+        else layer.inbound_nodes for layer in created_layers.values()
     ])
     _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes)
   return model
@@ -244,7 +244,8 @@ def _clone_layers_and_model_config(model, input_layers, layer_fn):
       created_layers[layer.name] = layer_fn(layer)
     return {}
 
-  config = network.get_network_config(model, serialize_layer_fn=_copy_layer)
+  config = functional.get_network_config(
+      model, serialize_layer_fn=_copy_layer)
   return config, created_layers
 
 
@@ -495,7 +496,7 @@ def _in_place_subclassed_model_reset(model):
     # This will not work for nested subclassed models used as layers.
     # This would be theoretically possible to support, but would add complexity.
     # Only do it if users complain.
-    if isinstance(layer, Network) and not layer._is_graph_network:
+    if isinstance(layer, training.Model) and not layer._is_graph_network:
       raise ValueError('We do not support the use of nested subclassed models '
                        'in `model_to_estimator` at this time. Found nested '
                        'model: %s' % layer)

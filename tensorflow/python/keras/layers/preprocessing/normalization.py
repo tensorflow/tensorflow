@@ -41,7 +41,7 @@ _VARIANCE_NAME = 'variance'
 class Normalization(CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
-  This layer will coerce its inputs into a normal distribution centered around
+  This layer will coerce its inputs into a distribution centered around
   0 with standard deviation 1. It accomplishes this by precomputing the mean and
   variance of the data, and calling (input-mean)/sqrt(var) at runtime.
 

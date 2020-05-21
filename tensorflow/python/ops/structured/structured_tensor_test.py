@@ -922,14 +922,25 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
     self.assertAllEqual(st.field_value(("a",)), 5)
     self.assertAllEqual(st.field_value(("b", "c")), [1, 2, 3])
-    with self.assertRaisesRegexp(KeyError,
-                                 r"Field path \('a', 'b'\) not found in .*"):
+    expected = "Field path \(.*a.*,.*b.*\) not found in .*"
+    with self.assertRaisesRegexp(KeyError, expected):
       st.field_value(("a", "b"))
 
   def testRepr(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
-    self.assertEqual(
-        repr(st), "<StructuredTensor(fields={'a', 'b'}, shape=())>")
+    if context.executing_eagerly():
+      expected = ("<StructuredTensor(fields={"
+                  '"a": tf.Tensor(5, shape=(), dtype=int32), '
+                  '"b": <StructuredTensor(fields={'
+                  '"c": tf.Tensor([1 2 3], shape=(3,), dtype=int32)}, '
+                  "shape=())>}, shape=())>")
+    else:
+      expected = ("<StructuredTensor(fields={"
+                  '"a": Tensor("Const:0", shape=(), dtype=int32), '
+                  '"b": <StructuredTensor(fields={'
+                  '"c": Tensor("RaggedConstant/Const:0", shape=(3,), '
+                  "dtype=int32)}, shape=())>}, shape=())>")
+    self.assertEqual(repr(st), expected)
 
   def testPartitionOuterDimension2DDenseField(self):
     struct = structured_tensor.StructuredTensor.from_fields(

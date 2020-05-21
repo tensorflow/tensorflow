@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -132,7 +136,7 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
@@ -163,8 +167,6 @@ class MicroInterpreter {
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;

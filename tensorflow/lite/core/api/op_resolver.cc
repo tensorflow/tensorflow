@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/op_resolver.h"
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+
 namespace tflite {
 
 TfLiteStatus GetRegistrationFromOpCode(
