@@ -110,6 +110,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "compression_ops",
+    srcs = ["compression_ops.cc"],
+    hdrs = ["compression_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -681,6 +695,7 @@ tf_kernel_library(
         ":auto_shard_dataset_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
+        ":compression_ops",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",
