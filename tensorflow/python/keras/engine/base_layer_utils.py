@@ -248,7 +248,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              constants[i] = backend.function([], op_input)([])
+              if ops.executing_eagerly_outside_functions():
+                constants[i] = backend.eval_in_eager_or_function(op_input)
+              else:
+                constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
