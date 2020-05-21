@@ -12,21 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow V1 version of the text category_encoding preprocessing layer."""
+"""Tensorflow V1 version of the text categorical_encoding preprocessing layer."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
-from tensorflow.python.keras.layers.preprocessing import category_encoding
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.keras.layers.preprocessing import categorical_encoding
 
 
-@keras_export(v1=["keras.layers.experimental.preprocessing.CategoryEncoding"])
-class CategoryEncoding(category_encoding.CategoryEncoding,
-                       base_preprocessing_layer_v1.CombinerPreprocessingLayer):
-  """CategoryEncoding layer.
+class CategoricalEncoding(categorical_encoding.CategoricalEncoding,
+                          base_preprocessing_layer_v1.CombinerPreprocessingLayer
+                         ):
+  """CategoricalEncoding layer.
 
   This layer provides options for condensing input data into denser
   representations. It accepts either integer values or strings as inputs,

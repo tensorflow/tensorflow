@@ -11,12 +11,12 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
-    name = "category_encoding_benchmark",
-    srcs = ["category_encoding_benchmark.py"],
+    name = "categorical_encoding_benchmark",
+    srcs = ["categorical_encoding_benchmark.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/layers/preprocessing:category_encoding",
+        "//tensorflow/python/keras/layers/preprocessing:categorical_encoding",
     ],
 )
 

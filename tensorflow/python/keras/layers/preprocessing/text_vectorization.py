@@ -26,7 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
-from tensorflow.python.keras.layers.preprocessing import category_encoding
+from tensorflow.python.keras.layers.preprocessing import categorical_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
@@ -42,10 +42,10 @@ LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
 
 SPLIT_ON_WHITESPACE = "whitespace"
 
-TFIDF = category_encoding.TFIDF
-INT = category_encoding.INT
-BINARY = category_encoding.BINARY
-COUNT = category_encoding.COUNT
+TFIDF = categorical_encoding.TFIDF
+INT = categorical_encoding.INT
+BINARY = categorical_encoding.BINARY
+COUNT = categorical_encoding.COUNT
 
 # This is an explicit regex of all the tokens that will be stripped if
 # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
@@ -307,7 +307,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   # These are V1/V2 shim points. There are V1 implementations in the V1 class.
   def _get_vectorization_class(self):
-    return category_encoding.CategoryEncoding
+    return categorical_encoding.CategoricalEncoding
 
   def _get_index_lookup_class(self):
     return string_lookup.StringLookup

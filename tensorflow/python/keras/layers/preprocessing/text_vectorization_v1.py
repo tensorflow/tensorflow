@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
-from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.util.tf_export import keras_export
@@ -77,7 +77,7 @@ class TextVectorization(text_vectorization.TextVectorization,
   """
 
   def _get_vectorization_class(self):
-    return category_encoding_v1.CategoryEncoding
+    return categorical_encoding_v1.CategoricalEncoding
 
   def _get_index_lookup_class(self):
     return string_lookup_v1.StringLookup
