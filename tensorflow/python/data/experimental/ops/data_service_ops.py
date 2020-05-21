@@ -219,6 +219,9 @@ def _distribute(processing_mode,
     # TODO(b/157105111): Set this to autotune when we have a way to limit
     # memory usage
     dataset = dataset.prefetch(1)
+    # Apply options so that the dataset executed in the tf.data service will
+    # be optimized and support autotuning.
+    dataset = dataset._apply_options()  # pylint: disable=protected-access
     dataset_id = gen_experimental_dataset_ops.register_dataset(
         dataset._variant_tensor,  # pylint: disable=protected-access
         address=address,
