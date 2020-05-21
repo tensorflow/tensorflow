@@ -261,6 +261,41 @@ cc_library(
 )
 
 cc_library(
+    name = "tftext_utils",
+    srcs = [
+        "utils/tftext_utils.cc",
+    ],
+    hdrs = [
+        "utils/tftext_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tftext_utils_test",
+    size = "small",
+    srcs = ["utils/lstm_utils_test.cc"],
+    deps = [
+        ":lstm_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
@@ -320,6 +355,7 @@ cc_library(
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
+        ":tftext_utils",
         ":validators",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
