@@ -562,7 +562,7 @@ class ShapeInference {
 
  private:
   // Mapping between ValuePort (which corresponds to an OpResult or smaller,
-  // e.g., first element of OpResult produded) to an Attribute if the ValuePort
+  // e.g., first element of OpResult produced) to an Attribute if the ValuePort
   // corresponds to a constant value.
   ValuePortResultMap results_;
   int64_t graph_version_;
@@ -1144,7 +1144,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
     ArrayRef<int64_t> shape = arg_shapes[i];
     Type element_type;
     if (auto input_ty = func_type.getInput(i).dyn_cast<RankedTensorType>()) {
-      if (!input_ty || input_ty.getShape().size() != shape.size()) {
+      if (input_ty.getRank() != shape.size()) {
         return failure();
       }
       element_type = input_ty.getElementType();
