@@ -4098,7 +4098,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
     input: A list of input tensors whose types are T.
     output: A list of output tensors whose types are T.
-    cond: A region takes 'input' and returns a boolean scalar tensor.
+    cond: A region that takes 'input' and returns a boolean scalar tensor.
     body: A region that takes a list of tensors and returns another
           list of tensors. Both lists have the same types.
   }];

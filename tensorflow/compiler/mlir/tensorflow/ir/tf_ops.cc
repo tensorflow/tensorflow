@@ -1885,6 +1885,56 @@ static LogicalResult Verify(IfOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(YieldOp op) {
+  auto parent = op.getParentOp();
+  // A YieldOp should be contained within an IfRegion op
+  // (and WhileRegion in future)
+  if (!isa<IfRegionOp>(parent))
+    op.emitError() << " expects parent op "
+                   << "'" << IfRegionOp::getOperationName() << "' but got '"
+                   << parent->getName().getStringRef() << "'";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfRegionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult VerifyRegionResults(Operation *op, Region &region,
+                                  StringRef region_name) {
+  auto op_name = op->getName().getStringRef();
+  // verify that op outputs match yield inputs
+  YieldOp yield = cast<YieldOp>(region.front().getTerminator());
+  unsigned expected_num_results = op->getNumResults();
+  if (yield.getNumOperands() != expected_num_results)
+    return op->emitError(region_name + " region should have " +
+                         Twine(expected_num_results) + " results");
+
+  for (int idx : llvm::seq<int>(0, expected_num_results)) {
+    auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
+    auto region_result_type =
+        yield.getOperand(idx).getType().cast<TensorType>();
+    if (!AreCastCompatible({region_result_type, op_result_type}))
+      return op->emitError(llvm::formatv(
+          "{0} result type {1} is incompatible with {2} "
+          "result type {3} at index {4}",
+          region_name, region_result_type, op_name, op_result_type, idx));
+  }
+  return success();
+}
+
+static LogicalResult Verify(IfRegionOp op) {
+  if (failed(VerifyRegionResults(op, op.then_branch(), "then")))
+    return failure();
+  if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
+    return failure();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // InvertOp
 //===----------------------------------------------------------------------===//
 
