@@ -44,6 +44,9 @@ from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Res
 
 # Preprocessing layers.
 if tf2.enabled():
+  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
+  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding as CategoryEncodingV1
+  CategoryEncodingV2 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
   NormalizationV2 = Normalization
@@ -51,6 +54,9 @@ if tf2.enabled():
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
   TextVectorizationV2 = TextVectorization
 else:
+  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding
+  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding as CategoryEncodingV2
+  CategoryEncodingV1 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
   NormalizationV1 = Normalization

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Keras text categorical_encoding preprocessing layer."""
+"""Tests for Keras text category_encoding preprocessing layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -32,8 +32,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers.preprocessing import categorical_encoding
-from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import category_encoding
+from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -44,15 +44,15 @@ from tensorflow.python.platform import test
 
 def get_layer_class():
   if context.executing_eagerly():
-    return categorical_encoding.CategoricalEncoding
+    return category_encoding.CategoryEncoding
   else:
-    return categorical_encoding_v1.CategoricalEncoding
+    return category_encoding_v1.CategoryEncoding
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-class CategoricalEncodingInputTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
+class CategoryEncodingInputTest(keras_parameterized.TestCase,
+                                preprocessing_test_utils.PreprocessingLayerTest
+                               ):
 
   def test_dense_input_sparse_output(self):
     input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
@@ -67,9 +67,7 @@ class CategoricalEncodingInputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
-        sparse=True)
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -80,7 +78,7 @@ class CategoricalEncodingInputTest(
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
         max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
+        output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -103,7 +101,7 @@ class CategoricalEncodingInputTest(
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -128,9 +126,7 @@ class CategoricalEncodingInputTest(
     max_tokens = 6
 
     layer = get_layer_class()(
-        max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
-        sparse=True)
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -141,7 +137,7 @@ class CategoricalEncodingInputTest(
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
         max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
+        output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -163,7 +159,7 @@ class CategoricalEncodingInputTest(
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
 
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -184,9 +180,7 @@ class CategoricalEncodingInputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
     layer = get_layer_class()(
-        max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
-        sparse=True)
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -197,7 +191,7 @@ class CategoricalEncodingInputTest(
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
         max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
+        output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -214,9 +208,7 @@ class CategoricalEncodingInputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     encoding_layer = get_layer_class()(
-        max_tokens=max_tokens,
-        output_mode=categorical_encoding.COUNT,
-        sparse=True)
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = encoding_layer(input_data)
     output_data = math_ops.cast(int_data, dtypes.float32)
     weights = variables.Variable([[.1], [.2], [.3], [.4]], dtype=dtypes.float32)
@@ -228,9 +220,9 @@ class CategoricalEncodingInputTest(
 
 
 @keras_parameterized.run_all_keras_modes
-class CategoricalEncodingAdaptTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
+class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
+                                preprocessing_test_utils.PreprocessingLayerTest
+                               ):
 
   def test_sparse_adapt(self):
     vocab_data = sparse_ops.from_dense(
@@ -248,7 +240,7 @@ class CategoricalEncodingAdaptTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     layer.adapt(vocab_dataset)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -273,7 +265,7 @@ class CategoricalEncodingAdaptTest(
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     layer.adapt(vocab_dataset)
     int_data = layer(input_data)
 
@@ -296,7 +288,7 @@ class CategoricalEncodingAdaptTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     layer.adapt(vocab_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -306,7 +298,7 @@ class CategoricalEncodingAdaptTest(
     self.assertAllEqual(expected_output, output_dataset)
 
   def test_hard_maximum_set_state_variables_after_build(self):
-    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
+    state_variables = {category_encoding._NUM_ELEMENTS_NAME: 5}
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     # pyformat: disable
@@ -318,7 +310,7 @@ class CategoricalEncodingAdaptTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     layer._set_state_variables(state_variables)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -339,7 +331,7 @@ class CategoricalEncodingAdaptTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     layer.build(input_data.shape)
     layer.set_num_elements(max_tokens)
     int_data = layer(input_data)
@@ -351,8 +343,7 @@ class CategoricalEncodingAdaptTest(
 
   def test_set_weights_fails_on_wrong_size_weights(self):
     tfidf_data = [.05, .5, .25, .2, .125]
-    layer = get_layer_class()(
-        max_tokens=6, output_mode=categorical_encoding.TFIDF)
+    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.TFIDF)
 
     with self.assertRaisesRegex(ValueError, ".*Layer weight shape.*"):
       layer.set_weights([np.array(tfidf_data)])
@@ -360,7 +351,7 @@ class CategoricalEncodingAdaptTest(
   def test_set_num_elements_after_call_fails(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer.set_num_elements(5)
@@ -370,17 +361,17 @@ class CategoricalEncodingAdaptTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
       layer.adapt(vocab_data)
 
   def test_set_state_variables_after_call_fails(self):
-    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
+    state_variables = {category_encoding._NUM_ELEMENTS_NAME: 5}
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer._set_state_variables(state_variables)
@@ -388,9 +379,9 @@ class CategoricalEncodingAdaptTest(
 
 @keras_parameterized.run_all_keras_modes
 @keras_parameterized.run_all_keras_modes
-class CategoricalEncodingOutputTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
+class CategoryEncodingOutputTest(keras_parameterized.TestCase,
+                                 preprocessing_test_utils.PreprocessingLayerTest
+                                ):
 
   def test_binary_output_hard_maximum(self):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
@@ -404,7 +395,7 @@ class CategoricalEncodingOutputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -424,7 +415,7 @@ class CategoricalEncodingOutputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
+        max_tokens=None, output_mode=category_encoding.BINARY)
     layer.set_weights([np.array(max_tokens)])
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -444,8 +435,7 @@ class CategoricalEncodingOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=6, output_mode=categorical_encoding.COUNT)
+    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.COUNT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -465,7 +455,7 @@ class CategoricalEncodingOutputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.COUNT)
+        max_tokens=None, output_mode=category_encoding.COUNT)
     layer.set_weights([np.array(max_tokens)])
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -488,8 +478,7 @@ class CategoricalEncodingOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=6, output_mode=categorical_encoding.TFIDF)
+    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.TFIDF)
     layer.set_tfidf_data(tfidf_data)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -513,7 +502,7 @@ class CategoricalEncodingOutputTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.TFIDF)
+        max_tokens=None, output_mode=category_encoding.TFIDF)
     layer.set_num_elements(max_tokens)
     layer.set_tfidf_data(tfidf_data)
     int_data = layer(input_data)
@@ -524,7 +513,7 @@ class CategoricalEncodingOutputTest(
     self.assertAllClose(expected_output, output_dataset)
 
 
-class CategoricalEncodingModelBuildingTest(
+class CategoryEncodingModelBuildingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -532,27 +521,27 @@ class CategoricalEncodingModelBuildingTest(
       {
           "testcase_name": "count_hard_max",
           "max_tokens": 5,
-          "output_mode": categorical_encoding.COUNT
+          "output_mode": category_encoding.COUNT
       }, {
           "testcase_name": "count_soft_max",
           "max_tokens": None,
-          "output_mode": categorical_encoding.COUNT
+          "output_mode": category_encoding.COUNT
       }, {
           "testcase_name": "binary_hard_max",
           "max_tokens": 5,
-          "output_mode": categorical_encoding.BINARY
+          "output_mode": category_encoding.BINARY
       }, {
           "testcase_name": "binary_soft_max",
           "max_tokens": None,
-          "output_mode": categorical_encoding.BINARY
+          "output_mode": category_encoding.BINARY
       }, {
           "testcase_name": "tfidf_hard_max",
           "max_tokens": 5,
-          "output_mode": categorical_encoding.TFIDF
+          "output_mode": category_encoding.TFIDF
       }, {
           "testcase_name": "tfidf_soft_max",
           "max_tokens": None,
-          "output_mode": categorical_encoding.TFIDF
+          "output_mode": category_encoding.TFIDF
       })
   def test_end_to_end_bagged_modeling(self, output_mode, max_tokens):
     tfidf_data = np.array([.03, .5, .25, .2, .125])
@@ -564,7 +553,7 @@ class CategoricalEncodingModelBuildingTest(
     weights = []
     if max_tokens is None:
       weights.append(np.array(5))
-    if output_mode == categorical_encoding.TFIDF:
+    if output_mode == category_encoding.TFIDF:
       weights.append(tfidf_data)
 
     layer.set_weights(weights)
@@ -577,7 +566,7 @@ class CategoricalEncodingModelBuildingTest(
 
 
 @keras_parameterized.run_all_keras_modes
-class CategoricalEncodingCombinerTest(
+class CategoryEncodingCombinerTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -617,8 +606,7 @@ class CategoricalEncodingCombinerTest(
 
   def test_combiner_api_compatibility_int_mode(self):
     data = np.array([[1, 2, 3, 4], [1, 2, 3, 0]])
-    combiner = categorical_encoding._CategoricalEncodingCombiner(
-        compute_idf=False)
+    combiner = category_encoding._CategoryEncodingCombiner(compute_idf=False)
     expected_accumulator_output = {
         "max_element": np.array(4),
         "num_documents": np.array(2),
@@ -636,8 +624,7 @@ class CategoricalEncodingCombinerTest(
 
   def test_combiner_api_compatibility_tfidf_mode(self):
     data = np.array([[1, 2, 3, 4], [1, 2, 3, 0]])
-    combiner = categorical_encoding._CategoricalEncodingCombiner(
-        compute_idf=True)
+    combiner = category_encoding._CategoryEncodingCombiner(compute_idf=True)
     expected_accumulator_output = {
         "max_element": np.array(4),
         "document_counts": np.array([1, 2, 2, 2, 1]),
@@ -693,7 +680,7 @@ class CategoricalEncodingCombinerTest(
                                 expected_accumulator_output,
                                 expected_extract_output,
                                 compute_idf=True):
-    combiner = categorical_encoding._CategoricalEncodingCombiner(
+    combiner = category_encoding._CategoryEncodingCombiner(
         compute_idf=compute_idf)
     expected_accumulator = combiner._create_accumulator()
     expected_accumulator = self.update_accumulator(expected_accumulator,

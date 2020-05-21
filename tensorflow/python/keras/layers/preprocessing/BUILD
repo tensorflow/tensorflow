@@ -196,7 +196,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         ":string_lookup",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -216,10 +216,10 @@ py_library(
 )
 
 py_library(
-    name = "categorical_encoding",
+    name = "category_encoding",
     srcs = [
-        "categorical_encoding.py",
-        "categorical_encoding_v1.py",
+        "category_encoding.py",
+        "category_encoding_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -308,12 +308,12 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "categorical_encoding_test",
+    name = "category_encoding_test",
     size = "medium",
-    srcs = ["categorical_encoding_test.py"],
+    srcs = ["category_encoding_test.py"],
     python_version = "PY3",
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         ":preprocessing_test_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -324,9 +324,9 @@ tf_py_test(
 )
 
 distribute_py_test(
-    name = "categorical_encoding_distribution_test",
-    srcs = ["categorical_encoding_distribution_test.py"],
-    main = "categorical_encoding_distribution_test.py",
+    name = "category_encoding_distribution_test",
+    srcs = ["category_encoding_distribution_test.py"],
+    main = "category_encoding_distribution_test.py",
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
@@ -335,7 +335,7 @@ distribute_py_test(
         "no_oss",  # b/155502591
     ],
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
