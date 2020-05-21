@@ -91,3 +91,11 @@ cc_library(
         "//tensorflow/c:tf_status",
     ],
 )
+
+cc_library(
+    name = "tpu_library_loader",
+    srcs = ["tpu_library_loader.cc"],
+    hdrs = ["tpu_library_loader.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core/platform:status"],
+)
