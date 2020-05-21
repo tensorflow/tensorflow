@@ -870,7 +870,7 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None
     outs = [
 %s
     ],
-    ccmd = \"""cp -r -f "%s/." "%s/" \""",
+    cmd = \"""cp -r -f "%s/." "%s/" %s\""",
 )""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
 
 def _flag_enabled(repository_ctx, flag_name):
