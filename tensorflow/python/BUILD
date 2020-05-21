@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -25,6 +25,9 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
@@ -134,7 +137,7 @@ py_library(
         ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
-        ":bincount",
+        ":bincount_ops",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -2071,6 +2074,7 @@ tf_py_test(
     srcs = ["framework/constant_op_test.py"],
     main = "framework/constant_op_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":constant_op",
     ],
@@ -3472,23 +3476,24 @@ py_library(
 )
 
 py_library(
-    name = "bincount",
-    srcs = ["ops/bincount.py"],
+    name = "bincount_ops",
+    srcs = ["ops/bincount_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":count_ops_gen",
         ":framework",
         ":framework_for_generated_wrappers",
+        "//tensorflow/python/compat",
     ],
 )
 
 tf_py_test(
-    name = "bincount_test",
+    name = "bincount_ops_test",
     size = "small",
-    srcs = ["ops/bincount_test.py"],
+    srcs = ["ops/bincount_ops_test.py"],
     python_version = "PY3",
     deps = [
-        ":bincount",
+        ":bincount_ops",
         ":platform_test",
     ],
 )
@@ -4175,6 +4180,7 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
+        ":variables",
         "//third_party/py/numpy",
     ],
 )

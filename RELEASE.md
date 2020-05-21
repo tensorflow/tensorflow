@@ -1,3 +1,16 @@
+# Release 2.3.0
+
+## Breaking Changes
+
+*   `tf.image.extract_glimpse` has been updated to correctly process the case
+    where `centered=False` and `normalized=False`. This is a breaking change as
+    the output is different from (incorrect) previous versions. Note this
+    breaking change only impacts `tf.image.extract_glimpse` and
+    `tf.compat.v2.image.extract_glimpse` API endpoints. The behavior of
+    `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
+    exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
+    models will not be impacted.
+
 # Release 2.1.1
 
 ## Bug Fixes and Other Changes

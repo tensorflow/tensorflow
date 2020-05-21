@@ -161,8 +161,11 @@ class InputLayer(base_layer.Layer):
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.shape.as_list())
-
+      try:
+        self._batch_input_shape = tuple(input_tensor.shape.as_list())
+      except ValueError:
+        # If the shape cannot be represented as a tuple (e.g. unknown rank)
+        self._batch_input_shape = None
     # Create an input node.
     input_tensor._keras_mask = None
     node_module.Node(layer=self, outputs=input_tensor)

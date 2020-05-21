@@ -200,11 +200,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "31e78581e59d7e60d4becaba3834fc6a5bf2dccdae3e16b7f70d89ceab38423f",
-        strip_prefix = "mkl-dnn-0.21.3",
+        sha256 = "a0211aeb5e7dad50b97fa5dffc1a2fe2fe732572d4164e1ee8750a2ede43fbec",
+        strip_prefix = "oneDNN-0.21.3",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v0.21.3.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/v0.21.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz",
         ],
     )
 
@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "59f7cc665fff375f142d558e7c08c95ac254fa13d077cbecce757a556d30e0d9",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-9b411757abd8458f9689b1384c6bf75da9b82357",
+        sha256 = "854eabe6817e38d7738fde6ec39c3dfc55fd5e68b2523de8cae936f391a38a69",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/9b411757abd8458f9689b1384c6bf75da9b82357/eigen-9b411757abd8458f9689b1384c6bf75da9b82357.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/9b411757abd8458f9689b1384c6bf75da9b82357/eigen-9b411757abd8458f9689b1384c6bf75da9b82357.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/cc86a31e20b48b0f03d714b4d1b1f50d52848d36/eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/cc86a31e20b48b0f03d714b4d1b1f50d52848d36/eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36.tar.gz",
         ],
     )
 

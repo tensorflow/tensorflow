@@ -25,7 +25,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         ":discretization",
         ":hashing",
         ":image_preprocessing",
@@ -52,9 +52,9 @@ py_library(
 )
 
 py_library(
-    name = "categorical_crossing",
+    name = "category_crossing",
     srcs = [
-        "categorical_crossing.py",
+        "category_crossing.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -291,16 +291,16 @@ py_library(
 )
 
 cuda_py_test(
-    name = "categorical_crossing_test",
+    name = "category_crossing_test",
     size = "medium",
-    srcs = ["categorical_crossing_test.py"],
+    srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",  # b/149031156
     ],
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -343,9 +343,9 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "categorical_crossing_distribution_test",
-    srcs = ["categorical_crossing_distribution_test.py"],
-    main = "categorical_crossing_distribution_test.py",
+    name = "category_crossing_distribution_test",
+    srcs = ["category_crossing_distribution_test.py"],
+    main = "category_crossing_distribution_test.py",
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
@@ -354,7 +354,7 @@ distribute_py_test(
         "no_oss",  # b/155502591
     ],
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",

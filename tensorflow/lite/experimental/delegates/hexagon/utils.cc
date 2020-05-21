@@ -42,6 +42,8 @@ bool InputsWithCorrectTypes(
     const std::vector<std::vector<TfLiteType>>& per_input_possible_types) {
   if (node->inputs->size != per_input_possible_types.size()) return false;
   for (int i = 0; i < per_input_possible_types.size(); ++i) {
+    // Skip optional tensor.
+    if (node->inputs->data[i] == -1) continue;
     bool type_found = false;
     for (auto possible_type : per_input_possible_types[i]) {
       if (TensorTypeMatch(node->inputs->data[i], context, possible_type)) {
@@ -85,11 +87,13 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinMirrorPad:
     case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinPack:
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinQuantize:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinResizeBilinear:
     case kTfLiteBuiltinResizeNearestNeighbor:
+    case kTfLiteBuiltinSlice:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinSplit:
@@ -210,7 +214,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
       return (weights_const && bias_const_or_no_bias &&
-              IsActivationReluOrNone(matmul_params->activation) &&
+              matmul_params->activation == kTfLiteActNone &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
                   kTfLiteFullyConnectedWeightsFormatDefault);
@@ -384,6 +388,25 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return InputsWithCorrectTypes(
           node, context,
           {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinSlice: {
+      const auto& begins_tensor = context->tensors[node->inputs->data[1]];
+      const auto& sizes_tensor = context->tensors[node->inputs->data[2]];
+      if (!IsConstantTensor(&begins_tensor) || !IsConstantTensor(&sizes_tensor))
+        return false;
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteInt32, kTfLiteInt64},
+                                     {kTfLiteInt32, kTfLiteInt64}});
+    }
+    case kTfLiteBuiltinPack: {
+      // All tensors must be 8-bit.
+      for (int i = 0; i < node->inputs->size; ++i) {
+        if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8) &&
+            !TensorTypeMatch(node->inputs->data[i], context, kTfLiteInt8))
+          return false;
+      }
+      return true;
     }
     default:
       return false;

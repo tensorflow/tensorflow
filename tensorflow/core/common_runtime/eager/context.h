@@ -399,7 +399,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       const std::vector<string>& remote_contexts, uint64 context_id,
-      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+      Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
@@ -436,7 +436,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       const std::vector<string>& remote_contexts, uint64 context_id);
 
   Status StoreCollectiveOpsServer(
-      std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
+      std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
   // For the specified remote worker, preprocess and set its device filters.
@@ -510,6 +510,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
+  const SessionOptions& session_options() const { return opts_; }
+
  private:
   ~EagerContext() override;
 
@@ -563,6 +565,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
     T* unowned_object_ptr = nullptr;
   };
 
+  SessionOptions opts_;
   const ContextDevicePlacementPolicy default_device_placement_policy_;
   const ContextMirroringPolicy default_mirroring_policy_;
 
@@ -575,6 +578,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       TF_GUARDED_BY(policy_map_mu_);
 
   OwnedOrUnownedHelper<const DeviceMgr> local_device_manager_;
+  // Maintain copy of all previously created local device managers.
+  std::vector<std::unique_ptr<const DeviceMgr>> old_local_device_managers_;
 
   // Unowned DynamicDeviceMgr is set on remote worker to allow running
   // multi-device function on remote worker.
@@ -662,7 +667,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       uint64 context_id, uint64 context_view_id, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      const DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);

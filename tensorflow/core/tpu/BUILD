@@ -69,6 +69,13 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_configuration",
+    srcs = ["tpu_configuration.cc"],
+    hdrs = ["tpu_configuration.h"],
+    deps = ["//tensorflow/core:framework"],
+)
+
+cc_library(
     name = "tpu_init_mode",
     srcs = ["tpu_init_mode.cc"],
     hdrs = ["tpu_init_mode.h"],
@@ -83,4 +90,12 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_status",
     ],
+)
+
+cc_library(
+    name = "tpu_library_loader",
+    srcs = ["tpu_library_loader.cc"],
+    hdrs = ["tpu_library_loader.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core/platform:status"],
 )

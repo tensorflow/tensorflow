@@ -107,9 +107,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     for _ in range(999):
       result = result.concatenate(ds)
-    options = dataset_ops.Options()
-    options.experimental_optimization.autotune = True
-    result = result.with_options(options)
     self.assertDatasetProduces(result, [0]*1000)
 
 

@@ -584,6 +584,7 @@ tf_py_test(
     deps = [
         ":backend",
         ":combinations",
+        ":engine",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -820,7 +820,8 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CompositeDevice) {
   Status s;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice({device0_->name(), device1_->name()},
-                                  /*unique_device_id=*/0, &s);
+                                  /*unique_device_id=*/0,
+                                  device_mgr_->HostCPU()->parsed_name(), &s);
   TF_ASSERT_OK(s);
   AddCompositeDevice(composite_device.get());
 

@@ -231,8 +231,14 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
       xla::mlir_gpu::LowerLHLOToGPU(module.get(), tile_sizes, unroll_factors,
                                     /*collapseParallelLoops=*/false));
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
-  TF_RETURN_IF_ERROR(
-      PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
+  // TODO(b/156985522): Figure out why we get a segfault when generating Tanh
+  // with 'same_shape' containing {0, 1}. We would also get the crash if we
+  // unconditionally call PropagateStaticShapeKnowledgeToKernel while
+  // 'same_shape' is empty.
+  if (!same_shape.empty()) {
+    TF_RETURN_IF_ERROR(
+        PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
+  }
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();

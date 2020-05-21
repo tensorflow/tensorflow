@@ -524,7 +524,10 @@ package_group(
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = ["//learning/pathways/..."],
+)
 
 # Packages that use composite tensors or dispatch.
 # TODO(b/154762408) Remove this package group once it's no longer needed.

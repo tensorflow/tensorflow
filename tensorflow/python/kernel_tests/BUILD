@@ -178,9 +178,9 @@ cuda_py_test(
     srcs = ["bincount_op_test.py"],
     tags = ["no_windows_gpu"],
     deps = [
+        "//tensorflow/python:bincount_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -864,6 +864,7 @@ cuda_py_test(
     srcs = ["resource_variable_ops_test.py"],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -6,7 +6,7 @@ attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
   // CHECK: [[VAL0:%.+]] = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: [[VAL1:%.+]] = "xla_hlo.tuple"(%arg0, %arg1)
-  // CHECK: [[VAL2:%.+]] = "xla_hlo.conditional"([[VAL0]], [[VAL1]], [[VAL1]]) ( {
+  // CHECK: [[VAL2:%.+]] = "xla_hlo.if"([[VAL0]], [[VAL1]], [[VAL1]]) ( {
   // CHECK: ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
   // CHECK:   [[VAL4:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 0 : i32}
   // CHECK:   [[VAL5:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 1 : i32}

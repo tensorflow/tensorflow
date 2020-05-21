@@ -215,6 +215,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
                                    signature_def_key,
                                    cpp_class,
                                    target_triple,
+                                   target_cpu,
                                    variables_to_feed=(),
                                    enable_multithreading=False):
   """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
@@ -239,6 +240,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
     signature_def_key: String, the signature_def to use in the SavedModel.
     cpp_class: String, Name of output C++ class.
     target_triple: String, LLVM target triple.
+    target_cpu: String, LLVM target cpu name.
     variables_to_feed: A list of strings, the variables that will be fed by the
       user; these won't be frozen.  If `None`, then we will extract all the
       variables in the graph and mark them as to-feed.  The default behavior is
@@ -367,6 +369,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       config=config_pbtxt_location,
       cpp_class=cpp_class,
       target_triple=target_triple,
+      target_cpu=target_cpu,
       entry_point='entry_{}'.format(entry_digest),
       out_function_object='{}.o'.format(output_prefix),
       out_header='{}.h'.format(output_prefix),

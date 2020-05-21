@@ -185,6 +185,16 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 // BroadcastCompareOp (has custom type inference due to different result type).
 //===----------------------------------------------------------------------===//
 
+void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
+                               Value lhs, Value rhs,
+                               DenseIntElementsAttr broadcast_dimensions,
+                               StringAttr comparison_direction) {
+  auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
+                                   builder.getI1Type(), broadcast_dimensions);
+  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
+        comparison_direction);
+}
+
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,

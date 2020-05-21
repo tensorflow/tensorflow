@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Hashing"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Normalization"
     mtype: "<type \'type\'>"
   }

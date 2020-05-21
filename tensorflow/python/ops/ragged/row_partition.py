@@ -228,6 +228,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     ...     nrows=4))
     tf.RowPartition(row_splits=tf.Tensor([0 4 4 7 8], shape=(5,), dtype=int64))
     """
+    # Local import bincount_ops to avoid import-cycle since bincount_ops
+    # imports ragged_tensor.
+    from tensorflow.python.ops import bincount_ops  # pylint: disable=g-import-not-at-top
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromValueRowIds",
@@ -278,7 +281,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       # cast.
       value_rowids_int32 = math_ops.cast(value_rowids, dtypes.int32)
       nrows_int32 = math_ops.cast(nrows, dtypes.int32)
-      row_lengths = math_ops.bincount(
+      row_lengths = bincount_ops.bincount(
           value_rowids_int32,
           minlength=nrows_int32,
           maxlength=nrows_int32,

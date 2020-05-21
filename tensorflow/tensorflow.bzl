@@ -2866,7 +2866,7 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tfcompile_extra_flags():
+def tfcompile_target_cpu():
     return ""
 
 def tf_external_workspace_visible(visibility):

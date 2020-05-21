@@ -290,6 +290,71 @@ class DefFunctionTest(test.TestCase):
         y = f(x)
         tape.gradient(y, x)
 
+  def testTensorListConcatV2(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([3.14, 2.68, 7.69])
+
+    self.assertAllClose([6.28, 5.36, 15.38, 9.42, 8.04, 23.07], f(inputs))
+
+    self.assertAllClose(compiled_f(inputs), f(inputs))
+
+  def testTensorListConcatV2Multidim(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3, 2])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([[3.14, 21.1], [2.68, 22.2], [7.69, 23.3]])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatV2Scalars(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[1])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+    inputs = constant_op.constant([3.14])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatGrad(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    def g():
+      x = constant_op.constant([3.14, 2.68, 7.69])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+        return tape.gradient(y, x)
+
+    compiled_g = def_function.function(experimental_compile=True)(g)
+
+    self.assertAllClose([5.0, 5.0, 5.0], g())
+    self.assertAllClose(compiled_g(), g())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

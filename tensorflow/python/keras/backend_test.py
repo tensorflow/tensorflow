@@ -1677,8 +1677,10 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
         t, p, from_logits=True, axis=0),
     self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    # This test only runs in graph because the TF op layer is not supported yet
+    # for sparse ops.
     t = backend.placeholder()
     p = backend.placeholder()
     o = backend.sparse_categorical_crossentropy(t, p)
@@ -1870,6 +1872,8 @@ class TestRandomOps(test.TestCase):
 class FunctionTest(test.TestCase):
 
   def test_function_basics(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
     x1 = backend.placeholder(shape=(), dtype='float32')
     x2 = backend.placeholder(shape=(), dtype='int32')
     v = backend.variable(10.)
@@ -1916,6 +1920,9 @@ class FunctionTest(test.TestCase):
     self.assertEqual(result, 4.)
 
   def test_tuple_updates(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
+
     x_ph = backend.placeholder(ndim=2)
     v = backend.variable(np.ones((4, 2)))
     output = x_ph ** 2 + v
@@ -1929,7 +1936,7 @@ class FunctionTest(test.TestCase):
 
 class BackendGraphTests(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_function_placeholder_with_default(self):
     with backend.get_graph().as_default():
       x1 = array_ops.placeholder_with_default(

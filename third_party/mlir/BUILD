@@ -2583,6 +2583,7 @@ cc_library(
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
+    copts = ["-DMLIR_INCLUDE_TESTS"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":Analysis",
@@ -2679,6 +2680,7 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
     linkshared = True,
     deps = [
+        ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
         "//third_party/gpus/cuda:cuda_runtime",
         "//third_party/gpus/cuda:libcuda",

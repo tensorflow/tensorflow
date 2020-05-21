@@ -241,14 +241,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface])> {
   let arguments = (ins
     HLO_Tensor:$lhs,
-    HLO_Tensor:$rhs,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+    HLO_Tensor:$rhs
   );
-
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value left, Value  right, "
-    "DenseIntElementsAttr broadcast_dimensions"
-  >];
 
   let extraClassDeclaration = [{
     static  LogicalResult inferReturnTypeComponents(
@@ -270,15 +264,15 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_AddOp {
+      [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AddOp {
   let hasFolder = 1;
 }
 
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_Atan2Op;
 
 def HLO_ComplexOp: HLO_Op<"complex",
-    [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
+    [NoSideEffect, SameOperandsAndResultShape]>,
     BASE_HLO_ComplexOp {
   let builders = [OpBuilder<
     "OpBuilder &, OperationState &tblgen_state, Value lhs, Value rhs">];
@@ -289,39 +283,39 @@ def HLO_ComplexOp: HLO_Op<"complex",
 }
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp {
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_DivOp {
 }
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp {
+      [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MaxOp {
 }
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp {
+      [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MinOp {
 }
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp {
+      [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MulOp {
   let hasFolder = 1;
 }
 
 def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PowOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_PowOp;
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_RemOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RemOp;
 
 def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftLeftOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ShiftLeftOp;
 
 def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightArithmeticOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ShiftRightArithmeticOp;
 
 def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ShiftRightLogicalOp;
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp {
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SubOp {
   let hasFolder = 1;
 }
 
@@ -331,11 +325,11 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
-        HLO_BinaryElementwiseOp<mnemonic, [Commutative, NoSideEffect]> {
+        HLO_BinaryElementwiseOp<
+            mnemonic, [Commutative, NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins
     HLO_PredOrIntTensor:$lhs,
-    HLO_PredOrIntTensor:$rhs,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+    HLO_PredOrIntTensor:$rhs
   );
 }
 
@@ -484,8 +478,11 @@ def HLO_AfterAllOp : HLO_Op<"after_all", []> {
   let results = (outs HLO_Token);
 }
 
-def HLO_ConditionalOp: HLO_Op<"conditional", []> {
-  string summary = "Conditional operator";
+// Xla Client API has two separate calls for indexed and predicated conditional,
+// although both eventually map to kConditional HLO. IfOp maps to predicated
+// conditional use of kConditional HLO.
+def HLO_IfOp: HLO_Op<"if", []> {
+  string summary = "If operator";
 
   string description = [{
     Returns the result of executing either a true or false function depending on
@@ -500,13 +497,33 @@ def HLO_ConditionalOp: HLO_Op<"conditional", []> {
     HLO_TensorOrTuple:$false_arg
   );
 
-  let regions = (region AnyRegion:$true_branch, AnyRegion:$false_branch);
+  let regions = (region AnyRegion:$true_branch,
+                        AnyRegion:$false_branch);
 
   let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
+
+// Xla Client API has two separate calls for indexed and predicated conditional,
+// although both eventually map to kConditional HLO. CaseOp maps to indexed
+// conditional use of kConditional HLO.
+def HLO_CaseOp: HLO_Op<"case", []>,
+      BASE_HLO_CaseOp {
+
+  let arguments = (ins
+    I32Tensor:$index,
+    Variadic<HLO_TensorOrTuple>:$branch_operands
+  );
+
+  let regions = (region VariadicRegion<AnyRegion>:$branches);
+
+  let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let hasCustomHLOConverter = 1;
+}
+
 
 def HLO_WhileOp: HLO_Op<"while", [SameOperandsAndResultType]> {
   string summary = "While operator";
@@ -614,23 +631,18 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
-      [NoSideEffect, SameOperandsElementType]>, BASE_HLO_CompareOp {
+      [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]>,
+      BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value left, Value  right, "
-    "DenseIntElementsAttr broadcast_dimensions, "
-    "StringAttr comparison_direction"
-  >];
   let results = (outs HLO_PredTensor);
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
-    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+    "StringAttr comparison_direction"
   >];
 }
 

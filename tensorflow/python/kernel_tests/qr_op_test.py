@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -175,13 +175,16 @@ class QrGradOpTest(test.TestCase):
 
 def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
 
-  @test_util.run_v1_only("b/120545219")
-  def Test(self):
-    np.random.seed(42)
+  def RandomInput():
     a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
     if dtype_ in [np.complex64, np.complex128]:
       a += 1j * np.random.uniform(
           low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    return a
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def Test(self):
+    np.random.seed(42)
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     epsilon = np.finfo(dtype_).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
@@ -189,23 +192,16 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.session(use_gpu=True):
-      tf_a = constant_op.constant(a)
-      tf_b = linalg_ops.qr(tf_a, full_matrices=full_matrices_)
-      for b in tf_b:
-        x_init = np.random.uniform(
-            low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        if dtype_ in [np.complex64, np.complex128]:
-          x_init += 1j * np.random.uniform(
-              low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        theoretical, numerical = gradient_checker.compute_gradient(
-            tf_a,
-            tf_a.get_shape().as_list(),
-            b,
-            b.get_shape().as_list(),
-            x_init_value=x_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+    # TODO(b/157171666): Sadly we have to double the computation because
+    # gradient_checker_v2.compute_gradient expects a list of functions.
+    funcs = [
+        lambda a: linalg_ops.qr(a, full_matrices=full_matrices_)[0],
+        lambda a: linalg_ops.qr(a, full_matrices=full_matrices_)[1]
+    ]
+    for f in funcs:
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [RandomInput()], delta=delta)
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
