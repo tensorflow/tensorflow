@@ -21,6 +21,7 @@ cc_library(
         ".",
         "rocm/include",
         "rocm/include/rocrand",
+        "rocm/include/roctracer",
     ],
     visibility = ["//visibility:public"],
 )
