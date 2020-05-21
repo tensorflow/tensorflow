@@ -1,8 +1,7 @@
+#include "lib_ops/api/fully_connected.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-
-#include "lib_ops/api/fully_connected.h"
 
 namespace tflite {
 namespace ops {
@@ -39,14 +38,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* weights = GetInput(context, node, 1);
-  const TfLiteTensor* bss = GetInput(context, node, 2);
+  const TfLiteTensor* bso = GetInput(context, node, 2);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   auto* op = reinterpret_cast<::xcore::fully_connected::FullyConnected_16*>(
       node->user_data);
   op->Eval(output->data.i16, weights->data.int8, input->data.int8,
-           bss->data.i16);
+           bso->data.i16);
 
   return kTfLiteOk;
 }
