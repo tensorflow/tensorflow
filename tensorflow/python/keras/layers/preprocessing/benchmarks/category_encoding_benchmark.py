@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmark for Keras categorical_encoding preprocessing layer."""
+"""Benchmark for Keras category_encoding preprocessing layer."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras.layers.preprocessing import categorical_encoding
+from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
@@ -42,7 +42,7 @@ class BenchmarkLayer(benchmark.Benchmark):
   def run_dataset_implementation(self, output_mode, batch_size, sequence_length,
                                  max_tokens):
     input_t = keras.Input(shape=(sequence_length,), dtype=dtypes.int32)
-    layer = categorical_encoding.CategoricalEncoding(
+    layer = category_encoding.CategoryEncoding(
         max_tokens=max_tokens, output_mode=output_mode)
     _ = layer(input_t)
 
@@ -68,7 +68,7 @@ class BenchmarkLayer(benchmark.Benchmark):
       ends.append(time.time())
 
     avg_time = np.mean(np.array(ends) - np.array(starts)) / num_batches
-    name = "categorical_encoding|batch_%s|seq_length_%s|%s_max_tokens" % (
+    name = "category_encoding|batch_%s|seq_length_%s|%s_max_tokens" % (
         batch_size, sequence_length, max_tokens)
     self.report_benchmark(iters=num_repeats, wall_time=avg_time, name=name)
 

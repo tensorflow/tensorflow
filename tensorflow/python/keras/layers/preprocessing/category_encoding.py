@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras text CategoricalEncoding preprocessing layer."""
+"""Keras text CategoryEncoding preprocessing layer."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,11 +32,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import keras_export
 
 TFIDF = "tf-idf"
 INT = "int"
@@ -49,13 +51,25 @@ _NUM_ELEMENTS_NAME = "num_elements"
 _IDF_NAME = "idf"
 
 
-class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
-  """Categorical encoding layer.
+@keras_export("keras.layers.experimental.preprocessing.CategoryEncoding", v1=[])
+class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
+  """Category encoding layer.
 
   This layer provides options for condensing data into a categorical encoding.
   It accepts integer values as inputs and outputs a dense representation
   (one sample = 1-index tensor of float values representing data about the
   sample's tokens) of those inputs.
+
+  Examples:
+
+  >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
+  ...           max_tokens=4)
+  >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
+  <tf.Tensor: shape=(4, 4), dtype=int64, numpy=
+    array([[1, 1, 0, 0],
+           [2, 0, 0, 0],
+           [0, 1, 1, 0],
+           [0, 1, 0, 1]])>
 
   Attributes:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
@@ -72,7 +86,6 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     sparse: Boolean. If true, returns a `SparseTensor` instead of a dense
       `Tensor`. Defaults to `False`.
   """
-  # TODO(momernick): Add an examples section to the docstring.
 
   def __init__(self,
                max_tokens=None,
@@ -83,7 +96,7 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     layer_utils.validate_string_arg(
         output_mode,
         allowable_strings=(COUNT, BINARY, TFIDF),
-        layer_name="CategoricalEncoding",
+        layer_name="CategoryEncoding",
         arg_name="output_mode")
 
     # If max_tokens is set, the value must be greater than 1 - otherwise we
@@ -92,10 +105,10 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("max_tokens must be > 1.")
 
     # We need to call super() before we call _add_state_variable().
-    combiner = _CategoricalEncodingCombiner(
+    combiner = _CategoryEncodingCombiner(
         compute_max_element=max_tokens is None,
         compute_idf=output_mode == TFIDF)
-    super(CategoricalEncoding, self).__init__(combiner=combiner, **kwargs)
+    super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode
@@ -158,13 +171,12 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       RuntimeError: if the layer cannot be adapted at this time.
     """
     if not reset_state:
-      raise ValueError("CategoricalEncoding does not support streaming adapts.")
+      raise ValueError("CategoryEncoding does not support streaming adapts.")
 
     if self._called and self._max_tokens is None:
-      raise RuntimeError(
-          "CategoricalEncoding can't be adapted after being called "
-          "if max_tokens is None.")
-    super(CategoricalEncoding, self).adapt(data, reset_state)
+      raise RuntimeError("CategoryEncoding can't be adapted after being called "
+                         "if max_tokens is None.")
+    super(CategoryEncoding, self).adapt(data, reset_state)
 
   def _set_state_variables(self, updates):
     if not self.built:
@@ -180,7 +192,7 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         "output_mode": self._output_mode,
         "sparse": self._sparse,
     }
-    base_config = super(CategoricalEncoding, self).get_config()
+    base_config = super(CategoryEncoding, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   def _convert_to_ndarray(self, x):
@@ -237,65 +249,40 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     else:
       out_depth = self._max_tokens
 
-    if self._sparse:
-      if self._output_mode != COUNT:
-        raise ValueError("Only supports `sparse=True` when `output_mode` "
-                         ' is \"count\", got {}'.format(self._output_mode))
-      inputs = self._convert_to_sparse_inputs(inputs)
-
-      # Consider having sparse.one_hot
-      # Append values to indices, and reduce sum to get the counts.
-      tokens = array_ops.expand_dims(
-          math_ops.cast(inputs.values, dtypes.int64), axis=1)
-      count_tokens = array_ops.concat([inputs.indices, tokens], axis=1)
-      count_values = array_ops.ones_like(inputs.values, dtype=dtypes.int64)
-      unreduced_count_shape = array_ops.concat(
-          [inputs.dense_shape, [out_depth]], axis=0)
-      counts = sparse_tensor.SparseTensor(
-          indices=count_tokens,
-          values=count_values,
-          dense_shape=unreduced_count_shape)
-      count_data = sparse_ops.sparse_reduce_sum_v2(
-          counts, axis=1, output_is_sparse=True)
-      return count_data
-
-    # If the input is a sparse tensor, we densify it with the default value of
-    # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
-    # positions from the output encoding.
-    if isinstance(inputs, sparse_tensor.SparseTensor):
-      inputs = sparse_ops.sparse_tensor_to_dense(inputs, default_value=-1)
-
-    if self._output_mode == BINARY:
-      bool_one_hot_data = array_ops.one_hot(
-          inputs, depth=out_depth, on_value=True, off_value=False)
-      reduced_bool_data = math_ops.reduce_any(bool_one_hot_data, axis=1)
-      binary_data = math_ops.cast(reduced_bool_data, dtypes.int64)
-      binary_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
-      return binary_data
-
-    one_hot_data = array_ops.one_hot(inputs, depth=out_depth)
-    counts = math_ops.reduce_sum(one_hot_data, axis=1)
-    if self._output_mode == COUNT:
-      count_data = math_ops.cast(counts, dtypes.int64)
-      count_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
-      return count_data
-
-    tf_idf_data = math_ops.multiply(counts, self.tf_idf_weights)
-    tf_idf_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
     if self._output_mode == TFIDF:
+      # If the input is a sparse tensor, we densify it with the default value of
+      # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
+      # positions from the output encoding.
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        inputs = sparse_ops.sparse_tensor_to_dense(inputs, default_value=-1)
+      one_hot_data = array_ops.one_hot(inputs, depth=out_depth)
+      counts = math_ops.reduce_sum(one_hot_data, axis=1)
+      tf_idf_data = math_ops.multiply(counts, self.tf_idf_weights)
+      tf_idf_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
       return tf_idf_data
 
-    # We can only get here if we didn't recognize the passed mode.
-    raise ValueError("Unknown output mode %s" % self._output_mode)
+    binary_output = (self._output_mode == BINARY)
+    if self._sparse:
+      return bincount_ops.sparse_bincount(
+          inputs, minlength=out_depth, axis=-1, binary_output=binary_output)
+    else:
+      result = bincount_ops.bincount(
+          inputs,
+          minlength=out_depth,
+          dtype=dtypes.int64,
+          axis=-1,
+          binary_output=binary_output)
+      result.set_shape(tensor_shape.TensorShape((None, out_depth)))
+      return result
 
 
-class _CategoricalEncodingAccumulator(
+class _CategoryEncodingAccumulator(
     collections.namedtuple("Accumulator", ["data", "per_doc_count_dict"])):
   pass
 
 
-class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
-  """Combiner for the CategoricalEncoding preprocessing layer.
+class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
+  """Combiner for the CategoryEncoding preprocessing layer.
 
   This class encapsulates the logic for computing the number of elements in the
   input dataset and the document frequency for each element.
@@ -411,7 +398,7 @@ class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
   def restore(self, output):
     """Creates an accumulator based on 'output'."""
     raise NotImplementedError(
-        "CategoricalEncoding does not restore or support streaming updates.")
+        "CategoryEncoding does not restore or support streaming updates.")
 
   def serialize(self, accumulator):
     """Serializes an accumulator for a remote call."""
@@ -452,4 +439,4 @@ class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
     else:
       per_doc_count_dict = None
     data = [0, 0]
-    return _CategoricalEncodingAccumulator(data, per_doc_count_dict)
+    return _CategoryEncodingAccumulator(data, per_doc_count_dict)
