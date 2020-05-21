@@ -1661,10 +1661,16 @@ void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
 OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "fill op has two operand");
 
+  auto type = getType().cast<ShapedType>();
+  // DenseElementsAttr that is used in this folder only supports int and float
+  // types.
+  // TODO(hinsu): Handle complex types once there is a attribute kind for
+  // complex.
+  if (!type.getElementType().isIntOrFloat()) return {};
+
   auto value = operands[1].dyn_cast_or_null<ElementsAttr>();
   if (!value) return {};
 
-  auto type = getType().cast<ShapedType>();
   if (type.hasStaticShape())
     return DenseElementsAttr::get(type, value.getValue({}));
 
