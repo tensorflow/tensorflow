@@ -461,7 +461,7 @@ def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_AfterAllOp : HLO_Op<"after_all", []> {
+def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 
   string summary = "AfterAll operator";
 
@@ -1076,7 +1076,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicReshapeOp: HLO_Op<"dynamic_reshape", []> {
+def HLO_DynamicReshapeOp: HLO_Op<"dynamic_reshape", [NoSideEffect]> {
   let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
   let description = [{
     Reshapes `operand` to `output_shape`.
@@ -1212,7 +1212,7 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_TraceOp: HLO_Op<"trace", [NoSideEffect]>, BASE_HLO_TraceOp {
+def HLO_TraceOp: HLO_Op<"trace", []>, BASE_HLO_TraceOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     StrAttr:$tag
@@ -1277,7 +1277,7 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   // TODO(hinsu): Implement custom printer and parser.
 }
 
-def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
+def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {
   let summary = [{
     The `hlo.return` operation terminates a region and returns values.
   }];
