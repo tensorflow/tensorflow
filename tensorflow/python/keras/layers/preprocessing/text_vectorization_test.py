@@ -1510,5 +1510,39 @@ class TextVectorizationSavingTest(
     self.assertAllEqual(expected_output, new_output_dataset)
 
 
+@keras_parameterized.run_all_keras_modes
+class TextVectorizationE2ETest(keras_parameterized.TestCase,
+                               preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_keras_vocab_trimming_example(self):
+    vocab_data = np.array([
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ])
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[1, 2, 1],
+                       [3, 1, 0]]
+    # pyformat: enable
+    max_tokens = 3
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.COUNT,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    layer.adapt(vocab_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+    model = keras.Model(input_data, int_data)
+    output = model.predict(input_array)
+    self.assertAllEqual(expected_output, output)
+
+
 if __name__ == "__main__":
   test.main()
