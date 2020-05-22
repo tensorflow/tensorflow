@@ -1,8 +1,6 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -267,17 +265,11 @@ cc_library(
     name = "gpu_api_delegate",
     srcs = ["gpu_api_delegate.cc"],
     hdrs = ["gpu_api_delegate.h"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lEGL",
-            "-lGLESv3",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
         ":api",
         ":opencl_wrapper",
         ":tensor_type_util",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu:api",
@@ -287,8 +279,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + tflite_extra_gles_deps(),
 )
 
 cc_library(

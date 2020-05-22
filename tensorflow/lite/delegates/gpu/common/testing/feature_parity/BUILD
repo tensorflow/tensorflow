@@ -35,10 +35,6 @@ cc_library(
 cc_test(
     name = "opengl_test",
     srcs = ["opengl_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
     tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",

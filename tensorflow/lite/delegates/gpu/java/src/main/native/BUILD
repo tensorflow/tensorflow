@@ -13,13 +13,6 @@ cc_library(
     name = "native",
     srcs = ["gpu_delegate_jni.cc"],
     copts = tflite_copts(),
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lGLESv3",
-            "-lEGL",
-        ],
-        "//conditions:default": [],
-    }),
     tags = [
         "manual",
         "notap",
