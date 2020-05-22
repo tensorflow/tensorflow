@@ -41,13 +41,19 @@ class SpmdPartitioningTest : public HloTestBase {
     SpmdPartitionerOptions options;
     options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
     options.allow_module_signature_change = true;
+    auto collective_ops_creator =
+        GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
+    // Do not use all-gather for pattern-matching purpose, as the partitioner
+    // might create reshape/transposes around it.
+    collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options);
+    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options,
+                                  collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
