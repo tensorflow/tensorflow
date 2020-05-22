@@ -6905,6 +6905,8 @@ filegroup(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
