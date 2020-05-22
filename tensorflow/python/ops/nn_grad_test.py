@@ -33,6 +33,22 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
+class SoftmaxOpTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testSoftmaxGradGradExtendType(self):
+    if test_util.IsMklEnabled():
+      inputs = constant_op.constant([[-2, -1, 1, 3], [5, 7, 8, 9]],
+                                    dtype=dtypes.bfloat16)
+      r = nn_ops.softmax(inputs)
+      r_g = gradients_impl.gradients(r, inputs)[0]
+      with self.cached_session():
+        error = gradient_checker.compute_gradient_error(inputs,
+                                                        inputs.get_shape(), r_g,
+                                                        r_g.get_shape())
+        self.assertLess(error, 1e-4)
+
+
 class Relu6OpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
