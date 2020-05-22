@@ -432,7 +432,6 @@ py_test(
     tags = [
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
-        "notap",  # TODO(b/157253858)
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
