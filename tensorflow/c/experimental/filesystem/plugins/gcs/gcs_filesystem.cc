@@ -24,11 +24,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
-#define TF_GCS_RETURN_IF_ERROR(status)       \
-  do {                                       \
-    if (TF_GetCode(status) != TF_OK) return; \
-  } while (0)
-
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI scheme.
 
@@ -300,7 +295,7 @@ static void Close(const TF_WritableFile* file, TF_Status* status) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
   if (gcs_file->sync_need) {
     Flush(file, status);
-    TF_GCS_RETURN_IF_ERROR(status);
+    if (TF_GetCode(status) != TF_OK) return;
   }
   if (gcs_file->temp_file != nullptr) {
     if (gcs_file->temp_file->is_open()) gcs_file->temp_file->close();
@@ -368,7 +363,7 @@ static void NewRandomAccessFile(const TF_Filesystem* filesystem,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   file->plugin_file =
@@ -381,7 +376,7 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   file->plugin_file = new tf_writable_file::GCSFile(
@@ -395,7 +390,7 @@ static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   std::shared_ptr<FstreamWithName> fstream_with_name = nullptr;
@@ -417,7 +412,7 @@ static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   std::shared_ptr<FstreamWithName> fstream_with_name = nullptr;
@@ -441,7 +436,7 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object_temporary;
   ParseGCSPath(path, false, &bucket, &object_temporary, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
   char* object = nullptr;
   if (object_temporary[strlen(object_temporary) - 1] != '/') {
     object = static_cast<char*>(
@@ -467,7 +462,7 @@ static void DeleteFile(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   auto gcs_status = gcs_client->DeleteObject(bucket, object);
@@ -479,7 +474,7 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object_temporary;
   ParseGCSPath(path, false, &bucket, &object_temporary, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
   char* object = nullptr;
   if (object_temporary[strlen(object_temporary) - 1] != '/') {
     object = static_cast<char*>(
@@ -511,12 +506,12 @@ static void RenameFile(const TF_Filesystem* filesystem, const char* src,
   char* bucket_src;
   char* object_src;
   ParseGCSPath(src, false, &bucket_src, &object_src, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   char* bucket_dst;
   char* object_dst;
   ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   auto metadata = gcs_client->RewriteObjectBlocking(bucket_src, object_src,
@@ -534,12 +529,12 @@ static void CopyFile(const TF_Filesystem* filesystem, const char* src,
   char* bucket_src;
   char* object_src;
   ParseGCSPath(src, false, &bucket_src, &object_src, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   char* bucket_dst;
   char* object_dst;
   ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   auto metadata = gcs_client->RewriteObjectBlocking(bucket_src, object_src,
@@ -555,7 +550,7 @@ static void Stat(const TF_Filesystem* filesystem, const char* path,
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  TF_GCS_RETURN_IF_ERROR(status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
   auto metadata = gcs_client->GetObjectMetadata(bucket, object);
