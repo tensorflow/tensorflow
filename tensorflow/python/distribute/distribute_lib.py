@@ -114,6 +114,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -628,6 +629,10 @@ class StrategyBase(object):
         # a sensible value.
         extended._retrace_functions_for_each_device = True
 
+    # Below are the dicts of axis(int) -> `tf.function`.
+    self._mean_reduce_helper_fns = {}
+    self._reduce_sum_fns = {}
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
@@ -1014,8 +1019,25 @@ class StrategyBase(object):
     if axis is None:
       return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
     if reduce_op == reduce_util.ReduceOp.SUM:
-      value = self.run(
-          lambda v: math_ops.reduce_sum(v, axis=axis), args=(value,))
+
+      def reduce_sum(v):
+        return math_ops.reduce_sum(v, axis=axis)
+
+      if eager_context.executing_eagerly():
+        # As some strategies (e.g. TPUStrategy) doesn't support pure eager
+        # execution, wrap the `reduce_sum_fn` with a `tf.function` so it can be
+        # run from eager mode. Cache the tf.function by `axis` to avoid the
+        # same function to be traced again.
+        if axis not in self._reduce_sum_fns:
+
+          def reduce_sum_fn(v):
+            return self.run(reduce_sum, args=(v,))
+
+          self._reduce_sum_fns[axis] = def_function.function(reduce_sum_fn)
+        value = self._reduce_sum_fns[axis](value)
+      else:
+        value = self.run(reduce_sum, args=(value,))
+
       return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
     if reduce_op != reduce_util.ReduceOp.MEAN:
       raise TypeError("Expected `reduce_op` to be a `tf.distribute.ReduceOp`, "
@@ -1062,7 +1084,22 @@ class StrategyBase(object):
       # reduce is complete?
       return numer, denom
 
-    numer, denom = self.run(mean_reduce_helper, args=(value,))
+    if eager_context.executing_eagerly():
+      # As some strategies (e.g. TPUStrategy) doesn't support pure eager
+      # execution, wrap the `mean_reduce_helper` with a `tf.function` so it can
+      # be run from eager mode. Cache the tf.function by `axis` to avoid the
+      # same function to be traced again.
+      if axis not in self._mean_reduce_helper_fns:
+
+        def mean_reduce_fn(v):
+          return self.run(mean_reduce_helper, args=(v,))
+
+        self._mean_reduce_helper_fns[axis] = def_function.function(
+            mean_reduce_fn)
+      numer, denom = self._mean_reduce_helper_fns[axis](value)
+    else:
+      numer, denom = self.run(mean_reduce_helper, args=(value,))
+
     # TODO(josh11b): Should batch reduce here instead of doing two.
     numer = self._extended._reduce(reduce_util.ReduceOp.SUM, numer)  # pylint: disable=protected-access
     denom = self._extended._reduce(reduce_util.ReduceOp.SUM, denom)  # pylint: disable=protected-access
