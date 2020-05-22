@@ -290,7 +290,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   end_logical_time_ = end_time;
   // Find the earliest time we're allowed to start prefetching.
   for (current_logical_prefetch_time_ = start_time;
-       current_logical_prefetch_time_ <= end_logical_time_ &&
+       current_logical_prefetch_time_ < end_logical_time_ &&
        max_async_copy_to_overlap_ratio_ * async_copy_elapsed_ <
            GetLogicalIntervalElapsed(current_logical_prefetch_time_,
                                      end_logical_time_);
@@ -305,9 +305,9 @@ int64 CostAnalysisPrefetchIntervalPicker::Next() {
 }
 
 bool CostAnalysisPrefetchIntervalPicker::Done() const {
-  // The end time is inclusive, so we're done if the prefetch time is greater
-  // than that.
-  if (current_logical_prefetch_time_ > end_logical_time_) {
+  // The end time is exclusive, so we're done if the prefetch time is greater
+  // than or equal to the end time.
+  if (current_logical_prefetch_time_ >= end_logical_time_) {
     return true;
   }
   float logical_interval_elapsed = GetLogicalIntervalElapsed(
@@ -1473,6 +1473,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
                   : "alternate")
           << " memory between " << start_time << " and "
           << copy_done_schedule_before_time << " keeping until " << end_time;
+  CHECK_LT(start_time, copy_done_schedule_before_time);
 
   allocations->push_back(
       absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
@@ -1760,6 +1761,7 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   alternate_mem_interval.size = request.size;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
+    CHECK_LT(alternate_mem_interval.start, request.latest_prefetch_time);
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", " << request.end_time << ")";
     // If this additional asynchronous copy would violate the limit, try a
