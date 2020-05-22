@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -230,6 +232,17 @@ class PendingCounts {
     }
   }
 
+  // The same as the above, but performs the operation atomically. This
+  // is thread-safe to run concurrently with other threads.
+  AdjustResult adjust_for_activation_atomic(Handle h, bool increment_dead) {
+    DCHECK_GE(pending(h), 1);
+    if (h.is_large_) {
+      return adjust_for_activation_shared_atomic(Large(h), increment_dead);
+    } else {
+      return adjust_for_activation_shared_atomic(Packed(h), increment_dead);
+    }
+  }
+
   class Handle {
    public:
     Handle() : byte_offset_(0), is_large_(0) {}
@@ -248,6 +261,17 @@ class PendingCounts {
     }
     c->pending -= 1;
     return AdjustResult(c->dead_count, c->pending);
+  }
+
+  template <typename T>
+  inline AdjustResult adjust_for_activation_shared_atomic(T* c, bool increment_dead) {
+    auto* atomic_c = reinterpret_cast<std::atomic<T>*>(c);
+    T old_val = atomic_c->load(std::memory_order_relaxed);
+    while (true) {
+      T new_val = old_val;
+      AdjustResult ret = adjust_for_activation_shared(&new_val, increment_dead);
+      if (TF_PREDICT_TRUE(atomic_c->compare_exchange_weak(old_val, new_val))) return ret;
+    }
   }
 
   // We keep track of the pending count and dead input count for each

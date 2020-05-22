@@ -143,7 +143,7 @@ class PropagatorState {
     Entry* input_tensors;
 
     // The number of outstanding ops for each iteration.
-    size_t outstanding_ops;
+    std::atomic<size_t> outstanding_ops;
 
     // The number of outstanding frames for each iteration.
     int outstanding_frame_count;
@@ -169,6 +169,10 @@ class PropagatorState {
     PendingCounts::AdjustResult adjust_for_activation(PendingCounts::Handle h,
                                                       bool increment_dead) {
       return counts.adjust_for_activation(h, increment_dead);
+    }
+    PendingCounts::AdjustResult adjust_for_activation_atomic(PendingCounts::Handle h,
+                                                             bool increment_dead) {
+      return counts.adjust_for_activation_atomic(h, increment_dead);
     }
 
     ~IterationState() { delete[] input_tensors; }
@@ -294,15 +298,27 @@ class PropagatorState {
 
     void SetIteration(int64 iter, IterationState* state);
 
-    // Decrement the outstanding op count and clean up the iterations in the
-    // frame. Return true iff the execution of the frame is done.
+    // Adjust the outstanding op count by 'delta' and clean up the iterations in the
+    // frame if no more ops are oustanding. Return true iff the execution of the frame is done.
+    //
+    // Avoids acquiring the lock in the common case that the frame is not done.
+    bool AdjustOutstandingOps(IterationState* iter_state,
+                              int delta,
+                              TaggedNodeSeq* ready);
+
+    bool AdjustOutstandingOpsLocked(IterationState* iter_state,
+                                    int delta,
+                                    TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Convenience methods for the above 'Adjust' calls where delta takes the common
+    // value of -1.
     bool DecrementOutstandingOps(IterationState* iter_state,
                                  TaggedNodeSeq* ready);
 
-    // Decrement the outstanding op count and clean up the iterations in the
-    // frame. Return true iff the execution of the frame is done.
     bool DecrementOutstandingOpsLocked(IterationState* iter_state,
                                        TaggedNodeSeq* ready);
+
 
     // Returns true if the computation in the frame is completed.
     bool IsFrameDone();
@@ -332,9 +348,19 @@ class PropagatorState {
 
     // Activate the successors of a node. Contents of *outputs are left in an
     // indeterminate state after returning from this method.
-    void ActivateNodes(const NodeItem* item, const bool is_dead,
-                       IterationState* iter_state, EntryVector* outputs,
-                       TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    //
+    // In the case that 'item' is a simple node (no merge/control outputs) this will
+    // acquire a shared lock and can run concurrently with other invocations.
+    //
+    // Returns the number of newly activated nodes that have been added to '*ready'.
+    int ActivateNodes(const NodeItem* item, const bool is_dead,
+                      IterationState* iter_state, EntryVector* outputs,
+                      TaggedNodeSeq* ready);
+
+    // Same as the above, but requires 'mu' already held in exclusive mode.
+    int ActivateNodesLocked(const NodeItem* item, const bool is_dead,
+                            IterationState* iter_state, EntryVector* outputs,
+                            TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Cleanup iterations of this frame starting from the given iteration.
     bool CleanupIterations(IterationState* iter_state, TaggedNodeSeq* ready)
@@ -359,14 +385,32 @@ class PropagatorState {
 
    private:
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
-    void ActivateNodesFastPath(const NodeItem* item, const bool is_dead,
-                               IterationState* iter_state, EntryVector* outputs,
-                               TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    // This variant does not use atomic operations to modify the pending counts and thus
+    // must hold the exclusive lock.
+    int ActivateNodesFastPathLocked(const NodeItem* item, const bool is_dead,
+                                    IterationState* iter_state, EntryVector* outputs,
+                                    TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+      return ActivateNodesFastPathInternal<false>(item, is_dead, iter_state, outputs, ready);
+    }
 
-    void ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
-                               IterationState* iter_state, EntryVector* outputs,
-                               TaggedNodeSeq* ready)
+    // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
+    // This variant uses atomic operations to modify the pending counts.
+    int ActivateNodesFastPathShared(const NodeItem* item, const bool is_dead,
+                                    IterationState* iter_state, EntryVector* outputs,
+                                    TaggedNodeSeq* ready)
+        TF_SHARED_LOCKS_REQUIRED(mu) {
+      return ActivateNodesFastPathInternal<true>(item, is_dead, iter_state, outputs, ready);
+    }
+
+    template<bool atomic>
+    int ActivateNodesFastPathInternal(const NodeItem* item, const bool is_dead,
+                                      IterationState* iter_state, EntryVector* outputs,
+                                      TaggedNodeSeq* ready);
+
+    int ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
+                              IterationState* iter_state, EntryVector* outputs,
+                              TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
   };
 
