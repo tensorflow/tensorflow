@@ -72,6 +72,8 @@ Status CompressElement(const std::vector<Tensor>& element,
                              out->mutable_data())) {
     return errors::Internal("Failed to compress using snappy.");
   }
+  VLOG(3) << "Compressed element from " << total_size << " bytes to "
+          << out->data().size() << " bytes";
   return Status::OK();
 }
 
