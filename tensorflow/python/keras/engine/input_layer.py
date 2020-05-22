@@ -218,7 +218,9 @@ def Input(  # pylint: disable=invalid-name
       dtype: The data type expected by the input, as a string
           (`float32`, `float64`, `int32`...)
       sparse: A boolean specifying whether the placeholder to be created is
-          sparse. Only one of 'ragged' and 'sparse' can be True.
+          sparse. Only one of 'ragged' and 'sparse' can be True. Note that,
+          if `sparse` is False, sparse tensors can still be passed into the
+          input - they will be densified with a default value of 0.
       tensor: Optional existing tensor to wrap into the `Input` layer.
           If set, the layer will not create a placeholder tensor.
       ragged: A boolean specifying whether the placeholder to be created is
