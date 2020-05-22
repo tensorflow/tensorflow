@@ -160,7 +160,7 @@ TEST_F(S3FileSystemTest, NewRandomAccessFile) {
 
   std::unique_ptr<RandomAccessFile> reader;
   TF_EXPECT_OK(s3fs.NewRandomAccessFile(fname, &reader));
-  
+
   string got;
   got.resize(content.size());
   StringPiece result;
