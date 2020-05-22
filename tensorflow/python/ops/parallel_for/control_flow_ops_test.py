@@ -993,6 +993,27 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_tensor_list_reserve_while_loop(self):
+    # Here a loop invariant TensorList is captured by a while_loop, which then
+    # performs loop dependent operations on it, resulting in a loop variant
+    # output. This forces stacking of the variant handle captured by the
+    # while_loop.
+    # We handle this particular case by forcing vectorization of
+    # TensorListReserve operation.
+    v2_enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      _, out_handle = control_flow_ops.while_loop(
+          lambda j, _: j < 2,
+          lambda j, h: (j + 1, list_ops.tensor_list_set_item(h, j, i)),
+          (0, handle))
+      return list_ops.tensor_list_stack(out_handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+    if not v2_enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+
 
 class StackTest(PForTestCase):
 
