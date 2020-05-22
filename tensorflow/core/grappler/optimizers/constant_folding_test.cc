@@ -548,6 +548,8 @@ TEST_F(ConstantFoldingTest, ConstantPushDownBiasAdd) {
   }
 }
 
+// This test fails on ROCm platform (see commit message for details)
+#ifndef TENSORFLOW_USE_ROCM
 TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_ScalarConst) {
   for (string data_format : {
          "NHWC",
@@ -565,7 +567,10 @@ TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_ScalarConst) {
         /*expect_folded=*/true);
   }
 }
+#endif
 
+// This test fails on ROCm platform (see commit message for details)
+#ifndef TENSORFLOW_USE_ROCM
 TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_SingletonConst) {
   for (string data_format : {
          "NHWC",
@@ -585,6 +590,7 @@ TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_SingletonConst) {
     }
   }
 }
+#endif
 
 TEST_F(ConstantFoldingTest,
        MulConvPushDownTest_Conv2D_SingletonConst_ShapeMismatch) {
@@ -668,6 +674,8 @@ TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_3x1Const) {
   }
 }
 
+// This test fails on ROCm platform (see commit message for details)
+#ifndef TENSORFLOW_USE_ROCM
 TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NDHWC_1x1x3Const) {
   MulConvPushDownTest(
       /*input_shape=*/{3, 3, 3, 3, 3},
@@ -678,6 +686,7 @@ TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NDHWC_1x1x3Const) {
       /*data_format=*/"NDHWC",
       /*expect_folded=*/true);
 }
+#endif
 
 TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NCDHW_3x1x1x1Const) {
   MulConvPushDownTest(
