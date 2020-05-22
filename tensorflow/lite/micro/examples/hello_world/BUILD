@@ -91,3 +91,9 @@ cc_binary(
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
+
+sh_test(
+    name = "hello_world_binary_test",
+    srcs = ["hello_world_binary_test.sh"],
+    data = [":hello_world"],
+)
