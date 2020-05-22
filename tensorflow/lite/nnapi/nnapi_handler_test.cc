@@ -85,6 +85,93 @@ TEST_F(NnApiHandlerTest, ShouldSupportPassthroughCalls) {
   EXPECT_THAT(nnapi->ANeuralNetworks_getDeviceCount(&device_count), Eq(1));
 }
 
+TEST_F(NnApiHandlerTest, ShouldSetNnApiMembersToNullAsPerSdkVersion_NNAPI11) {
+  auto* handler = NnApiHandler::Instance();
+
+  // Setting non null values for nnapi functions
+  handler->SetNnapiSupportedDevice("devvice", 1000);
+  handler->GetSupportedOperationsForDevicesReturns<1>();
+  handler->CompilationCreateForDevicesReturns<1>();
+  handler->ExecutionComputeReturns<1>();
+  handler->MemoryCreateFromFdReturns<1>();
+
+  handler->SetAndroidSdkVersion(28, /*set_unsupported_ops_to_null=*/true);
+
+  const NnApi* nnapi = NnApiImplementation();
+
+  using ::testing::IsNull;
+
+  EXPECT_THAT(nnapi->ANeuralNetworks_getDeviceCount, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworks_getDevice, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getName, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getVersion, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getFeatureLevel, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getSupportedOperationsForDevices,
+              IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksCompilation_createForDevices, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksCompilation_setCaching, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_compute, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getOutputOperandRank, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getOutputOperandDimensions,
+              IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksBurst_create, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksBurst_free, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_burstCompute, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksMemory_createFromAHardwareBuffer, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_setMeasureTiming, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getDuration, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getExtensionSupport, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getExtensionOperandType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getExtensionOperationType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_setOperandExtensionData, IsNull());
+}
+
+TEST_F(NnApiHandlerTest, ShouldSetNnApiMembersToNullAsPerSdkVersion_NNAPI10) {
+  auto* handler = NnApiHandler::Instance();
+
+  // Setting non null values for nnapi functions
+  handler->SetNnapiSupportedDevice("devvice", 1000);
+  handler->GetSupportedOperationsForDevicesReturns<1>();
+  handler->CompilationCreateForDevicesReturns<1>();
+  handler->ExecutionComputeReturns<1>();
+  handler->MemoryCreateFromFdReturns<1>();
+
+  handler->SetAndroidSdkVersion(27, /*set_unsupported_ops_to_null=*/true);
+
+  const NnApi* nnapi = NnApiImplementation();
+
+  using ::testing::IsNull;
+
+  EXPECT_THAT(nnapi->ANeuralNetworks_getDeviceCount, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworks_getDevice, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getName, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getVersion, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getFeatureLevel, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getSupportedOperationsForDevices,
+              IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksCompilation_createForDevices, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksCompilation_setCaching, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_compute, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getOutputOperandRank, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getOutputOperandDimensions,
+              IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksBurst_create, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksBurst_free, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_burstCompute, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksMemory_createFromAHardwareBuffer, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_setMeasureTiming, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksExecution_getDuration, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksDevice_getExtensionSupport, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getExtensionOperandType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_getExtensionOperationType, IsNull());
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_setOperandExtensionData, IsNull());
+
+  EXPECT_THAT(nnapi->ANeuralNetworksModel_relaxComputationFloat32toFloat16,
+              IsNull());
+}
+
 void ExpectEquals(const NnApi& left, const NnApi& right) {
 #define EXPECT_NNAPI_MEMBER_EQ(name) EXPECT_EQ(left.name, right.name)
 

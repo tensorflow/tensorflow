@@ -26,6 +26,17 @@ cc_library(
 )
 
 cc_library(
+    name = "timed",
+    hdrs = [
+        "timed.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:env_time",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "collected_metrics",
     hdrs = [
         "collected_metrics.h",
@@ -59,11 +70,6 @@ cc_library(
 cc_library(
     name = "counter",
     hdrs = ["counter.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -80,11 +86,6 @@ cc_library(
 cc_library(
     name = "gauge",
     hdrs = ["gauge.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -145,11 +146,6 @@ cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -181,11 +177,6 @@ cc_library(
     name = "percentile_sampler",
     srcs = ["percentile_sampler.cc"],
     hdrs = ["percentile_sampler.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -210,6 +201,7 @@ filegroup(
         "mobile_gauge.h",
         "mobile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -225,6 +217,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-classes-have-attributes
 """Keras layers that implement explicit (approximate) kernel feature maps."""
 
 from __future__ import absolute_import
@@ -30,66 +31,87 @@ from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util.tf_export import keras_export
 
 _SUPPORTED_RBF_KERNEL_TYPES = ['gaussian', 'laplacian']
 
 
+@keras_export('keras.layers.experimental.RandomFourierFeatures')
 class RandomFourierFeatures(base_layer.Layer):
-  r"""Layer that maps its inputs using random Fourier features.
+  r"""Layer that projects its inputs into a random feature space.
 
-  This layer implements a feature map \\(\phi: \mathbb{R}^d \rightarrow
-  \mathbb{R}^D\\) which approximates shift-invariant kernels. A kernel function
-  K(x, y) defined over \\(\mathbb{R}^d x \mathbb{R}^d\\) is shift-invariant if
-  K(x, y) = k(x-y) for some function defined over \\(\mathbb{R}^d\\). Many
-  popular Radial Basis Functions (in short RBF), including gaussian and
-  laplacian kernels are shift-invariant.
-
-  The layer approximates a (shift invariant) kernel K in the following sense:
-    up to a scaling factor, for all inputs \\(x, y \in \mathbb{R}^d\\)
-        \\(\phi(x)^T \cdot \phi(y) \approx K(x, y)\\)
+  This layer implements a mapping from input space to a space with `output_dim`
+  dimensions, which approximates shift-invariant kernels. A kernel function
+  `K(x, y)` is shift-invariant if `K(x, y) == k(x - y)` for some function `k`.
+  Many popular Radial Basis Functions (RBF), including Gaussian and
+  Laplacian kernels, are shift-invariant.
 
   The implementation of this layer is based on the following paper:
-  "Random Features for Large-Scale Kernel Machines" by Ali Rahimi and Ben Recht.
-  (link: https://people.eecs.berkeley.edu/~brecht/papers/07.rah.rec.nips.pdf)
+  ["Random Features for Large-Scale Kernel Machines"](
+    https://people.eecs.berkeley.edu/~brecht/papers/07.rah.rec.nips.pdf)
+  by Ali Rahimi and Ben Recht.
 
   The distribution from which the parameters of the random features map (layer)
-  are sampled, determines which shift-invariant kernel the layer approximates
-  (see paper for more details). The users can use the distribution of their
-  choice. Due to their popularity, the layer supports the out-of-the-box
-  approximation of the following RBF kernels:
-  - Gaussian: \\(K(x, y) = e^{-\frac{\|x-y\|_2^2}{2 \cdot scale^2}}\\)
-  - Laplacian: \\(K(x, y) = e^{-\frac{\|x-y\|_1}{scale}}\\)
+  are sampled determines which shift-invariant kernel the layer approximates
+  (see paper for more details). You can use the distribution of your
+  choice. The layer supports out-of-the-box
+  approximation sof the following two RBF kernels:
 
-  NOTE: Unlike the map described in the paper and the scikit-learn
-  implementation, the output of this layer does not apply the sqrt(2/D)
-  normalization factor.
+  - Gaussian: `K(x, y) == exp(- square(x - y) / (2 * square(scale)))`
+  - Laplacian: `K(x, y) = exp(-abs(x - y) / scale))`
 
-  Usage for ML: Typically, this layer is used to "kernelize" linear models by
+  **Note:** Unlike what is described in the paper and unlike what is used in
+  the Scikit-Learn implementation, the output of this layer does not apply
+  the `sqrt(2 / D)` normalization factor.
+
+  **Usage:** Typically, this layer is used to "kernelize" linear models by
   applying a non-linear transformation (this layer) to the input features and
   then training a linear model on top of the transformed features. Depending on
   the loss function of the linear model, the composition of this layer and the
   linear model results to models that are equivalent (up to approximation) to
   kernel SVMs (for hinge loss), kernel logistic regression (for logistic loss),
-  kernel linear regression (for squared loss) etc.
+  kernel linear regression (for squared loss), etc.
 
-  Example of building a kernel multinomial logistic regression model with
-  Gaussian kernel in keras:
+  Examples:
+
+  A kernel multinomial logistic regression model with Gaussian kernel for MNIST:
+
   ```python
-  random_features_layer = RandomFourierFeatures(
-      output_dim=500,
-      kernel_initializer='gaussian',
-      scale=5.0,
-      ...)
-
-  model = tf.keras.models.Sequential()
-  model.add(random_features_layer)
-  model.add(tf.keras.layers.Dense(units=num_classes, activation='softmax')
-
+  model = keras.Sequential([
+    keras.Input(shape=(784,)),
+    RandomFourierFeatures(
+        output_dim=4096,
+        scale=10.,
+        kernel_initializer='gaussian'),
+    layers.Dense(units=10, activation='softmax'),
+  ])
   model.compile(
-    loss=tf.keras.losses.categorical_crossentropy, optimizer=..., metrics=...)
+      optimizer='adam',
+      loss='categorical_crossentropy',
+      metrics=['categorical_accuracy']
+  )
   ```
 
-  To use another kernel, replace the layer creation command with:
+  A quasi-SVM classifier for MNIST:
+
+  ```python
+  model = keras.Sequential([
+    keras.Input(shape=(784,)),
+    RandomFourierFeatures(
+        output_dim=4096,
+        scale=10.,
+        kernel_initializer='gaussian'),
+    layers.Dense(units=10),
+  ])
+  model.compile(
+      optimizer='adam',
+      loss='hinge',
+      metrics=['categorical_accuracy']
+  )
+  ```
+
+  To use another kernel, just replace the layer creation line with:
+
   ```python
   random_features_layer = RandomFourierFeatures(
       output_dim=500,
@@ -103,29 +125,26 @@ class RandomFourierFeatures(base_layer.Layer):
       number of random features used to approximate the kernel.
     kernel_initializer: Determines the distribution of the parameters of the
       random features map (and therefore the kernel approximated by the layer).
-      It can be either a string or an instance of TensorFlow's Initializer
-      class. Currently only 'gaussian' and 'laplacian' are supported as string
-      initializers (case insensitive). Note that these parameters are not
+      It can be either a string identifier or a Keras `Initializer` instance.
+      Currently only 'gaussian' and 'laplacian' are supported string
+      identifiers (case insensitive). Note that the kernel matrix is not
       trainable.
-    scale: For gaussian and laplacian kernels, this corresponds to a scaling
+    scale: For Gaussian and Laplacian kernels, this corresponds to a scaling
       factor of the corresponding kernel approximated by the layer (see concrete
       definitions above). When provided, it should be a positive float. If None,
-      the implementation chooses a default value (1.0 typically). Both the
-      approximation error of the kernel and the classification quality are
-      sensitive to this parameter. If trainable is set to True, this parameter
-      is learned end-to-end during training and the provided value serves as an
-      initialization value.
-      NOTE: When this layer is used to map the initial features and then the
-        transformed features are fed to a linear model, by making `scale`
-        trainable, the resulting optimization problem is no longer convex (even
-        if the loss function used by the linear model is convex).
-    trainable: Whether the scaling parameter of th layer is trainable. Defaults
-      to False.
-    name: name for the RandomFourierFeatures layer.
-
-  Raises:
-    ValueError: if output_dim or stddev are not positive or if the provided
-      kernel_initializer is not supported.
+      a default value is used: if the kernel initializer is set to "gaussian",
+      `scale` defaults to `sqrt(input_dim / 2)`, otherwise, it defaults to 1.0.
+      Both the approximation error of the kernel and the classification quality
+      are sensitive to this parameter. If `trainable` is set to `True`, this
+      parameter is learned end-to-end during training and the provided value
+      serves as the initial value.
+      **Note:** When features from this layer are fed to a linear model,
+        by making `scale` trainable, the resulting optimization problem is
+        no longer convex (even if the loss function used by the linear model
+        is convex).
+    trainable: Whether the scaling parameter of the layer should be trainable.
+      Defaults to `False`.
+    name: String, name to use for this layer.
   """
 
   def __init__(self,
@@ -200,7 +219,7 @@ class RandomFourierFeatures(base_layer.Layer):
     super(RandomFourierFeatures, self).build(input_shape)
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor_v2(inputs, dtype=self.dtype)
     inputs = gen_math_ops.cast(inputs, dtypes.float32)
     outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     outputs = nn.bias_add(outputs, self.bias)

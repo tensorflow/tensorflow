@@ -18,7 +18,7 @@
 On ImageNet, this model gets to a top-1 validation accuracy of 0.790
 and a top-5 validation accuracy of 0.945.
 
-Reference paper:
+Reference:
   - [Xception: Deep Learning with Depthwise Separable Convolutions](
       https://arxiv.org/abs/1610.02357) (CVPR 2017)
 
@@ -27,14 +27,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -45,21 +44,32 @@ TF_WEIGHTS_PATH_NO_TOP = (
     'https://storage.googleapis.com/tensorflow/keras-applications/'
     'xception/xception_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
+layers = VersionAwareLayers()
+
 
 @keras_export('keras.applications.xception.Xception',
               'keras.applications.Xception')
-def Xception(include_top=True,
-             weights='imagenet',
-             input_tensor=None,
-             input_shape=None,
-             pooling=None,
-             classes=1000):
+def Xception(
+    include_top=True,
+    weights='imagenet',
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation='softmax'):
   """Instantiates the Xception architecture.
+
+  Reference:
+  - [Xception: Deep Learning with Depthwise Separable Convolutions](
+      https://arxiv.org/abs/1610.02357) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
   Note that the default input image size for this model is 299x299.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.xception.preprocess_input` for an example.
 
   Arguments:
     include_top: whether to include the fully-connected
@@ -90,15 +100,20 @@ def Xception(include_top=True,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True,
       and if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -260,7 +275,9 @@ def Xception(include_top=True,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='predictions')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -305,3 +322,8 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.xception.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

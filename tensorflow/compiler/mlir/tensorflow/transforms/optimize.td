@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
@@ -22,26 +22,25 @@ def BroadcastableElements :
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a Conv2D op followed by Mul, then multiply the filter
 // with the value in Mul.
-def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          $strides,
-                          $use_cudnn,
-                          $padding, $explicit_padding,
-                          IsDataFormatNHWC:$data_format,
-                          $dilations),
-           (ConstantOp F32ElementsAttr:$value)),
-// TODO(karimnosseir): Add check for output is of rank 4.
-          (TF_Conv2DOp $input,
-                       (TF_MulOp (ConstantOp $filter),
-                                 (ConstantOp $value)),
-                       $strides,
-                       $use_cudnn,
-                       $padding, $explicit_padding, $data_format,
-                       $dilations),
-          [(BroadcastableElements $filter, $value)]>;
+def FuseMulAndConv2D :
+  Pat<(TF_MulOp:$mul (TF_Conv2DOp:$conv $input,
+                          (ConstantOp:$filter F32ElementsAttr:$filter_value),
+                          $strides, $use_cudnn, $padding, $explicit_padding,
+                          IsDataFormatNHWC:$data_format, $dilations),
+                     (ConstantOp:$multiplier F32ElementsAttr:$mul_value)),
+// TODO(karimnosseir): Add check for $conv is of rank 4.
+      (TF_Conv2DOp $input,
+          (TF_MulOp (ConstantOp $filter_value, (location $filter)),
+                    (ConstantOp $mul_value, (location $multiplier)),
+                    (location $mul)),
+          $strides, $use_cudnn, $padding, $explicit_padding, $data_format,
+          $dilations, (location $conv)),
+      [(BroadcastableElements $filter_value, $mul_value), (HasOneUse $conv)]>;
 
 // This rule does the following pattern match and rewrite:
 //
@@ -57,13 +56,13 @@ def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
 // to AddV2 op.
 def PassthroughMulAndBiasAdd :
   Pat<(TF_MulOp
-        (TF_BiasAddOp $input,
+        (TF_BiasAddOp:$output $input,
           (ConstantOp F32ElementsAttr:$bias), IsDataFormatNHWC:$format),
         (ConstantOp F32ElementsAttr:$value)),
       (TF_AddV2Op
           (TF_MulOp $input, (ConstantOp $value)),
           (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
-      [(DefinedByConv2D $input)]>;
+      [(DefinedByConv2D $input), (HasOneUse $output)]>;
 
 
 // This rule does the following pattern match and rewrite:
@@ -76,9 +75,9 @@ def PassthroughMulAndBiasAdd :
 // This is to enable the FuseMulAndConv2D pattern.
 def PassthroughMulAndAddV2 :
   Pat<(TF_MulOp
-        (TF_AddV2Op $input, (ConstantOp F32ElementsAttr:$bias)),
+        (TF_AddV2Op:$output $input, (ConstantOp F32ElementsAttr:$bias)),
         (ConstantOp F32ElementsAttr:$value)),
       (TF_AddV2Op
           (TF_MulOp $input, (ConstantOp $value)),
           (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
-      [(DefinedByConv2D $input)]>;
+      [(DefinedByConv2D $input), (HasOneUse $output)]>;

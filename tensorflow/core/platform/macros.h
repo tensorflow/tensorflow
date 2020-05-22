@@ -57,7 +57,7 @@ limitations under the License.
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check)
 #endif
 
-// Control visiblity outside .so
+// Control visibility outside .so
 #if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_EXPORT __declspec(dllexport)

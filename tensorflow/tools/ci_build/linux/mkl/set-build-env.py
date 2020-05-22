@@ -244,13 +244,19 @@ class BuildEnvSetter(object):
     arg_parser.add_argument(
         "--disable-v2",
         dest="disable_v2",
-        help="Don't build TensorFlow v2. By default the "
+        help="Build TensorFlow v1 rather than v2. By default the "
         " compiler flag --config=v2 is enabled.",
         action="store_true")
     arg_parser.add_argument(
         "--enable-bfloat16",
         dest="enable_bfloat16",
         help="Enable bfloat16 build. By default it is "
+        " disabled if no parameter is passed.",
+        action="store_true")
+    arg_parser.add_argument(
+        "--enable-dnnl1",
+        dest="enable_dnnl1",
+        help="Enable dnnl1 build. By default it is "
         " disabled if no parameter is passed.",
         action="store_true")
     arg_parser.add_argument(
@@ -307,8 +313,10 @@ class BuildEnvSetter(object):
         self.bazel_flags_ += "{} ".format(flag)
     if not self.args.disable_mkl:
       self.bazel_flags_ += "--config=mkl "
-    if not self.args.disable_v2:
-      self.bazel_flags_ += "--config=v2 "
+    if self.args.disable_v2:
+      self.bazel_flags_ += "--config=v1 "
+    if self.args.enable_dnnl1:
+      self.bazel_flags_ += "--define build_with_mkl_dnn_v1_only=true "
     if self.args.enable_bfloat16:
       self.bazel_flags_ += "--copt=-DENABLE_INTEL_MKL_BFLOAT16 "
 

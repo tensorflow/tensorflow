@@ -293,7 +293,7 @@ class Barrier : public ResourceBase {
     return value_component_shapes_;
   }
 
-  ~Barrier() override EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  ~Barrier() override TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     mutex_lock lock(mu_);
     incomplete_.clear();
     ready_queue_->Unref();
@@ -307,7 +307,7 @@ class Barrier : public ResourceBase {
                          const Tensor& values, const TensorShape& element_shape,
                          int component_index, int i,
                          std::vector<Tuple>* ready_tuples, bool* new_elements)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto keys_vec = keys.flat<tstring>();
     auto values_matrix = values.flat_outer_dims<T>();
 
@@ -405,7 +405,7 @@ class Barrier : public ResourceBase {
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
                         const DoneCallback& callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // CloseQueueLocked may only be called with mu_ held.
     if (!cancel_pending_enqueues && queue_closed_) {
       callback();
@@ -425,15 +425,15 @@ class Barrier : public ResourceBase {
  private:
   typedef std::vector<PersistentTensor> PersistentTuple;
   mutex mu_;
-  bool closed_ GUARDED_BY(mu_);
-  bool queue_closed_ GUARDED_BY(mu_);
-  bool queue_cancelled_ GUARDED_BY(mu_);
-  bool cancel_pending_enqueues_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
+  bool queue_closed_ TF_GUARDED_BY(mu_);
+  bool queue_cancelled_ TF_GUARDED_BY(mu_);
+  bool cancel_pending_enqueues_ TF_GUARDED_BY(mu_);
   const DataTypeVector value_component_types_;
   const std::vector<TensorShape>& value_component_shapes_;
   const string name_;
-  int64 input_index_ GUARDED_BY(mu_);
-  std::unordered_map<string, PersistentTuple> incomplete_ GUARDED_BY(mu_);
+  int64 input_index_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, PersistentTuple> incomplete_ TF_GUARDED_BY(mu_);
   PriorityQueue* ready_queue_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Barrier);
@@ -463,7 +463,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
 
  private:
   Status CreateResource(Barrier** barrier) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *barrier = new Barrier(value_component_types_, value_component_shapes_,
                            cinfo_.name());
     if (*barrier == nullptr) {
@@ -473,7 +473,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
   }
 
   Status VerifyResource(Barrier* barrier) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (barrier->component_types() != value_component_types_) {
       return errors::InvalidArgument(
           "Shared barrier '", cinfo_.name(), "' has component types ",

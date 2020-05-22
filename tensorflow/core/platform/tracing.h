@@ -103,7 +103,7 @@ class ScopedRegion {
   }
 
   // Same as ScopedRegion(category, GetUniqueArg()), but faster if
-  // EventCollector::IsEnaled() returns false.
+  // EventCollector::IsEnabled() returns false.
   explicit ScopedRegion(EventCategory category)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
@@ -112,7 +112,7 @@ class ScopedRegion {
   }
 
   // Same as ScopedRegion(category, GetArgForName(name)), but faster if
-  // EventCollector::IsEnaled() returns false.
+  // EventCollector::IsEnabled() returns false.
   ScopedRegion(EventCategory category, StringPiece name)
       : collector_(GetEventCollector(category)) {
     if (collector_) {

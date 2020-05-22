@@ -30,10 +30,6 @@ constexpr int kInputTensor = 0;
 constexpr int kAxis = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T1, typename T2, typename T3>
 inline void ArgMinMaxHelper(const RuntimeShape& input1_shape,
                             const T1* input1_data, const T3* input2_data,
@@ -70,21 +66,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int32_t);
           break;
         default:
-          context->ReportError(context,
-                               "Only float32, uint8 and int8 are "
-                               "supported currently, got %s.",
-                               TfLiteTypeGetName(input->type));
+          TF_LITE_KERNEL_LOG(context,
+                             "Only float32, uint8 and int8 are "
+                             "supported currently, got %s.",
+                             TfLiteTypeGetName(input->type));
           return kTfLiteError;
       }
     } else {
-      context->ReportError(context,
-                           "Only int32 are supported currently, got %s.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Only int32 are supported currently, got %s.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   } else {
-    context->ReportError(context, "Only int32 are supported currently, got %s.",
-                         TfLiteTypeGetName(axis->type));
+    TF_LITE_KERNEL_LOG(context, "Only int32 are supported currently, got %s.",
+                       TfLiteTypeGetName(axis->type));
     return kTfLiteError;
   }
 
@@ -104,16 +99,26 @@ TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace arg_min_max
 
 TfLiteRegistration* Register_ARG_MAX() {
-  static TfLiteRegistration r = {};
-  r.prepare = arg_min_max::Prepare;
-  r.invoke = arg_min_max::ArgMaxEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/arg_min_max::ArgMaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_ARG_MIN() {
-  static TfLiteRegistration r = {};
-  r.prepare = arg_min_max::Prepare;
-  r.invoke = arg_min_max::ArgMinEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/arg_min_max::ArgMinEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

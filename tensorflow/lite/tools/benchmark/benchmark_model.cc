@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace benchmark {
@@ -47,10 +47,22 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   auto inference_us = results.inference_time_us();
   auto init_us = results.startup_latency_us();
   auto warmup_us = results.warmup_time_us();
-  TFLITE_LOG(INFO) << "Average inference timings in us: "
-                   << "Warmup: " << warmup_us.avg() << ", "
+  auto init_mem_usage = results.init_mem_usage();
+  auto overall_mem_usage = results.overall_mem_usage();
+  TFLITE_LOG(INFO) << "Inference timings in us: "
                    << "Init: " << init_us << ", "
-                   << "Inference: " << inference_us.avg();
+                   << "First inference: " << warmup_us.first() << ", "
+                   << "Warmup (avg): " << warmup_us.avg() << ", "
+                   << "Inference (avg): " << inference_us.avg();
+
+  if (!init_mem_usage.IsSupported()) return;
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -193,18 +205,10 @@ TfLiteStatus BenchmarkModel::Run() {
           params_.Get<float>("max_secs"), REGULAR, &status);
   const auto overall_mem_usage =
       profiling::memory::GetMemoryUsage() - start_mem_usage;
+
   listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
                              warmup_time_us, inference_time_us, init_mem_usage,
                              overall_mem_usage});
-
-  TFLITE_LOG(INFO)
-      << "Note: as the benchmark tool itself affects memory footprint, the "
-         "following is only APPROXIMATE to the actual memory footprint of the "
-         "model at runtime. Take the information at your discretion.";
-  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
-                   << init_mem_usage.max_rss_kb / 1024.0
-                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
-
   return status;
 }
 

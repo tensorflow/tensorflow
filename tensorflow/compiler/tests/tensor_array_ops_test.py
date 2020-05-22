@@ -44,11 +44,11 @@ def _make_converter(dtype):
     return np.asarray(x).astype(dtype.as_numpy_dtype)
   return _converter
 
+
 # This lets me define `fn` repeatedly to pass to xla.compile.
 #
 # pylint: disable=function-redefined
-
-
+@test_util.run_v1_only("b/")  # Support TF2 list operations
 @test_util.with_control_flow_v2
 class TensorArrayTest(xla_test.XLATestCase):
 

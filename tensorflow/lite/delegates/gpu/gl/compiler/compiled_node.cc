@@ -25,8 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-Status MergeCode(CompiledNodeAttributes* attr,
-                 CompiledNodeAttributes* merged_attr) {
+absl::Status MergeCode(CompiledNodeAttributes* attr,
+                       CompiledNodeAttributes* merged_attr) {
   // build a map of known names.
   std::unordered_set<std::string> known_names;
   for (const auto& parameter : merged_attr->code.parameters) {
@@ -56,7 +56,7 @@ Status MergeCode(CompiledNodeAttributes* attr,
             std::back_inserter(merged_attr->code.parameters));
   std::move(attr->node_indices.begin(), attr->node_indices.end(),
             std::back_inserter(merged_attr->node_indices));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

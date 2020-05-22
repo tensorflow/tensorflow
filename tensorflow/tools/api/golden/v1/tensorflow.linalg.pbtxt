@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorBlockLowerTriangular"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorCirculant"
     mtype: "<type \'type\'>"
   }

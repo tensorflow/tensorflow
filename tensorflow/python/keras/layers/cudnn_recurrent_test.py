@@ -25,7 +25,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -88,7 +90,6 @@ class CuDNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(state), num_states)
     model = keras.models.Model(inputs, state[0])
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     state = model.predict(inputs)
@@ -148,8 +149,7 @@ class CuDNNTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer=RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     initial_state = [
@@ -165,33 +165,33 @@ class CuDNNGraphOnlyTest(keras_parameterized.TestCase):
       ('cudnngru', keras.layers.CuDNNGRU),
       ('cudnnlstm', keras.layers.CuDNNLSTM),
   )
-  @test_util.run_deprecated_v1
   @test_util.run_gpu_only
   def test_regularizer(self, layer_class):
     input_size = 10
     timesteps = 6
     units = 2
     num_samples = 32
-    layer = layer_class(
-        units,
-        return_sequences=False,
-        input_shape=(timesteps, input_size),
-        kernel_regularizer=keras.regularizers.l1(0.01),
-        recurrent_regularizer=keras.regularizers.l1(0.01),
-        bias_regularizer='l2')
-    layer.build((None, None, input_size))
-    self.assertEqual(len(layer.losses), 3)
+    with ops.Graph().as_default():
+      layer = layer_class(
+          units,
+          return_sequences=False,
+          input_shape=(timesteps, input_size),
+          kernel_regularizer=keras.regularizers.l1(0.01),
+          recurrent_regularizer=keras.regularizers.l1(0.01),
+          bias_regularizer='l2')
+      layer.build((None, None, input_size))
+      self.assertEqual(len(layer.losses), 3)
 
-    layer = layer_class(
-        units,
-        return_sequences=False,
-        input_shape=(timesteps, input_size),
-        activity_regularizer='l2')
-    self.assertTrue(layer.activity_regularizer)
-    x = keras.backend.variable(
-        np.ones((num_samples, timesteps, input_size)))
-    layer(x)
-    self.assertEqual(len(layer.get_losses_for(x)), 1)
+      layer = layer_class(
+          units,
+          return_sequences=False,
+          input_shape=(timesteps, input_size),
+          activity_regularizer='l2')
+      self.assertTrue(layer.activity_regularizer)
+      x = keras.backend.variable(
+          np.ones((num_samples, timesteps, input_size)))
+      layer(x)
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
 
   @parameterized.named_parameters(
       ('cudnngru', keras.layers.CuDNNGRU),
@@ -245,7 +245,7 @@ class CuDNNGraphOnlyTest(keras_parameterized.TestCase):
       self.assertNotEqual(out4.max(), out5.max())
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CuDNNV1OnlyTest(keras_parameterized.TestCase):
 
   @test_util.run_gpu_only
@@ -267,6 +267,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
       self.assertEqual(len(layer.trainable_weights), 3)
       self.assertEqual(len(layer.non_trainable_weights), 0)
 
+  # TODO(b/156439419): Reenable after the bug is fixed.
   @parameterized.named_parameters(
       *test_util.generate_combinations_with_testcase_name(
           rnn_type=['LSTM', 'GRU'], to_cudnn=[True, False],
@@ -274,9 +275,9 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
           model_nest_level=[1, 2], model_type=['seq', 'func']))
   @test_util.run_v1_only('b/120911602, b/112083752')
   @test_util.run_gpu_only
-  def test_load_weights_between_noncudnn_rnn(self, rnn_type, to_cudnn,
-                                             bidirectional, implementation,
-                                             model_nest_level, model_type):
+  def DISALBED_test_load_weights_between_noncudnn_rnn(
+      self, rnn_type, to_cudnn, bidirectional, implementation,
+      model_nest_level, model_type):
     input_size = 10
     timesteps = 6
     input_shape = (timesteps, input_size)

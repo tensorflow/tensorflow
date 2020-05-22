@@ -32,23 +32,27 @@ namespace {
 
 class Mean : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<MeanAttributes>(ctx.node->operation.attributes);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr = absl::any_cast<const MeanAttributes&>(ctx.op_attr);
     if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
-      return InvalidArgumentError(
+      return absl::InvalidArgumentError(
           "Mean calculation is supported only for height and width.");
     }
 
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-
     std::vector<Variable> parameters = {
-        {"input_data_0_h", input->tensor.shape.h},
-        {"input_data_0_w", input->tensor.shape.w}};
+        {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+        {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])}};
 
     std::string source = R"(
-      vec4 sum = vec4(0.0);
-      float size = float($input_data_0_w$ * $input_data_0_h$);
+      // Shaders may be compiled with a precision hint mediump, which means that
+      // GLSL compiler may drop the size of float data type from 32 to 16 bits.
+      // If "sum" and "size" variables are 16bit floats, their values range
+      // become not enough for providing a good results accuracy. That is why
+      // their precision is forced to be 32bit by using highp qualifier.
+
+      highp vec4 sum = vec4(0.0);
+      highp float size = float($input_data_0_w$ * $input_data_0_h$);
       for (int w = 0; w < $input_data_0_w$; w++) {
         for (int h = 0; h < $input_data_0_h$; h++) {
           sum += $input_data_0[w, h, gid.z]$;
@@ -66,7 +70,7 @@ class Mean : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

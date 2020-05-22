@@ -74,5 +74,9 @@ template <>
 constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
   return kTfLiteFloat16;
 }
+template <>
+constexpr TfLiteType typeToTfLiteType<double>() {
+  return kTfLiteFloat64;
+}
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_

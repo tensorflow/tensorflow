@@ -271,15 +271,15 @@ bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
   const double magnitude =
       std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
   const double tolerated = 1e-6 * magnitude;
-  return std::abs(minmax1.min - minmax2.min) < tolerated &&
-         std::abs(minmax1.max - minmax2.max) < tolerated;
+  return std::abs(minmax1.min - minmax2.min) <= tolerated &&
+         std::abs(minmax1.max - minmax2.max) <= tolerated;
 }
 
 // Propagates MinMax from any of the listed arrays, to all others.
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
 bool PropagateMinMaxAmongArrays(Model* model,
-                                const std::vector<string> array_names) {
+                                const std::vector<string>& array_names) {
   string reference_array_name;
   MinMax* reference_minmax = nullptr;
   for (const string& array_name : array_names) {

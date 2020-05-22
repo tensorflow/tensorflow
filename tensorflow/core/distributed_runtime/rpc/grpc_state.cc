@@ -24,8 +24,8 @@ const char* ToString(UntypedStreamingRPCState::Tag::TagType tag_type) {
       return "kCallStarted";
     case UntypedStreamingRPCState::Tag::TagType::kRequestWriteCompleted:
       return "kRequestWriteCompleted";
-    case UntypedStreamingRPCState::Tag::TagType::kResponseReadCommpleted:
-      return "kResponseReadCommpleted";
+    case UntypedStreamingRPCState::Tag::TagType::kResponseReadCompleted:
+      return "kResponseReadCompleted";
     case UntypedStreamingRPCState::Tag::TagType::kCallFinished:
       return "kCallFinished";
   }
@@ -43,7 +43,7 @@ void UntypedStreamingRPCState::Tag::OnCompleted(bool ok) {
     case TagType::kRequestWriteCompleted:
       streaming_state_->RequestWriteCompleted(ok);
       break;
-    case TagType::kResponseReadCommpleted:
+    case TagType::kResponseReadCompleted:
       streaming_state_->ResponseReadCompleted(ok);
       break;
     case TagType::kCallFinished:

@@ -34,7 +34,7 @@ output: If time_major is true, this is a 3-D tensor with the shape of
     shape is [batch_size, seq_length, dir * num_units].
 output_h: The same shape has input_h.
 output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-is_training: Indicates whether this operation is used for inferenece or
+is_training: Indicates whether this operation is used for inference or
   training.
 time_major: Indicates whether the input/output format is time major or batch
     major.

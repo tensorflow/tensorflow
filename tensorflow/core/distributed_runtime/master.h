@@ -80,17 +80,17 @@ class Master {
 
   // shutdown_ is set to true by the dtor.
   condition_variable shutdown_cv_;
-  bool shutdown_ GUARDED_BY(mu_) = false;
+  bool shutdown_ TF_GUARDED_BY(mu_) = false;
   Thread* gc_thread_;
 
   // Maps session handles to sessions.
-  std::unordered_map<string, MasterSession*> sessions_ GUARDED_BY(mu_);
+  std::unordered_map<string, MasterSession*> sessions_ TF_GUARDED_BY(mu_);
 
   // Moving average of step times.
-  MovingAverage last_1000_steps_ GUARDED_BY(mu_);
+  MovingAverage last_1000_steps_ TF_GUARDED_BY(mu_);
 
   // Cumulative number of steps executed.
-  int64 step_count_ GUARDED_BY(mu_);
+  int64 step_count_ TF_GUARDED_BY(mu_);
 
   // If a session is not active for this many seconds, it will be
   // closed automatically.

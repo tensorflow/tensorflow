@@ -95,7 +95,8 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(IteratorStateWriter* writer) override {
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
     return Status::OK();
   }
 
@@ -111,7 +112,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
       : DatasetIterator<TakeDataset>(params), i_(0) {}
 
   Status Initialize(IteratorContext* ctx) override {
-    return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+    return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -142,11 +143,12 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(IteratorStateWriter* writer) override {
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
     if (input_impl_) {
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     } else {
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
@@ -167,8 +169,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
  private:
   mutex mu_;
-  int64 i_ GUARDED_BY(mu_);
-  std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+  int64 i_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 };
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level

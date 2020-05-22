@@ -30,6 +30,7 @@ export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
+export ROCM_PATH=/opt/rocm-3.3.0
 export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
@@ -38,12 +39,13 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu, \
-      --test_timeout 600,900,2400,7200 \
-      --test_output=errors \
+      --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
       --jobs=${N_JOBS} \
       --local_test_jobs=${TF_GPU_COUNT} \
+      --test_timeout 600,900,2400,7200 \
+      --test_output=errors \
       --test_sharding_strategy=disabled \
+      --test_size_filters=small,medium \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
       //tensorflow/... \

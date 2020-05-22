@@ -189,7 +189,7 @@ class CachedTypeCheck {
   std::function<int(PyObject*)> ternary_predicate_;
   mutex type_to_sequence_map_mu_;
   std::unordered_map<PyTypeObject*, bool> type_to_sequence_map_
-      GUARDED_BY(type_to_sequence_map_mu_);
+      TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
 // Returns 1 if 'obj' is an instance of 'type_name'
@@ -216,6 +216,16 @@ int IsInstanceOfRegisteredType(PyObject* obj, const char* type_name) {
 int IsMappingHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     return IsInstanceOfRegisteredType(to_check, "Mapping");
+  });
+  if (PyDict_Check(o)) return true;
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is considered a mutable mapping for the purposes of
+// Flatten(). Returns 0 otherwise. Returns -1 if an error occurred.
+int IsMutableMappingHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "MutableMapping");
   });
   if (PyDict_Check(o)) return true;
   return check_cache->CachedLookup(o);
@@ -720,9 +730,9 @@ bool AssertSameStructureHelper(
 
     // We treat two different namedtuples with identical name and fields
     // as having the same type.
-    const PyObject* o1_tuple = IsNamedtuple(o1, true);
+    const PyObject* o1_tuple = IsNamedtuple(o1, false);
     if (o1_tuple == nullptr) return false;
-    const PyObject* o2_tuple = IsNamedtuple(o2, true);
+    const PyObject* o2_tuple = IsNamedtuple(o2, false);
     if (o2_tuple == nullptr) {
       Py_DECREF(o1_tuple);
       return false;
@@ -877,6 +887,7 @@ bool AssertSameStructureHelper(
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
+bool IsMutableMapping(PyObject* o) { return IsMutableMappingHelper(o) == 1; }
 bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }

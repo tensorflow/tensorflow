@@ -45,7 +45,7 @@ void TestConcatenateTwoInputs(std::initializer_list<int> input1_dims_data,
       CreateFloatTensor(output_data, output_dims, "output_tensor")};
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -107,7 +107,7 @@ void TestConcatenateQuantizedTwoInputs(
                             output_min, output_max)};
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

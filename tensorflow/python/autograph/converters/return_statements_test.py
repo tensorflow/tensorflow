@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import ops
@@ -28,7 +29,7 @@ class SingleReturnTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
     ns = {'ops': ops}
-    with self.converted(test_fn, return_statements, ns) as result:
+    with self.converted(test_fn, (functions, return_statements), ns) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_straightline(self):
@@ -67,7 +68,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_contitional_missing_else(self):
+  def test_conditional_missing_else(self):
 
     def test_fn(x):
       if x > 0:

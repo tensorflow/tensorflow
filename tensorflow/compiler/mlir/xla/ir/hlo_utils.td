@@ -32,6 +32,9 @@ def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 def BinBroadcastDimensions : NativeCodeCall<
     "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
 
+def BinBroadcastDimensionsNonEmpty : NativeCodeCall<
+    "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1, /*allow_empty=*/false)">;
+
 // Here, the element type can be any integer or float type. But, note that only
 // 32 bit integers are supported for the value.
 class GetScalarOfType<int value> : NativeCodeCall<

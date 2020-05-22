@@ -29,7 +29,7 @@ from tensorflow.python.util import compat
 
 
 def read_saved_model(saved_model_dir):
-  """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
+  """Reads the saved_model.pb or saved_model.pbtxt file containing `SavedModel`.
 
   Args:
     saved_model_dir: Directory containing the SavedModel file.

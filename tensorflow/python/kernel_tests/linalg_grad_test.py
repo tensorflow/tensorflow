@@ -165,8 +165,8 @@ if __name__ == '__main__':
                test_lib.is_built_with_rocm():
               # Skip this one particular subtest on the ROCm platform
               # It will fail because of 1 element in 10,000 mismatch,
-              # and the mismatch is minor (tolerance is 0.20, mismtach is 0,22)
-              # TODO(rocm) : investigate cause of mistmach and fix
+              # and the mismatch is minor (tolerance is 0.20, mismatch is 0,22)
+              # TODO(rocm) : investigate cause of mismatch and fix
               continue
             _AddTest(MatrixBinaryFunctorGradientTest,
                      'MatrixTriangularSolveGradient', name,

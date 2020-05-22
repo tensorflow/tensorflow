@@ -36,7 +36,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  TF_CHECK_OK(WriteStringToFile(env, filename, input));
+  TF_EXPECT_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -93,7 +93,8 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1, (256 << 20) + 100}) {
-    const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
+    const string filename =
+        io::JoinPath(BaseDir(), "bar", "..", strings::StrCat("file", length));
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
@@ -217,7 +218,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
 }
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDir) {
-  const string create_path = io::JoinPath(BaseDir(), "a//b/c/d");
+  const string create_path = io::JoinPath(BaseDir(), "a", "b", "c", "d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
   TF_EXPECT_OK(env_->FileExists(create_path));
@@ -229,17 +230,17 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirEmpty) {
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
   // First create a/b.
-  const string subdir_path = io::JoinPath(BaseDir(), "a/b");
+  const string subdir_path = io::JoinPath(BaseDir(), "a", "b");
   TF_CHECK_OK(env_->CreateDir(io::JoinPath(BaseDir(), "a")));
   TF_CHECK_OK(env_->CreateDir(subdir_path));
   TF_EXPECT_OK(env_->FileExists(subdir_path));
 
   // Now try to recursively create a/b/c/d/
-  const string create_path = io::JoinPath(BaseDir(), "a/b/c/d/");
+  const string create_path = io::JoinPath(BaseDir(), "a", "b", "c", "d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
   TF_EXPECT_OK(env_->FileExists(create_path));
-  TF_EXPECT_OK(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
+  TF_EXPECT_OK(env_->FileExists(io::JoinPath(BaseDir(), "a", "b", "c")));
 }
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
@@ -346,7 +347,8 @@ REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
 
 TEST_F(DefaultEnvTest, FlushFileSystemCaches) {
   Env* env = Env::Default();
-  const string flushed = "tmpdirfs://testhost/flushed";
+  const string flushed =
+      strings::StrCat("tmpdirfs://", io::JoinPath("testhost", "flushed"));
   EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(flushed).code());
   TF_EXPECT_OK(env->FlushFileSystemCaches());
   TF_EXPECT_OK(env->FileExists(flushed));
@@ -354,7 +356,8 @@ TEST_F(DefaultEnvTest, FlushFileSystemCaches) {
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
-  const string create_path = "tmpdirfs://testhost/a/b/c/d";
+  const string create_path = strings::StrCat(
+      "tmpdirfs://", io::JoinPath("testhost", "a", "b", "c", "d"));
   EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(create_path).code());
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
@@ -398,9 +401,9 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
   StringPiece content;
   char scratch[1024];
-  CHECK_EQ(error::OUT_OF_RANGE,
-           file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
-               .code());
+  CHECK_EQ(
+      error::OUT_OF_RANGE,
+      file_to_read->Read(/*offset=*/0, /*n=*/1024, &content, scratch).code());
   EXPECT_EQ("Null", content);
 
   // Delete the temporary file.

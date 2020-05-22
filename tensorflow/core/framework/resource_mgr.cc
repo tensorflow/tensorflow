@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/demangle.h"
+#include "tensorflow/core/platform/stacktrace.h"
 
 namespace tensorflow {
 
@@ -35,7 +36,8 @@ static std::atomic<int64> current_id_;
 ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
+    const std::vector<string>& allowed_devices) {
   ResourceHandle result;
   result.set_device(device.name());
   result.set_container(container);
@@ -47,6 +49,7 @@ ResourceHandle MakeResourceHandle(
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);
+  result.set_allowed_devices(allowed_devices);
   return result;
 }
 
@@ -64,12 +67,39 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
 namespace internal {
 
 Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
-  if (ctx->device()->attributes().name() != p.device()) {
-    return errors::InvalidArgument(
-        "Trying to access resource ", p.name(), " located in device ",
-        p.device(), " from device ", ctx->device()->attributes().name());
+  const string& current_device_name = ctx->device()->attributes().name();
+  if (current_device_name == p.device()) {
+    return Status::OK();
   }
-  return Status::OK();
+  DeviceNameUtils::ParsedName parsed_current_device_name;
+  if (!DeviceNameUtils::ParseFullName(current_device_name,
+                                      &parsed_current_device_name)) {
+    return errors::InvalidArgument(
+        "Cannot parse device name in OpKernelContext: ", current_device_name);
+  }
+
+  for (const string& device : p.allowed_devices()) {
+    DeviceNameUtils::ParsedName parsed;
+    if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
+      return errors::InvalidArgument("Cannot parse allowed device name: ",
+                                     device);
+    }
+    if (DeviceNameUtils::IsCompleteSpecification(parsed,
+                                                 parsed_current_device_name)) {
+      return Status::OK();
+    }
+  }
+  string error_message = strings::StrCat("Trying to access resource ", p.name(),
+                                         " located in device ", p.device(),
+                                         " from device ", current_device_name);
+  if (!p.allowed_devices().empty()) {
+    absl::StrAppend(&error_message, " (allowed devices: ");
+    for (const string& device : p.allowed_devices()) {
+      absl::StrAppend(&error_message, device, ", ");
+    }
+    absl::StrAppend(&error_message, ") ");
+  }
+  return errors::InvalidArgument(error_message);
 }
 
 }  // end namespace internal

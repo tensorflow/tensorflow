@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -90,14 +92,16 @@ void SendOp::Compute(OpKernelContext* ctx) {
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
     // Use the cached rendezvous key.
-    VLOG(2) << "Send " << parsed_key_.buf_;
+    VLOG(2) << "Send " << parsed_key_.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     ctx->SetStatus(ctx->rendezvous()->Send(parsed_key_, args, ctx->input(0),
                                            ctx->is_input_dead()));
     return;
   } else {
     Rendezvous::ParsedKey in_loop_parsed;
     GetRendezvousKey(key_prefix_, frame_iter, &in_loop_parsed.buf_);
-    VLOG(2) << "Send " << in_loop_parsed.buf_;
+    VLOG(2) << "Send " << in_loop_parsed.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     OP_REQUIRES_OK(ctx,
                    Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed));
 
@@ -105,6 +109,16 @@ void SendOp::Compute(OpKernelContext* ctx) {
                                            ctx->is_input_dead()));
     return;
   }
+}
+
+string SendOp::TraceString(OpKernelContext* ctx, bool verbose) {
+  const auto& attr = def().attr();
+  auto src_it = attr.find("_src");
+  auto dst_it = attr.find("_dst");
+  const string& src = src_it != attr.end() ? src_it->second.s() : "";
+  const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
+  return strings::StrCat(name_view(), ":", type_string_view(), "#from=", src,
+                         ",to=", dst, "#");
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
@@ -137,6 +151,16 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   if (!ctx->GetAttr("_hostmem_sendrecv", &hostmem_sendrecv_).ok()) {
     hostmem_sendrecv_ = false;
   }
+}
+
+string RecvOp::TraceString(OpKernelContext* ctx, bool verbose) {
+  const auto& attr = def().attr();
+  auto src_it = attr.find("_src");
+  auto dst_it = attr.find("_dst");
+  const string& src = src_it != attr.end() ? src_it->second.s() : "";
+  const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
+  return strings::StrCat(name_view(), ":", type_string_view(), "#from=", src,
+                         ",to=", dst, "#");
 }
 
 namespace {
@@ -178,13 +202,15 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
-    VLOG(2) << "Recv " << parsed_key_.buf_;
+    VLOG(2) << "Recv " << parsed_key_.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     ctx->rendezvous()->RecvAsync(parsed_key_, args,
                                  make_recv_callback(ctx, std::move(done)));
   } else {
     Rendezvous::ParsedKey in_loop_parsed;
     GetRendezvousKey(key_prefix_, frame_iter, &in_loop_parsed.buf_);
-    VLOG(2) << "Recv " << in_loop_parsed.buf_;
+    VLOG(2) << "Recv " << in_loop_parsed.buf_ << " using "
+            << reinterpret_cast<uintptr_t>(ctx->rendezvous());
     OP_REQUIRES_OK_ASYNC(
         ctx, Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed), done);
     ctx->rendezvous()->RecvAsync(in_loop_parsed, args,

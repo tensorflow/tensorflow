@@ -65,6 +65,8 @@ def _parse_inference_type(value, flag):
     return lite_constants.FLOAT
   if value == "QUANTIZED_UINT8":
     return lite_constants.QUANTIZED_UINT8
+  if value == "INT8":
+    return lite_constants.INT8
   raise ValueError("Unsupported value for --{0}. Only FLOAT and "
                    "QUANTIZED_UINT8 are supported.".format(flag))
 
@@ -352,12 +354,12 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help="Target data type of real-number arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help=("Target data type of real-number input arrays. Allows for a "
             "different type for input arrays in the case of quantization."))
 
@@ -500,10 +502,10 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--conversion_summary_dir",
       type=str,
-      help=("Full filepath to store the conversion logs, which inclues graphviz"
-            " of the model before/after the conversion, an HTML report and the "
-            "conversion proto buffers. This will only be generated when passing"
-            " --experimental_new_converter"))
+      help=("Full filepath to store the conversion logs, which includes "
+            "graphviz of the model before/after the conversion, an HTML report "
+            "and the conversion proto buffers. This will only be generated "
+            "when passing --experimental_new_converter"))
 
 
 def _get_tf2_flags(parser):

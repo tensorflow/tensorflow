@@ -69,6 +69,10 @@ message DebugOptions {
   // Disable multi-streaming in the GPU backend.
   bool xla_gpu_disable_multi_streaming = 63;
 
+  // Debugging feature: if enabled, the GPU backend will assign HLO operators to
+  // randomly chosen streams. This is intended to trigger concurrency bugs.
+  bool xla_gpu_use_random_streams = 134;
+
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
   bool xla_llvm_enable_alias_scope_metadata = 70;
@@ -144,9 +148,20 @@ message DebugOptions {
   // xla_cpu_enable_fast_math is false.
   bool xla_cpu_fast_math_honor_functions = 129;
 
+  // When false we lower the Minimum and Maximum hlos in the CPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
+  // this is false we always propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the gpu flag
+  // below!
+  bool xla_cpu_enable_fast_min_max = 140;
+
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
   // this is true we don't propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the cpu flag
+  // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
   // Allows xla to increase the output precision of floating point operations.
@@ -240,6 +255,12 @@ message DebugOptions {
   // directory.
   bool xla_dump_hlo_snapshots = 118;
 
+  // Include a timestamp in the dumped filenames.
+  bool xla_dump_include_timestamp = 131;
+
+  // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
+  int32 xla_dump_max_hlo_modules = 132;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -254,14 +275,30 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 131
+
+  // Debug options that trigger execution errors when NaN or Inf are detected.
+  bool xla_tpu_detect_nan = 135;
+  bool xla_tpu_detect_inf = 136;
+
+  // True if TraceMe annotations are enabled for XLA:CPU.
+  bool xla_cpu_enable_xprof_traceme = 137;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_error = 139;
+
+  // Next id: 141
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 117;  // was xla_dump_to
-  reserved 5;    // Was xla_hlo_dump_as_graphdef
+  reserved 5, 117, 133;  // were xla_hlo_dump_as_graphdef, xla_dump_to, and
+                         // xla_gpu_use_horizontal_fusion
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -304,6 +341,13 @@ message ExecutionOptions {
   // Number of partitions of the computation to run (model parallelism).
   // If zero, uses the default number of partitions for the XLA service.
   int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 11;
 }
 
 message GetDeviceHandlesRequest {

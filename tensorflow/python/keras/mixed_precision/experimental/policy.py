@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import keras_export
 USE_DEFAULT = 'USE_DEFAULT'
 
 
-@keras_export('keras.mixed_precision.experimental.Policy')
+@keras_export('keras.mixed_precision.experimental.Policy', v1=[])
 class Policy(object):
   """A dtype policy for a Keras layer.
 
@@ -54,13 +54,12 @@ class Policy(object):
 
   When mixed precision training is used, most layers will instead have a float16
   or bfloat16 compute dtype and a float32 variable dtype, and so the layer does
-  not have a single dtype. See [this
-  link](https://docs.nvidia.com/deeplearning/sdk/mixed-precision-training/index.html)
-  for more information on mixed precision training. When the variable dtype does
-  not match the compute dtype, variables will be automatically casted to the
-  compute dtype to avoid type errors. In this case,
-  `tf.keras.layers.Layer.dtype` refers to the variable dtype, not the compute
-  dtype.
+  not have a single dtype. When the variable dtype does not match the compute
+  dtype, variables will be automatically casted to the compute dtype to avoid
+  type errors. In this case, `tf.keras.layers.Layer.dtype` refers to the
+  variable dtype, not the compute dtype. See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  information on how to use mixed precision.
 
   Certain policies also have a `tf.mixed_precision.experimental.LossScale`
   instance, which is used by `tf.keras.Model`s to performance loss scaling. Loss
@@ -88,37 +87,29 @@ class Policy(object):
   `tf.keras.mixed_precision.experimental.set_policy` can be used to set the
   default policy for layers if no policy is passed to them. For example:
 
-  ```python
-  tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
-  model = tf.keras.models.Sequential([
-      tf.keras.layers.Input((100,)),
-      # Dense layers use global policy of 'mixed_float16', which does
-      # computations in float16 while keeping variables in float32.
-      tf.keras.layers.Dense(10),
-      tf.keras.layers.Dense(10),
-      # Softmax should be done in float32 for numeric stability. We pass
-      # dtype='float32' to use float32 instead of the global policy.
-      tf.keras.layers.Activation('softmax', dtype='float32')
-  ])
-  model.compile(...)
-  model.fit(...)  # Train `model`
-  ```
+  >>> tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
+  >>> model = tf.keras.models.Sequential([
+  ...     tf.keras.layers.Input((100,)),
+  ...     # Dense layers use global policy of 'mixed_float16', which does
+  ...     # computations in float16 while keeping variables in float32.
+  ...     tf.keras.layers.Dense(10),
+  ...     tf.keras.layers.Dense(10),
+  ...     # Softmax should be done in float32 for numeric stability. We pass
+  ...     # dtype='float32' to use float32 instead of the global policy.
+  ...     tf.keras.layers.Activation('softmax', dtype='float32')
+  ... ])
 
   Alternatively, the policy can be passed to individual layers instead of
   setting the global policy with `set_policy`:
 
-  ```python
-  policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
-  model = tf.keras.models.Sequential([
-      tf.keras.layers.Input((100,)),
-      tf.keras.layers.Dense(10, dtype=policy),
-      tf.keras.layers.Dense(10, dtype=policy),
-      # Softmax should be done in float32 for numeric stability.
-      tf.keras.layers.Activation('softmax', dtype='float32')
-  ])
-  model.compile(...)
-  model.fit(...)  # Train `model`
-  ```
+  >>> policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+  >>> model = tf.keras.models.Sequential([
+  ...     tf.keras.layers.Input((100,)),
+  ...     tf.keras.layers.Dense(10, dtype=policy),
+  ...     tf.keras.layers.Dense(10, dtype=policy),
+  ...     # Softmax should be done in float32 for numeric stability.
+  ...     tf.keras.layers.Activation('softmax', dtype='float32')
+  ... ])
 
   Note the `'mixed_float16'` policy will apply loss scaling by default in
   `Model.fit`, `Model.train_on_batch`, and other training methods. If no such
@@ -128,114 +119,179 @@ class Policy(object):
   `'mixed_bfloat16'`, no loss scaling is done and loss scaling never needs to be
   manually applied.
 
+  See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  information on using mixed precision
+
   ### How to use float64 in a Keras model
 
   Using float64 is similar to mixed precision. Either the global policy can be
   set to float64, or `dtype='float64'` can be passed to individual layers. For
   example, to set the global policy:
 
-  ```python
-  tf.keras.mixed_precision.experimental.set_policy('float64')
-  model = tf.keras.models.Sequential([
-      tf.keras.layers.Input((100,)),
-      # All layers use global policy of 'float64', which does computations and
-      # creates variables in float64.
-      tf.keras.layers.Dense(10),
-      tf.keras.layers.Dense(10),
-      tf.keras.layers.Activation('softmax')
-  ])
-  model.compile(...)
-  model.fit(...)  # Train `model`
-  ```
+  >>> tf.keras.mixed_precision.experimental.set_policy('float64')
+  >>> model = tf.keras.models.Sequential([
+  ...     tf.keras.layers.Input((100,)),
+  ...     # All layers use global policy of 'float64', which does computations
+  ...     # and creates variables in float64.
+  ...     tf.keras.layers.Dense(10),
+  ...     tf.keras.layers.Dense(10),
+  ...     tf.keras.layers.Activation('softmax')
+  ... ])
+  >>> # Optionaly set policy back to float32 if any other models use float32
+  >>> tf.keras.mixed_precision.experimental.set_policy('float32')
 
   ### How a layer uses its policy's compute dtype
 
   A layer will cast its inputs to its compute dtype in TensorFlow 2. For
   example:
 
-  ```python
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  # `layer`'s policy defaults to float32.
-  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
+  >>> # `layer`'s policy defaults to float32.
+  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  >>> # `layer` casts it's inputs to its compute dtype, which is float32, and
+  >>> # does computations in float32.
+  >>> y = layer(x)
+  >>> y.dtype
+  tf.float32
 
-  # `layer` casts it's inputs to its compute dtype, which is float32, and does
-  # computations in float32.
-  y = layer(x)
-  print(y.dtype)  # float32
-  ```
+  Note that the base `tf.keras.layers.Layer` class inserts the casts. If
+  subclassing your own layer, you do not have to insert any casts.
 
   Currently, only tensors in the first argument to the layer's `call` method are
   casted. For example:
 
-  ```python
-  class MyLayer(tf.keras.layers.Layer):
-    # Bug! `b` will not be casted.
-    def call(self, a, b):
-      return a + 1., b + 1.
+  >>> class MyLayer(tf.keras.layers.Layer):
+  ...   # Bug! `b` will not be casted.
+  ...   def call(self, a, b):
+  ...     return a + 1., b + 1.
+  >>> a = tf.constant(1., dtype="float32")
+  >>> b = tf.constant(1., dtype="float32")
+  >>> layer = MyLayer(dtype="float64")
+  >>> x, y = layer(a, b)
+  >>> x.dtype
+  tf.float64
+  >>> y.dtype
+  tf.float32
 
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
+  If writing your own layer, it is recommended to accept tensors only in the
+  first argument. This way, all tensors are casted to the layer's compute dtype.
+  `MyLayer` should therefore be written as:
 
-  layer = MyLayer(dtype="float64")
-  x, y = layer(a, b)
-  print(x.dtype)  # float64
-  print(y.dtype)  # float32. Not casted since `b` was not passed to first input
-  ```
-
-  It is recommended to accept tensors only in the first argument. This way, all
-  tensors are casted to the layer's compute dtype. `MyLayer` should therefore be
-  written as:
-
-  ```python
-  class MyLayer(tf.keras.layers.Layer):
-    # Now, all tensor inputs will be casted.
-    def call(self, inputs):
-      a, b = inputs
-      return a + 1., b + 1.
-
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
-
-  layer = MyLayer(dtype="float64")
-  x, y = layer((a, b))
-  print(x.dtype)  # float64
-  print(y.dtype)  # float64.
-  ```
+  >>> class MyLayer(tf.keras.layers.Layer):
+  ...   # Now, all tensor inputs will be casted.
+  ...   def call(self, inputs):
+  ...     a, b = inputs
+  ...     return a + 1., b + 1.
+  >>> a = tf.constant(1., dtype="float32")
+  >>> b = tf.constant(1., dtype="float32")
+  >>> layer = MyLayer(dtype="float64")
+  >>> x, y = layer((a, b))
+  >>> x.dtype
+  tf.float64
+  >>> y.dtype
+  tf.float64
 
   Other arguments are not automatically casted for technical reasons, but this
   may change in a future minor release.
 
+  The casting only occurs in TensorFlow 2, but can be enabled if
+  `tf.compat.v1.disable_v2_behavior()` has been called with
+  `tf.compat.v1.keras.layers.enable_v2_dtype_behavior()`.
+
   A layer subclass can prevent its inputs from being autocasted by passing
   `autocast=False` to the layer constructor. For example:
 
-  ```python
-  class NonAutoCastingLayer(tf.keras.layers.Layer):
+  >>> class NonAutoCastingLayer(tf.keras.layers.Layer):
+  ...   def __init__(self, **kwargs):
+  ...     kwargs['autocast'] = False
+  ...     super(NonAutoCastingLayer, self).__init__(**kwargs)
+  ...   def call(self, inp):
+  ...     return inp
+  >>> x = tf.ones((4, 4, 4, 4), dtype='float32')
+  >>> layer = NonAutoCastingLayer(dtype='float64')
+  >>> y = layer(x)  # Will not cast inputs to it's compute dtype of float64
+  >>> y.dtype
+  tf.float32
 
-    def __init__(self, **kwargs):
-      kwargs['autocast'] = False
-      super(NonAutoCastingLayer, self).__init__(**kwargs)
+  ### How a layer uses its policy's variable dtype
 
-    def call(self, inp):
-      return inp
+  The default dtype of variables created by `tf.keras.layers.Layer.add_weight`
+  is the layer's policy's variable dtype.
 
-  x = tf.ones((4, 4, 4, 4), dtype='float32')
-  layer = NonAutoCastingLayer(dtype='float64')
-  y = layer(x)  # MyLayer will not cast inputs to it's compute dtype of float32
-  print(y.dtype)  # float32
-  ```
+  If a layer's compute and variable dtypes differ, `add_weight` will wrap
+  floating-point variables with a special wrapper called an `AutoCastVariable`.
+  This wrapper is identical to the original variable except it casts itself to
+  the layer's compute dtype when used within `Layer.call`. Outside `Layer.call`,
+  the variable is not casted.
 
-  ### The deprecated "infer" policy
+  A layer author can prevent a variable from being wrapped with an
+  `AutoCastVariable` by passing `experimental_autocast=False` to `add_weight`:
 
-  In addition to the above mentioned policies, a policy can also be "infer".
-  This Policy is deprecated, and it is not recommended. When a layer has an
-  infer policy, it will infer the computation and variable dtype from the first
-  input the first time the layer is called. Once the layer is called for the
-  first time, the layer's policy will change to the dtype of the first input.
+  >>> class MyLayer(tf.keras.layers.Layer):
+  ...  def build(self, input_shape):
+  ...    self.x = self.add_weight('x')
+  ...    self.y = self.add_weight('y', experimental_autocast=False)
+  >>> policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+  >>> layer = MyLayer(dtype=policy)
+  >>> layer.build((2, 2))
+  >>> layer.x
+  <AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32, numpy=...>
+  >>> layer.y
+  <tf.Variable 'y:0' shape=() dtype=float32, numpy=...>
 
-  In TensorFlow 1, only the "infer" policy is available.
+  Passing `experimental_autocast=False` is useful for layers which may
+  internally do some math in the variable dtype instead of the compute dtype.
+  For example, you may wish to compute variable statistics, such as mean and
+  variance, in the variable dtype.
+
+  ### How to write a layer that supports mixed precision and float64.
+
+  For the most part, layers will automatically support mixed precision and
+  float64 without any additional work, due to the fact the base layer
+  automatically casts inputs, creates variables of the correct type, and in the
+  case of mixed precision, wraps variables with `AutoCastVariables`.
+
+  For example, this simple dense layer does not require any additional work to
+  support mixed precision or float64. Keras automatically casts the inputs and
+  variable to the appropriate dtype.
+
+  >>> class MyDense(tf.keras.layers.Layer):
+  ...   def build(self, input_shape):
+  ...     self.kernel = self.add_weight('kernel', (input_shape[-1], 10))
+  ...   def call(self, inputs):
+  ...     return tf.matmul(inputs, self.kernel)
+
+  >>> policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+  >>> layer = MyDense(dtype=policy)
+  >>> x = np.random.rand(10, 10)
+  >>> y = layer(x)
+  >>> y.dtype
+  tf.float16
+
+  The primary case where you need extra work to support mixed precision or
+  float64 is when you create a new tensor, such as with `tf.ones` or
+  `tf.constant`. In such cases, you must create the tensor of the correct dtype.
+  For example, suppose you modify the `MyDense` layer to add a random number to
+  the output using `tf.random.normal`. You must pass the input dtype to
+  `tf.random.normal` to ensure the dtypes match.
+
+  >>> class MyDense(tf.keras.layers.Layer):
+  ...   def build(self, input_shape):
+  ...     self.kernel = self.add_weight('kernel', (input_shape[-1], 10))
+  ...   def call(self, inputs):
+  ...     rand = tf.random.normal(shape=inputs.shape, dtype=inputs.dtype)
+  ...     return tf.matmul(inputs, self.kernel) + rand
+  >>>
+  >>> layer = MyDense(dtype=policy)
+  >>> y = layer(x)
+  >>> y.dtype
+  tf.float16
+
+  If you did not pass `dtype=inputs.dtype` to `tf.random.normal`, a `TypeError`
+  would have occurred. This is because the dtype defaults to `"float32"`, so the
+  layer would only work if the inputs were float32.
   """
-  # TODO(reedwm): Replace link in above docstring with a version that is more
-  # TensorFlow-specific, and that also mentions bfloat16.
 
   def __init__(self, name, loss_scale=USE_DEFAULT):
     """Constructs the policy.
@@ -253,14 +309,12 @@ class Policy(object):
           bfloat16, while the variable dtype is float32. With 'mixed_float16',
           a dynamic loss scale is used. These policies are used for mixed
           precision training.
-        * 'infer' (deprecated): Infer the compute and variable dtype from the
-          input dtype.
       loss_scale: A `tf.mixed_precision.experimental.LossScale`, an int (which
-      uses a `FixedLossScale`), or the string "dynamic" (which uses a
-      `DynamicLossScale`). Defaults to using no loss scaling unless `name` is
-      "mixed_float16", in which case this defaults to "dynamic". Only
-      `tf.keras.Model`s, not layers, use the loss scale, and it is only used
-      during `Model.fit`, `Model.train_on_batch`, and other similar methods.
+        uses a `FixedLossScale`), or the string "dynamic" (which uses a
+        `DynamicLossScale`). Defaults to using no loss scaling unless `name` is
+        "mixed_float16", in which case this defaults to "dynamic". Only
+        `tf.keras.Model`s, not layers, use the loss scale, and it is only used
+        during `Model.fit`, `Model.train_on_batch`, and other similar methods.
     """
     if isinstance(name, dtypes.DType):
       raise TypeError("'name' must be a string, not a DType. "
@@ -283,7 +337,8 @@ class Policy(object):
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
     if name in ('mixed_float16', 'mixed_bloat16'):
-      device_compatibility_check.log_device_compatibility_check(name)
+      device_compatibility_check.log_device_compatibility_check(name,
+                                                                skip_local=True)
 
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.
@@ -311,7 +366,17 @@ class Policy(object):
       return 'float16', 'float32'
     elif name == 'mixed_bfloat16':
       return 'bfloat16', 'float32'
-    elif name == 'infer':
+    elif name == '_infer':
+      # The "_infer" policy exists only for compatibility with TF 1, where
+      # "_infer" is the default. The behavior matches the behavior of TF 1's
+      # behavior before policies were introduced. With "_infer", the computation
+      # and variable dtype are inferred from the first input the first time the
+      # layer is called. Once the layer is called for the first time, the
+      # layer's policy will change to the dtype of the first input, and it will
+      # no longer have the "_infer" policy.
+      #
+      # The infer policy should be considered an implementation detail and may
+      # be removed in the future.
       return None, None
 
     try:
@@ -335,8 +400,7 @@ class Policy(object):
     avoid type errors.
 
     Returns:
-      The variable dtype of this policy, or None if the variable dtype should be
-      inferred from the inputs.
+      The variable dtype of this policy.
     """
     return self._variable_dtype
 
@@ -363,8 +427,7 @@ class Policy(object):
     keeping intermediate computations in float32.
 
     Returns:
-      The compute dtype of this policy, or None if the compute dtype should be
-      inferred from the inputs.
+      The compute dtype of this policy.
     """
     return self._compute_dtype
 
@@ -418,22 +481,28 @@ class Policy(object):
 
 # The current global policy in effect. If None, it means the current value of
 # floatx should be used as the policy if the V2 dtype behavior is enabled,
-# or "infer" otherwise.
+# or "_infer" otherwise.
 # TODO(reedwm): Make this thread local?
 _global_policy = None
 
 
-@keras_export('keras.mixed_precision.experimental.global_policy')
+@keras_export('keras.mixed_precision.experimental.global_policy', v1=[])
 def global_policy():
   """Returns the global Policy.
 
   The global policy is the default policy used for layers, if no policy is
   passed to the layer constructor. If no policy has been set with
   `keras.mixed_precision.experimental.set_policy`, this will return a policy
-  constructed from `tf.keras.backend.floatx()` in TensorFlow 2 (floatx defaults
-  to float32), or an "infer" policy in TensorFlow 1.
+  constructed from `tf.keras.backend.floatx()` (floatx defaults to float32).
 
-  See `keras.mixed_precision.experimental.Policy` for more information.
+  If TensorFlow 2 behavior has been disabled with
+  `tf.compat.v1.disable_v2_behavior()`, this will instead return a special
+  "_infer" policy which infers the dtype from the dtype of the first input the
+  first time the layer is called. This behavior matches the behavior that
+  existed in TensorFlow 1.
+
+  See `tf.keras.mixed_precision.experimental.Policy` for more information on
+  policies.
 
   Returns:
     The global Policy.
@@ -442,7 +511,7 @@ def global_policy():
     if base_layer_utils.v2_dtype_behavior_enabled():
       return Policy(backend.floatx())
     else:
-      return Policy('infer')
+      return Policy('_infer')
   return _global_policy
 
 
@@ -451,32 +520,29 @@ def policy_defaults_to_floatx():
   return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
 
 
-def _check_if_mixed_precision_graph_rewrite_is_enabled():
-  # TODO(reedwm): Update this comment once the Keras API is complete.
+def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
   if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
     raise ValueError(
-        'The mixed precision policy cannot be set, because the mixed '
-        'precision graph rewrite has already been enabled.\n'
-        'At most, one of the following functions can be called:\n\n'
+        'The global dtype policy cannot be set to "{policy.name}", because the '
+        'mixed precision graph rewrite has already been enabled.\n'
+        'At most, one of the following can be called:\n\n'
         '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
         '(You called this first)\n'
-        '  2. tf.keras.mixed_precision.experimental.set_policy() (You called '
-        'this second)\n\n'
+        '  2. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
+        'precision policy (You called this second)\n\n'
         'You called both functions, which is an error, because both functions '
-        'enable you to use mixed precision. The first function enables mixed '
-        'precision in the graph with a graph rewrite. However it is currently '
-        'not very customizable, and does not support eager. The second '
-        'function is for Keras layers, but is not yet fully complete.')
+        'enable you to use mixed precision. If in doubt which function to use, '
+        'use the second, as it supports Eager execution and is more '
+        'customizable.'.format(policy=policy))
 
 
-@keras_export('keras.mixed_precision.experimental.set_policy')
+@keras_export('keras.mixed_precision.experimental.set_policy', v1=[])
 def set_policy(policy):
   """Sets the global Policy.
 
   The global policy is the default policy used for layers, if no policy is
   passed to the layer constructor. If no global policy is set, layers will
-  instead default to a Policy constructed from `tf.keras.backend.floatx()` in
-  TensorFlow 2. In TensorFlow 1, layers default to an "infer" policy.
+  instead default to a Policy constructed from `tf.keras.backend.floatx()`.
 
   See `keras.mixed_precision.experimental.Policy` for more information.
 
@@ -484,17 +550,18 @@ def set_policy(policy):
     policy: A Policy, or a string that will be converted to a Policy..
   """
   global _global_policy
-  _check_if_mixed_precision_graph_rewrite_is_enabled()
+  if not base_layer_utils.v2_dtype_behavior_enabled():
+    raise ValueError('The global policy can only be set in TensorFlow 2 or if '
+                     'V2 dtype behavior has been set. To enable V2 dtype '
+                     'behavior, call '
+                     '"tf.compat.v1.keras.layers.enable_v2_dtype_behavior()"')
   if policy is not None and not isinstance(policy, Policy):
     policy = Policy(policy)
-  if (policy and not base_layer_utils.v2_dtype_behavior_enabled() and
-      policy.compute_dtype):
-    raise ValueError(
-        'The global policy can only be set to a non-infer policy in TensorFlow '
-        '2')
+  is_mixed_policy = policy is not None and policy.should_cast_variables
+  if is_mixed_policy:
+    _check_if_mixed_precision_graph_rewrite_is_enabled(policy)
   _global_policy = policy
-  mixed_precision_global_state.using_default_mixed_precision_policy = (
-      _global_policy is None)
+  mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
 
 
 # TODO(reedwm): Make this thread local
@@ -531,7 +598,7 @@ def _policy_equivalent_to_dtype(policy):
   dtypes are the same and the policy does not cause the layer/model to have
   additional behavior, such as loss scaling.
 
-  The "infer" policy is considered equivalent to a single dtype.
+  The "_infer" policy is considered equivalent to a single dtype.
 
   Args:
     policy: A Policy.
@@ -543,7 +610,7 @@ def _policy_equivalent_to_dtype(policy):
   # equivalent to a dtype.
   return (type(policy) == Policy and  # pylint: disable=unidiomatic-typecheck
           list(policy.get_config().keys()) == ['name'] and
-          (policy.name == 'infer' or _is_convertible_to_dtype(policy.name)))
+          (policy.name == '_infer' or _is_convertible_to_dtype(policy.name)))
 
 
 def serialize(policy):
@@ -551,7 +618,7 @@ def serialize(policy):
     # We return either None or the policy name for compatibility with older
     # versions of Keras. If the policy name is returned, it is a dtype string
     # such as 'float32'.
-    return None if policy.name == 'infer' else policy.name
+    return None if policy.name == '_infer' else policy.name
   return generic_utils.serialize_keras_object(policy)
 
 
@@ -559,7 +626,7 @@ def deserialize(config, custom_objects=None):
   if isinstance(config, str) and _is_convertible_to_dtype(config):
     return Policy(config)
   if config is None:
-    return Policy('infer')
+    return Policy('_infer')
   module_objects = {'Policy': Policy}
   return generic_utils.deserialize_keras_object(
       config,

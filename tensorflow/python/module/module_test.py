@@ -26,13 +26,12 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import models
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -249,10 +248,8 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
   def test_supports_distributed_variables(self):
     mirrored = distributed_values.MirroredVariable(
         None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
-    tpu = distributed_values.TPUMirroredVariable(
-        strategy=None,
-        values=[variables.Variable(42.)],
-        aggregation=None)
+    tpu = tpu_values.TPUMirroredVariable(
+        strategy=None, values=[variables.Variable(42.)], aggregation=None)
     aggregating = distributed_values.AggregatingVariable(
         strategy=None, v=variables.Variable(1.), aggregation=None)
 
@@ -505,42 +502,6 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
                       ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
                       ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
-
-  def test_module_discover_layer_variable(self):
-    m = module.Module()
-    m.a = layers.Dense(1)
-    m.b = layers.Dense(2)
-
-    # The weights of the layer has not been created yet.
-    self.assertEmpty(m.variables)
-    self.assertLen(m.submodules, 2)
-
-    inputs = layers.Input((1,))
-    m.a(inputs)
-    m.b(inputs)
-
-    variable_list = m.variables
-    self.assertLen(variable_list, 4)
-    self.assertIs(variable_list[0], m.a.kernel)
-    self.assertIs(variable_list[1], m.a.bias)
-    self.assertIs(variable_list[2], m.b.kernel)
-    self.assertIs(variable_list[3], m.b.bias)
-
-  def test_model_discover_submodule(self):
-    m = models.Sequential(layers=[layers.Dense(1),
-                                  layers.Dense(2)])
-
-    self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
-    m(layers.Input((1,)))
-    self.assertLen(m.variables, 4)
-
-  def test_model_wrapped_in_module_discovers_submodules(self):
-    linear = models.Sequential([layers.Dense(units=1, input_shape=[1])])
-    linear.compile(optimizer="sgd", loss="mean_squared_error")
-    m = module.Module()
-    m.l = linear
-    self.assertNotEmpty(m.submodules)
-    self.assertLen(m.variables, 2)
 
   def test_raises_error_with_path(self):
     if six.PY2:

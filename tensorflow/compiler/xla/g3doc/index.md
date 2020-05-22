@@ -47,26 +47,12 @@ removing memory operations is one of the best ways to improve performance.
 A simplest way to start using XLA in TensorFlow models is to enable
 _auto-clustering_, which automatically finds _clusters_ (connected subgraphs)
 within the TensorFlow graph which can be compiled and executed using XLA.
-Auto-clustering on GPU can be enabled by either modifying the `TF_XLA_FLAGS`
-environment variable:
+Auto-clustering on GPU can be enabled by setting the `TF_XLA_FLAGS` environment
+variable:
 
 ```
 $ TF_XLA_FLAGS=--tf_xla_auto_jit=2 path/to/your/tf/program
 ```
-
-Or by setting a configuration value within the program:
-
-```
-import tensorflow as tf
-
-tf.config.optimizer.set_jit(True)
-
-# ... the rest of your program ...
-```
-
-Note: The JIT level is cached for a session, and can only be set in the very
-beginning of the program. In order to change it midway through, the session
-needs to be cleared: `tf.keras.backend.clear_session()`
 
 Auto-clustering is currently optimized for GPU workloads, but it can also be
 enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
@@ -75,27 +61,63 @@ enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
 $ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
 ```
 
-Auto-clustering support on a CPU and on multi-GPU environments is experimental.
+Note: Auto-clustering support on CPU and on multi-GPU environments is
+experimental.
 
-For a detailed usage example, see the
-[auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
+For a detailed usage example see the [auto-clustering tutorial
+colab](./tutorials/autoclustering_xla.ipynb).
 
-### Explicit compilation
+### Explicit compilation with tf.function
+
+Auto-clustering is a great tool for making the model faster without any changes
+to the code, but it may be hard to understand what changes have been performed.
 
 Explicit compilation API offers a more fine-grained control for choosing which
-functions should be compiled with XLA. However, it might require restructuring
-of the source code, as not all TensorFlow operations can be represented in XLA.
+functions should be compiled.
+For example, the following TensorFlow function which performs the MNIST training
+is compiled with XLA:
 
-Note: Using the explicit compilation on API on functions which can not be
-represented in XLA results in an exception.
+```
+@tf.function(experimental_compile=True)
+def train_mnist(images, labels):
+    images, labels = cast(images, labels)
 
-Optimizing sections of the program using
-[`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) is a
-standard approach for [improving
-performance](https://www.tensorflow.org/tutorials/customization/performance) of
-TF2 programs. You can enable compilation with XLA by setting the
-`experimental_compile` argument of `tf.function` to `True`. See the [tutorial
-colab](./tutorials/compile.ipynb) for usage examples.
+    with tf.GradientTape() as tape:
+      predicted_labels = layer(images)
+      loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+          logits=predicted_labels, labels=labels
+      ))
+    layer_variables = layer.trainable_variables
+    grads = tape.gradient(loss, layer_variables)
+    optimizer.apply_gradients(zip(grads, layer_variables))
+```
+
+The `experimental_compile` API has _must-compile_ semantics: either the entire
+function is compiled with XLA, or an `errors.InvalidArgumentError` exception is
+thrown. XLA can not currently compile functions where dimensions are not
+_inferrable_: that is, if it's not possible to infer the dimensions of all
+tensors without running the entire computation. For example, the following
+function will not compile:
+
+```
+@tf.function
+def not_compilable(x):
+  return tf.unique(x)
+```
+
+Shapes can vary across the runs though:
+
+```
+@tf.function(experimental_compile=True)
+def recompiled_on_launch(a, b):
+  return a + b
+
+recompiled_on_launch(tf.ones([1, 10]), tf.ones([1, 10]))
+recompiled_on_launch(tf.ones([1, 100]), tf.ones([1, 100]))
+```
+
+See the [tutorial colab](./tutorials/compile.ipynb) for a more detailed usage
+example.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
@@ -109,8 +131,7 @@ programs. To dump the generated programs, use the environment variable
 `XLA_FLAGS`:
 
 ```
-$ XLA_FLAGS="--dump_hlo_as_text --xla_dump_to=/tmp/generated"
-TF_XLA_FLAGS="--tf_xla_auto_jit=2" my/tensorflow/program
+$ XLA_FLAGS="--xla_dump_to=/tmp/generated" TF_XLA_FLAGS="--tf_xla_auto_jit=2" my/tensorflow/program
 ```
 
 After the dumping is performed, you can find the following files in

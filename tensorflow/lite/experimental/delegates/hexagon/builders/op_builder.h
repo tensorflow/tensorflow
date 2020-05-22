@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,6 +40,10 @@ struct OpNode {
   hexagon_nn_padding_type padding_type = NN_PAD_NA;
   // Id of node in the Hexagon graph.
   int node_id = -1;
+  // Index/ID of node in the tflite graph.
+  // This ID can be duplicate if one TFLite node creates multiple Hexagon op
+  // nodes.
+  int tflite_node_index = -1;
 };
 
 class GraphBuilder;
@@ -63,6 +68,10 @@ class OpBuilder {
 
   void SetNodeId(int node_id) { op_node_.node_id = node_id; }
 
+  void SetTFLiteNodeId(int node_index) {
+    op_node_.tflite_node_index = node_index;
+  }
+
   void SetConstNode() { op_node_.op_type = OP_Const; }
 
   void SetPaddingType(hexagon_nn_padding_type padding_type) {
@@ -86,6 +95,8 @@ class OpBuilder {
 
   int GetID() const { return op_node_.node_id; }
 
+  int GetTFLiteNodeID() const { return op_node_.tflite_node_index; }
+
   int GetOpType() const { return op_node_.op_type; }
 
   void SetTfLiteNode(const TfLiteNode* node) { tflite_node_ = node; }
@@ -101,6 +112,24 @@ class OpBuilder {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                                  float* min, float* max) {
+    if (tensor.type == kTfLiteUInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<uint8_t>::min(),
+                                         std::numeric_limits<uint8_t>::max());
+    } else if (tensor.type == kTfLiteInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int8_t>::min(),
+                                         std::numeric_limits<int8_t>::max());
+    } else if (tensor.type == kTfLiteInt32) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max());
+    }
+    return kTfLiteError;
+  }
+
  protected:
   // Helper method to fetch dimensions.
   // TODO(karimnosseir): Move to a shared place.
@@ -114,9 +143,9 @@ class OpBuilder {
   }
 
   template <typename T>
-  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
-                                           float* min, float* max, T min_value,
-                                           T max_value) {
+  static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                                  float* min, float* max,
+                                                  T min_value, T max_value) {
     *min = 0;
     *max = 0;
     const TfLiteQuantization& quant = tensor.quantization;
@@ -126,10 +155,6 @@ class OpBuilder {
     }
     const TfLiteAffineQuantization* params =
         static_cast<const TfLiteAffineQuantization*>(quant.params);
-    if (params->quantized_dimension != 0) {
-      printf("Quantized dimensions not 0 for tensor: %s\n", tensor.name);
-      return kTfLiteError;
-    }
     float scale = params->scale->data[0];
     float zero_point = static_cast<float>(params->zero_point->data[0]);
     *min = scale * (static_cast<float>(min_value) - zero_point);
@@ -158,11 +183,13 @@ class GraphBuilder {
       : hexagon_nn_(hexagon_nn), context_(context), graph_id_(graph_id) {}
 
   // Returns per OP builder. 'op_type' is the TfLite builtinOperator.
-  OpBuilder* AddNodeFromTfLiteOp(int op_type, TfLiteNode* node);
+  OpBuilder* AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
+                                 int tflite_node_index);
 
   // Add node to the graph. The caller responsible for setting correct
   // data in the Op.
-  OpBuilder* AddNode();
+  // 'tflite_node_index' is the node index in TFLite that creates this op.
+  OpBuilder* AddNode(int tflite_node_index = -1);
 
   // Add const node that provides the data held by 'tensor'.
   OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor);
@@ -173,12 +200,19 @@ class GraphBuilder {
   OpBuilder* CreateOpBuilderFromTfLiteOp(int op_type);
 
   // Construct Input node with 'input_tensors' as output.
-  void AddInputTensors(const TfLiteIntArray* input_tensors,
-                       TfLiteContext* context);
+  TfLiteStatus AddInputTensors(const TfLiteIntArray* input_tensors,
+                               TfLiteContext* context);
 
   // Construct Output node with 'output_tensors' as input.
-  void AddOutputTensors(const TfLiteIntArray* output_tensors,
-                        TfLiteContext* context);
+  TfLiteStatus AddOutputTensors(const TfLiteIntArray* output_tensors,
+                                TfLiteContext* context);
+
+  // Adds BatchSeqConfig node to the graph. This is configuration
+  // for a dynamic batch size for the graph.
+  // A graph can have only one node of this type.
+  void AddBatchSeqConfig(int max_size_for_batch,
+                         TfLiteIntArray* input_batch_dimensions,
+                         TfLiteIntArray* output_batch_dimensions);
 
   // Returns tensor id inside Hexagon graph.
   OpBuilder::TensorID GetHexagonTensorId(int tflite_tensor_index) {
@@ -230,8 +264,8 @@ class GraphBuilder {
 
   // Add new tensor mapping to the tensor list.
   bool AddTensorWithID(int tflite_tensor_id, int hexagon_node_id,
-                       int hexagon_node_output_id) {
-    if (HasTensor(tflite_tensor_id)) {
+                       int hexagon_node_output_id, bool overwrite = false) {
+    if (!overwrite && HasTensor(tflite_tensor_id)) {
       return false;
     }
     if (tensors_.size() <= tflite_tensor_id) {
@@ -249,6 +283,20 @@ class GraphBuilder {
     return builders_[node_id - 1]->GetOpType();
   }
 
+  int GetTFLiteNodeID(int node_id) const {
+    if (node_id > builders_.size()) {
+      return -1;
+    }
+    return builders_[node_id - 1]->GetTFLiteNodeID();
+  }
+
+  // Returns true if the graph supports dynamic batch. False otherwise.
+  bool GraphHasDynamicBatch() const { return max_size_for_batch_ != -1; }
+
+  // Returns the maximum value for batch dimension the graph supports.
+  // -1 if the graph doesn't support dynamic batch.
+  int GetMaxBatchSize() const { return max_size_for_batch_; }
+
  private:
   // Helper method to fetch dimensions.
   // TODO(karimnosseir): Move this method to shared place.
@@ -261,6 +309,10 @@ class GraphBuilder {
     }
   }
 
+  // Adds a Cast op to convert a tensor from int8 to uint8 (or vice versa).
+  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id,
+                         OpBuilder::TensorID hexagon_input);
+
   const HexagonNN* hexagon_nn_ = nullptr;
   TfLiteContext* context_ = nullptr;
   int graph_id_ = -1;
@@ -268,6 +320,10 @@ class GraphBuilder {
   // Index in the vector is the tflite_tensor_index, the value
   // is the ID in the hexgon graph.
   std::vector<OpBuilder::TensorID> tensors_;
+
+  // If the graph being built supports dynamic batch, this represents
+  // the maximum value for batch.
+  int max_size_for_batch_ = -1;
 };
 
 }  // namespace hexagon

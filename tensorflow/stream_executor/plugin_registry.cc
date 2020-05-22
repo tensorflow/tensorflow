@@ -27,7 +27,7 @@ namespace stream_executor {
 const PluginId kNullPlugin = nullptr;
 
 // Returns the string representation of the specified PluginKind.
-string PluginKindString(PluginKind plugin_kind) {
+std::string PluginKindString(PluginKind plugin_kind) {
   switch (plugin_kind) {
     case PluginKind::kBlas:
       return "BLAS";
@@ -70,7 +70,7 @@ void PluginRegistry::MapPlatformKindToId(PlatformKind platform_kind,
 
 template <typename FACTORY_TYPE>
 port::Status PluginRegistry::RegisterFactoryInternal(
-    PluginId plugin_id, const string& plugin_name, FACTORY_TYPE factory,
+    PluginId plugin_id, const std::string& plugin_name, FACTORY_TYPE factory,
     std::map<PluginId, FACTORY_TYPE>* factories) {
   absl::MutexLock lock{&GetPluginRegistryMutex()};
 
@@ -110,7 +110,7 @@ bool PluginRegistry::SetDefaultFactory(Platform::Id platform_id,
   if (!HasFactory(platform_id, plugin_kind, plugin_id)) {
     port::StatusOr<Platform*> status =
         MultiPlatformManager::PlatformWithId(platform_id);
-    string platform_name = "<unregistered platform>";
+    std::string platform_name = "<unregistered platform>";
     if (status.ok()) {
       platform_name = status.ValueOrDie()->Name();
     }
@@ -194,7 +194,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   template <>                                                                 \
   port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, PluginId plugin_id, const string& name,       \
+      Platform::Id platform_id, PluginId plugin_id, const std::string& name,  \
       PluginRegistry::FACTORY_TYPE factory) {                                 \
     return RegisterFactoryInternal(plugin_id, name, factory,                  \
                                    &factories_[platform_id].FACTORY_VAR);     \
@@ -202,7 +202,8 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   template <>                                                                 \
   port::Status PluginRegistry::RegisterFactoryForAllPlatforms<                \
-      PluginRegistry::FACTORY_TYPE>(PluginId plugin_id, const string& name,   \
+      PluginRegistry::FACTORY_TYPE>(PluginId plugin_id,                       \
+                                    const std::string& name,                  \
                                     PluginRegistry::FACTORY_TYPE factory) {   \
     return RegisterFactoryInternal(plugin_id, name, factory,                  \
                                    &generic_factories_.FACTORY_VAR);          \

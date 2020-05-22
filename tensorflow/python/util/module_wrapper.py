@@ -236,4 +236,4 @@ class TFModuleWrapper(types.ModuleType):
     return self._tfmw_wrapped_module.__repr__()
 
   def __reduce__(self):
-    return __import__, (self.__name__,)
+    return importlib.import_module, (self.__name__,)

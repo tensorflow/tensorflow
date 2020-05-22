@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -130,6 +131,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   TF_RETURN_IF_ERROR(XLATypeToCpp(shape.element_type(), &type));
   std::vector<string> dim_vars;
   string dim_sizes, indices;
+  int count = 1;
   if (shape.rank() == 0 ||
       (shape.dimensions_size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
@@ -139,6 +141,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
       dim_vars.push_back(absl::StrCat("size_t dim", dim));
       dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
       indices += absl::StrCat("[dim", dim, "]");
+      count *= shape.dimensions(dim);
     }
   }
   rewrites->push_back({"{{I}}", absl::StrCat(i)});
@@ -146,6 +149,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   rewrites->push_back({"{{DIM_VARS}}", absl::StrJoin(dim_vars, ", ")});
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
+  rewrites->push_back({"{{COUNT}}", absl::StrCat(count)});
   return Status::OK();
 }
 
@@ -169,7 +173,9 @@ Status GenArgMethods(const tf2xla::Config& config,
                      const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
   size_t num_args = ps.parameters_size();
-  if (config.feed_size() + config.variable_size() != num_args) {
+  // feed_size() + variable_size() is the maximum number of args as an
+  // implementation may not create an argument for an unused variable.
+  if (config.feed_size() + config.variable_size() < num_args) {
     return errors::InvalidArgument(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
         config.variable_size(), ") and num_args(", num_args, ")");
@@ -195,6 +201,12 @@ Status GenArgMethods(const tf2xla::Config& config,
   const {{TYPE}}& arg{{NAME}}({{DIM_VARS}}) const {
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         arg_data({{I}}))){{INDICES}};
+  }
+  int arg{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int arg{{NAME}}_count() const {
+    return {{COUNT}};
   }
 )";
     *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
@@ -243,6 +255,12 @@ Status GenResultMethods(const tf2xla::Config& config,
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         result_data({{I}}))){{INDICES}};
   }
+  int result{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int result{{NAME}}_count() const {
+    return {{COUNT}};
+  }
 )";
     *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.fetch(i).name().empty()) {
@@ -278,6 +296,12 @@ Status GenVariableMethods(const tf2xla::Config& config,
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         arg_data({{I}}))){{INDICES}};
   }
+  int var_{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int var_{{NAME}}_count() const {
+    return {{COUNT}};
+  }
 )";
     const tf2xla::Variable& var = config.variable(i - config.feed_size());
     rewrites.emplace_back("{{MAYBE_CONST}}", var.readonly() ? "const " : "");
@@ -288,8 +312,8 @@ Status GenVariableMethods(const tf2xla::Config& config,
 }
 
 // Generates code implementing {Arg,Result}Names(), where T is one of
-// tf2xla::{Feed,Fetch}. Each feed or fetch name results in a C-style string
-// literal in the array, with nullptr terminating the array.
+// tf2xla::{Feed,Fetch,Variable}. Each feed or fetch name results in a C-style
+// string literal in the array, with nullptr terminating the array.
 template <typename T>
 string GenNameToIndexCode(const T& entries, bool generate) {
   // No need for a static array if we're not supposed to generate the data.
@@ -419,6 +443,16 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   // Generate metadata.
   const string arg_names_code =
       GenNameToIndexCode(config.feed(), opts.gen_name_to_index);
+
+  auto variable_copy = config.variable();
+  for (auto& var : variable_copy) {
+    if (var.name().empty()) {
+      var.set_name(var.node_name());
+    }
+  }
+  const string variable_names_code =
+      GenNameToIndexCode(variable_copy, opts.gen_name_to_index);
+
   const string result_names_code =
       GenNameToIndexCode(config.fetch(), opts.gen_name_to_index);
   const string include_xla_data_proto =
@@ -507,6 +541,9 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = {{ARG_NUM}};
 
+  // Number of variables for the compiled computation.
+  static constexpr size_t kNumVariables = {{VARIABLE_NUM}};
+
   // Byte size of each argument buffer. There are kNumArgs entries.
   static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
     return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
@@ -522,8 +559,10 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_num_buffers(data, kNumBuffers);
       set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
       set_static_data_num_args(data, kNumArgs);
+      set_static_data_num_variables(data, kNumVariables);
       set_static_data_result_index(data, kResultIndex);
       set_static_data_arg_names(data, StaticArgNames());
+      set_static_data_variable_names(data, StaticVariableNames());
       set_static_data_result_names(data, StaticResultNames());
       set_static_data_program_shape(data, StaticProgramShape());
       set_static_data_hlo_profile_printer_data(
@@ -626,6 +665,9 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {{ARG_NAMES_CODE}}
 
+  // Array of names of each positional variable, terminated by nullptr.
+  static const char** StaticVariableNames() {{VARIABLE_NAMES_CODE}}
+
   // Array of names of each positional result, terminated by nullptr.
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
@@ -654,6 +696,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{ARG_BYTES_TOTAL}}", absl::StrCat(arg_bytes_total)},
       {"{{ARG_NAMES_CODE}}", arg_names_code},
       {"{{ARG_NUM}}", absl::StrCat(arg_index_table.size())},
+      {"{{VARIABLE_NUM}}", absl::StrCat(config.variable_size())},
       {"{{ARG_INDEX_TABLE}}", absl::StrJoin(arg_index_table, ", ")},
       {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
       {"{{CLASS}}", opts.class_name},
@@ -673,6 +716,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(xla::ProgramShape(ps))},
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
        metadata_result.program_shape_access_shim},
+      {"{{VARIABLE_NAMES_CODE}}", variable_names_code},
       {"{{RESULT_INDEX}}", absl::StrCat(result_index)},
       {"{{RESULT_NAMES_CODE}}", result_names_code},
       {"{{TEMP_BYTES_ALIGNED}}", absl::StrCat(temp_bytes_aligned)},

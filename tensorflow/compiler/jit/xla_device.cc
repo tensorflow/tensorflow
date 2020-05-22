@@ -20,7 +20,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -43,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -81,7 +83,7 @@ class XlaDeviceAllocatorState {
   std::unordered_map<std::pair<const xla::Backend*, int>,
                      std::unique_ptr<XlaDeviceAllocator>,
                      hash<std::pair<const xla::Backend*, int>>>
-      allocators_ GUARDED_BY(allocator_mutex_);
+      allocators_ TF_GUARDED_BY(allocator_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
 };
@@ -386,14 +388,33 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   return Status::OK();
 }
 
+// Warn about XLA_CPU/XLA_GPU exactly once.
+static void ShowXlaDeviceDeprecationWarning(
+    absl::string_view compilation_device_name) {
+  static absl::once_flag once;
+  if (absl::StrContains(compilation_device_name, "CPU") ||
+      absl::StrContains(compilation_device_name, "GPU")) {
+    absl::call_once(once, [] {
+      LOG(WARNING)
+          << "XLA_GPU and XLA_CPU devices are deprecated and will be "
+             "removed in subsequent releases. Instead, use either "
+             "@tf.function(experimental_compile=True) for must-compile "
+             "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
+             "for auto-clustering best-effort compilation.";
+    });
+  }
+}
+
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   op_kernel->Compute(context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
   op_kernel->ComputeAsync(context, done);
@@ -467,15 +488,8 @@ Status XlaDevice::MakeTensorFromProto(XlaDeviceContext* device_context,
     mutex_lock lock(mu_);
     Allocator* allocator = GetAllocatorLocked(alloc_attrs);
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
-    Notification n;
-    device_context->CopyCPUTensorToDevice(
-        &parsed, this, &copy,
-        [&n, &status](const Status& s) {
-          status = s;
-          n.Notify();
-        },
-        true /*sync_dst_compute*/);
-    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(
+        device_context->CopyCPUTensorToDeviceSync(&parsed, this, &copy));
     *tensor = copy;
   }
   VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);

@@ -18,4 +18,5 @@ Pod::Spec.new do |s|
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'
   s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.framework'
+  s.weak_frameworks = 'CoreML'
 end

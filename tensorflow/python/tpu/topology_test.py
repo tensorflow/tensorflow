@@ -28,8 +28,8 @@ class TopologyTest(test.TestCase):
   def testSerialization(self):
     """Tests if the class is able to generate serialized strings."""
     original_topology = topology.Topology(
-        mesh_shape=[1, 1, 2],
-        device_coordinates=[[[0, 0, 0], [0, 0, 1]]],
+        mesh_shape=[1, 1, 1, 2],
+        device_coordinates=[[[0, 0, 0, 0], [0, 0, 0, 1]]],
     )
     serialized_str = original_topology.serialized()
     new_topology = topology.Topology(serialized=serialized_str)

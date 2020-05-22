@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1512,6 +1513,60 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     tape.gradient(z, z)
     self.assertEqual((z,), tape.watched_variables())
 
+  def testNameScope(self):
+    def fn(x):
+      with ops.name_scope('my_scope'):
+        a = math_ops.cos(x)
+        b = math_ops.cos(x)
+        return math_ops.add(a, b)
+
+    @function.defun
+    def grad_fn(x):
+      return backprop.gradients_function(fn)(x)
+
+    grad_ops = grad_fn.get_concrete_function(
+        constant_op.constant(1.0)).graph.get_operations()
+    num_sin_ops_found = 0
+    for op in grad_ops:
+      if op.type == 'Sin':
+        num_sin_ops_found += 1
+        self.assertIn('gradient_tape/my_scope/', op.name)
+    self.assertEqual(num_sin_ops_found, 2)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
+
+    @custom_gradient.recompute_grad
+    @def_function.function
+    def outer(x):
+
+      @def_function.function
+      def middle(y):
+
+        @def_function.function
+        def inner(z):
+          return z + 1
+
+        i = constant_op.constant(0.0)
+        c = lambda y, i: i < 10.
+        b = lambda y, i: (inner(y), i + 1.0)
+        y, i = control_flow_ops.while_loop(c, b, [y, i])
+
+        return y
+
+      return middle(x)
+
+    with MemoryChecker() as memory_checker:
+      for _ in range(5):
+        x = variables.Variable(1.0, name='x')
+        with backprop.GradientTape():
+          y = outer(x)
+          self.assertAllEqual(y, 11.0)
+
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
+
+
 class JacobianTest(test.TestCase):
 
   def _jacobian(self, experimental_use_pfor):
@@ -1571,27 +1626,6 @@ class JacobianTest(test.TestCase):
       y = x * x
     with self.assertRaisesRegexp(RuntimeError, 'persistent'):
       g.jacobian(y, x, experimental_use_pfor=False)
-
-  @test_util.run_v1_only('b/120545219')
-  def testPforException(self):
-    var = variables.Variable([1.])
-
-    @custom_gradient.custom_gradient
-    def op(x):
-      def grad(_):
-        # Note that we perform a stateful operation here that will not be
-        # compatible with parallel for construct.
-        with ops.control_dependencies(
-            [var.assign(random_ops.random_uniform([1]))]):
-          return constant_op.constant(1.)
-      return x, grad
-
-    with backprop.GradientTape() as g:
-      x = constant_op.constant([1., 2.])
-      g.watch(x)
-      y = op(x)
-    with self.assertRaisesRegexp(ValueError, 'No converter'):
-      g.jacobian(y, x, experimental_use_pfor=True)
 
   @test_util.run_v1_only('b/120545219')
   def test_parallel_iterations(self):
@@ -1701,26 +1735,6 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       y = random_ops.random_uniform([2])
     with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
       g.batch_jacobian(y, x)
-
-  def testPforException(self):
-    var = variables.Variable([1.])
-
-    @custom_gradient.custom_gradient
-    def op(x):
-      def grad(_):
-        # Note that we perform a stateful operation here that will not be
-        # compatible with parallel for construct.
-        with ops.control_dependencies(
-            [var.assign(random_ops.random_uniform([1]))]):
-          return constant_op.constant(1.)
-      return x, grad
-
-    with backprop.GradientTape() as g:
-      x = constant_op.constant([[1.], [2.]])
-      g.watch(x)
-      y = op(x)
-    with self.assertRaisesRegexp(ValueError, 'No converter'):
-      g.batch_jacobian(y, x, experimental_use_pfor=True)
 
   def test_parallel_iterations(self):
     with backprop.GradientTape(persistent=True) as g:

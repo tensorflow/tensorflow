@@ -29,7 +29,13 @@ limitations under the License.
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/subgraph.h"
+#endif
+
 namespace tflite {
+
+namespace impl {
 
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;
@@ -114,15 +120,17 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false) {
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr) {
     return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable);
+                                        dims.data(), quantization, is_variable,
+                                        rank_dims_signature, dims_signature);
   }
-  TfLiteStatus SetTensorParametersReadWrite(int tensor_index, TfLiteType type,
-                                            const char* name, const size_t rank,
-                                            const int* dims,
-                                            TfLiteQuantization quantization,
-                                            bool is_variable = false);
+  TfLiteStatus SetTensorParametersReadWrite(
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      const int* dims, TfLiteQuantization quantization,
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr);
 
   // WARNING: Experimental interface, subject to change
   // Overrides execution plan. This bounds checks indices sent in.
@@ -212,6 +220,15 @@ class Subgraph {
   //   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
 
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
@@ -341,6 +358,13 @@ class Subgraph {
     void EndEvent(uint32_t event_handle) override {
       if (!profiler_) return;
       profiler_->EndEvent(event_handle);
+    }
+
+    void AddEvent(const char* tag, EventType event_type,
+                  uint32_t event_metadata, uint64_t start,
+                  uint64_t end) override {
+      if (!profiler_) return;
+      profiler_->AddEvent(tag, event_type, event_metadata, start, end);
     }
 
    private:
@@ -507,6 +531,12 @@ class Subgraph {
   // be reallocated if the graph was modified (i.e., the caller does *not* need
   // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
   // they will remain unallocated after delegate application.
+  // Returns one of the following three status codes:
+  // 1. kTfLiteOk: Delegation succeeded
+  // 2. kTfLiteDelegateError: Delegation failed due to an error in the
+  // delegate. The Subgraph has been restored to its pre-delegation state.
+  // NOTE: This reverts all delegates previously applied to the Subgraph.
+  // 3. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains
@@ -517,6 +547,11 @@ class Subgraph {
   // This re-applies all delegates that were undone.
   // Does nothing if UndoAllDelegates wasn't previously called.
   TfLiteStatus RedoAllDelegates();
+
+  // This removes all delegates.
+  // The old execution plan and nodes are restored. The graph is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
 
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
@@ -529,7 +564,13 @@ class Subgraph {
   void EnsureTensorsVectorCapacity() {
     const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
-      tensors_.reserve(required_capacity);
+      // Whenever it's required to increase the vector capacity, make it at
+      // least twice bigger. The behavior is consistent with the default
+      // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
+      // allocating and copying the underlying buffer.
+      size_t reserved_capacity =
+          std::max(required_capacity, tensors_.capacity() * 2);
+      tensors_.reserve(reserved_capacity);
       context_.tensors = tensors_.data();
     }
   }
@@ -665,6 +706,14 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Subgraph = tflrt::Subgraph;
+#else
+using Subgraph = impl::Subgraph;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

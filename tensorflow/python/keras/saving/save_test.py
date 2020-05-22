@@ -21,21 +21,22 @@ from __future__ import print_function
 import os
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.eager import context
-from tensorflow.python.feature_column import feature_column_lib
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.saving import model_config
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import save
-from tensorflow.python.ops import lookup_ops
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
-if sys.version_info >= (3, 4):
+if sys.version_info >= (3, 6):
   import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -43,7 +44,7 @@ except ImportError:
   h5py = None
 
 
-class TestSaveModel(test.TestCase):
+class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(TestSaveModel, self).setUp()
@@ -94,103 +95,84 @@ class TestSaveModel(test.TestCase):
 
   @test_util.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info >= (3, 4):
+    if sys.version_info >= (3, 6):
       path = pathlib.Path(self.get_temp_dir()) / 'model'
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_saving_with_dense_features(self):
-    cols = [
-        feature_column_lib.numeric_column('a'),
-        feature_column_lib.indicator_column(
-            feature_column_lib.categorical_column_with_vocabulary_list(
-                'b', ['one', 'two']))
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_saving_h5_for_rnn_layers(self):
+    # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
+    inputs = keras.Input([10, 91], name='train_input')
+    rnn_layers = [
+        keras.layers.LSTMCell(size, recurrent_dropout=0, name='rnn_cell%d' % i)
+        for i, size in enumerate([512, 512])
     ]
-    input_layers = {
-        'a': keras.layers.Input(shape=(1,), name='a'),
-        'b': keras.layers.Input(shape=(1,), name='b', dtype='string')
-    }
+    rnn_output = keras.layers.RNN(
+        rnn_layers, return_sequences=True, name='rnn_layer')(inputs)
+    pred_feat = keras.layers.Dense(91, name='prediction_features')(rnn_output)
+    pred = keras.layers.Softmax()(pred_feat)
+    model = keras.Model(inputs=[inputs], outputs=[pred, pred_feat])
+    path = os.path.join(self.get_temp_dir(), 'model_path.h5')
+    model.save(path)
 
-    fc_layer = feature_column_lib.DenseFeatures(cols)(input_layers)
-    output = keras.layers.Dense(10)(fc_layer)
+    # Make sure the variable name is unique.
+    self.assertNotEqual(rnn_layers[0].kernel.name,
+                        rnn_layers[1].kernel.name)
+    self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
 
-    model = keras.models.Model(input_layers, output)
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_saving_optimizer_weights(self):
 
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer='rmsprop',
-        metrics=[keras.metrics.categorical_accuracy])
+    class MyModel(keras.Model):
 
-    config = model.to_json()
-    loaded_model = model_config.model_from_json(config)
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = keras.layers.Dense(1)
 
-    inputs_a = np.arange(10).reshape(10, 1)
-    inputs_b = np.arange(10).reshape(10, 1).astype('str')
+      def call(self, x):
+        return self.layer(x)
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
+    path = os.path.join(self.get_temp_dir(), 'weights_path')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
 
-    self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
+    model = MyModel()
+    model.compile('rmsprop', loss='bce')
+    model.train_on_batch(x, y)
+    model.reset_metrics()
+    model.save_weights(path, save_format='tf')
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_saving_with_sequence_features(self):
-    cols = [
-        feature_column_lib.sequence_numeric_column('a'),
-        feature_column_lib.indicator_column(
-            feature_column_lib.sequence_categorical_column_with_vocabulary_list(
-                'b', ['one', 'two']))
-    ]
-    input_layers = {
-        'a':
-            keras.layers.Input(shape=(None, 1), sparse=True, name='a'),
-        'b':
-            keras.layers.Input(
-                shape=(None, 1), sparse=True, name='b', dtype='string')
-    }
+    batch_loss = model.train_on_batch(x, y)
 
-    fc_layer, _ = feature_column_lib.SequenceFeatures(cols)(input_layers)
-    # TODO(tibell): Figure out the right dtype and apply masking.
-    # sequence_length_mask = array_ops.sequence_mask(sequence_length)
-    # x = keras.layers.GRU(32)(fc_layer, mask=sequence_length_mask)
-    x = keras.layers.GRU(32)(fc_layer)
-    output = keras.layers.Dense(10)(x)
+    new_model = MyModel()
+    new_model.compile('rmsprop', loss='bce')
+    new_model.train_on_batch(x, y)
+    new_model.reset_metrics()
 
-    model = keras.models.Model(input_layers, output)
+    new_model.load_weights(path)
+    new_batch_loss = new_model.train_on_batch(x, y)
 
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer='rmsprop',
-        metrics=[keras.metrics.categorical_accuracy])
+    self.assertAllClose(batch_loss, new_batch_loss)
 
-    config = model.to_json()
-    loaded_model = model_config.model_from_json(config)
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_saving_model_with_custom_object(self):
+    with generic_utils.custom_object_scope():
 
-    batch_size = 10
-    timesteps = 1
+      @generic_utils.register_keras_serializable()
+      class CustomLoss(losses.MeanSquaredError):
+        pass
 
-    values_a = np.arange(10, dtype=np.float32)
-    indices_a = np.zeros((10, 3), dtype=np.int64)
-    indices_a[:, 0] = np.arange(10)
-    inputs_a = sparse_tensor.SparseTensor(indices_a, values_a,
-                                          (batch_size, timesteps, 1))
+      model = sequential.Sequential(
+          [core.Dense(units=1, input_shape=(1,))])
+      model.compile(optimizer='sgd', loss=CustomLoss())
+      model.fit(np.zeros([10, 1]), np.zeros([10, 1]))
 
-    values_b = np.zeros(10, dtype=np.str)
-    indices_b = np.zeros((10, 3), dtype=np.int64)
-    indices_b[:, 0] = np.arange(10)
-    inputs_b = sparse_tensor.SparseTensor(indices_b, values_b,
-                                          (batch_size, timesteps, 1))
+      temp_dir = self.get_temp_dir()
+      filepath = os.path.join(temp_dir, 'saving')
+      model.save(filepath)
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
-
-    self.assertLen(
-        loaded_model.predict({
-            'a': inputs_a,
-            'b': inputs_b
-        }, steps=1), batch_size)
+      # Make sure the model can be correctly load back.
+      _ = save.load_model(filepath, compile=True)
 
 
 if __name__ == '__main__':

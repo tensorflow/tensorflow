@@ -112,10 +112,10 @@ class Stack : public ResourceBase {
   const string stack_name_;
   Tensor handle_;
   int max_size_;
-  bool closed_ GUARDED_BY(mu_);
-  std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
+  std::vector<TensorAndAllocation> stack_ TF_GUARDED_BY(mu_);
 
-  Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status CheckNotClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] has already been closed.");

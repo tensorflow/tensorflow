@@ -332,7 +332,7 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
                         const Variant& a, const Variant& b, Variant* out) {
   if (a.TypeId() != b.TypeId()) {
     return errors::Internal(
-        "BianryOpVariants: Variants a and b have different "
+        "BinaryOpVariants: Variants a and b have different "
         "type ids.  Type names: '",
         a.TypeName(), "' vs. '", b.TypeName(), "'");
   }

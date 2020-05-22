@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "tf_cc_
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
     default_visibility = [":internal"],
@@ -12,6 +13,10 @@ package_group(
     name = "internal",
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
+    ],
+    packages = [
+        "//tensorflow/compiler/tests/...",
+        "//tensorflow/python/...",
     ],
 )
 
@@ -56,6 +61,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -69,6 +75,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_or_rocm([
         ":jit_compilation_passes",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -111,8 +118,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -156,7 +163,9 @@ XLA_DEVICE_DEPS = [
     ":common",
     ":xla_launch_util",
     ":xla_tensor",
+    "@com_google_absl//absl/base",
     "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/strings",
     "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:optional",
     "//tensorflow/compiler/jit/ops:xla_ops",
@@ -175,6 +184,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:dataset_ops_op_lib",
     "//tensorflow/core:framework",
+    "//tensorflow/core:framework_internal",
     "//tensorflow/core:functional_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -241,7 +251,7 @@ cc_library(
     visibility = [":friends"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:graph",
@@ -249,11 +259,24 @@ cc_library(
     }),
 )
 
-# Internal targets below this point.
-
 cc_library(
     name = "flags",
     srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:parse_flags_from_env",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Header-only version of "flags" library, for linking from the shared object
+# without ODR violations.
+cc_library(
+    name = "flags_headers_only",
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
@@ -274,6 +297,8 @@ cc_library(
     ],
     visibility = [":friends"],
 )
+
+# Internal targets below this point.
 
 cc_library(
     name = "xla_launch_util",
@@ -313,6 +338,7 @@ cc_library(
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -396,6 +422,8 @@ cc_library(
         "xla_kernel_creator.h",
     ],
     deps = [
+        ":compilability_check_util",
+        ":flags",
         ":jit_compilation_passes",
         ":xla_kernel_creator_util",
         "//tensorflow/core:core_cpu_internal",
@@ -477,6 +505,7 @@ cc_library(
     name = "shape_inference",
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
+    visibility = [":friends"],
     deps = [
         ":shape_inference_helpers",
         "//tensorflow/compiler/xla:statusor",
@@ -564,6 +593,7 @@ cc_library(
         "encapsulate_subgraphs_pass.cc",
         "encapsulate_xla_computations_pass.cc",
         "extract_outside_compilation_pass.cc",
+        "force_xla_constants_on_host_pass.cc",
         "increase_dynamism_for_auto_jit_pass.cc",
         "introduce_floating_point_jitter_pass.cc",
         "mark_for_compilation_pass.cc",
@@ -579,6 +609,7 @@ cc_library(
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
         "extract_outside_compilation_pass.h",
+        "force_xla_constants_on_host_pass.h",
         "increase_dynamism_for_auto_jit_pass.h",
         "introduce_floating_point_jitter_pass.h",
         "mark_for_compilation_pass.h",
@@ -624,6 +655,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -746,6 +778,7 @@ tf_cc_test(
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
+        "force_xla_constants_on_host_pass_test.cc",
         "increase_dynamism_for_auto_jit_pass_test.cc",
         "introduce_floating_point_jitter_pass_internal.h",
         "introduce_floating_point_jitter_pass_test.cc",
@@ -755,9 +788,10 @@ tf_cc_test(
     ],
     # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
     # error.
-    tags = ["nomsan"],
+    tags = ["nomsan"] + tf_cuda_tests_tags(),
     deps = [
         ":common",
+        ":compilability_check_util",
         ":compilation_passes",
         ":compilation_passes_test_main",
         ":encapsulate_util",

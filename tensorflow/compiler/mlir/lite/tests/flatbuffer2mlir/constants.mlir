@@ -28,6 +28,13 @@ func @f32() -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+func @f64() -> tensor<4xf64> {
+  // CHECK-LABEL: @f64
+  // CHECK: value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf64>
+  %0 = "tfl.pseudo_const"() { value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf64> } : () -> tensor<4xf64>
+  return %0 : tensor<4xf64>
+}
+
 func @i8() -> tensor<4xi8> {
   // CHECK-LABEL: @i8
   // CHECK: value = dense<[1, 2, 3, 4]> : tensor<4xi8>
@@ -61,11 +68,11 @@ func @i64() -> tensor<4xi64> {
 // the same sort of opaque round-trip we get for complex64, but it might be good
 // to check
 
-func @uint8() -> tensor<4x!tf.uint8> {
+func @uint8() -> tensor<4xui8> {
   // CHECK-LABEL: @uint8
-  // CHECK: value = opaque<"tf", "0x746674656E736F722464747970653A2044545F55494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2034207D207D2074656E736F725F636F6E74656E743A20225C3333365C3235355C3237365C33353722"> : tensor<4x!tf.uint8>
-  %0 = "tfl.pseudo_const"() { value = opaque<"tf", "0x746674656E736F722464747970653A2044545F55494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2034207D207D2074656E736F725F636F6E74656E743A20225C3333365C3235355C3237365C33353722"> : tensor<4x!tf.uint8> } : () -> tensor<4x!tf.uint8>
-  return %0 : tensor<4x!tf.uint8>
+  // CHECK: value = dense<[222, 173, 190, 239]> : tensor<4xui8>
+  %0 = "tfl.pseudo_const"() {value = dense<[222, 173, 190, 239]> : tensor<4xui8>} : () -> tensor<4xui8>
+  return %0 : tensor<4xui8>
 }
 
 func @qi32_per_axis() -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>> {

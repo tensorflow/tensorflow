@@ -213,6 +213,12 @@ class XlaCompiler {
 
     // True when we should add XLA input & output to the graph/function.
     bool add_token_input_output = false;
+
+    // Resource updates are converted into input / output of xla. The two
+    // buffers are aliased with other if this option is true.
+    //
+    // Currently only supports TPU.
+    bool alias_resource_update = false;
   };
 
   struct OutputDescription {
@@ -367,16 +373,7 @@ class XlaCompiler {
   Status CompileGraph(
       const CompileOptions& options, string const& name,
       std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
-      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
       CompilationResult* result);
-
-  // Compiles a single Op, given by `node_def`, into an
-  // xla::XlaComputation. Similar to CompileFunction but takes a single Op as
-  // input.
-  Status CompileSingleOp(const CompileOptions& options, const NodeDef& node_def,
-                         absl::Span<const Argument> args,
-                         absl::Span<const DataType> result_types,
-                         CompilationResult* result);
 
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
@@ -520,6 +517,22 @@ class XlaCompiler {
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };
+
+// Creates an identity shape representation function.
+XlaCompiler::ShapeRepresentationFn IdentityShapeRepresentationFn();
+
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape);
+
+// Adds reshapes to fix the layout of an output, if a shape_representation_fn or
+// sharding is present.
+xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem);
 
 }  // namespace tensorflow
 

@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -155,7 +156,7 @@ Status TransposeShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
 
   // If we know the rank of the input and the value of perm, we can return
-  // all shape informantion, otherwise we can only return rank information,
+  // all shape information, otherwise we can only return rank information,
   // but no information for the dimensions.
   if (perm != nullptr) {
     std::vector<int64> data;
@@ -193,8 +194,7 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
     c->set_output(0, out);
     return Status::OK();
   }
-
-  if (c->RankKnown(out) && c->RankKnown(in)) {
+  if (c->RankKnown(in)) {
     // We don't know the number of output elements, but we can try to infer
     // the missing dimension.
     bool too_many_unknown = false;
@@ -402,7 +402,7 @@ REGISTER_OP("Empty")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("init: bool = false")
-    .SetIsStateful()
+    .SetDoNotOptimize()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
@@ -744,7 +744,7 @@ REGISTER_OP("GuaranteeConst")
       return UnchangedShape(c);
     })
     // We don't want this to be optimized away.
-    .SetIsStateful();
+    .SetDoNotOptimize();
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
@@ -2164,8 +2164,10 @@ namespace {
 template <typename InputType>
 std::vector<int64> GetFlatInt64(const Tensor& t) {
   std::vector<int64> output(t.shape().num_elements());
-  auto eigen_vec = t.flat<InputType>();
-  std::copy_n(&eigen_vec(0), output.size(), output.begin());
+  if (t.shape().num_elements() > 0) {
+    auto eigen_vec = t.flat<InputType>();
+    std::copy_n(&eigen_vec(0), output.size(), output.begin());
+  }
   return output;
 }
 
@@ -2202,7 +2204,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
 
   DimensionHandle batch_size = c->Dim(input_shape, 0);
   std::vector<int64> block_shape_vec;
-  if (block_shape_t) {
+  if (block_shape_t && (block_shape_t->NumElements() > 0)) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
     for (int64 dim = 0; dim < num_block_dims; ++dim) {
       const int64 block_shape_value = block_shape_vec[dim];
@@ -2223,7 +2225,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   std::vector<DimensionHandle> output_dims{batch_size};
   output_dims.resize(num_block_dims + 1, c->UnknownDim());
 
-  if (paddings_t) {
+  if (paddings_t && (paddings_t->NumElements() > 0)) {
     const std::vector<int64> paddings_vec = GetFlatInt64(*paddings_t);
     for (int64 dim = 0; dim < num_block_dims; ++dim) {
       const int64 pad_start = paddings_vec[dim * 2],

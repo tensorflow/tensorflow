@@ -54,21 +54,47 @@ class VersionedTFImport(ast_edits.AnalysisResult):
                         "` was directly imported as `tf`.")
 
 
+compat_v1_import = VersionedTFImport("compat.v1")
+compat_v2_import = VersionedTFImport("compat.v2")
+
+
 class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
 
   def __init__(self):
     self.symbols_to_detect = {}
     self.imports_to_detect = {
         ("tensorflow", None): UnaliasedTFImport(),
-        ("tensorflow.compat.v1", "tf"): VersionedTFImport("compat.v1"),
-        ("tensorflow.compat.v2", "tf"): VersionedTFImport("compat.v2"),
+        ("tensorflow.compat.v1", "tf"): compat_v1_import,
+        ("tensorflow.compat.v2", "tf"): compat_v2_import,
     }
+
+
+class CompatV1ImportReplacer(ast.NodeVisitor):
+  """AST Visitor that replaces `import tensorflow.compat.v1 as tf`.
+
+  Converts `import tensorflow.compat.v1 as tf` to `import tensorflow as tf`
+  """
+
+  def visit_Import(self, node):  # pylint: disable=invalid-name
+    """Handle visiting an import node in the AST.
+
+    Args:
+      node: Current Node
+    """
+    for import_alias in node.names:
+      # Detect based on full import name and alias
+      if (import_alias.name == "tensorflow.compat.v1" and
+          import_alias.asname == "tf"):
+        import_alias.name = "tensorflow"
+    self.generic_visit(node)
 
 
 class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
-  def __init__(self, import_rename=False):
+  def __init__(self, import_rename=False, upgrade_compat_v1_import=False):
+    self.upgrade_compat_v1_import = upgrade_compat_v1_import
+
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     # If the new argument is None, it will be removed.
@@ -829,7 +855,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "custom training loop, note the following changes in methods: "
         "make_dataset_iterator->experimental_distribute_dataset, "
         "experimental_make_numpy_iterator->experimental_make_numpy_dataset, "
-        "extended.call_for_each_replica->experimental_run_v2, "
+        "extended.call_for_each_replica->run, "
         "reduce requires an axis argument, "
         "unwrap->experimental_local_results "
         "experimental_initialize and experimental_finalize no longer needed ")
@@ -1612,10 +1638,21 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
 
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
 
-  def preprocess(self, root_node):
+  def preprocess(self, root_node, after_compat_v1_upgrade=False):
     visitor = ast_edits.PastaAnalyzeVisitor(TFAPIImportAnalysisSpec())
     visitor.visit(root_node)
     detections = set(visitor.results)
+
+    # Upgrade explicit compat v1 imports if `upgrade_compat_v1_import` is
+    # enabled. Then preprocess the updated root node.
+    # We only do this upgrading once, because some forms of the import may
+    # still cause errors but aren't trivially upgradeable, and we don't want
+    # to enter an infinite loop. E.g. `from tensorflow.compat import v1, v2`.
+    if (compat_v1_import in detections and self.upgrade_compat_v1_import and
+        not after_compat_v1_upgrade):
+      CompatV1ImportReplacer().visit(root_node)
+      return self.preprocess(root_node, after_compat_v1_upgrade=True)
+
     # If we have detected the presence of imports of specific TF versions,
     # We want to modify the update spec to check only module deprecations
     # and skip all other conversions.
@@ -1629,7 +1666,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
       self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
       self.function_transformers = {}
       self.import_renames = {}
-    return visitor.log, visitor.warnings_and_errors
+    return root_node, visitor.log, visitor.warnings_and_errors
 
   def clear_preprocessing(self):
     self.__init__()

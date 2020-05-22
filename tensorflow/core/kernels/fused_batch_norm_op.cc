@@ -81,7 +81,7 @@ Status ParseActivationMode(OpKernelConstruction* context,
 }
 
 // Functor used by FusedBatchNormOp to do the computations.
-template <typename Device, typename T, typename U>
+template <typename Device, typename T, typename U, bool is_training>
 struct FusedBatchNorm;
 // Functor used by FusedBatchNormGradOp to do the computations when
 // is_training=True.
@@ -89,17 +89,155 @@ template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
 template <typename T, typename U>
-struct FusedBatchNorm<CPUDevice, T, U> {
+struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
+  void operator()(OpKernelContext* context, const Tensor& x_input,
+                  const Tensor& scale_input, const Tensor& offset_input,
+                  const Tensor& running_mean_input,
+                  const Tensor& running_variance_input,
+                  const Tensor* side_input, U epsilon, U exponential_avg_factor,
+                  FusedBatchNormActivationMode activation_mode,
+                  Tensor* y_output, Tensor* running_mean_output,
+                  Tensor* running_var_output, Tensor* saved_batch_mean_output,
+                  Tensor* saved_batch_var_output, TensorFormat tensor_format,
+                  bool use_reserved_space) {
+    OP_REQUIRES(context, side_input == nullptr,
+                errors::Internal(
+                    "The CPU implementation of FusedBatchNorm does not support "
+                    "side input."));
+    OP_REQUIRES(context,
+                activation_mode == FusedBatchNormActivationMode::kIdentity,
+                errors::Internal("The CPU implementation of FusedBatchNorm "
+                                 "does not support activations."));
+
+    if (use_reserved_space) {
+      Tensor* dummy_reserve_space = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(5, {}, &dummy_reserve_space));
+      // Initialize the memory, to avoid sanitizer alerts.
+      dummy_reserve_space->flat<U>()(0) = U();
+    }
+    Tensor transformed_x;
+    Tensor transformed_y;
+    if (tensor_format == FORMAT_NCHW) {
+      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y));
+      // Perform NCHW to NHWC
+      std::vector<int32> perm = {0, 2, 3, 1};
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             x_input, perm, &transformed_x));
+    } else {
+      transformed_x = x_input;
+      transformed_y = *y_output;
+    }
+    typename TTypes<T, 4>::Tensor x(transformed_x.tensor<T, 4>());
+    typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
+    typename TTypes<U>::ConstVec offset(offset_input.vec<U>());
+    typename TTypes<U>::ConstVec old_mean(running_mean_input.vec<U>());
+    typename TTypes<U>::ConstVec old_variance(running_variance_input.vec<U>());
+    typename TTypes<T, 4>::Tensor y(transformed_y.tensor<T, 4>());
+    typename TTypes<U>::Vec new_mean(running_mean_output->vec<U>());
+    typename TTypes<U>::Vec new_variance(running_var_output->vec<U>());
+    typename TTypes<U>::Vec saved_batch_mean(saved_batch_mean_output->vec<U>());
+    typename TTypes<U>::Vec saved_batch_var(saved_batch_var_output->vec<U>());
+
+    const CPUDevice& d = context->eigen_device<CPUDevice>();
+
+    const int depth = x.dimension(3);
+    const int size = x.size();
+    const int rest_size = size / depth;
+    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
+
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
+    Eigen::array<int, 1> reduce_dims({0});
+    Eigen::array<int, 2> bcast_spec({rest_size, 1});
+#else
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::type2index<0>> reduce_dims;
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
+    bcast_spec.set(0, rest_size);
+#endif
+
+    auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
+    const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
+    U rest_size_inv = static_cast<U>(1.0f / static_cast<U>(rest_size));
+    // This adjustment is for Bessel's correction
+    U rest_size_adjust =
+        static_cast<U>(rest_size) / static_cast<U>(rest_size_minus_one);
+
+    Eigen::Tensor<U, 1, Eigen::RowMajor> batch_mean(depth);
+    Eigen::Tensor<U, 1, Eigen::RowMajor> batch_variance(depth);
+
+    batch_mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
+    auto x_centered = x_rest_by_depth -
+                      batch_mean.reshape(one_by_depth).broadcast(bcast_spec);
+
+    batch_variance.device(d) =
+        x_centered.square().sum(reduce_dims) * rest_size_inv;
+    auto scaling_factor = ((batch_variance + epsilon).rsqrt() * scale)
+                              .eval()
+                              .reshape(one_by_depth)
+                              .broadcast(bcast_spec);
+    auto x_scaled = x_centered * scaling_factor;
+    auto x_shifted =
+        (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
+            .template cast<T>();
+
+    y.reshape(rest_by_depth).device(d) = x_shifted;
+    if (exponential_avg_factor == U(1.0)) {
+      saved_batch_var.device(d) = batch_variance;
+      saved_batch_mean.device(d) = batch_mean;
+      new_variance.device(d) = batch_variance * rest_size_adjust;
+      new_mean.device(d) = batch_mean;
+    } else {
+      U one_minus_factor = U(1) - exponential_avg_factor;
+      saved_batch_var.device(d) = batch_variance;
+      saved_batch_mean.device(d) = batch_mean;
+      new_variance.device(d) =
+          one_minus_factor * old_variance +
+          (exponential_avg_factor * rest_size_adjust) * batch_variance;
+      new_mean.device(d) =
+          one_minus_factor * old_mean + exponential_avg_factor * batch_mean;
+    }
+
+    if (tensor_format == FORMAT_NCHW) {
+      // Perform NHWC to NCHW
+      const std::vector<int32> perm = {0, 3, 1, 2};
+      const Status s = ::tensorflow::DoTranspose(
+          context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
+      if (!s.ok()) {
+        context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));
+      }
+    }
+  }
+};
+
+template <typename T, typename U>
+struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
   void operator()(OpKernelContext* context, const Tensor& x_input,
                   const Tensor& scale_input, const Tensor& offset_input,
                   const Tensor& estimated_mean_input,
                   const Tensor& estimated_variance_input,
-                  const Tensor* side_input, U epsilon,
+                  const Tensor* side_input, U epsilon, U exponential_avg_factor,
                   FusedBatchNormActivationMode activation_mode,
                   Tensor* y_output, Tensor* batch_mean_output,
                   Tensor* batch_var_output, Tensor* saved_mean_output,
                   Tensor* saved_var_output, TensorFormat tensor_format,
-                  bool use_reserved_space, bool is_training) {
+                  bool use_reserved_space) {
     OP_REQUIRES(context, side_input == nullptr,
                 errors::Internal(
                     "The CPU implementation of FusedBatchNorm does not support "
@@ -150,9 +288,7 @@ struct FusedBatchNorm<CPUDevice, T, U> {
         estimated_variance_input.vec<U>());
     typename TTypes<T, 4>::Tensor y(transformed_y.tensor<T, 4>());
     typename TTypes<U>::Vec batch_mean(batch_mean_output->vec<U>());
-    typename TTypes<U>::Vec batch_var(batch_var_output->vec<U>());
-    typename TTypes<U>::Vec saved_mean(saved_mean_output->vec<U>());
-    typename TTypes<U>::Vec saved_var(saved_var_output->vec<U>());
+    typename TTypes<U>::Vec batch_variance(batch_var_output->vec<U>());
 
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
@@ -168,79 +304,36 @@ struct FusedBatchNorm<CPUDevice, T, U> {
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
-    Eigen::IndexList<Eigen::type2index<0>> reduce_dims;
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
     bcast_spec.set(0, rest_size);
 #endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
-    const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
-    U rest_size_inv = static_cast<U>(1.0f / static_cast<U>(rest_size));
-    // This adjustment is for Bessel's correction
-    U rest_size_adjust =
-        static_cast<U>(rest_size) / static_cast<U>(rest_size_minus_one);
+    auto x_centered =
+        x_rest_by_depth -
+        estimated_mean.reshape(one_by_depth).broadcast(bcast_spec);
+    auto scaling_factor = ((estimated_variance + epsilon).rsqrt() * scale)
+                              .eval()
+                              .reshape(one_by_depth)
+                              .broadcast(bcast_spec);
+    auto x_scaled = x_centered * scaling_factor;
+    auto x_shifted =
+        (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
+            .template cast<T>();
 
-    Eigen::Tensor<U, 1, Eigen::RowMajor> mean(depth);
-    Eigen::Tensor<U, 1, Eigen::RowMajor> variance(depth);
-    BlockingCounter barrier(1);
-    std::atomic<uint8> task_counter;
-    auto on_done = [&]() {
-      uint8 count = --task_counter;
-      if (count == 0) {
-        if (tensor_format == FORMAT_NCHW) {
-          // Perform NHWC to NCHW
-          const std::vector<int32> perm = {0, 3, 1, 2};
-          const Status s =
-              ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
-                                        transformed_y, perm, y_output);
-          if (!s.ok()) {
-            context->SetStatus(
-                errors::InvalidArgument("Transpose failed: ", s));
-          }
-        }
-        barrier.DecrementCount();
+    y.reshape(rest_by_depth).device(d) = x_shifted;
+    batch_mean.device(d) = estimated_mean;
+    batch_variance.device(d) = estimated_variance;
+
+    if (tensor_format == FORMAT_NCHW) {
+      // Perform NHWC to NCHW
+      const std::vector<int32> perm = {0, 3, 1, 2};
+      const Status s = ::tensorflow::DoTranspose(
+          context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
+      if (!s.ok()) {
+        context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));
       }
-    };
-    if (is_training) {
-      mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
-      auto x_centered =
-          x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
-
-      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
-      auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
-                                .eval()
-                                .reshape(one_by_depth)
-                                .broadcast(bcast_spec);
-      auto x_scaled = x_centered * scaling_factor;
-      auto x_shifted =
-          (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
-              .template cast<T>();
-
-      task_counter = 5;
-      y.reshape(rest_by_depth).device(d, on_done) = x_shifted;
-      batch_var.device(d, on_done) = variance * rest_size_adjust;
-      saved_var.device(d, on_done) = variance;
-      batch_mean.device(d, on_done) = mean;
-      saved_mean.device(d, on_done) = mean;
-    } else {  // is_training == false
-      auto x_centered =
-          x_rest_by_depth -
-          estimated_mean.reshape(one_by_depth).broadcast(bcast_spec);
-      auto scaling_factor = ((estimated_variance + epsilon).rsqrt() * scale)
-                                .eval()
-                                .reshape(one_by_depth)
-                                .broadcast(bcast_spec);
-      auto x_scaled = x_centered * scaling_factor;
-      auto x_shifted =
-          (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
-              .template cast<T>();
-
-      task_counter = 3;
-      y.reshape(rest_by_depth).device(d, on_done) = x_shifted;
-      mean.device(d, on_done) = estimated_mean;
-      variance.device(d, on_done) = estimated_variance;
     }
-    barrier.Wait();
   }
 };
 
@@ -514,9 +607,10 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
   }
 };
 
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#if !GOOGLE_CUDA
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
+// This is a CUDA specific feature, do not enable it for non-CUDA builds
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
@@ -535,6 +629,7 @@ se::dnn::ActivationMode AsDnnActivationMode(
   }
 }
 
+#if GOOGLE_CUDA
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
 // `cuda_dnn.cc` for details.
 bool BatchnormSpatialPersistentEnabled() {
@@ -551,6 +646,8 @@ bool BatchnormSpatialPersistentEnabled() {
   return false;
 #endif
 }
+#endif
+
 }  // namespace
 
 template <typename U, typename T>
@@ -657,17 +754,17 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   bool output_allocated = false;
 };
 
-template <typename T, typename U>
-struct FusedBatchNorm<GPUDevice, T, U> {
+template <typename T, typename U, bool is_training>
+struct FusedBatchNorm<GPUDevice, T, U, is_training> {
   void operator()(OpKernelContext* context, const Tensor& x,
                   const Tensor& scale, const Tensor& offset,
                   const Tensor& estimated_mean,
                   const Tensor& estimated_variance, const Tensor* side_input,
-                  U epsilon, FusedBatchNormActivationMode activation_mode,
-                  Tensor* y, Tensor* batch_mean, Tensor* batch_var,
-                  Tensor* saved_mean, Tensor* saved_inv_var,
-                  TensorFormat tensor_format, bool use_reserved_space,
-                  bool is_training) {
+                  U epsilon, U exponential_avg_factor,
+                  FusedBatchNormActivationMode activation_mode, Tensor* y,
+                  Tensor* batch_mean, Tensor* batch_var, Tensor* saved_mean,
+                  Tensor* saved_inv_var, TensorFormat tensor_format,
+                  bool use_reserved_space) {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
@@ -679,6 +776,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     // If use_reserved_space we have reserve_space_3 output (only in
     // FusedBatchNormV3 op).
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
     //   (2) Tensorflow enabled batchnorm spatial persistence, we are called
@@ -688,6 +786,10 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
          DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -817,33 +919,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     auto saved_inv_var_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*saved_inv_var);
 
-    GPUDevice d = context->eigen_device<GPUDevice>();
-    using se::DeviceMemory;
-    Tensor inv_var;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<U>::value,
-                                        estimated_variance.shape(), &inv_var));
-    auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(inv_var);
-    std::function<const DeviceMemory<U>&()> var_to_inv_var =
-        [d, epsilon, estimated_variance,
-         &inv_var_ptr]() -> const DeviceMemory<U>& {
-      auto estimated_variance_ptr =
-          StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
-      const U* variance =
-          static_cast<const U*>(estimated_variance_ptr.opaque());
-      U* inv_variance = static_cast<U*>(inv_var_ptr.opaque());
-      int channels = inv_var_ptr.ElementCount();
-      VarianceToInvVariance<U>()(d, variance, epsilon, channels, inv_variance);
-      return inv_var_ptr;
-    };
-    const int64 sample_size = batch_size * height * width;
-    std::function<void()> inv_var_to_var = [d, &batch_var_ptr, epsilon,
-                                            sample_size]() {
-      U* variance = static_cast<U*>(batch_var_ptr.opaque());
-      int channels = batch_var_ptr.ElementCount();
-      InvVarianceToVariance<U>()(d, epsilon, sample_size, channels, variance);
-    };
-
     std::unique_ptr<functor::CudnnBatchNormAllocatorInOutput<U>>
         reserve_space_allocator;
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
@@ -854,16 +929,38 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       workspace_allocator.reset(
           new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
     }
+    if (!batch_mean->SharesBufferWith(estimated_mean) &&
+        exponential_avg_factor != 1.0f) {
+      OP_REQUIRES(
+          context,
+          stream
+              ->ThenMemcpyD2D(&batch_mean_ptr, estimated_mean_ptr,
+                              estimated_mean.NumElements() * sizeof(U))
+              .ok(),
+          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
+                           "from device"));
+    }
+    if (!batch_var->SharesBufferWith(estimated_variance) &&
+        exponential_avg_factor != 1.0f) {
+      OP_REQUIRES(
+          context,
+          stream
+              ->ThenMemcpyD2D(&batch_var_ptr, estimated_variance_ptr,
+                              estimated_variance.NumElements() * sizeof(U))
+              .ok(),
+          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
+                           "from device"));
+    }
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationForward(
                 x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
                 estimated_variance_ptr, side_input_ptr, x_desc,
                 scale_offset_desc, static_cast<double>(epsilon),
+                static_cast<double>(exponential_avg_factor),
                 AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
                 &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
-                is_training, std::move(var_to_inv_var),
-                std::move(inv_var_to_var), reserve_space_allocator.get(),
+                is_training, reserve_space_allocator.get(),
                 workspace_allocator.get())
             .ok();
 
@@ -898,12 +995,17 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     const int64 height = GetTensorDim(x, tensor_format, 'H');
     const int64 width = GetTensorDim(x, tensor_format, 'W');
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
     const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
                                       DataTypeToEnum<T>::value == DT_HALF &&
                                       use_reserved_space;
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -1085,6 +1187,10 @@ class FusedBatchNormOpBase : public OpKernel {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
     epsilon_ = U(epsilon);
+    float exponential_avg_factor;
+    OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
+                                             &exponential_avg_factor));
+    exponential_avg_factor_ = U(exponential_avg_factor);
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
@@ -1175,26 +1281,15 @@ class FusedBatchNormOpBase : public OpKernel {
                                   "channel dimension to be a multiple of 4."));
     }
 
-    if (is_training_) {
-      OP_REQUIRES(
-          context, estimated_mean.dim_size(0) == 0,
-          errors::InvalidArgument("estimated_mean must be empty for training",
-                                  estimated_mean.shape().DebugString()));
-      OP_REQUIRES(context, estimated_variance.dim_size(0) == 0,
-                  errors::InvalidArgument(
-                      "estimated_variance must be empty for training",
-                      estimated_variance.shape().DebugString()));
-    }
-
     Tensor* y = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, x.shape(), &y));
     Tensor* batch_mean = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(1, scale.shape(), &batch_mean));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {3}, 1, scale.shape(), &batch_mean));
     Tensor* batch_var = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(2, scale.shape(), &batch_var));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {4}, 2, scale.shape(), &batch_var));
     Tensor* saved_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(3, scale.shape(), &saved_mean));
@@ -1202,15 +1297,24 @@ class FusedBatchNormOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(4, scale.shape(),
                                                      &saved_maybe_inv_var));
 
-    functor::FusedBatchNorm<Device, T, U>()(
-        context, x, scale, offset, estimated_mean, estimated_variance,
-        side_input, epsilon_, activation_mode_, y, batch_mean, batch_var,
-        saved_mean, saved_maybe_inv_var, tensor_format_, use_reserved_space,
-        is_training_);
+    if (is_training_) {
+      functor::FusedBatchNorm<Device, T, U, true>()(
+          context, x, scale, offset, estimated_mean, estimated_variance,
+          side_input, epsilon_, exponential_avg_factor_, activation_mode_, y,
+          batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
+          tensor_format_, use_reserved_space);
+    } else {
+      functor::FusedBatchNorm<Device, T, U, false>()(
+          context, x, scale, offset, estimated_mean, estimated_variance,
+          side_input, epsilon_, exponential_avg_factor_, activation_mode_, y,
+          batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
+          tensor_format_, use_reserved_space);
+    }
   }
 
  private:
   U epsilon_;
+  U exponential_avg_factor_;
   TensorFormat tensor_format_;
   bool is_training_;
   bool has_side_input_;
@@ -1317,13 +1421,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(3, TensorShape({}), &placeholder_1));
-    functor::SetZeroFunctor<Device, float> f;
-    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
+        context, context->allocate_output(3, TensorShape({0}), &placeholder_1));
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(4, TensorShape({}), &placeholder_2));
-    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
+        context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {

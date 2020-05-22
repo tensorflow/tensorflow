@@ -31,19 +31,20 @@ def load_data(path='mnist.npz'):
   This is a dataset of 60,000 28x28 grayscale images of the 10 digits,
   along with a test set of 10,000 images.
   More info can be found at the
-  (MNIST homepage)[http://yann.lecun.com/exdb/mnist/].
+  [MNIST homepage](http://yann.lecun.com/exdb/mnist/).
 
 
   Arguments:
       path: path where to cache the dataset locally
-          (relative to ~/.keras/datasets).
+          (relative to `~/.keras/datasets`).
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      x_train, x_test: uint8 arrays of grayscale image data with shapes
+      **x_train, x_test**: uint8 arrays of grayscale image data with shapes
         (num_samples, 28, 28).
-      y_train, y_test: uint8 arrays of digit labels (integers in range 0-9)
+
+      **y_train, y_test**: uint8 arrays of digit labels (integers in range 0-9)
         with shapes (num_samples,).
 
   License:

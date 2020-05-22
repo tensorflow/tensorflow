@@ -22,7 +22,8 @@ import collections
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
@@ -258,7 +259,7 @@ class StringGaugeCell(object):
     """Retrieves the current value."""
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
-      value = pywrap_tfe.TF_GetBuffer(buffer_).decode('utf-8')
+      value = pywrap_tf_session.TF_GetBuffer(buffer_).decode('utf-8')
     return value
 
 
@@ -361,7 +362,7 @@ class SamplerCell(object):
     """
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     histogram_proto = summary_pb2.HistogramProto()
     histogram_proto.ParseFromString(compat.as_bytes(proto_data))
     return histogram_proto

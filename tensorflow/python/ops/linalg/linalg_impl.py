@@ -32,7 +32,6 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -42,7 +41,7 @@ cholesky = linalg_ops.cholesky
 cholesky_solve = linalg_ops.cholesky_solve
 det = linalg_ops.matrix_determinant
 slogdet = gen_linalg_ops.log_matrix_determinant
-tf_export('linalg.slogdet')(slogdet)
+tf_export('linalg.slogdet')(dispatch.add_dispatch_support(slogdet))
 diag = array_ops.matrix_diag
 diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
@@ -52,7 +51,7 @@ eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
 lu = gen_linalg_ops.lu
-tf_export('linalg.logm')(logm)
+tf_export('linalg.logm')(dispatch.add_dispatch_support(logm))
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
@@ -231,6 +230,7 @@ def _matrix_exp_pade13(matrix):
 
 
 @tf_export('linalg.expm')
+@dispatch.add_dispatch_support
 def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the matrix exponential of one or more square matrices.
 
@@ -341,6 +341,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
 
 @tf_export('linalg.tridiagonal_solve')
+@dispatch.add_dispatch_support
 def tridiagonal_solve(diagonals,
                       rhs,
                       diagonals_format='compact',
@@ -431,7 +432,9 @@ def tridiagonal_solve(diagonals,
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input
-    tensors have incorrect shapes.
+      tensors have incorrect shapes.
+    UnimplementedError: Whenever `partial_pivoting` is true and the backend is
+      XLA.
 
   [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
   Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
@@ -540,6 +543,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
 
 
 @tf_export('linalg.tridiagonal_matmul')
+@dispatch.add_dispatch_support
 def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   r"""Multiplies tridiagonal matrix by matrix.
 
@@ -637,6 +641,7 @@ def _maybe_validate_matrix(a, validate_args):
 
 
 @tf_export('linalg.matrix_rank')
+@dispatch.add_dispatch_support
 def matrix_rank(a, tol=None, validate_args=False, name=None):
   """Compute the matrix rank of one or more matrices.
 
@@ -675,6 +680,7 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
 
 
 @tf_export('linalg.pinv')
+@dispatch.add_dispatch_support
 def pinv(a, rcond=None, validate_args=False, name=None):
   """Compute the Moore-Penrose pseudo-inverse of one or more matrices.
 
@@ -804,6 +810,7 @@ def pinv(a, rcond=None, validate_args=False, name=None):
 
 
 @tf_export('linalg.lu_solve')
+@dispatch.add_dispatch_support
 def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
   """Solves systems of linear eqns `A X = RHS`, given LU factorizations.
 
@@ -894,14 +901,14 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
         band_part(lower_upper, num_lower=-1, num_upper=0),
         array_ops.ones(
             array_ops.shape(lower_upper)[:-1], dtype=lower_upper.dtype))
-    return linear_operator_util.matrix_triangular_solve_with_broadcast(
+    return triangular_solve(
         lower_upper,  # Only upper is accessed.
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            lower, permuted_rhs),
+        triangular_solve(lower, permuted_rhs),
         lower=False)
 
 
 @tf_export('linalg.lu_matrix_inverse')
+@dispatch.add_dispatch_support
 def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
   """Computes the inverse given the LU decomposition(s) of one or more matrices.
 
@@ -966,6 +973,7 @@ def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
 
 
 @tf_export('linalg.lu_reconstruct')
+@dispatch.add_dispatch_support
 def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
   """The reconstruct one or more matrices from their LU decomposition(s).
 

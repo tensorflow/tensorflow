@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -114,7 +115,8 @@ class SvdOpGpu : public AsyncOpKernel {
     // Gesvdjbatched handles matrices up to 32x32.
     // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
     // using Gesvdjbatched and return slices.
-    const bool batched = m <= 32 && n <= 32 && batch_size > 1 && full_matrices_;
+    const bool batched =
+        m <= 32 && n <= 32 && batch_size > 1 && (full_matrices_ || m == n);
 
     // Copies of U and V if required so can take transposes after SVD.
     Tensor u_copy, v_copy;
@@ -389,8 +391,22 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
 
     if (n == 0 || m == 0) {
-      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
-      // Therefore, we return X.
+      if (n == m || !compute_uv_ || !full_matrices_) {
+        // S, U, and V are all empty. Nothing to do.
+        done();
+        return;
+      }
+      auto device = context->eigen_device<GPUDevice>();
+      functor::EyeFunctor<GPUDevice, Scalar> eye;
+      if (m > 0) {
+        // Return a full canonical basis for the column space.
+        auto outputU_reshaped = outputU->flat_inner_dims<Scalar, 3>();
+        eye(device, outputU_reshaped);
+      } else if (n > 0) {
+        // Return a full canonical basis for the row space.
+        auto outputV_reshaped = outputV->flat_inner_dims<Scalar, 3>();
+        eye(device, outputV_reshaped);
+      }
       done();
       return;
     }

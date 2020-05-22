@@ -18,19 +18,45 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
 class DefFunctionTest(test.TestCase):
+
+  def testAutoclusteringWithTfFunction(self):
+
+    @def_function.function(experimental_compile=False)
+    def outer(a, b, c):
+      return a * inner(b, c) + c
+
+    @def_function.function(experimental_compile=True)
+    def inner(b, c):
+      return b + c * b
+
+    i1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+    i2 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+    i3 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    with context.collect_graphs(optimized=True) as graphs:
+      outer(i1, i2, i3)
+
+    if test_util.is_xla_enabled():
+      self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
+    else:
+      self.assertNotIn('_XlaRun', [n.op for n in graphs[0].node])
 
   def testBasic(self):
 
@@ -211,6 +237,132 @@ class DefFunctionTest(test.TestCase):
     c = C()
     with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
       c.f1(inputs)
+
+  def testMustBeConstantPropagation(self):
+    if test.is_built_with_rocm():
+      return
+
+    @def_function.function(experimental_compile=True)
+    def f():
+      return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
+
+    @def_function.function(experimental_compile=True)
+    def g(a, b):
+      return array_ops.transpose(a, b)
+
+    @def_function.function
+    def z():
+      return g(array_ops.ones([3, 4, 3], dtype=dtypes.float32), f())
+
+    z()
+
+  def testArgMinMax(self):
+
+    @def_function.function(experimental_compile=True)
+    def argmax(x):
+      return math_ops.argmax(x)
+
+    @def_function.function(experimental_compile=True)
+    def argmin(x):
+      return math_ops.argmin(x)
+
+    self.assertAllClose(0, argmax(array_ops.ones([10], dtype=dtypes.float32)))
+    self.assertAllClose(0, argmax(array_ops.ones([10])))
+    self.assertAllClose(0, argmin(array_ops.ones([10], dtype=dtypes.float32)))
+    self.assertAllClose(0, argmin(array_ops.ones([10])))
+
+  def testErrorMessagePassingTensorArray(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=1, element_shape=[])
+      ta = ta.write(0, 2 * x)
+      y = ta.read(0)
+      return y
+
+    x = constant_op.constant(3.14)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      with self.assertRaisesRegexp(
+          errors.UnimplementedError,
+          'TensorList crossing the XLA/TF boundary'):
+        y = f(x)
+        tape.gradient(y, x)
+
+  def testTensorListConcatV2(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([3.14, 2.68, 7.69])
+
+    self.assertAllClose([6.28, 5.36, 15.38, 9.42, 8.04, 23.07], f(inputs))
+
+    self.assertAllClose(compiled_f(inputs), f(inputs))
+
+  def testTensorListConcatV2Multidim(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3, 2])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([[3.14, 21.1], [2.68, 22.2], [7.69, 23.3]])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatV2Scalars(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[1])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+    inputs = constant_op.constant([3.14])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatGrad(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    def g():
+      x = constant_op.constant([3.14, 2.68, 7.69])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+        return tape.gradient(y, x)
+
+    compiled_g = def_function.function(experimental_compile=True)(g)
+
+    self.assertAllClose([5.0, 5.0, 5.0], g())
+    self.assertAllClose(compiled_g(), g())
+
+  def testCumsum(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      return math_ops.cumsum(x)
+
+    f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
+    self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
 
 
 if __name__ == '__main__':

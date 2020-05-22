@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -44,6 +45,10 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#endif
 
 #define LOG(x) std::cerr
 
@@ -85,9 +90,31 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
     if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
     } else {
-      delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
+      delegates.emplace("NNAPI", std::move(delegate));
     }
   }
+
+  if (s->hexagon_delegate) {
+    const std::string libhexagon_path("/data/local/tmp");
+    auto delegate =
+        evaluation::CreateHexagonDelegate(libhexagon_path, s->profiling);
+
+    if (!delegate) {
+      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("Hexagon", std::move(delegate));
+    }
+  }
+
+  if (s->xnnpack_delegate) {
+    auto delegate = evaluation::CreateXNNPACKDelegate(s->number_of_threads);
+    if (!delegate) {
+      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("XNNPACK", std::move(delegate));
+    }
+  }
+
   return delegates;
 }
 
@@ -119,7 +146,7 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
                         uint32_t subgraph_index, uint32_t op_index,
                         TfLiteRegistration registration) {
   // output something like
-  // time (ms) , Node xxx, OpCode xxx, symblic name
+  // time (ms) , Node xxx, OpCode xxx, symbolic name
   //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
@@ -223,12 +250,17 @@ void RunInference(Settings* s) {
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  switch (interpreter->tensor(input)->type) {
+  s->input_type = interpreter->tensor(input)->type;
+  switch (s->input_type) {
     case kTfLiteFloat32:
-      s->input_floating = true;
       resize<float>(interpreter->typed_tensor<float>(input), in.data(),
                     image_height, image_width, image_channels, wanted_height,
                     wanted_width, wanted_channels, s);
+      break;
+    case kTfLiteInt8:
+      resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
+                     image_height, image_width, image_channels, wanted_height,
+                     wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
       resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
@@ -240,7 +272,6 @@ void RunInference(Settings* s) {
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-
   auto profiler =
       absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
@@ -292,12 +323,18 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       s->number_of_results, threshold, &top_results, true);
+                       s->number_of_results, threshold, &top_results,
+                       s->input_type);
+      break;
+    case kTfLiteInt8:
+      get_top_n<int8_t>(interpreter->typed_output_tensor<int8_t>(0),
+                        output_size, s->number_of_results, threshold,
+                        &top_results, s->input_type);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
                          output_size, s->number_of_results, threshold,
-                         &top_results, false);
+                         &top_results, s->input_type);
       break;
     default:
       LOG(FATAL) << "cannot handle output type "
@@ -325,7 +362,8 @@ void display_usage() {
       << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
-      << "--gl_backend, -g: use GL GPU Delegate on Android\n"
+      << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
+      << "--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
       << "--image, -i: image_name.bmp\n"
@@ -336,6 +374,7 @@ void display_usage() {
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
       << "--warmup_runs, -w: number of warmup runs\n"
+      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n"
       << "\n";
 }
 
@@ -343,7 +382,7 @@ int Main(int argc, char** argv) {
   Settings s;
 
   int c;
-  while (1) {
+  while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
         {"old_accelerated", required_argument, nullptr, 'd'},
@@ -361,13 +400,15 @@ int Main(int argc, char** argv) {
         {"max_profiling_buffer_entries", required_argument, nullptr, 'e'},
         {"warmup_runs", required_argument, nullptr, 'w'},
         {"gl_backend", required_argument, nullptr, 'g'},
+        {"hexagon_delegate", required_argument, nullptr, 'j'},
+        {"xnnpack_delegate", required_argument, nullptr, 'x'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
     c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:l:m:p:r:s:t:v:w:", long_options,
+                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -403,6 +444,9 @@ int Main(int argc, char** argv) {
       case 'i':
         s.input_bmp_name = optarg;
         break;
+      case 'j':
+        s.hexagon_delegate = optarg;
+        break;
       case 'l':
         s.labels_file_name = optarg;
         break;
@@ -431,6 +475,9 @@ int Main(int argc, char** argv) {
       case 'w':
         s.number_of_warmup_runs =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'x':
+        s.xnnpack_delegate = optarg;
         break;
       case 'h':
       case '?':

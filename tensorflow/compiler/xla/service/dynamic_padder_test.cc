@@ -44,12 +44,49 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
+OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kCustomCall) {
+    return OpDynamismSupport::kNoSupport;
+  }
+  if (hlo->custom_call_target() == "OpWithDynamicLowering") {
+    return OpDynamismSupport::kRequired;
+  }
+  return OpDynamismSupport::kNoSupport;
+}
+
+Status CustomCallDynamicDimensionInference(
+    HloInstruction* hlo, DynamicDimensionInference* inferencer) {
+  if (hlo->custom_call_target() == "OpWithDynamicLowering") {
+    if (hlo->shape().IsTuple()) {
+      // Use the operand's dynamic size as output dynamic size.
+      HloInstruction* dynamic_size =
+          inferencer->GetDynamicSize(hlo->mutable_operand(0), {1}, 0);
+      inferencer->SetDynamicSize(hlo, {1}, 0, dynamic_size);
+    } else {
+      // Use the operand's dynamic size as output dynamic size.
+      HloInstruction* dynamic_size =
+          inferencer->GetDynamicSize(hlo->mutable_operand(0), {}, 0);
+      inferencer->SetDynamicSize(hlo, {}, 0, dynamic_size);
+    }
+  }
+
+  return Status::OK();
+}
+
 class DynamicPadderTest : public HloTestBase {
  protected:
   DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
 
+  std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
+    std::unique_ptr<HloModule> module =
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+    return module;
+  }
+
   StatusOr<bool> RunPadder() {
-    DynamicPadder padder;
+    DynamicPadder padder(/*slice_dynamic_output=*/true,
+                         CustomCallDynamicDimensionInference,
+                         OpHasDynamismSupport);
     return padder.Run(module_.get());
   }
 
@@ -103,6 +140,120 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   TF_ASSERT_OK(RunPadder().status());
 
   ExpectPadded(reduce->operand(0));
+}
+
+TEST_F(DynamicPadderTest, DynamicLoweringTest) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  custom-call.1 = s32[<=5] custom-call(param_padded),
+    custom_call_target="OpWithDynamicLowering"
+  custom-call.2 = s32[<=5] custom-call(custom-call.1),
+    custom_call_target="OpWithDynamicLowering"
+  // Negate doesn't support dynamic lowering.
+  ROOT negate = s32[<=5] negate(custom-call.2)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder().status());
+  // After rewrite, we should have :
+  //
+  //   param
+  //     |
+  //  SliceToDynamic
+  //     |
+  //  OpWithDynamicLowering (custom_call_1)
+  //     |
+  //  OpWithDynamicLowering (custom_call_2)
+  //     |
+  //  PadToStatic
+  //     |
+  //   Negate
+  //     |
+  //   SliceToDynamic // Root require dynamic form tensor.
+  auto custom_call_1 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.1");
+  auto custom_call_2 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.2");
+  // Test that the input to custom call
+  HloInstruction* slice_to_dynamic = custom_call_1->mutable_operand(0);
+  ASSERT_THAT(slice_to_dynamic->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(slice_to_dynamic->custom_call_target(), "SliceToDynamic");
+  ASSERT_EQ(custom_call_2->user_count(), 1);
+  HloInstruction* pad_to_static = custom_call_2->users()[0];
+  ASSERT_THAT(pad_to_static->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(pad_to_static->custom_call_target(), "PadToStatic");
+  slice_to_dynamic = module_->entry_computation()->root_instruction();
+  ASSERT_THAT(slice_to_dynamic->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(slice_to_dynamic->custom_call_target(), "SliceToDynamic");
+}
+
+TEST_F(DynamicPadderTest, DynamicLoweringTestTupleInput) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  // Create a tuple with static and dynamic componenet.
+  tuple_arg = (s32[], s32[<=5]) tuple(const, param_padded)
+  custom-call.1 = (s32[], s32[<=5]) custom-call(tuple_arg),
+    custom_call_target="OpWithDynamicLowering"
+  custom-call.2 = (s32[], s32[<=5]) custom-call(custom-call.1),
+    custom_call_target="OpWithDynamicLowering"
+  data = s32[<=5]{0} get-tuple-element(custom-call.2), index=1
+  // Negate doesn't support dynamic lowering.
+  ROOT negate = s32[<=5] negate(data)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder().status());
+  // After rewrite, we should have :
+  //
+  //   param
+  //     |
+  //  SliceToDynamic
+  //     |
+  //    Tuple
+  //     |
+  //  OpWithDynamicLowering (custom_call_1)
+  //     |
+  //  OpWithDynamicLowering (custom_call_2)
+  //     |
+  //   GTE
+  //     |
+  //  PadToStatic
+  //     |
+  //   Negate
+  //     |
+  //   SliceToDynamic // Root require dynamic form tensor.
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::CustomCall("SliceToDynamic", op::Negate(), op::Constant()));
+  HloInstruction* negate = root->mutable_operand(0);
+  EXPECT_THAT(
+      negate,
+      op::Negate(op::GetTupleElement(op::CustomCall(
+          "PadToStatic", op::GetTupleElement(op::CustomCall(
+                             "OpWithDynamicLowering", ::testing::_))))));
+  auto custom_call_1 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.1");
+  EXPECT_THAT(custom_call_1,
+              op::CustomCall(
+                  "OpWithDynamicLowering",
+                  op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic"))));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {
@@ -227,8 +378,9 @@ class ExecutionTest : public HloTestBase {
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
-                        absl::Span<Literal* const> arguments) {
-    DynamicPadder padder;
+                        absl::Span<Literal* const> arguments,
+                        bool slice_dynamic_output = true) {
+    DynamicPadder padder(slice_dynamic_output);
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloGetDimensionSizeRewriter rewriter;
     TF_CHECK_OK(rewriter.Run(module.get()).status());
@@ -681,6 +833,98 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMajor) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[2, 6] parameter(0)
+  const = s32[] constant(4)
+  param_padded = s32[2, 6] set-dimension-size(param, const), dimensions={1}
+  // Third dimension is dynamic.
+  reshaped = s32[2, 2, 3] reshape(param_padded), inferred_dimension=2
+  init = s32[] constant(0)
+  ROOT reduce = s32[2, 2] reduce(reshaped, init),
+      dimensions={2},
+      to_apply=update_s32
+}
+)";
+
+  // The third dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9, 10, 11}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // After padding and reshape we have
+  //
+  // [[[0, 1, P],
+  //   [2, 3, P]],
+  //  [[6, 7, P],
+  //   [8, 9, P]]]
+  // Reducing on the third dimension gives us
+  //  [0+1, 2+3]
+  //  [6+7, 8+9]
+  //
+  Literal expected = LiteralUtil::CreateR2<int32>({{1, 5}, {13, 17}});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMinor) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[6, 2] parameter(0)
+  const = s32[] constant(4)
+  param_padded = s32[6, 2] set-dimension-size(param, const), dimensions={0}
+  // Second dimension is dynamic.
+  reshaped = s32[2, 3, 2] reshape(param_padded), inferred_dimension=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[2, 2] reduce(reshaped, init),
+      dimensions={1},
+      to_apply=update_s32
+}
+)";
+
+  // The third dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR2<int32>(
+      {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {8, 9}, {10, 11}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // After padding and reshape we have
+  //
+  // [[[0, 1],
+  //   [2, 3]
+  //   [P, P]],
+  //  [[4, 5],
+  //   [6, 7],
+  //   [P, P]]]
+  // Reducing on the second dimension gives us
+  //  [0+2, 1+3]
+  //  [4+6, 5+7]
+  //
+  Literal expected = LiteralUtil::CreateR2<int32>({{2, 4}, {10, 12}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -747,6 +991,149 @@ ENTRY main {
   Literal result = PadAndExecute(std::move(module), {&operand});
 
   Literal expected = LiteralUtil::CreateR0<int32>(0);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, ReshapeSplitCombineSameTime) {
+  // [<=4, 2, <=2]
+  //       |
+  //    Reshape
+  //       |
+  // [2, <=2, <=4]
+  //
+  // Split one input dynamic dim to multiple output dims while combining two
+  // dimensions together.
+  //
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[4, 2, 2] parameter(0)
+  two = s32[] constant(2)
+  one = s32[] constant(1)
+  param_padded_partial = s32[<=4, 2, 2] set-dimension-size(param, two),
+    dimensions={0}
+
+  param_padded_dynamic = s32[<=4, 2, <=2] set-dimension-size(param_padded_partial,
+                                                             one),
+    dimensions={2}
+  reshaped = s32[2, <=2, <=4] reshape(param_padded_dynamic),
+    inferred_dimension=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0, 1, 2},
+      to_apply=update_s32
+}
+)";
+
+  // First and last dims are dynamic. Padded data are expressed as -1.
+  Literal operand = LiteralUtil::CreateR3<int32>({{{0, -1}, {1, -1}},
+                                                  {{2, -1}, {3, -1}},
+                                                  {{-1, -1}, {-1, -1}},
+                                                  {{-1, -1}, {-1, -1}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Reshaping (with correct reshape rewriting) produces:
+  // [[[0, 1, -1, -1], [-1, -1, -1, -1]], [[2, 3, -1, -1], [-1, -1, -1, -1]]]
+  //
+  //  Dynamic padder auto pads -1 with 0.
+  //
+  // Reducing it produces 0 + 1 + 2 + 3 = 6
+
+  Literal expected = LiteralUtil::CreateR0<int32>(6);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, WhileLoopStack) {
+  // Push into a dynamic sized stack with iteration number:
+  // init:
+  // [[P, P],
+  //  [P, P],
+  //  [P, P],
+  //  [P, P]]
+  // First iteration i = 0:
+  // [[0, 0],
+  //  [P, P],
+  //  [P, P],
+  //  [P, P]]
+  // Second iteration i = 1:
+  // [[0, 0],
+  //  [1, 1],
+  //  [P, P],
+  //  [P, P]]
+  // Third iteration i = 2:
+  // [[0, 0],
+  //  [1, 1],
+  //  [2, 2],
+  //  [P, P]]
+
+  const string hlo_text = R"(
+HloModule module
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+body {
+  stack = (s32[<=4,2]) parameter(0)
+  stack_buffer = s32[<=4, 2] get-tuple-element(stack), index=0
+  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  // content of the stack is the stack index broadcasted.
+  new_data = s32[1, 2] broadcast(s32[] stack_size), dimensions={}
+  new_stack_buffer = s32[<=4, 2] dynamic-update-slice(stack_buffer, new_data, stack_size, zero)
+  new_stack_size = s32[] add(stack_size, one)
+  new_stack_buffer_dynamic = s32[<=4, 2]set-dimension-size(new_stack_buffer, new_stack_size), dimensions={0}
+  ROOT new_stack = (s32[<=4,2]) tuple(new_stack_buffer_dynamic)
+}
+
+condition {
+  stack = (s32[<=4,2]) parameter(0)
+  stack_buffer = s32[<=4, 2] get-tuple-element(stack), index=0
+  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
+  three = s32[] constant(3)
+  ROOT less-than = pred[] compare(s32[] stack_size, s32[] three), direction=LT
+}
+
+ENTRY entry {
+  zero = s32[] constant(0)
+  pad = s32[] constant(-1)
+  stack_buffer_input = s32[4, 2] broadcast(s32[] pad), dimensions={}
+  stack_buffer_input_dynamic = s32[<=4, 2] set-dimension-size(stack_buffer_input, zero), dimensions={0}
+  input_tuple = (s32[<=4 ,2]) tuple(stack_buffer_input_dynamic)
+  while = (s32[<=4, 2]) while(input_tuple), body=body, condition=condition
+  stack_buffer = s32[<=4, 2] get-tuple-element(while), index=0
+  ROOT reduce = s32[2] reduce(stack_buffer, zero),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {});
+
+  // Stack has three valid items in it:
+  // [[0, 0],
+  //  [1, 1],
+  //  [2, 2],
+  //  [P, P]]
+  //
+  // Reducing along major dimension gives us [3, 3]
+  Literal expected = LiteralUtil::CreateR1<int32>({{3, 3}});
 
   EXPECT_EQ(result, expected);
 }
@@ -849,18 +1236,106 @@ ENTRY main {
   size = s32[] constant(3)
   param_dynamic_size = s32[4] set-dimension-size(param, size),
     dimensions={0}
-  sort = s32[4]{0} sort(s32[4]{0} %param_dynamic_size),
+  ROOT sort = s32[4]{0} sort(s32[4]{0} %param_dynamic_size),
     dimensions={0}, is_stable=false, to_apply=%compare-greater-than
-  full_size = s32[] constant(4)
-  ROOT result = s32[4] set-dimension-size(sort, full_size), dimensions={0}    
 }
 )";
 
   Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 2});
   auto module = GetHloModule(hlo_text);
 
-  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
   Literal expected = LiteralUtil::CreateR1<int32>({4, 3, 1, 2});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicPad) {
+  const string hlo_text = R"(
+HloModule TEST
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[4] parameter(0)
+  size = s32[] constant(3)
+  padding = s32[] constant(2)
+  param_dynamic = s32[4] set-dimension-size(param, size),
+    dimensions={0}
+  // pad head and tail to 2
+  pad = s32[6] pad(param_dynamic, padding), padding=1_1
+
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(pad, init),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
+  auto module = GetHloModule(hlo_text);
+
+  // After padding head and tail with "2", the effective data will be [2, 1, 4,
+  // 3, 2]
+
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
+  Literal expected = LiteralUtil::CreateR0<int32>(12);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicConditionalDimension) {
+  const string hlo_text = R"(
+HloModule module
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+true_branch {
+  true_param = (s32[<=3,2]) parameter(0)
+  param = s32[<=3, 2] get-tuple-element(true_param), index=0
+  add = s32[<=3,2] add(param, param)
+  ROOT true_tuple = (s32[<=3,2], s32[<=3,2]) tuple(add, add)
+}
+
+false_branch {
+  false_param = (s32[<=3,2]) parameter(0)
+  param = s32[<=3, 2] get-tuple-element(false_param), index=0
+  add = s32[<=3,2] add(param, param)
+  ROOT false_tuple = (s32[<=3,2], s32[<=3,2]) tuple(add, add)
+}
+
+ENTRY entry {
+  param0 = s32[3,2] parameter(0)
+  size = s32[] constant(2)
+  branch = pred[] constant(false)
+  param_dynamic = s32[<=3, 2] set-dimension-size(param0, size), dimensions={0}
+  param_tuple = (s32[<=3 ,2]) tuple(param_dynamic)
+  conditional = (s32[<=3, 2], s32[<=3, 2]) conditional(branch, param_tuple, param_tuple),
+    true_computation=true_branch, false_computation=false_branch
+  gte0 = s32[<=3,2] get-tuple-element(conditional), index=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[2] reduce(gte0, init),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR2<int32>({{0, 1}, {2, 3}, {4, 5}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
+  Literal expected = LiteralUtil::CreateR1<int32>({4, 8});
 
   EXPECT_EQ(result, expected);
 }
@@ -891,17 +1366,16 @@ ENTRY main {
   sort = (s32[3]{0}, s32[3]{0}) sort(s32[3]{0} %param_dynamic_size,
                                      s32[3]{0} %param_dynamic_size),
     dimensions={0}, is_stable=true, to_apply=%compare-greater-than
-  get-tuple-element = s32[3]{0} get-tuple-element((s32[3]{0}, s32[3]{0}) %sort),
+  ROOT get-tuple-element = s32[3]{0} get-tuple-element((s32[3]{0}, s32[3]{0}) %sort),
     index=0
-  full_size = s32[] constant(3)
-  ROOT result = s32[3] set-dimension-size(get-tuple-element, full_size), dimensions={0}
 }
 )";
 
   Literal operand = LiteralUtil::CreateR1<int32>({0, 4, 2});
   auto module = GetHloModule(hlo_text);
 
-  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
   Literal expected = LiteralUtil::CreateR1<int32>({4, 0, 2});
 
   EXPECT_EQ(result, expected);

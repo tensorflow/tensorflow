@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
@@ -150,6 +151,19 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return equal;
 }
 
+/* static */ bool ShapeUtil::EqualStructure(const Shape& lhs,
+                                            const Shape& rhs) {
+  bool equal = true;
+  ForEachSubshape(lhs, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+    equal &= IndexIsValid(rhs, index);
+  });
+  ForEachSubshape(rhs, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+    equal &= IndexIsValid(lhs, index);
+  });
+
+  return equal;
+}
+
 /* static */ int64 ShapeUtil::TrueRank(const Shape& shape) {
   int64 accum = 0;
   for (int64 dimension : shape.dimensions()) {
@@ -259,6 +273,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
   LayoutUtil::SetToDefaultLayout(shape);
   return ValidateShape(*shape);
+}
+
+/* static */ Shape ShapeUtil::MakeStaticShape(const Shape& original) {
+  Shape result = original;
+  result.clear_dynamic_dimensions();
+  return result;
 }
 
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
@@ -626,8 +646,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
   } else if (shape.IsArray()) {
-    int64 byte_size = ByteSizeOfElements(shape);
-    return byte_size;
+    return ByteSizeOfElements(shape);
   } else if (shape.element_type() == TOKEN) {
     return 0;
   } else if (shape.element_type() == OPAQUE_TYPE) {
@@ -1439,6 +1458,19 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   CHECK(shape.IsArray());
   shape.DeleteDimension(dim_to_delete);
   return shape;
+}
+
+/* static */ bool ShapeUtil::DynamicShapeIsCompatible(
+    const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
+  if (dynamic_shape.rank() != bounded_shape.rank()) {
+    return false;
+  }
+  for (int64 i = 0; i < dynamic_shape.rank(); ++i) {
+    if (dynamic_shape.dimensions(i) > bounded_shape.dimensions(i)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(

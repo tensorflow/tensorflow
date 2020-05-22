@@ -29,6 +29,7 @@ import six
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import base
@@ -215,7 +216,7 @@ class InterfaceTests(test.TestCase):
     checkpoint = util.Checkpoint(a=a)
     checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
     a.l2 = []
-    a.l2.insert(1, 0)
+    a.l2.insert(1, module.Module())
     with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
@@ -313,7 +314,7 @@ class InterfaceTests(test.TestCase):
 
     # Note(taylorrobie): The reason that it is safe to time a unit test is that
     #                    a cache hit will be << 1 second, and a cache miss is
-    #                    guaranteed to be >= 1 second. Emperically confirmed by
+    #                    guaranteed to be >= 1 second. Empirically confirmed by
     #                    100,000 runs with no flakes.
     self.assertLess(total_time, 0.95)
 

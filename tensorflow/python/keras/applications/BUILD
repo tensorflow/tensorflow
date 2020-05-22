@@ -4,7 +4,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        # Remove this deps to integration test.
+        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -31,10 +35,16 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers:layers_base",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/utils:data_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -42,7 +52,8 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-    shard_count = 32,
+    shard_count = 36,
+    tags = ["no_rocm"],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -235,9 +246,25 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "applications_load_weight_test_nasnet",
+    name = "applications_load_weight_test_nasnet_mobile",
     srcs = ["applications_load_weight_test.py"],
-    args = ["--module=nasnet"],
+    args = ["--module=nasnet_mobile"],
+    main = "applications_load_weight_test.py",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "applications_load_weight_test_nasnet_large",
+    srcs = ["applications_load_weight_test.py"],
+    args = ["--module=nasnet_large"],
     main = "applications_load_weight_test.py",
     tags = [
         "no_oss",

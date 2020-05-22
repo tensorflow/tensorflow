@@ -435,9 +435,9 @@ class DebugIdentityV2Op : public OpKernel {
     for (const string& dump_root : dump_roots_) {
       tfdbg::DebugEventsWriter* debug_events_writer =
           tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
-      debug_events_writer->WriteGraphExecutionTrace(
-          tfdbg_context_id_, device_name_, op_name_, output_slot_,
-          tensor_debug_mode_, tensor);
+      OP_REQUIRES_OK(context, debug_events_writer->WriteGraphExecutionTrace(
+                                  tfdbg_context_id_, device_name_, op_name_,
+                                  output_slot_, tensor_debug_mode_, tensor));
     }
     context->set_output(0, tensor);
   }
@@ -559,7 +559,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
       output_tensor->flat<Tout>()(0) = tensor_id;
       output_tensor->flat<Tout>()(1) = num_elem;
 
-      // Accumlator value [neg_inf_count, pos_inf_count, nan_count]
+      // Accumulator value [neg_inf_count, pos_inf_count, nan_count]
       Tout fp_props[3] = {0.0, 0.0, 0.0};
       std::for_each(data, data + size, [&fp_props](const Tin& y) {
         if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
@@ -588,7 +588,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
       output_tensor->flat<Tout>()(3) = static_cast<Tout>(num_dims);
       output_tensor->flat<Tout>()(4) = num_elem;
 
-      // Accumlator value [neg_inf_count, pos_inf_count, nan_count, neg_count,
+      // Accumulator value [neg_inf_count, pos_inf_count, nan_count, neg_count,
       //                   zero_count, pos_count]
       Tout fp_props[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
       std::for_each(data, data + size, [&fp_props](const Tin& y) {

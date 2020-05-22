@@ -18,24 +18,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Dialect.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.h.inc"
 namespace TFL {
 
 class TensorFlowLiteDialect : public Dialect {
  public:
   explicit TensorFlowLiteDialect(MLIRContext *context);
+
+  static StringRef getDialectNamespace() { return "tfl"; }
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.
@@ -43,9 +48,14 @@ class TensorFlowLiteDialect : public Dialect {
                                  Location loc) override;
 };
 
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/estimator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
+// Include all specializes estimators below this line
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/arithmetic_count_util.h"
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/cpu_estimators.h"
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/gpu_estimators.h"
 
 }  // end namespace TFL
 }  // end namespace mlir

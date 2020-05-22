@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Conv1DTranspose"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Conv2D"
     mtype: "<type \'type\'>"
   }
@@ -94,6 +98,10 @@ tf_module {
   }
   member {
     name: "Convolution1D"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Convolution1DTranspose"
     mtype: "<type \'type\'>"
   }
   member {

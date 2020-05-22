@@ -31,12 +31,15 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+const char kDataServiceDataset[] = "DataServiceDataset";
 
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
@@ -90,8 +93,6 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 
-    void SetReferencedTensors(const TensorReferenceVector& tensors) override {}
-
     void SetScheduled(int64 nanos) override {}
 
    private:
@@ -101,7 +102,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   };
 
   mutex mu_;
-  int64 processing_time_ GUARDED_BY(mu_) = 0;
+  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status RunShortCircuit(const ShortCircuitInfo& info,
@@ -310,18 +311,27 @@ class OwnedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
+  Status GetArg(int index, const Tensor** val) override {
     if (index < args_.size()) {
-      // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
-      // order to be able to `std::move(args_[index])` into `*val`.
-      *val = args_[index];
+      *val = &args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
+      *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
+  }
+
+  // Since we own the argument tensors in `args_`, we can implement
+  // `ConsumeArg()` for those arguments.
+  void ConsumeArg(int index, Tensor* val) override {
+    DCHECK_GE(index, 0);
+    DCHECK_LT(index, args_.size());
+    *val = std::move(args_[index]);
+  }
+  bool CanConsumeArg(int index) const override {
+    return index >= 0 && index < args_.size();
   }
 
  private:
@@ -343,12 +353,12 @@ class BorrowedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
+  Status GetArg(int index, const Tensor** val) override {
     if (index < args_.size()) {
-      *val = args_[index];
+      *val = &args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
+      *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -406,9 +416,10 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
@@ -427,7 +438,8 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
+      out_iterator);
 }
 
 /* static */
@@ -448,36 +460,45 @@ Status FunctionMetadata::Create(
       (*out_metadata)->func_.name(), &(*out_metadata)->lib_def_));
   TF_RETURN_IF_ERROR(CreateShortCircuitInfo(
       ctx, (*out_metadata)->func_, &(*out_metadata)->short_circuit_info_));
-  (*out_metadata)->ValidateMultiDevice();
-  return Status::OK();
-}
+  const FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(LookupFunction(*(*out_metadata)->lib_def(),
+                                    (*out_metadata)->func().name(), &fdef));
 
-void FunctionMetadata::ValidateMultiDevice() {
-  const FunctionDef* fdef = lib_def_->Find(func_.name());
-  if (is_multi_device_function_) {
-    auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
-    if (attr != fdef->attr().end() && attr->second.b()) {
-      LOG(WARNING)
-          << "Disabling multi-device execution for a function that uses the "
-          << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
-      is_multi_device_function_ = false;
-      return;
+  auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
+  if (attr != fdef->attr().end() && attr->second.b()) {
+    VLOG(1) << "Disabling multi-device execution for a function that uses the "
+            << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+    (*out_metadata)->use_multi_device_function_ = false;
+    return Status::OK();
+  }
+  auto validate_arg = [](const OpDef::ArgDef& arg) {
+    if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
+      VLOG(1) << "Disabling multi-device execution for a function with "
+              << "a vector argument " << arg.name() << ".";
+      return false;
     }
-    auto validate_arg = [this](const OpDef::ArgDef& arg) {
-      if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-        LOG(WARNING) << "Disabling multi-device execution for a function with "
-                        "a vector argument "
-                     << arg.name() << ".";
-        is_multi_device_function_ = false;
-      }
-    };
-    for (const auto& arg : fdef->signature().input_arg()) {
-      validate_arg(arg);
-    }
-    for (const auto& arg : fdef->signature().output_arg()) {
-      validate_arg(arg);
+    return true;
+  };
+  for (const auto& arg : fdef->signature().input_arg()) {
+    if (!validate_arg(arg)) {
+      (*out_metadata)->use_multi_device_function_ = false;
+      return Status::OK();
     }
   }
+  for (const auto& arg : fdef->signature().output_arg()) {
+    if (!validate_arg(arg)) {
+      (*out_metadata)->use_multi_device_function_ = false;
+      return Status::OK();
+    }
+  }
+  for (const auto& node : fdef->node_def()) {
+    if (node.op() == kDataServiceDataset) {
+      return errors::InvalidArgument(
+          "The `.distribute(...)` dataset transformation is not supported "
+          "within tf.data functions.");
+    }
+  }
+  return Status::OK();
 }
 
 /* static */
@@ -539,7 +560,8 @@ Status CapturedFunction::Instantiate(
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &inst_opts.is_multi_device_function));
+  bool is_multi_device = metadata_->use_multi_device_function();
+  inst_opts.is_multi_device_function = is_multi_device;
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
@@ -603,7 +625,8 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this));
+                                           *ctx->runner(), this,
+                                           is_multi_device));
   return Status::OK();
 }
 
@@ -620,12 +643,13 @@ Status CapturedFunction::CheckExternalState() const {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func)
+    CapturedFunction* captured_func, bool is_multi_device)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      captured_func_(captured_func) {}
+      captured_func_(captured_func),
+      is_multi_device_(is_multi_device) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
 // handle releasing to the FunctionHandleCache. This is because in some cases
@@ -655,20 +679,13 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
-  Notification n;
-  Status s;
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
@@ -693,9 +710,6 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  Notification n;
-  Status s;
-
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
@@ -703,12 +717,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
@@ -732,27 +741,20 @@ Status InstantiatedCapturedFunction::RunInstantiated(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  Notification n;
-  Status s;
-
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
                             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
 
 void InstantiatedCapturedFunction::RunAsync(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
-    FunctionLibraryRuntime::DoneCallback done, const string& prefix) const {
+    FunctionLibraryRuntime::DoneCallback done,
+    const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     // Run the `done` callback on a threadpool thread, because it will
@@ -785,18 +787,21 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.cancellation_manager = cancellation_manager.get();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
-  if (ctx->model() || ctx->stats_aggregator()) {
-    stats_collector = absl::make_unique<SimpleStepStatsCollector>();
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
   f_opts.stats_collector = stats_collector.get();
 
   // Transfer ownership of the cancellation manager to `callback`.
   CancellationManager* raw_cancellation_manager =
       cancellation_manager.release();
   auto callback = std::bind(
-      [this, rets, step_container, raw_cancellation_manager, frame](
+      [this, rets, step_container, raw_cancellation_manager, frame, node,
+       collect_usage](
           const FunctionLibraryRuntime::DoneCallback& done,
-          IteratorContext* ctx, const string& prefix,
+          IteratorContext* ctx,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
@@ -806,32 +811,30 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        if (ctx->model()) {
+        if (node) {
           // TODO(b/129085499) Utilize the `node_name` which would be unique
           // than the prefix for the function execution time statistics.
           // prefix_with_func_name would then be node_name + func_name.
           if (ctx->stats_aggregator()) {
-            string prefix_end =
-                str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
             string prefix_with_func_name =
-                strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                strings::StrCat(node->name(), stats_utils::kDelimiter,
                                 captured_func_->func().name());
             ctx->stats_aggregator()->AddToHistogram(
                 stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
                 {static_cast<float>(stats_collector->processing_time())},
-                ctx->model()->NumElements(prefix));
+                node->num_elements());
           }
-          ctx->model()->AddProcessingTime(prefix,
-                                          stats_collector->processing_time());
-          ctx->model()->RecordStart(prefix, false /* stop_output */);
+          node->add_processing_time(stats_collector->processing_time());
+        }
+        if (collect_usage) {
+          node->record_start(EnvTime::NowNanos());
         }
         done(s);
-        if (ctx->model()) {
-          ctx->model()->RecordStop(prefix, false /* start_output */);
+        if (collect_usage) {
+          node->record_stop(EnvTime::NowNanos());
         }
       },
-      std::move(done), ctx, prefix, std::move(stats_collector),
-      std::placeholders::_1);
+      std::move(done), ctx, std::move(stats_collector), std::placeholders::_1);
 
   profiler::TraceMe activity(
       [&] {
@@ -839,12 +842,19 @@ void InstantiatedCapturedFunction::RunAsync(
             "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
+  // Stop the usage collection before calling `Run()` because `callback` may
+  // be executed synchronously, and so the `node->record_start()` call within
+  // `callback` would violate nesting.
+  if (collect_usage) node->record_stop(EnvTime::NowNanos());
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
+  if (collect_usage) node->record_start(EnvTime::NowNanos());
 }
 
 bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
-  return lib_->device()->device_type() != DEVICE_CPU ||
-         captured_func_->is_multi_device_function();
+  // Rendezvous should only be created by the FLR for non-CPU single-device
+  // functions. For multi-device functions the appropriate rendezvous will be
+  // created by the process FLR.
+  return lib_->device()->device_type() != DEVICE_CPU && !is_multi_device_;
 }
 
 CapturedFunction::CapturedFunction(
@@ -852,78 +862,6 @@ CapturedFunction::CapturedFunction(
     std::vector<Tensor> captured_inputs)
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
-
-Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
-                                       bool* is_multi_device) {
-  if (!metadata_->is_multi_device_function()) {
-    *is_multi_device = false;
-    return Status::OK();
-  }
-
-  const FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(
-      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
-
-  Device* current_device = ctx->flr()->device();
-  DeviceType current_device_type(current_device->device_type());
-  DeviceNameUtils::ParsedName current_device_name;
-  if (!DeviceNameUtils::ParseFullName(current_device->name(),
-                                      &current_device_name)) {
-    return errors::InvalidArgument("Failed to parse device name: ",
-                                   current_device->name());
-  }
-
-  // Check if any of the captured inputs are placed on a device not compatible
-  // with the current device. For non-captured inputs, we assume they are placed
-  // on the current device.
-  for (const auto& input : captured_inputs_) {
-    DataType dtype = input.dtype();
-    if (dtype == DT_RESOURCE) {
-      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-      DeviceNameUtils::ParsedName resource_device_name;
-      if (!DeviceNameUtils::ParseFullName(handle.device(),
-                                          &resource_device_name)) {
-        return errors::InvalidArgument("Failed to parse device name: ",
-                                       handle.device());
-      }
-      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                  resource_device_name)) {
-        *is_multi_device = true;
-        return Status::OK();
-      }
-    }
-  }
-
-  // Check if all ops could be placed on the current device.
-  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
-    const FunctionDef* fdef;
-    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
-    for (const auto& node : fdef->node_def()) {
-      // Check if the op has a kernel availabe for the current device.
-      if (!KernelDefAvailable(current_device_type, node)) {
-        *is_multi_device = true;
-        return Status::OK();
-      }
-      // If the op has a requested device, check if the requested device is
-      // compatible with the current device.
-      if (!node.device().empty()) {
-        DeviceNameUtils::ParsedName node_device_name;
-        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
-          return errors::InvalidArgument("Failed to parse device name: ",
-                                         node.device());
-        }
-        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                    node_device_name)) {
-          *is_multi_device = true;
-          return Status::OK();
-        }
-      }
-    }
-  }
-
-  *is_multi_device = false;
-  return Status::OK();
-}
 
 }  // namespace data
 }  // namespace tensorflow

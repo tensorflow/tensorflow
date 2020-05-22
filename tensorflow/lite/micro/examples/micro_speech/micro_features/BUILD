@@ -21,12 +21,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tiny_conv_micro_features_model_data",
+    name = "model",
     srcs = [
-        "tiny_conv_micro_features_model_data.cc",
+        "model.cc",
     ],
     hdrs = [
-        "tiny_conv_micro_features_model_data.h",
+        "model.h",
     ],
 )
 

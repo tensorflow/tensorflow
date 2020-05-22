@@ -9,8 +9,8 @@ Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
 the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
-of binary size.
+ops can be included by [using select TensorFlow ops](ops_select.md), at
+the cost of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
@@ -18,9 +18,9 @@ optimized, along with the limitations imposed by this process.
 
 ## Supported types
 
-Most TensorFlow Lite operations target both floating-point (float32) and
-quantized (uint8, int8) inference, but many ops do not yet for other types like
-tf.float16 and strings.
+Most TensorFlow Lite operations target both floating-point (`float32`) and
+quantized (`uint8`, `int8`) inference, but many ops do not yet for other types
+like `tf.float16` and strings.
 
 Apart from using different version of the operations, the other difference
 between floating-point and quantized models lies in the way they are converted.
@@ -1141,8 +1141,8 @@ Outputs {
 }
 ```
 
-And these are TensorFlow Lite operations that are present but not ready for
-custom models yet:
+The following TensorFlow Lite operations are present, but not ready for custom
+models:
 
 *   `CALL`
 *   `CONCAT_EMBEDDINGS`

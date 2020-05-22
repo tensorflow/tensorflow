@@ -77,7 +77,7 @@ std::string GetStridedSliceCode(
       c += "  {\n";
       const std::string channel = "(Z * 4 + " + std::to_string(i) + ")";
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
-      c += "    int s_z = s_ch >> 2;\n";
+      c += "    int s_z = min(s_ch >> 2, src_size.z - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = " +
            src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_batch) + ";\n";
@@ -95,7 +95,7 @@ std::string GetStridedSliceCode(
   return c;
 }
 
-bool Is4Alighed(const SliceAttributes& attr) {
+bool Is4Aligned(const SliceAttributes& attr) {
   return attr.strides.c == 1 && attr.starts.c % 4 == 0;
 }
 
@@ -129,7 +129,7 @@ int4 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
       offset.z = src_channels + attr.ends.c;
     }
   }
-  if (Is4Alighed(attr)) {
+  if (Is4Aligned(attr)) {
     offset.z /= 4;
   }
   if (attr.strides.b > 0) {
@@ -166,15 +166,15 @@ StridedSlice& StridedSlice::operator=(StridedSlice&& operation) {
   return *this;
 }
 
-Status StridedSlice::Compile(const CreationContext& creation_context) {
-  const auto code = GetStridedSliceCode(definition_, Is4Alighed(attributes_),
+absl::Status StridedSlice::Compile(const CreationContext& creation_context) {
+  const auto code = GetStridedSliceCode(definition_, Is4Aligned(attributes_),
                                         linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status StridedSlice::BindArguments() {
+absl::Status StridedSlice::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -187,7 +187,7 @@ Status StridedSlice::BindArguments() {
                                 attributes_.strides.c, attributes_.strides.b)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 StridedSlice::GetGridSize() const {
@@ -197,12 +197,12 @@ int3 StridedSlice::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status StridedSlice::Tune(const TuningParameters& params) {
+absl::Status StridedSlice::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status StridedSlice::AddToQueue(CLCommandQueue* queue) {
+absl::Status StridedSlice::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

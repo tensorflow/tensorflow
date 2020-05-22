@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.h"
 
 namespace tflite {
 namespace ops {
@@ -73,14 +72,35 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  void* raw;
+  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
+  return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  // todo: call AllocateTemporaryTensor() instead of using
-  // get_cmsis_scratch_buffer()
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
+#if defined(__ARM_FEATURE_DSP)
+  RuntimeShape filter_shape = GetTensorShape(filter);
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+
+  const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
+
+  int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+  node->user_data = buffer_idx;
+  if (buf_size > 0) {
+    TF_LITE_ENSURE_STATUS(
+        context->RequestScratchBufferInArena(context, buf_size, buffer_idx));
+  } else {
+    *buffer_idx = -1;
+  }
+#endif
   return kTfLiteOk;
 }
 
@@ -97,9 +117,14 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
 #if defined(__ARM_FEATURE_DSP)
-  const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
   int16_t* buf = nullptr;
-  TF_LITE_ENSURE_OK(context, get_cmsis_scratch_buffer(context, &buf, buf_size));
+
+  auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+  if (*buffer_idx > -1) {
+    void* raw = context->GetScratchBuffer(context, *buffer_idx);
+    buf = reinterpret_cast<int16_t*>(raw);
+  }
+
   TF_LITE_ENSURE_EQ(
       context,
       arm_fully_connected_s8(
@@ -166,9 +191,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      context->ReportError(
-          context,
-          "Quantized FullyConnected expects output data type uint8 or int16");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
 
@@ -208,7 +232,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
                                         filter, bias, output, data));
 
-  switch (filter->type) {  // Already know in/out types are same.
+  // Checks in Prepare ensure input, output and filter types are all the same.
+  switch (input->type) {
     case kTfLiteFloat32:
       return EvalFloat(context, node, params, data, input, filter, bias,
                        output);
@@ -221,8 +246,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -231,9 +256,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval};
+  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/fully_connected::Prepare,
+                                 /*invoke=*/fully_connected::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

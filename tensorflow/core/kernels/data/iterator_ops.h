@@ -50,13 +50,27 @@ class IteratorResource : public ResourceBase {
 
   ~IteratorResource() override { VLOG(2) << "destructor"; }
 
+  // Gets the next output from the iterator managed by this iterator resource.
+  //
+  // If at least one output remains, that output will be stored in
+  // `*out_tensors` and `false` will be stored in `*end_of_sequence`.
+  //
+  // If no more outputs remain, `true` will be stored in `*end_of_sequence`, and
+  // the content of `*out_tensors` will be undefined.
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
 
+  // Saves a checkpoint of the state of the iterator through the given `writer`.
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
 
+  // Restores the state of the iterator from a checkpoint created by `Save`.
   Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
 
+  // Creates an iterator for `dataset`, and associates the iterator with this
+  // iterator resource.
+  //
+  // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
+  // or `Restore`.
   Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
@@ -99,8 +113,8 @@ class IteratorResource : public ResourceBase {
 
   UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
-  const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
-  std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
+  const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -114,7 +128,7 @@ class IteratorHandleOp : public OpKernel {
   // by anyone, but it would break backward compatibility.
   ~IteratorHandleOp() override;
 
-  void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_);
+  void Compute(OpKernelContext* context) override TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // During the first Compute(), resource is either created or looked up using
@@ -131,7 +145,7 @@ class IteratorHandleOp : public OpKernel {
 
   mutex mu_;
   ContainerInfo cinfo_;  // Written once under mu_ then constant afterwards.
-  IteratorResource* resource_ GUARDED_BY(mu_) = nullptr;
+  IteratorResource* resource_ TF_GUARDED_BY(mu_) = nullptr;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -205,17 +219,18 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
       : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
 
   AsyncOpKernel* AsAsync() override;
-  const AsyncOpKernel* AsAsync() const override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
 };
 
-class DeleteIteratorOp : public OpKernel {
+class DeleteIteratorOp : public HybridAsyncOpKernel {
  public:
-  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {

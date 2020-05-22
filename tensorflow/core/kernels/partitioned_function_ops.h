@@ -64,7 +64,7 @@ class PartitionedCallOp : public AsyncOpKernel {
   // Different device placements of PartitionedCallOp also use
   // different FLRs.
   gtl::FlatMap<FunctionLibraryRuntime*, FunctionLibraryRuntime::Handle> handles_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

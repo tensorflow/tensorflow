@@ -78,9 +78,9 @@ CpuExecutable::CpuExecutable(
 StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
                     std::vector<se::OwningDeviceMemory>,
                     std::vector<se::OwningDeviceMemory>>>
-CpuExecutable::CreateBufferTable(
-    se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments) {
+CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+                                 int device_ordinal,
+                                 std::vector<ExecutionInput> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
       assignment_->Allocations().size());
   std::vector<se::OwningDeviceMemory> owning_buffers(
@@ -95,7 +95,7 @@ CpuExecutable::CreateBufferTable(
 
     if (allocation.is_entry_computation_parameter()) {
       unowning_buffers[i] = arguments[allocation.parameter_number()]
-                                .element(allocation.param_shape_index())
+                                .Buffer(allocation.param_shape_index())
                                 .AsDeviceMemoryBase();
       CHECK_EQ(allocation.size(), unowning_buffers[i].size())
           << "Size mismatch on param " << allocation.parameter_number()
@@ -139,9 +139,9 @@ CpuExecutable::CreateBufferTable(
   VLOG(3) << "result index: " << result_slice.index();
 
   std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
+  for (auto& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      auto maybe_owning_buffer = index_buffer.second.Release();
       if (maybe_owning_buffer) {
         buffers_to_free.push_back(std::move(*maybe_owning_buffer));
       }
@@ -284,7 +284,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
 
 StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -297,7 +297,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     for (int64 i = 0; i < entry_comp->num_parameters(); ++i) {
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
-      const Shape& actual_shape = arguments[i].shape();
+      const Shape& actual_shape = arguments[i].Buffers().shape();
       CHECK(
           Shape::Equal().IgnoreDynamicDimension()(expected_shape, actual_shape))
           << absl::StreamFormat(
@@ -355,9 +355,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
                    std::make_shared<std::vector<se::OwningDeviceMemory>>(
                        std::move(owning_buffers)),
                    hlo_execution_profile});
-
-  return ExecutionOutput(std::move(result), std::move(buffers_to_release), {},
-                         se::OwningDeviceMemory());
+  return ExecutionOutput(std::move(result), std::move(buffers_to_release));
 }
 
 /*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
@@ -365,7 +363,12 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   if (shape.IsOpaque()) {
     return sizeof(void*);
   }
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  }
+  // Each dynamic dimension size is represented as a S32.
+  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 
 const InstructionValueSet& CpuExecutable::GetRootValueSet() const {

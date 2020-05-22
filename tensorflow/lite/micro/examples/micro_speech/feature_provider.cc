@@ -35,8 +35,9 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
     tflite::ErrorReporter* error_reporter, int32_t last_time_in_ms,
     int32_t time_in_ms, int* how_many_new_slices) {
   if (feature_size_ != kFeatureElementCount) {
-    error_reporter->Report("Requested feature_data_ size %d doesn't match %d",
-                           feature_size_, kFeatureElementCount);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Requested feature_data_ size %d doesn't match %d",
+                         feature_size_, kFeatureElementCount);
     return kTfLiteError;
   }
 
@@ -100,8 +101,9 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
                       kFeatureSliceDurationMs, &audio_samples_size,
                       &audio_samples);
       if (audio_samples_size < kMaxAudioSampleSize) {
-        error_reporter->Report("Audio data size %d too small, want %d",
-                               audio_samples_size, kMaxAudioSampleSize);
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Audio data size %d too small, want %d",
+                             audio_samples_size, kMaxAudioSampleSize);
         return kTfLiteError;
       }
       uint8_t* new_slice_data = feature_data_ + (new_slice * kFeatureSliceSize);

@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -65,7 +66,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")
 class NumericsTest(test.TestCase):
 
   def testInf(self):
@@ -130,51 +131,10 @@ class NumericsTest(test.TestCase):
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
 
-  def testCheckNumericsV2OpNegativeAndPositveInf(self):
-    """Test that CheckNumericsV2 op distinguishes negative and positive infs."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([-1.0, 1.0])
-      t2 = constant_op.constant([0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had -Inf and +Inf values", caught.message)
-      self.assertIn("pass through test", caught.message)
-
-  def testCheckNumericsV2OpNegativeAndPositveInfAndNaN(self):
-    """CheckNumericsV2 op distinguishes - & + infs when nan is present."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([-1.0, 1.0, 0.0])
-      t2 = constant_op.constant([0.0, 0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had -Inf, +Inf, and NaN values", caught.message)
-      self.assertIn("pass through test", caught.message)
-
-  def testCheckNumericsV2PositveInfAndNaN(self):
-    """Test that CheckNumericsV2 op shows sign of inf when nan is present."""
-    with self.session(graph=ops.Graph()):
-      t1 = constant_op.constant([0.0, 1.0])
-      t2 = constant_op.constant([0.0, 0.0])
-      checked = array_ops.check_numerics_v2(
-          t1 / t2, message="pass through test")
-      caught = None
-      try:
-        self.evaluate(checked)
-      except errors.InvalidArgumentError as error:
-        caught = error
-      self.assertIn("had +Inf and NaN values", caught.message)
-      self.assertIn("pass through test", caught.message)
-
 
 if __name__ == "__main__":
+  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
+  os.environ[
+      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
+          "XLA_FLAGS", "")
   test.main()

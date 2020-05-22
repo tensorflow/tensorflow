@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -424,7 +425,13 @@ class UnsortedSegmentReductionOp : public OpKernel {
 // Same as SegmentReductionOp but takes as input a "sparse" tensor, represented
 // by two dense tensors, one containing the data, and the other containing
 // indices into the data.
-template <typename Device, class T>
+//
+// The template parameters are:
+// * Device: An Eigen device object, on which the kernel will execute.
+// * T: The value type.
+// * Index: The element type of the indices tensor (int32 or int64).
+// * SegmentId: The element type of the segment_ids tensor (int32 or int64).
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionOpBase : public OpKernel {
  public:
   explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
@@ -467,11 +474,10 @@ class SparseSegmentReductionOpBase : public OpKernel {
     auto input_flat = input.flat_outer_dims<T>();
     const int64 num_col = input_flat.dimension(1);
     const auto indices_vec = indices.vec<Index>();
-    typedef int32 OutputRow;
-    const auto segment_vec = segment_ids.vec<OutputRow>();
+    const auto segment_vec = segment_ids.vec<SegmentId>();
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
-    const OutputRow last_segment_id_plus_one =
+    const SegmentId last_segment_id_plus_one =
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
@@ -504,14 +510,14 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
     int64 start = 0, end = 1;
     // Index from which the output is not initialized.
-    OutputRow uninitialized_index = 0;
-    OutputRow out_index = internal::SubtleMustCopy(segment_vec(start));
+    SegmentId uninitialized_index = 0;
+    SegmentId out_index = internal::SubtleMustCopy(segment_vec(start));
 
     while (true) {
       // We initialize next_index to 0 to avoid "warning: 'next_index' may be
       // used uninitialized in this function" in the Mac build (since the
       // compiler isn't smart enough to realize the code is safe).
-      OutputRow next_index = 0;
+      SegmentId next_index = 0;
       if (end < num_indices) {
         next_index = internal::SubtleMustCopy(segment_vec(end));
         if (out_index == next_index) {
@@ -566,8 +572,6 @@ class SparseSegmentReductionOpBase : public OpKernel {
   }
 
  private:
-  typedef int32 Index;
-
   int64 Reduce(const typename TTypes<T>::ConstMatrix& input_flat,
                const typename TTypes<Index>::ConstVec& indices_vec, int64 start,
                int64 num,
@@ -701,70 +705,78 @@ class SparseSegmentReductionOpBase : public OpKernel {
   const T default_value_;
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionMeanOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionMeanOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, true /*is_mean*/, false /*is_sqrtn*/,
             false /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionMeanWithNumSegmentsOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionMeanWithNumSegmentsOp(
       OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, true /*is_mean*/, false /*is_sqrtn*/,
             true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionSqrtNOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionSqrtNOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, false /*is_mean*/, true /*is_sqrtn*/,
             false /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionSqrtNWithNumSegmentsOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionSqrtNWithNumSegmentsOp(
       OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, false /*is_mean*/, true /*is_sqrtn*/,
             true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionSumOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionSumOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, false /*is_mean*/, false /*is_sqrtn*/,
             false /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <typename Device, class T>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionSumWithNumSegmentsOp
-    : public SparseSegmentReductionOpBase<Device, T> {
+    : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentReductionSumWithNumSegmentsOp(
       OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(
+      : SparseSegmentReductionOpBase<Device, T, Index, SegmentId>(
             context, false /*is_mean*/, false /*is_sqrtn*/,
             true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-template <class T>
+// Implements the common logic for the gradients of SparseSegmentReduction
+// kernels.
+//
+// The template parameters are:
+// * Device: An Eigen device object, on which the kernel will execute.
+// * T: The value type.
+// * Index: The element type of the indices tensor (int32 or int64).
+// * SegmentId: The element type of the segment_ids tensor (int32 or int64).
+template <class T, typename Index, typename SegmentId>
 class SparseSegmentGradOpBase : public OpKernel {
  public:
   explicit SparseSegmentGradOpBase(OpKernelConstruction* context, bool is_sqrtn)
@@ -780,19 +792,16 @@ class SparseSegmentGradOpBase : public OpKernel {
                 errors::InvalidArgument("indices should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
                 errors::InvalidArgument("segment_ids should be a vector."));
-    OP_REQUIRES(context, IsLegacyScalar(output_dim0.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
                 errors::InvalidArgument("output_dim0 should be a scalar."));
 
     const int64 N = indices.NumElements();
     OP_REQUIRES(context, N == segment_ids.NumElements(),
                 errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
-    typedef int32 SegmentId;
-    const SegmentId M =
-        internal::SubtleMustCopy(output_dim0.scalar<SegmentId>()());
+    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
 
     auto input_flat = input.flat_outer_dims<T>();
-    typedef int32 Index;
     const auto indices_vec = indices.vec<Index>();
     const auto segment_vec = segment_ids.vec<SegmentId>();
 
@@ -870,18 +879,22 @@ class SparseSegmentGradOpBase : public OpKernel {
   const bool is_sqrtn_;
 };
 
-template <class T>
-class SparseSegmentMeanGradOp : public SparseSegmentGradOpBase<T> {
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentMeanGradOp
+    : public SparseSegmentGradOpBase<T, Index, SegmentId> {
  public:
   explicit SparseSegmentMeanGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T>(context, false /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
+                                                     false /*is_sqrtn*/) {}
 };
 
-template <class T>
-class SparseSegmentSqrtNGradOp : public SparseSegmentGradOpBase<T> {
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentSqrtNGradOp
+    : public SparseSegmentGradOpBase<T, Index, SegmentId> {
  public:
   explicit SparseSegmentSqrtNGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T>(context, true /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
+                                                     true /*is_sqrtn*/) {}
 };
 
 }  // namespace tensorflow

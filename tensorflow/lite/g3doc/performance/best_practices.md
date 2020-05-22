@@ -2,8 +2,8 @@
 
 Mobile and embedded devices have limited computational resources, so it is
 important to keep your application resource efficient. We have compiled a list
-of best practices and strategies that you can use to optimize your model and
-application when using TensorFlow Lite.
+of best practices and strategies that you can use to improve your TensorFlow
+Lite model performance.
 
 ## Choose the best model for the task
 
@@ -23,13 +23,19 @@ One example of models optimized for mobile devices are
 vision applications. [Hosted models](../models/hosted.md) lists several other
 models that have been optimized specifically for mobile and embedded devices.
 
-You can retrain the listed models on your own dataset by using transfer learning. Check out our transfer learning tutorial for
-[image classification](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0) and
- [object detection](https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193).
-
+You can retrain the listed models on your own dataset by using transfer
+learning. Check out our transfer learning tutorial for
+[image classification](/lite/tutorials/model_maker_image_classification) and
+[object detection](https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193).
 
 ## Profile your model
-Once you have selected a candidate model that is right for your task, it is a good practice to profile and benchmark your model. TensorFlow Lite [benchmarking tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark) has a built-in profiler that shows per operator profiling statistics. This can help in understanding performance bottlenecks and which operators dominate the computation time.
+
+Once you have selected a candidate model that is right for your task, it is a
+good practice to profile and benchmark your model. TensorFlow Lite
+[benchmarking tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
+has a built-in profiler that shows per operator profiling statistics. This can
+help in understanding performance bottlenecks and which operators dominate the
+computation time.
 
 ## Profile and optimize operators in the graph
 
@@ -43,23 +49,12 @@ operator is executed. Check out our
 
 ## Optimize your model
 
-Model compression aims to create smaller models that are generally faster and
-more energy efficient, so that they can be deployed on mobile devices.
+Model optimization aims to create smaller models that are generally faster and
+more energy efficient, so that they can be deployed on mobile devices. There are
+multiple optimization techniques supported by TensorFlow Lite, such as
+quantization.
 
-### Quantization
-
-If your model uses floating-point weights or activations, then it may be
-possible to reduce the size of model up to ~4x by using quantization, which
-effectively turns the float weights to 8-bit. There are two flavors of
-quantization: [post-training quantization](post_training_quantization.md) and
-[quantized training](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/README.md){:.external}.
-The former does not require model re-training, but, in rare cases, may have
-accuracy loss. When accuracy loss is beyond acceptable thresholds, quantized
-training should be used instead.
-
-We strongly recommend running benchmarks to make sure that the accuracy is not
-impacted during model compression. Check out our
-[model optimization docs](model_optimization.md) for details.
+Check out our [model optimization docs](model_optimization.md) for details.
 
 ## Tweak the number of threads
 
@@ -87,7 +82,14 @@ the Java API is a lot faster if ByteBuffers are used as
 [inputs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/src/main/java/org/tensorflow/lite/Interpreter.java#L175).
 
 ## Profile your application with platform specific tools
-Platform specific tools like [Android profiler](https://developer.android.com/studio/profile/android-profiler) and [Instruments](https://help.apple.com/instruments/mac/current/) provide a wealth of profiling information that can be used to debug your app. Sometimes the performance bug may be not in the model but in parts of application code that interact with the model. Make sure to familiarize yourself with platform specific profiling tools and best practices for your platform.
+
+Platform specific tools like
+[Android profiler](https://developer.android.com/studio/profile/android-profiler)
+and [Instruments](https://help.apple.com/instruments/mac/current/) provide a
+wealth of profiling information that can be used to debug your app. Sometimes
+the performance bug may be not in the model but in parts of application code
+that interact with the model. Make sure to familiarize yourself with platform
+specific profiling tools and best practices for your platform.
 
 ## Evaluate whether your model benefits from using hardware accelerators available on the device
 
@@ -102,18 +104,23 @@ interpreter execution. TensorFlow Lite can use delegates by:
     efficiency of your model. To enable the Neural Networks API, call
     [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L343)
     on the interpreter instance.
-*   A binary-only GPU delegate has been released for Android and iOS, using
-    OpenGL and Metal, respectively. To try them out, see the
-    [GPU delegate tutorial](gpu.md) and [documentation](gpu_advanced.md).
+*   GPU delegate is available on Android and iOS, using OpenGL/OpenCL and Metal,
+    respectively. To try them out, see the [GPU delegate tutorial](gpu.md) and
+    [documentation](gpu_advanced.md).
+*   Hexagon delegate is available on Android. It leverages the Qualcomm Hexagon
+    DSP if it is available on the device. See the
+    [Hexagon delegate tutorial](hexagon_delegate.md) for more information.
 *   It is possible to create your own delegate if you have access to
     non-standard hardware. See [TensorFlow Lite delegates](delegates.md) for
     more information.
 
-Be aware that some accelerators work better for different types of models. It is
-important to benchmark each delegate to see if it is a good choice for your
-application. For example, if you have a very small model, it may not be worth
-delegating the model to either the NN API or the GPU. Conversely, accelerators
-are a great choice for large models that have high arithmetic intensity.
+Be aware that some accelerators work better for different types of models. Some
+delegates only support float models or models optimized in a specific way. It is
+important to [benchmark](benchmarks.md) each delegate to see if it is a good
+choice for your application. For example, if you have a very small model, it may
+not be worth delegating the model to either the NN API or the GPU. Conversely,
+accelerators are a great choice for large models that have high arithmetic
+intensity.
 
 ## Need more help
 

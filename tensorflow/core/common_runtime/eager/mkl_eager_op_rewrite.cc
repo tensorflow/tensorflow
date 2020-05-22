@@ -15,9 +15,10 @@ limitations under the License.
 #ifdef INTEL_MKL
 #include <string>
 #include <unordered_map>
+
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
-#include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/util.h"
@@ -135,13 +136,8 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
-  if (orig_op->Device() != nullptr) {
-    (*new_mkl_op)->SetDevice(orig_op->Device());
-  } else {
-    string device_name = orig_op->GetDeviceName();
-    (*new_mkl_op)->SetDeviceName(device_name.c_str());
-  }
-  return Status::OK();
+  string device_name = orig_op->DeviceName();
+  return (*new_mkl_op)->SetDeviceName(device_name.c_str());
 }
 
 Status MklEagerOpRewrite::CreateGenericMklOp(

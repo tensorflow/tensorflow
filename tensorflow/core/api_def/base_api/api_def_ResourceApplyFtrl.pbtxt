@@ -33,13 +33,13 @@ END
   in_arg {
     name: "l1"
     description: <<END
-L1 regulariation. Must be a scalar.
+L1 regularization. Must be a scalar.
 END
   }
   in_arg {
     name: "l2"
     description: <<END
-L2 regulariation. Must be a scalar.
+L2 regularization. Must be a scalar.
 END
   }
   in_arg {

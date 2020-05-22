@@ -26,6 +26,20 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
+// Convert the legacy BatchNormWithGlobalNormalization to other ops.
+def : Pat<
+  (TF_BatchNormWithGlobalNormalizationOp
+    $t, $m, $v, $beta, $gamma, F32Attr:$variance_epsilon, ConstBoolAttrFalse:$scale_after_normalization),
+  (TF_AddOp
+    (TF_MulOp $t, (TF_RsqrtOp:$rsqrt (TF_AddOp $v, (TF_ConstOp $variance_epsilon)))),
+    (TF_SubOp $beta, (TF_MulOp $m, $rsqrt)))>;
+def : Pat<
+  (TF_BatchNormWithGlobalNormalizationOp
+    $t, $m, $v, $beta, $gamma, F32Attr:$variance_epsilon, ConstBoolAttrTrue:$scale_after_normalization),
+  (TF_AddOp
+    (TF_MulOp $t, (TF_MulOp:$mul (TF_RsqrtOp (TF_AddOp $v, (TF_ConstOp $variance_epsilon))), $gamma)),
+    (TF_SubOp $beta, (TF_MulOp $m, $mul)))>;
+
 // Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //
@@ -39,7 +53,8 @@ def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
 def : Pattern<
     (TF_FusedBatchNormOp:$root
         $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
+        F32Attr:$epsilon, $exponential_avg_factor,
+        $data_format, FalseBoolAttr:$is_training),
     [(TF_AddOp
         (TF_MulOp
             $x,
@@ -61,7 +76,8 @@ def : Pattern<
 def : Pattern<
     (TF_FusedBatchNormV3Op:$root
         $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
+        F32Attr:$epsilon, $exponential_avg_factor,
+        $data_format, FalseBoolAttr:$is_training),
     [(TF_AddOp
         (TF_MulOp
             $x,
@@ -136,7 +152,7 @@ def : Pat<(TF_ReshapeOp
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 class UpdateShapeWithAxis<int i> : NativeCodeCall<
-  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
+  "quant::CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
 
 class UsedBy<string op> : Constraint<
   CPred<"llvm::isa<mlir::TFL::" # op # "Op>(*$0.getUsers().begin())">>;
@@ -176,3 +192,16 @@ def : Pat<(TF_ReshapeOp:$old_value
 // parameters of the input, so we can remove the quantization ops.
 def : Pat<(TF_RankOp (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype))),
           (TF_RankOp $input)>;
+
+// `k` is expected to be 0, other values are not supported currently.
+def : Pat<(TF_MatrixSetDiagV2Op $input, $diagonal,
+            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
+          (TF_MatrixSetDiagOp $input, $diagonal)>;
+
+// `align` attribute can be ignored because we only support converting
+// `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs.
+def : Pat<(TF_MatrixSetDiagV3Op $input, $diagonal,
+            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
+            $align),
+          (TF_MatrixSetDiagOp $input, $diagonal)>;
+

@@ -19,7 +19,7 @@ the new model. This is done by using the `ARENA_SIZE` option when running
 `make`.
 
 ```
-make -f tensorflow/lite/micro/example/network_tester_test \
+make -f tensorflow/lite/micro/tools/make/Makefile network_tester_test \
                   NETWORK_MODEL=path/to/network_model.h \
                   INPUT_DATA=path/to/input_data.h \
                   OUTPUT_DATA=path/to/expected_output_data.h \

@@ -64,7 +64,8 @@ class HloInputOutputAliasConfig {
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                    const ShapeIndex& param_index, AliasKind kind);
+                    const ShapeIndex& param_index,
+                    AliasKind kind = AliasKind::kUserAlias);
 
   // Returns the kind of alias for the given parameter number and parameter
   // index. If no alias exists, AliasKind::kNoAlias is returned.

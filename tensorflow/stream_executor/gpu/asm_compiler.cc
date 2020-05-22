@@ -55,10 +55,10 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
 // ptxas_path.
 //
 // Locks on entry.
-static void WarnIfBadPtxasVersion(const string& ptxas_path) {
+static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_set<string>* seen_ptxas_paths GUARDED_BY(mu) =
-      new std::unordered_set<string>();
+  static std::unordered_set<std::string>* seen_ptxas_paths TF_GUARDED_BY(mu) =
+      new std::unordered_set<std::string>();
 
   tensorflow::mutex_lock lock(mu);
   if (!seen_ptxas_paths->insert(ptxas_path).second) {
@@ -74,7 +74,7 @@ static void WarnIfBadPtxasVersion(const string& ptxas_path) {
     return;
   }
 
-  string out;
+  std::string out;
   int exit_code = ptxas.Communicate(/*stdin_input=*/nullptr, &out,
                                     /*stderr_output=*/nullptr);
   if (exit_code != 0) {
@@ -84,7 +84,7 @@ static void WarnIfBadPtxasVersion(const string& ptxas_path) {
   }
 
   int64 vmaj, vmin, vdot;
-  string vmaj_str, vmin_str, vdot_str;
+  std::string vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(out, R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str,
                          &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &vmaj) ||
@@ -127,7 +127,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
   static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
-  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+  static auto& ptx_cache TF_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
 
   tensorflow::mutex_lock lock(ptx_cache_mutex);
@@ -155,10 +155,15 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   int cc_minor;
   TF_RETURN_IF_ERROR(
       gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, handle));
+  return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
+}
 
-  string ptxas_path;
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options) {
+  std::string ptxas_path;
   auto env = tensorflow::Env::Default();
-  for (const string& cuda_root :
+  for (const std::string& cuda_root :
        tensorflow::CandidateCudaRoots(options.preferred_cuda_dir)) {
     ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
     VLOG(2) << "Looking for ptxas at " << ptxas_path;
@@ -175,20 +180,20 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   WarnIfBadPtxasVersion(ptxas_path);
 
   // Write ptx into a temporary file.
-  string ptx_path;
+  std::string ptx_path;
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
-  });
-
   TF_RETURN_IF_ERROR(
       tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
 
+  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+  });
+
   // Invoke ptxas and collect its output.
-  string cubin_path;
+  std::string cubin_path;
   if (!env->LocalTempFilename(&cubin_path)) {
     return port::InternalError("couldn't get temp CUBIN file name");
   }
@@ -198,7 +203,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
     tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   });
   tensorflow::SubProcess ptxas_info_dumper;
-  std::vector<string> ptxas_args = {
+  std::vector<std::string> ptxas_args = {
       ptxas_path, ptx_path, "-o", cubin_path,
       absl::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
@@ -207,13 +212,15 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   if (options.disable_gpuasm_optimizations) {
     ptxas_args.push_back("-O0");
   }
+  ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
+                    options.extra_flags.end());
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
   if (!ptxas_info_dumper.Start()) {
     return port::InternalError("Failed to launch ptxas");
   }
-  string stderr_output;
+  std::string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
@@ -223,7 +230,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   }
 
   // Read in the result of compilation and return it as a byte vector.
-  string cubin;
+  std::string cubin;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   cubin_path, &cubin));
   std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());

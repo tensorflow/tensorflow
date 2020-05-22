@@ -16,26 +16,27 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_QUANTIZE_H_
 
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
 
-template <typename T>
+template <typename InputT, typename OutputT>
 inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& input_shape,
-                           const float* input_data,
-                           const RuntimeShape& output_shape, T* output_data) {
+                           const InputT* input_data,
+                           const RuntimeShape& output_shape,
+                           OutputT* output_data) {
   const int32 zero_point = op_params.zero_point;
-  const double scale = static_cast<double>(op_params.scale);
+  const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static constexpr int32 min_val = std::numeric_limits<T>::min();
-  static constexpr int32 max_val = std::numeric_limits<T>::max();
+  static constexpr int32 min_val = std::numeric_limits<OutputT>::min();
+  static constexpr int32 max_val = std::numeric_limits<OutputT>::max();
 
   for (int i = 0; i < flat_size; i++) {
-    const float val = input_data[i];
+    const InputT val = input_data[i];
     int32 unclamped =
         static_cast<int32>(TfLiteRound(val / static_cast<float>(scale))) +
         zero_point;

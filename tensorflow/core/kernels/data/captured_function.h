@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,11 +40,15 @@ namespace data {
 class CapturedFunction;
 class InstantiatedCapturedFunction;
 
+// Creates an iterator for a dataset which is created by applying the given
+// function to the given input element.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator);
 
+// Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);
 
@@ -91,14 +96,14 @@ class InstantiatedCapturedFunction {
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
-                const string& prefix) const;
+                const std::shared_ptr<model::Node>& node) const;
 
  private:
   InstantiatedCapturedFunction(
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
-      CapturedFunction* captured_func);
+      CapturedFunction* captured_func, bool is_multi_device);
 
   // Determines whether a rendezvous object should be created when running the
   // instantiated function.
@@ -113,6 +118,7 @@ class InstantiatedCapturedFunction {
   // run the function without `IteratorContext` via `RunInstantiated`.
   std::function<void(std::function<void()>)> captured_runner_;
   CapturedFunction* const captured_func_;
+  bool const is_multi_device_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
 };
@@ -126,7 +132,6 @@ struct ShortCircuitInfo {
 class FunctionMetadata {
  public:
   struct Params {
-    bool is_multi_device_function = false;
     bool use_inter_op_parallelism = true;
     bool use_default_device = true;
   };
@@ -146,9 +151,6 @@ class FunctionMetadata {
   // Returns the named list of function arguments.
   const NameAttrList& func() const { return func_; }
 
-  // Indicates whether the function is a multi-device function.
-  bool is_multi_device_function() const { return is_multi_device_function_; }
-
   // Returns a borrowed pointer to the function library that contains the
   // transitive closure of definitions used by the function.
   const FunctionLibraryDefinition* lib_def() const { return lib_def_.get(); }
@@ -166,21 +168,21 @@ class FunctionMetadata {
   // function.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
+  // Indicates whether the function should a multi-device function backend.
+  bool use_multi_device_function() const { return use_multi_device_function_; }
+
  private:
   FunctionMetadata(NameAttrList&& func, Params params)
       : func_(std::move(func)),
-        is_multi_device_function_(params.is_multi_device_function),
         use_default_device_(params.use_default_device),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
-
-  void ValidateMultiDevice();
 
   NameAttrList func_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
   ShortCircuitInfo short_circuit_info_;
-  bool is_multi_device_function_ = false;
   bool use_default_device_ = true;
   bool use_inter_op_parallelism_ = true;
+  bool use_multi_device_function_ = true;
 };
 
 // A `CapturedFunction` encapsulates a TensorFlow function, plus any "captured"
@@ -232,11 +234,6 @@ class CapturedFunction {
   // Returns the named list of function arguments.
   const NameAttrList& func() const { return metadata_->func(); }
 
-  // Indicates whether the function is multi-device.
-  bool is_multi_device_function() const {
-    return metadata_->is_multi_device_function();
-  }
-
   // Returns the transitive set of function definition required to instantiate
   // this function.
   const FunctionLibraryDefinition* lib_def() const {
@@ -258,10 +255,6 @@ class CapturedFunction {
  private:
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
-
-  // Determines whether the captured function requires the use of the
-  // multi-device function backend.
-  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device);
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;

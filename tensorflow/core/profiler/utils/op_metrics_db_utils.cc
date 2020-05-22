@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
+#include <algorithm>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+
+const absl::string_view kIdle = "IDLE";
+
 namespace {
 
 class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
@@ -30,31 +38,34 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
   explicit DeviceTfOpMetricsDbBuilder(OpMetricsDb* db)
       : OpMetricsDbBuilder(db) {}
 
-  void UpdateTfOpMetricsWithHloOpMetrics(absl::string_view tf_op_name,
-                                         absl::string_view tf_op_type,
-                                         const OpMetrics& hlo_op_metrics) {
+  void UpdateTfOpMetricsWithDeviceOpMetrics(
+      absl::string_view tf_op_name, absl::string_view tf_op_type,
+      const OpMetrics& device_op_metrics) {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
         /*hlo_module_id=*/0, tf_op_name);
-    if (tf_op_metrics->category().empty())
-      tf_op_metrics->set_category(tf_op_type.data(), tf_op_type.size());
+    if (tf_op_metrics->category().empty()) {
+      tf_op_metrics->set_category(
+          tf_op_type == kUnknownOp ? "Unknown" : std::string(tf_op_type));
+    }
+    tf_op_metrics->set_is_eager(device_op_metrics.is_eager());
     // The occurrences of a TF-op is the maximum among the occurrences of all
-    // HLO-ops that it contains.
-    tf_op_metrics->set_occurrences(
-        std::max(tf_op_metrics->occurrences(), hlo_op_metrics.occurrences()));
+    // device ops that it contains.
+    tf_op_metrics->set_occurrences(std::max(tf_op_metrics->occurrences(),
+                                            device_op_metrics.occurrences()));
     tf_op_metrics->set_time_ps(tf_op_metrics->time_ps() +
-                               hlo_op_metrics.time_ps());
+                               device_op_metrics.time_ps());
     tf_op_metrics->set_self_time_ps(tf_op_metrics->self_time_ps() +
-                                    hlo_op_metrics.self_time_ps());
-    tf_op_metrics->set_flops(tf_op_metrics->flops() + hlo_op_metrics.flops());
+                                    device_op_metrics.self_time_ps());
+    tf_op_metrics->set_flops(tf_op_metrics->flops() +
+                             device_op_metrics.flops());
     tf_op_metrics->set_bytes_accessed(tf_op_metrics->bytes_accessed() +
-                                      hlo_op_metrics.bytes_accessed());
+                                      device_op_metrics.bytes_accessed());
   }
 };
 
 }  // namespace
 
-OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db)
-    : db_(db) {
+OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db) : db_(db) {
   DCHECK_NE(db_, nullptr);
   DCHECK_EQ(db_->metrics_db_size(), 0);
 }
@@ -76,35 +87,44 @@ double IdleTimeRatio(const OpMetricsDb& metrics_db) {
 }
 
 uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
+  if (metrics_db.total_time_ps() <= metrics_db.total_op_time_ps()) return 0;
   return metrics_db.total_time_ps() - metrics_db.total_op_time_ps();
 }
 
 void AddIdleOp(OpMetricsDb* db) {
   uint64 idle_time_ps = IdleTimePs(*db);
   OpMetrics* metrics = db->add_metrics_db();
-  metrics->set_name("IDLE");
-  metrics->set_category("IDLE");
-  metrics->set_occurrences(1);
+  metrics->set_name(std::string(kIdle));
+  metrics->set_category(std::string(kIdle));
+  metrics->set_occurrences(0);
   metrics->set_time_ps(idle_time_ps);
   metrics->set_self_time_ps(idle_time_ps);
 }
 
-OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(
-    const OpMetricsDb& hlo_metrics_db) {
+OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
+    const OpMetricsDb& device_op_metrics_db, bool with_idle) {
   OpMetricsDb tf_op_metrics_db;
   DeviceTfOpMetricsDbBuilder builder(&tf_op_metrics_db);
-  for (const auto& hlo_op_metrics : hlo_metrics_db.metrics_db()) {
-    if (!hlo_op_metrics.provenance().empty()) {
-      TfOp tf_op = ParseTfOpFullname(hlo_op_metrics.provenance());
-      builder.UpdateTfOpMetricsWithHloOpMetrics(tf_op.name, tf_op.type,
-                                                hlo_op_metrics);
+  for (const auto& device_op_metrics : device_op_metrics_db.metrics_db()) {
+    if (!device_op_metrics.provenance().empty()) {
+      TfOp tf_op = ParseTfOpFullname(device_op_metrics.provenance());
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
+                                                   device_op_metrics);
     } else {
-      DCHECK_EQ(hlo_op_metrics.name(), "IDLE");
-      builder.UpdateTfOpMetricsWithHloOpMetrics("IDLE", "IDLE", hlo_op_metrics);
+      DCHECK(IsIdleOp(device_op_metrics));
+      if (with_idle) {
+        builder.UpdateTfOpMetricsWithDeviceOpMetrics(kIdle, kIdle,
+                                                     device_op_metrics);
+      }
     }
   }
-  tf_op_metrics_db.set_total_op_time_ps(hlo_metrics_db.total_op_time_ps());
-  tf_op_metrics_db.set_total_time_ps(hlo_metrics_db.total_time_ps());
+  tf_op_metrics_db.set_total_op_time_ps(
+      device_op_metrics_db.total_op_time_ps());
+
+  tf_op_metrics_db.set_total_time_ps(
+      with_idle ? device_op_metrics_db.total_time_ps()
+                : device_op_metrics_db.total_op_time_ps());
+
   return tf_op_metrics_db;
 }
 }  // namespace profiler

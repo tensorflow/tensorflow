@@ -136,7 +136,7 @@ Status PartitionedCallOp::FillOutputDevices(
   const FunctionLibraryDefinition* flib = lib.GetFunctionLibraryDefinition();
   const FunctionDef* fdef = flib->Find(func_->name());
   if (fdef == nullptr) {
-    return errors::NotFound("Failed for find definition for function \"",
+    return errors::NotFound("Failed to find definition for function \"",
                             func_->name(), "\"");
   }
 
@@ -241,17 +241,11 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
   // i.e., using device-specific threadpools when available.
   run_opts.runner = ctx->runner();
+  run_opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;
-
-  Rendezvous* rendez;
-  OP_REQUIRES_OK_ASYNC(
-      ctx,
-      ctx->create_rendezvous(run_opts.step_id,
-                             ctx->function_library()->device_mgr(), &rendez),
-      done);
-  run_opts.rendezvous = rendez;
+  run_opts.rendezvous = ctx->rendezvous();
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
@@ -263,7 +257,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
       },
       /*level=*/2);
   lib->Run(run_opts, handle, inputs, rets,
-           [rets, rendez, done, ctx, func_name,
+           [rets, done = std::move(done), ctx, func_name,
             step_container](const Status& status) {
              if (!status.ok()) {
                const string function_and_msg =
@@ -277,7 +271,6 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
              }
              delete rets;
              delete step_container;
-             rendez->Unref();
              done();
            });
 }

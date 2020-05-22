@@ -40,40 +40,42 @@ class MultiplyAdd : public ElementwiseOperation {
   MultiplyAdd(const MultiplyAdd&) = delete;
   MultiplyAdd& operator=(const MultiplyAdd&) = delete;
 
-  Status UploadMul(const MultiplyScalarAttributes& attr,
-                   CalculationsPrecision scalar_precision, CLContext* context);
-  Status UploadAdd(const AddAttributes& attr,
-                   CalculationsPrecision scalar_precision, CLContext* context);
+  absl::Status UploadMul(const MultiplyAttributes& attr,
+                         CalculationsPrecision scalar_precision,
+                         CLContext* context);
+  absl::Status UploadAdd(const AddAttributes& attr,
+                         CalculationsPrecision scalar_precision,
+                         CLContext* context);
 
   template <DataType T>
-  Status UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,
-                   CLContext* context);
+  absl::Status UploadMul(const tflite::gpu::Tensor<Linear, T>& mul,
+                         CLContext* context);
 
   template <DataType T>
-  Status UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
-                   CLContext* context);
+  absl::Status UploadAdd(const tflite::gpu::Tensor<Linear, T>& add,
+                         CLContext* context);
 
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
 
   std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
+  absl::Status BindArguments(CLKernel* kernel) override;
 
-  friend Status CreateMultiplyAdd(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const MultiplyScalarAttributes& attr,
-                                  MultiplyAdd* result);
+  friend absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                                        const OperationDef& definition,
+                                        const MultiplyAttributes& attr,
+                                        MultiplyAdd* result);
 
-  friend Status CreateMultiplyAdd(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const AddAttributes& attr,
-                                  MultiplyAdd* result);
+  friend absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                                        const OperationDef& definition,
+                                        const AddAttributes& attr,
+                                        MultiplyAdd* result);
 
-  friend Status CreateMultiplyAdd(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const MultiplyScalarAttributes& mul_attr,
-                                  const AddAttributes& add_attr,
-                                  MultiplyAdd* result);
+  friend absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                                        const OperationDef& definition,
+                                        const MultiplyAttributes& mul_attr,
+                                        const AddAttributes& add_attr,
+                                        MultiplyAdd* result);
 
  private:
   explicit MultiplyAdd(const OperationDef& definition)
@@ -89,42 +91,43 @@ class MultiplyAdd : public ElementwiseOperation {
   FLT scalar_add_;
 };
 
-Status CreateMultiplyAdd(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const MultiplyScalarAttributes& attr,
-                         MultiplyAdd* result);
+absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const MultiplyAttributes& attr,
+                               MultiplyAdd* result);
 
-Status CreateMultiplyAdd(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const AddAttributes& attr, MultiplyAdd* result);
+absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const AddAttributes& attr, MultiplyAdd* result);
 
-Status CreateMultiplyAdd(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const MultiplyScalarAttributes& mul_attr,
-                         const AddAttributes& add_attr, MultiplyAdd* result);
+absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const MultiplyAttributes& mul_attr,
+                               const AddAttributes& add_attr,
+                               MultiplyAdd* result);
 
 template <DataType T>
-Status MultiplyAdd::UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,
-                              CLContext* context) {
+absl::Status MultiplyAdd::UploadMul(const tflite::gpu::Tensor<Linear, T>& mul,
+                                    CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
   create_info.data_type = definition_.GetDataType();
   RETURN_IF_ERROR(CreateLinearStorage(create_info, mul, context, &mul_vec_));
   use_mul_vec_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <DataType T>
-Status MultiplyAdd::UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
-                              CLContext* context) {
+absl::Status MultiplyAdd::UploadAdd(const tflite::gpu::Tensor<Linear, T>& add,
+                                    CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
   create_info.data_type = definition_.GetDataType();
   RETURN_IF_ERROR(CreateLinearStorage(create_info, add, context, &add_vec_));
   use_add_vec_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

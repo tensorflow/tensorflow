@@ -18,14 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,10 +33,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -321,39 +318,11 @@ class DeviceFunctionsTest(test.TestCase):
 
 class ConvertVariablesToConstantsTest(test.TestCase):
 
-  def _get_tensors(self, sess, tensor_list):
-    """Returns a list of Tensor objects from the Session."""
-    return [
-        sess.graph.get_tensor_by_name(tensor.name) for tensor in tensor_list
-    ]
-
-  def _get_tensor_names(self, tensors):
-    """Returns a list of string names for the tensors specified."""
-    return [tensor.name.split(":")[0] for tensor in tensors]
-
-  def _evaluate_graph_def(self, graph_def, inputs, outputs, input_data):
-    """Evaluates the GraphDef using Sessions."""
-    with ops.Graph().as_default() as graph:
-      importer.import_graph_def(graph_def, name="")
-      sess = session.Session(graph=graph)
-
-    input_tensors = self._get_tensors(sess, inputs)
-    output_tensors = self._get_tensors(sess, outputs)
-    return sess.run(
-        output_tensors, feed_dict=dict(zip(input_tensors, input_data)))
-
   def _ensure_no_variables_in_graph(self, graph_def):
     """Ensures there are no variables in the graph."""
     for node in graph_def.node:
       self.assertNotIn(
           node.op, ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
-
-  def _test_converted_keras_model(self, model, constant_graph_def, input_data):
-    """Compares the converted Keras model."""
-    expected_value = model.predict(input_data)
-    actual_value = self._evaluate_graph_def(constant_graph_def, model.inputs,
-                                            model.outputs, [input_data])
-    np.testing.assert_almost_equal(np.array([expected_value]), actual_value, 5)
 
   def _test_variable_to_const_conversion(self, use_resource):
     with ops.Graph().as_default():
@@ -418,6 +387,53 @@ class ConvertVariablesToConstantsTest(test.TestCase):
         output = self.evaluate(output_node)
         self.assertNear(2.0, output, 0.00001)
 
+  def test_resource_variable_can_be_written_after_blacklisting(self):
+    with ops.Graph().as_default():
+      with variable_scope.variable_scope("", use_resource=True):
+        variable_node = variable_scope.get_variable(
+            "variable_node", initializer=1.0)
+        another_variable = variable_scope.get_variable(
+            "unused_variable_node", initializer=2.0)
+        with ops.control_dependencies([
+            variable_node.assign(another_variable + variable_node)]):
+          output_node = array_ops.identity(variable_node, name="output_node")
+        initializer_name = variable_node.initializer.name
+        with session.Session() as sess:
+          self.evaluate(variable_node.initializer)
+          self.evaluate(another_variable.initializer)
+          output = self.evaluate(output_node)
+          self.assertNear(3.0, output, 0.00001)
+          variable_graph_def = sess.graph.as_graph_def()
+
+          # Test variable name black list. This should result in the variable
+          # not being a const.  Furthermore, the paths that read from and assign
+          # to the blacklisted variable should continue to be valid.
+          constant_graph_def_with_blacklist = (
+              graph_util.convert_variables_to_constants(
+                  sess,
+                  variable_graph_def, ["output_node", initializer_name],
+                  variable_names_blacklist=set(["variable_node"])))
+
+          variable_node = None
+          for node in constant_graph_def_with_blacklist.node:
+            if node.name == "variable_node":
+              variable_node = node
+          self.assertIsNotNone(variable_node)
+          self.assertEqual(variable_node.op, "VarHandleOp")
+
+    # Now we make sure another_variable is now a constant, but the original
+    # variable is not, and that the graph can be executed and update the
+    # variable can be updated with each execution.
+    with ops.Graph().as_default():
+      _ = importer.import_graph_def(constant_graph_def_with_blacklist, name="")
+      with session.Session() as sess:
+        output_node = sess.graph.get_tensor_by_name("output_node:0")
+        self.evaluate(sess.graph.get_operation_by_name(initializer_name))
+        output = self.evaluate(output_node)
+        self.assertNear(3.0, output, 0.00001)
+        output = self.evaluate(output_node)
+        self.assertNear(5.0, output, 0.00001)
+
   def _inline_functions(self, graph_def, arrays):
     meta_graph = export_meta_graph(graph_def=graph_def)
     fetch_collection = meta_graph_pb2.CollectionDef()
@@ -476,30 +492,6 @@ class ConvertVariablesToConstantsTest(test.TestCase):
     """Freezes a graph with functions that have been inlined using Grappler."""
     self._test_convert_variables_with_functions(inline_functions=True)
 
-  def testWithEmbeddings(self):
-    """Freezes a graph with embeddings."""
-    ops.disable_eager_execution()
-    state_input = keras.layers.Input(
-        shape=(1,), name="state_input", dtype="int32")
-    output = keras.layers.Embedding(
-        output_dim=16, input_dim=100, input_length=1, name="state")(
-            state_input)
-    model = keras.models.Model(inputs=[state_input], outputs=[output])
-    model.compile(
-        loss={"state": "sparse_categorical_crossentropy"}, optimizer="adam")
-
-    # Freeze the graph.
-    sess = keras.backend.get_session()
-    variable_graph_def = sess.graph_def
-    output_tensor = self._get_tensor_names(model.outputs)
-    constant_graph_def = graph_util.convert_variables_to_constants(
-        sess, variable_graph_def, output_tensor)
-
-    # Validate converted graph.
-    input_data = np.array(np.random.random_sample([1, 1]), dtype=np.int32)
-    self._ensure_no_variables_in_graph(constant_graph_def)
-    self._test_converted_keras_model(model, constant_graph_def, input_data)
-
   def testGraphWithSwitch(self):
     """Freezes a graph which contains a Switch with type RESOURCE_DT."""
     with ops.Graph().as_default():
@@ -520,52 +512,6 @@ class ConvertVariablesToConstantsTest(test.TestCase):
               sess, variable_graph_def, ["output_node"])
 
     self._ensure_no_variables_in_graph(constant_graph_def)
-
-  def testKerasBatchNorm(self):
-    """Freezes a graph with Keras batch norm."""
-    ops.disable_eager_execution()
-    inputs = keras.layers.Input(shape=(128, 128, 1))
-    batch_norm = keras.layers.BatchNormalization()(inputs)
-    model = keras.models.Model(inputs, batch_norm, name="test")
-    model.compile(
-        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-    tensor_names = [tensor.name for tensor in model.inputs + model.outputs]
-
-    # Freeze the graph.
-    sess = keras.backend.get_session()
-    variable_graph_def = sess.graph_def
-    variable_graph_def = self._inline_functions(variable_graph_def,
-                                                tensor_names)
-    output_tensor = self._get_tensor_names(model.outputs)
-    constant_graph_def = graph_util.convert_variables_to_constants(
-        sess, variable_graph_def, output_tensor)
-
-    # Validate converted graph.
-    input_data = np.array(
-        np.random.random_sample([1, 128, 128, 1]), dtype=np.int32)
-    self._ensure_no_variables_in_graph(constant_graph_def)
-    self._test_converted_keras_model(model, constant_graph_def, input_data)
-
-  def testLSTM(self):
-    """Freezes a Keras LSTM."""
-    ops.disable_eager_execution()
-    model = keras.models.Sequential(
-        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
-    tensor_names = [tensor.name for tensor in model.inputs + model.outputs]
-
-    # Freeze the model.
-    sess = keras.backend.get_session()
-    variable_graph_def = sess.graph_def
-    variable_graph_def = self._inline_functions(variable_graph_def,
-                                                tensor_names)
-    output_tensor = self._get_tensor_names(model.outputs)
-    constant_graph_def = graph_util.convert_variables_to_constants(
-        sess, variable_graph_def, output_tensor)
-
-    # Validate converted graph.
-    input_data = np.array(np.random.random_sample([10, 10, 10]), dtype=np.int32)
-    self._ensure_no_variables_in_graph(constant_graph_def)
-    self._test_converted_keras_model(model, constant_graph_def, input_data)
 
 
 if __name__ == "__main__":

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 
+#include <cfloat>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -223,6 +226,37 @@ std::string TensorCodeGenerator::ReadAsFloatWHDSB(
     TextureAddressMode address_mode) const {
   return ReadAsFloat(GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b),
                      address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHS(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& s, TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHS(x, y, s),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHSB(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHSB(x, y, s, b),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHDS(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHDS(x, y, z, s),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHDSB(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b),
+                    address_mode);
 }
 
 std::string TensorCodeGenerator::GetAddressWHS(const std::string& var_name,
@@ -449,6 +483,39 @@ std::string TensorCodeGenerator::ReadAsFloat(
   }
 }
 
+std::string TensorCodeGenerator::ReadAsType(
+    DataType type, const std::string& global_address,
+    TextureAddressMode address_mode) const {
+  const std::string read_as =
+      type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER: {
+      const std::string reading =
+          absl::StrCat(tensor_name_, "[", global_address, "]");
+      if (type == descriptor_.data_type) {
+        return reading;
+      } else {
+        const std::string conversion =
+            type == DataType::FLOAT16 ? "convert_half4" : "convert_float4";
+        return absl::StrCat(conversion, "(", reading, ")");
+      }
+    }
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    case TensorStorageType::TEXTURE_ARRAY:
+      return absl::StrCat(
+          read_as, "(", tensor_name_,
+          ", " + TextureAddressModeToString(address_mode) + ", ",
+          global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat(read_as, "(", tensor_name_, ", ", global_address,
+                          ")");
+    case TensorStorageType::UNKNOWN:
+      return "";
+  }
+}
+
 std::string TensorCodeGenerator::Write(
     const std::string& var_name, const std::string& global_address) const {
   switch (descriptor_.storage_type) {
@@ -518,6 +585,90 @@ float4 GetMaskForLastPlane(int channels) {
     mask[i] = 1.0f;
   }
   return mask;
+}
+
+int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
+  for (const auto& wg : wgs) {
+    const int wg_size = wg.x * wg.y * wg.z;
+    if (wg_size <= max_wg_size) {
+      return wg;
+    }
+  }
+  return {1, 1, 1};
+}
+
+int GetRecommendedBlockSizeForConv(const CLDevice& device,
+                                   CalculationsPrecision precision,
+                                   int task_size) {
+  const float task_size_per_cu =
+      task_size / static_cast<float>(device.GetInfo().compute_units_count);
+  int block_size = 1;
+  float threshold_1 = FLT_MAX;
+  float threshold_2 = FLT_MAX;
+  float threshold_4 = FLT_MAX;
+  if (!device.IsMali()) {
+    return 1;
+  }
+  MaliInfo mali_info = device.GetInfo().mali_info;
+  switch (precision) {
+    case CalculationsPrecision::F16:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 4.0f;
+        threshold_4 = 256.0f * 8.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 256.0f * 2.0f;
+        threshold_2 = 256.0f * 8.0f;
+        threshold_4 = 256.0f * 16.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 6.0f;
+        threshold_4 = 256.0f * 16.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 4.0f;
+        threshold_2 = 256.0f * 16.0f;
+      }
+      break;
+    case CalculationsPrecision::F32_F16:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 3.0f;
+        threshold_4 = 256.0f * 32.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 256.0f * 2.0f;
+        threshold_2 = 256.0f * 8.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 8.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 4.0f;
+      }
+      break;
+    case CalculationsPrecision::F32:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 4.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 128.0f;
+        threshold_2 = 256.0f * 4.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 12.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 16.0f;
+      }
+      break;
+  }
+  if (task_size_per_cu <= threshold_1) {
+    block_size = 1;
+  } else if (task_size_per_cu <= threshold_2) {
+    block_size = 2;
+  } else if (task_size_per_cu <= threshold_4) {
+    block_size = 4;
+  } else {
+    block_size = 8;
+  }
+  return block_size;
 }
 
 }  // namespace cl

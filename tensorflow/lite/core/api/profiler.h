@@ -52,6 +52,23 @@ class Profiler {
 
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
+
+  // Appends an event of type 'event_type' with 'tag' and 'event_metadata'
+  // which started at 'start' and ended at 'end'
+  // Note:
+  // In cases were ProfileSimmarizer and tensorflow::StatsCalculator are used
+  // they assume the value is in "usec", if in any case subclasses
+  // didn't put usec, then the values are not meaningful.
+  // TODO karimnosseir: Revisit and make the function more clear.
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata, uint64_t start, uint64_t end) {
+    AddEvent(tag, event_type, event_metadata, start, end,
+             /*event_subgraph_index*/ 0);
+  }
+
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata, uint64_t start, uint64_t end,
+                        uint32_t event_subgraph_index) {}
 };
 
 // Adds a profile event to `profiler` that begins with the construction
@@ -98,7 +115,8 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
 
 }  // namespace tflite
 
-#define TFLITE_VARNAME_UNIQ(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ_IMPL(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ(name, ctr) TFLITE_VARNAME_UNIQ_IMPL(name, ctr)
 
 #define TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler, tag)          \
   tflite::ScopedProfile TFLITE_VARNAME_UNIQ(_profile_, __COUNTER__)( \

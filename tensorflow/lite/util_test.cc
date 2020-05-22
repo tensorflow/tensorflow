@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -90,6 +91,32 @@ TEST(CombineHashes, TestHashOutputsDifferent) {
   EXPECT_NE(output1, output2);
 }
 
+TEST(GetOpNameByRegistration, ValidBuiltinCode) {
+  TfLiteRegistration registration;
+  registration.builtin_code = tflite::BuiltinOperator_ADD;
+  const auto op_name = GetOpNameByRegistration(registration);
+  EXPECT_EQ("ADD", op_name);
+}
+
+TEST(GetOpNameByRegistration, InvalidBuiltinCode) {
+  TfLiteRegistration registration;
+  registration.builtin_code = -1;
+  const auto op_name = GetOpNameByRegistration(registration);
+  EXPECT_EQ("", op_name);
+}
+
+TEST(GetOpNameByRegistration, CustomName) {
+  TfLiteRegistration registration;
+  registration.builtin_code = tflite::BuiltinOperator_CUSTOM;
+  registration.custom_name = "TestOp";
+  auto op_name = GetOpNameByRegistration(registration);
+  EXPECT_EQ("CUSTOM TestOp", op_name);
+
+  registration.builtin_code = tflite::BuiltinOperator_DELEGATE;
+  registration.custom_name = "TestDelegate";
+  op_name = GetOpNameByRegistration(registration);
+  EXPECT_EQ("DELEGATE TestDelegate", op_name);
+}
 }  // namespace
 }  // namespace tflite
 

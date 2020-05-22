@@ -43,7 +43,7 @@ struct TensorProperty {
   // Constraints.
   bool restriction = false;
   // scale/zero_point hardcoded.
-  std::pair<float, int> restricted_value = {0.0, 0};
+  std::pair<float, int> restricted_value = {0.0f, 0};
 
   // Use derived scale.
   bool use_derived_scale = false;
@@ -86,7 +86,7 @@ struct OperatorProperty {
   bool restrict_same_input_output_scale = false;
 
   // Use same min of min and max of max for each group.
-  // Incompatable with restrict_same_input_output_scale and restricted_value.
+  // Incompatible with restrict_same_input_output_scale and restricted_value.
   // TODO(jianlijianli): make it compatible with other restrictions when there
   // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};

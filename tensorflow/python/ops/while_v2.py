@@ -24,8 +24,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -36,6 +37,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util as util_v1
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
@@ -274,13 +276,8 @@ def while_loop(cond,
       # This is needed so we do not compute derivative wrt these extra outputs.
       outputs[0].op._set_attr("_num_original_outputs",
                               attr_value_pb2.AttrValue(i=num_original_outputs))
-
     outputs[0].op._cond_graph = cond_graph
     outputs[0].op._body_graph = body_graph
-    _copy_handle_data(body_graph.outputs, outputs)
-    util.maybe_set_lowering_attr(outputs[0].op)
-    util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
-
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -338,6 +335,14 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
           while_op.outputs[:num_original_outputs])
   ] + [None] * num_intermediates
 
+  # Skip gradients with respect to the captures whenever possible.
+  if "skip_input_indices" in op.__dict__ and op.skip_input_indices is not None:
+    captures_start_index = (
+        len(body_graph.inputs) - len(body_graph.internal_captures))
+    for i in op.skip_input_indices:
+      if i >= captures_start_index:
+        grads[i] = None
+
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.
@@ -369,7 +374,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
                           [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  # Do not ingore grads wrt extra outputs when computing higher order
+  # Do not ignore grads wrt extra outputs when computing higher order
   # derivatives.
   while_op._set_attr("_num_original_outputs",
                      attr_value_pb2.AttrValue(i=len(while_op.outputs)))
@@ -400,11 +405,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
-  grad_op = outputs[0].op
-
-  _copy_handle_data(body_grad_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(grad_op)
-  util.maybe_propagate_compile_time_consts_in_xla(grad_op)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -425,13 +425,19 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   else:
     op_fn = gen_functional_ops.stateless_while
 
-  return op_fn(
+  outputs = op_fn(
       loop_vars,
       util.create_new_tf_function(cond_graph),
       util.create_new_tf_function(body_graph),
       output_shapes=output_shapes,
       parallel_iterations=parallel_iterations,
       name=name)
+  while_op = outputs[0].op
+  _copy_handle_data(body_graph.outputs, outputs)
+  util.maybe_set_lowering_attr(while_op)
+  util.maybe_propagate_compile_time_consts_in_xla(while_op)
+  _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
+  return outputs
 
 
 def _get_intermediates(func_graph):
@@ -459,8 +465,7 @@ def _get_intermediates(func_graph):
   # 3. Do not accumulate loop vars that are returned as-is just like captured
   #    tensors.
   intermediates = []
-  reverse_captures = dict(
-      (v.experimental_ref(), k) for k, v in func_graph.captures)
+  reverse_captures = dict((v.ref(), k) for k, v in func_graph.captures)
 
   for op in func_graph.get_operations():
     if op.type == "Identity":
@@ -472,7 +477,7 @@ def _get_intermediates(func_graph):
       if (o is not func_graph.inputs[0] and  # Loop counter.
           o.dtype != dtypes.resource and  # Do not accumulate resource tensors.
           _get_accumulator(o) is None and  # Has existing accumulator.
-          o.experimental_ref() not in reverse_captures
+          o.ref() not in reverse_captures
          ):  # Captured value, hence loop invariant.
         intermediates.append(o)
   return intermediates
@@ -908,6 +913,61 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   def while_op_needs_rewrite(self):
     return self.extra_inputs
 
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # For a reduction op, if op is in in the gradient body graph and its input
+    # is from the forward graph, moving op to the forward graph means we would
+    # store the tensor after the reduction as opposed to the tensor before
+    # reduction, and therefore could significantly reduce memory consumption.
+    # For now, we do this only for a few ops.
+    #
+    # We don't do this if any input tensor has already been accumulated. This
+    # can happen if we output all intermediates in the forward pass.
+    #
+    # If in XLA context, do not move constant ops to forward pass as pushing to
+    # and popping from a TensorList removes the constant property of an op and
+    # breaks XLA compilation, which requires certain inputs to be compile-time
+    # constant for certain ops.
+    if (op_type in {"Shape", "Size", "Rank"} and
+        all(input.graph is self._forward_graph for input in inputs) and
+        all(_get_accumulator(input) is None for input in inputs) and
+        not util_v1.GraphOrParentsInXlaContext(self._forward_graph)):
+      with self._forward_graph.as_default():
+        # `name` was built using name_scope stack of gradient graph and may not
+        # be unique in the forward graph. `Graph.create_op` does not uniquify
+        # names which are name scopes i.e. end in `/`. To ensure that the op
+        # created gets a unique name in the forward graph we get rid of the
+        # trailing slash.
+        name = ops.name_from_scope_name(name)
+        result = self._forward_graph._create_op_internal(
+            op_type,
+            inputs,
+            dtypes=dtypes,
+            input_types=input_types,
+            name=name,
+            attrs=attrs,
+            op_def=op_def,
+            compute_device=compute_device)
+        return result
+
+    return super(_WhileBodyGradFuncGraph, self)._create_op_internal(
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
+
   def capture(self, tensor, name=None, whitelisted=False):
     """Selectively captures external tensors.
 
@@ -1238,5 +1298,25 @@ class _OperationWithOutputs(ops.Operation):
     self._id_value = g._add_op(self, self.name)
     self._is_stateful = False
 
+
+def _set_read_only_resource_inputs_attr(op, branch_graphs):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: While Operation.
+    branch_graphs: List of branch FuncGraphs.
+  """
+  read_only_indices = set(range(len(op.inputs)))
+  for branch_graph in branch_graphs:
+    if not read_only_indices:
+      break
+    branch_read_only_indices = acd.get_read_only_resource_input_indices_graph(
+        branch_graph)
+    read_only_indices = read_only_indices.intersection(branch_read_only_indices)
+
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        sorted(read_only_indices))
 
 # pylint: enable=protected-access

@@ -44,7 +44,7 @@ class FunctionHandleCache {
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned
   const string state_handle_;
   std::unordered_map<string, FunctionLibraryRuntime::Handle> handles_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data

@@ -15,7 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
-#include "tensorflow/core/platform/env_time.h"
+#include <stddef.h>
+
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -23,14 +35,6 @@ namespace tensorflow {
 namespace profiler {
 
 namespace {
-// Given a node_name in the format "op_name:op_type", returns the "op_type".
-// If the "op_type" is missing, returns the node_name.
-// This is done so all ops with the same type appear in the same color in trace
-// viewer.
-inline std::string EventName(absl::string_view node_name) {
-  std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-  return string(parts.back());
-}
 
 Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   Device device;
@@ -44,15 +48,35 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   });
   return device;
 }
+
 }  // namespace
 
-void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
-                                uint64 profile_end_time_ns,
-                                const XSpace& xspace, Trace* trace) {
+void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
+  auto* trace_events = trace->mutable_trace_events();
+  size_t trace_event_size = trace_events->size();
+  if (trace_event_size <= limit) return;  // Nothing to do.
+  // Sort the events according to start time.
+  std::vector<uint64> timestamps;
+  timestamps.reserve(trace_event_size);
+  for (const auto& event : *trace_events) {
+    timestamps.push_back(event.timestamp_ps());
+  }
+  std::partial_sort(timestamps.begin(), timestamps.begin() + limit,
+                    timestamps.end(), std::less<uint64>());
+  uint64 cutoff_timestamp = timestamps[limit - 1];
+  trace_events->erase(std::remove_if(trace_events->begin(), trace_events->end(),
+                                     [&](const TraceEvent& event) {
+                                       return event.timestamp_ps() >
+                                              cutoff_timestamp;
+                                     }),
+                      trace_events->end());
+}
+
+void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   auto* trace_devices = trace->mutable_devices();
 
   for (const auto& raw_plane : xspace.planes()) {
-    XPlaneVisitor xplane(&raw_plane);
+    XPlaneVisitor xplane = CreateTfXPlaneVisitor(&raw_plane);
     // Convert devices and resources.
     int64 device_id = xplane.Id();
     (*trace_devices)[device_id] = BuildDeviceAndResource(xplane);
@@ -61,26 +85,45 @@ void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
     xplane.ForEachLine([&](const XLineVisitor& xline) {
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
-        if (xevent.TimestampNs() < profile_start_time_ns ||
-            xevent.TimestampNs() + xevent.DurationNs() > profile_end_time_ns) {
+        int64 event_type =
+            xevent.Type().value_or(HostEventType::kUnknownHostEventType);
+        if (event_type == HostEventType::kMemoryAllocation ||
+            event_type == HostEventType::kMemoryDeallocation) {
           return;
         }
         auto* event = trace->add_trace_events();
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);
         event->set_resource_id(resource_id);
-        event->set_name(EventName(xevent.Name()));
-        event->set_timestamp_ps((xevent.TimestampNs() - profile_start_time_ns) *
-                                EnvTime::kNanosToPicos);
-        event->set_duration_ps(xevent.DurationNs() * EnvTime::kNanosToPicos);
+        if (xevent.HasDisplayName()) {
+          event->set_name(std::string(xevent.DisplayName()));
+          args["long_name"] = std::string(xevent.Name());
+        } else {
+          event->set_name(std::string(xevent.Name()));
+        }
+        event->set_timestamp_ps(xevent.TimestampPs());
+        event->set_duration_ps(xevent.DurationPs());
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
+          if (IsInternalStat(stat.Type())) return;
           args[std::string(stat.Name())] = stat.ToString();
         });
       });
     });
   }
+
+  // Trace viewer (non-streaming) has scalability issues, we need to drop
+  // events to avoid loading failure for trace viewer.
+  constexpr uint64 kMaxEvents = 1000000;
+  MaybeDropEventsForTraceViewer(trace, kMaxEvents);
+}
+
+void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
+                                      std::string* content) {
+  Trace trace;
+  ConvertXSpaceToTraceEvents(xspace, &trace);
+  trace.SerializeToString(content);
 }
 
 }  // namespace profiler

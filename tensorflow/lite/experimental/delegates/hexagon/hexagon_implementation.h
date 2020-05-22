@@ -126,6 +126,11 @@ struct HexagonNN {
   // Otherwise.
   hexagon_nn_is_device_supported_fn* hexagon_nn_is_device_supported;
 
+  // Returns the version number of the interface library.
+  hexagon_nn_hexagon_interface_version_fn* hexagon_nn_hexagon_interface_version;
+
+  hexagon_nn_version_fn* hexagon_nn_version = nullptr;
+
   bool interface_loaded = false;
 };
 

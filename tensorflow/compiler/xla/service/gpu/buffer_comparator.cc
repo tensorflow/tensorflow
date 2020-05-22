@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
@@ -585,8 +587,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
   } else {
-    static std::once_flag ptxas_not_found_logged;
-    std::call_once(ptxas_not_found_logged, [&]() {
+    static absl::once_flag ptxas_not_found_logged;
+    absl::call_once(ptxas_not_found_logged, [&]() {
       LOG(WARNING)
           << compiled_ptx_or.status().ToString()
           << "\nRelying on driver to perform ptx compilation. "

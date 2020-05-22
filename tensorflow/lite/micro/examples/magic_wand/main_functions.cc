@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/magic_wand/main_functions.h"
 
 #include "tensorflow/lite/micro/examples/magic_wand/accelerometer_handler.h"
+#include "tensorflow/lite/micro/examples/magic_wand/constants.h"
 #include "tensorflow/lite/micro/examples/magic_wand/gesture_predictor.h"
 #include "tensorflow/lite/micro/examples/magic_wand/magic_wand_model_data.h"
 #include "tensorflow/lite/micro/examples/magic_wand/output_handler.h"
@@ -39,9 +40,6 @@ int input_length;
 // determined by experimentation.
 constexpr int kTensorArenaSize = 60 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
-
-// Whether we should clear the buffer next time we fetch data
-bool should_clear_buffer = false;
 }  // namespace
 
 // The name of this function is important for Arduino compatibility.
@@ -55,10 +53,10 @@ void setup() {
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_magic_wand_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
     return;
   }
 
@@ -80,21 +78,22 @@ void setup() {
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                                tflite::ops::micro::Register_SOFTMAX());
 
-  // Build an interpreter to run the model with
+  // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
       model, micro_op_resolver, tensor_arena, kTensorArenaSize, error_reporter);
   interpreter = &static_interpreter;
 
-  // Allocate memory from the tensor_arena for the model's tensors
+  // Allocate memory from the tensor_arena for the model's tensors.
   interpreter->AllocateTensors();
 
-  // Obtain pointer to the model's input tensor
+  // Obtain pointer to the model's input tensor.
   model_input = interpreter->input(0);
   if ((model_input->dims->size != 4) || (model_input->dims->data[0] != 1) ||
       (model_input->dims->data[1] != 128) ||
       (model_input->dims->data[2] != kChannelNumber) ||
       (model_input->type != kTfLiteFloat32)) {
-    error_reporter->Report("Bad input tensor parameters in model");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Bad input tensor parameters in model");
     return;
   }
 
@@ -102,28 +101,27 @@ void setup() {
 
   TfLiteStatus setup_status = SetupAccelerometer(error_reporter);
   if (setup_status != kTfLiteOk) {
-    error_reporter->Report("Set up failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Set up failed\n");
   }
 }
 
 void loop() {
-  // Attempt to read new data from the accelerometer
-  bool got_data = ReadAccelerometer(error_reporter, model_input->data.f,
-                                    input_length, should_clear_buffer);
-  // Don't try to clear the buffer again
-  should_clear_buffer = false;
-  // If there was no new data, wait until next time
+  // Attempt to read new data from the accelerometer.
+  bool got_data =
+      ReadAccelerometer(error_reporter, model_input->data.f, input_length);
+  // If there was no new data, wait until next time.
   if (!got_data) return;
-  // Run inference, and report any error
+
+  // Run inference, and report any error.
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed on index: %d\n", begin_index);
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on index: %d\n",
+                         begin_index);
     return;
   }
   // Analyze the results to obtain a prediction
   int gesture_index = PredictGesture(interpreter->output(0)->data.f);
-  // Clear the buffer next time we read data
-  should_clear_buffer = gesture_index < 3;
+
   // Produce an output
   HandleOutput(error_reporter, gesture_index);
 }

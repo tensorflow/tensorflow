@@ -31,8 +31,10 @@ from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
+from tensorflow.python.util.lazy_loader import LazyLoader
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -41,6 +43,14 @@ try:
 except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
+
+# TODO(b/134426265): Switch back to single-quotes to match the rest of the file
+# once the issue with copybara is fixed.
+# pylint:disable=g-inconsistent-quotes
+sequential_lib = LazyLoader(
+    "sequential_lib", globals(),
+    "tensorflow.python.keras.engine.sequential")
+# pylint:enable=g-inconsistent-quotes
 
 
 def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
@@ -185,26 +195,22 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
-        # Build train function (to get weight updates).
-        # Models that aren't graph networks must wait until they are called
-        # with data to _make_train_function() and so can't load optimizer
-        # weights.
-        if model._is_graph_network:  # pylint: disable=protected-access
-          model._make_train_function()
-          optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
-          try:
-            model.optimizer.set_weights(optimizer_weight_values)
-          except ValueError:
-            logging.warning('Error in loading the saved optimizer '
-                            'state. As a result, your model is '
-                            'starting with a freshly initialized '
-                            'optimizer.')
-        else:
-          logging.warning('Sequential models without an `input_shape` '
-                          'passed to the first layer cannot reload their '
-                          'optimizer state. As a result, your model is'
-                          'starting with a freshly initialized optimizer.')
+        try:
+          model.optimizer._create_all_weights(model.trainable_variables)
+        except (NotImplementedError, AttributeError):
+          logging.warning(
+              'Error when creating the weights of optimizer {}, making it '
+              'impossible to restore the saved optimizer state. As a result, '
+              'your model is starting with a freshly initialized optimizer.')
 
+        optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
+        try:
+          model.optimizer.set_weights(optimizer_weight_values)
+        except ValueError:
+          logging.warning('Error in loading the saved optimizer '
+                          'state. As a result, your model is '
+                          'starting with a freshly initialized '
+                          'optimizer.')
   finally:
     if opened_new_file:
       f.close()
@@ -621,7 +627,9 @@ def save_weights_to_hdf5_group(f, layers):
   f.attrs['backend'] = K.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
-  for layer in layers:
+  # Sort model layers by layer name to ensure that group names are strictly
+  # growing to avoid prefix issues.
+  for layer in sorted(layers, key=lambda x: x.name):
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
     weight_values = K.batch_get_value(weights)
@@ -849,22 +857,28 @@ def load_attributes_from_hdf5_group(group, name):
   return data
 
 
-def _legacy_weights(model):
+def _legacy_weights(layer):
   """DO NOT USE.
 
-  For legacy reason, the model.weights was in the order of
+  For legacy reason, the layer.weights was in the order of
   [self.trainable_weights + self.non_trainable_weights], and this order was
-  used for preserving the weights in h5 format. The new order of model.weights
-  are the same as model.get_weights() which is more intuitive for user. To
+  used for preserving the weights in h5 format. The new order of layer.weights
+  are the same as layer.get_weights() which is more intuitive for user. To
   keep supporting the existing saved h5 file, this method should be used to
   save/load weights. In future version, we will delete this method and
   introduce a breaking change for h5 and stay with the new order for weights.
 
   Args:
-    model: a model or layer instance.
+    layer: a `tf.keras.Model` or `tf.keras.layers.Layer` instance.
 
   Returns:
     A list of variables with the order of trainable_weights, followed by
       non_trainable_weights.
   """
-  return model.trainable_weights + model.non_trainable_weights
+  weights = layer.trainable_weights + layer.non_trainable_weights
+  if any([not isinstance(w, variables_module.Variable) for w in weights]):
+    raise NotImplementedError(
+        'Save or restore weights that is not an instance of `tf.Variable` is '
+        'not supported in h5, use `save_format=\'tf\'` instead. Got a model '
+        'or layer {} with weights {}'.format(layer.__class__.__name__, weights))
+  return weights

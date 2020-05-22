@@ -183,24 +183,30 @@ def _get_sorted_col_indices(select_columns, column_names):
   """Transforms select_columns argument into sorted column indices."""
   names_to_indices = {n: i for i, n in enumerate(column_names)}
   num_cols = len(column_names)
-  for i, v in enumerate(select_columns):
+
+  results = []
+  for v in select_columns:
+    # If value is already an int, check if it's valid.
     if isinstance(v, int):
       if v < 0 or v >= num_cols:
         raise ValueError(
             "Column index %d specified in select_columns out of valid range." %
             v)
-      continue
-    if v not in names_to_indices:
+      results.append(v)
+    # Otherwise, check that it's a valid column name and convert to the
+    # the relevant column index.
+    elif v not in names_to_indices:
       raise ValueError(
           "Value '%s' specified in select_columns not a valid column index or "
           "name." % v)
-    select_columns[i] = names_to_indices[v]
+    else:
+      results.append(names_to_indices[v])
 
   # Sort and ensure there are no duplicates
-  result = sorted(set(select_columns))
-  if len(result) != len(select_columns):
+  results = sorted(set(results))
+  if len(results) != len(select_columns):
     raise ValueError("select_columns contains duplicate columns")
-  return result
+  return results
 
 
 def _maybe_shuffle_and_repeat(
@@ -440,7 +446,7 @@ def make_csv_dataset_v2(
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
-        raise ValueError("Received unkown compression_type")
+        raise ValueError("Received unknown compression_type")
       if compression_type_value == "GZIP":
         file_io_fn = lambda filename: gzip.open(filename, "rt")
       elif compression_type_value == "ZLIB":
@@ -625,8 +631,6 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     We can construct a CsvDataset from it as follows:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
-
      dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
         [tf.float32,  # Required field, use dtype or empty tensor
@@ -850,7 +854,7 @@ def make_batched_features_dataset_v2(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
-    TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
+    TypeError: If `reader` is of the wrong type.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   if reader is None:
@@ -998,8 +1002,6 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
-
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
                                               (tf.string, tf.int32))

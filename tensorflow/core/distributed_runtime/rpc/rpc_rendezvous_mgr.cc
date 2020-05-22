@@ -144,6 +144,20 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
       recv_done();
     };
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
+
+    // NOTE: Check if the rendezvous was aborted after sending out the RPC. The
+    // ordering is important because `StartAbort` could be called right before
+    // the `RecvTensorAsync` request registers its RPC cancellation to `opts_`.
+    // In that case, the previous `StartAbort` would not trigger the
+    // cancellation of this call.
+    Status s;
+    {
+      mutex_lock l(mu_);
+      s = status_;
+    }
+    if (!s.ok()) {
+      opts_.StartCancel();
+    }
   }
 
   string src_worker_;
@@ -158,7 +172,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   Rendezvous::DoneCallback done_;
 
   mutable mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
 };
@@ -197,10 +211,10 @@ class RpcRecvTensorFreeList {
   }
 
  private:
-  static const int kMaxObjects = 1000;
+  static constexpr int kMaxObjects = 1000;
 
   mutex mu_;
-  std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
+  std::vector<RpcRecvTensorCall*> objects_ TF_GUARDED_BY(mu_);
 };
 
 static RpcRecvTensorFreeList* get_call_freelist() {
@@ -224,11 +238,12 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
                          " is invalid remote source device.");
   }
   WorkerSession* sess = session();
+  std::shared_ptr<WorkerCacheInterface> worker_cache =
+      sess->GetSharedWorkerCache();
   // The worker will be released in a subsequent call to
   // `sess->worker_cache()->ReleaseWorker()` (if the call has not yet been
   // initialized) or `call->ReleaseWorker()` (if it has been initialized).
-  WorkerInterface* rwi =
-      sess->worker_cache()->GetOrCreateWorker(call->src_worker_);
+  WorkerInterface* rwi = worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -265,7 +280,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   // Start "call".
   Ref();
-  call->Start([this, call]() {
+  call->Start([this, call, worker_cache]() {
     // Removes "call" from active_. Prevent StartAbort().
     DeregisterCall(call);
     // If StartAbort was called prior to DeregisterCall, then the

@@ -51,9 +51,6 @@ tflite_micro_cc_test(
 
 cc_library(
     name = "constants",
-    srcs = [
-        "constants.cc",
-    ],
     hdrs = [
         "constants.h",
     ],

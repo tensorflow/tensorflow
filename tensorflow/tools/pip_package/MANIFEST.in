@@ -2,6 +2,7 @@ include LICENSE
 include README
 recursive-include * *.py
 recursive-include * *.pyd
+recursive-include * *.pyi
 recursive-include * *.pd
 recursive-include * *.so
 recursive-include * *.so.[0-9]
@@ -9,13 +10,15 @@ recursive-include * *.dylib
 recursive-include * *.dll
 recursive-include * *.lib
 recursive-include * *.csv
-recursive-include tensorflow_core/include/tensorflow *.h
-recursive-include tensorflow_core/include/Eigen *
-recursive-include tensorflow_core/include/absl *
-recursive-include tensorflow_core/include/external *
-recursive-include tensorflow_core/include/google *.h
-recursive-include tensorflow_core/include/google *.inc
-recursive-include tensorflow_core/include/include *.h
-recursive-include tensorflow_core/include/third_party *
-recursive-include tensorflow_core/include/unsupported *
+recursive-include tensorflow/include/tensorflow *.h
+recursive-include tensorflow/include/tensorflow *.proto
+recursive-include tensorflow/include/Eigen *
+recursive-include tensorflow/include/absl *
+recursive-include tensorflow/include/external *
+recursive-include tensorflow/include/google *.h
+recursive-include tensorflow/include/google *.inc
+recursive-include tensorflow/include/include *.h
+recursive-include tensorflow/include/third_party *
+recursive-include tensorflow/include/unsupported *
+recursive-include tensorflow/xla_aot_runtime_src *
 

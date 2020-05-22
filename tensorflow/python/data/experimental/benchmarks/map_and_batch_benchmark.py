@@ -25,9 +25,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -39,7 +37,7 @@ from tensorflow.python.platform import test
 _NUMPY_RANDOM_SEED = 42
 
 
-class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
+class MapAndBatchBenchmark(test.Benchmark):
   """Benchmarks for `tf.data.experimental.map_and_batch()`."""
 
   def benchmark_map_and_batch(self):
@@ -201,16 +199,6 @@ class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
     benchmark("Parallel batch size evaluation", par_batch_size_series)
     benchmark("Transformation parallelism evaluation", par_num_calls_series)
     benchmark("Threadpool size evaluation", par_inter_op_series)
-
-  def benchmark_stats(self):
-    dataset = dataset_ops.Dataset.range(1).repeat()
-    dataset = dataset.apply(
-        batching.map_and_batch(lambda x: x + 1, 1), num_parallel_calls=32)
-    aggregator = stats_aggregator.StatsAggregator()
-    options = dataset_ops.Options()
-    options.experimental_stats.aggregator = aggregator
-    dataset = dataset.with_options(options)
-    self.run_and_report_benchmark(dataset, num_elements=1000, name="stats")
 
 
 if __name__ == "__main__":

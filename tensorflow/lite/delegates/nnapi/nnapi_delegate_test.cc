@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -295,6 +294,23 @@ TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
       StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
   options.cache_dir = "/data/local/tmp";
   options.model_token = "NNAPIDelegate.StatefulDelegateWithCompilationCaching";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with QoS hints.
+TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
+  options.max_compilation_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_loop_timeout_duration_ns = UINT64_MAX;
 
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -4812,17 +4828,17 @@ class PadV2OpConstModel : public PadOpModel<T1> {
 };
 
 // Test case where paddings is a non-const tensor.
-template <typename RegularInputOuput>
-class PadV2OpDynamicModel : public PadOpModel<RegularInputOuput> {
+template <typename RegularInputOutput>
+class PadV2OpDynamicModel : public PadOpModel<RegularInputOutput> {
  public:
   PadV2OpDynamicModel(const TensorData& input,
                       std::initializer_list<int> paddings_shape,
-                      RegularInputOuput constant_values,
+                      RegularInputOutput constant_values,
                       const TensorData& output) {
     this->input_ = this->AddInput(input);
     this->paddings_ = this->AddInput(TensorType_INT32);
     this->constant_values_ = this->AddConstInput(
-        GetTensorType<RegularInputOuput>(), {constant_values}, {1});
+        GetTensorType<RegularInputOutput>(), {constant_values}, {1});
     this->output_ = this->AddOutput(output);
 
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
@@ -5121,129 +5137,6 @@ TEST(QuantizedPadV2OpTest, UInt8AdvancedDynamicValuedTest) {
 }
 TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
   AdvancedDynamicValuedTest<int8_t, TensorType_INT8>();
-}
-
-struct UnsupportedOperationOnDeviceTest
-    : ::tflite::delegate::nnapi::NnApiDelegateMockTest {};
-
-class AcceleratedModel {
- public:
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
-
- protected:
-  // build a delegate with a target accelerator name.
-  explicit AcceleratedModel(const std::string& accelerator_name) {
-    StatefulNnApiDelegate::Options options;
-    options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
-  }
-
-  // build a delegate with no target accelerator name, can disable the NNAPI CPU
-  // fallback implementation using the disallow_nnapi_cpu flag.
-  explicit AcceleratedModel(bool disallow_nnapi_cpu) {
-    StatefulNnApiDelegate::Options options;
-    options.disallow_nnapi_cpu = disallow_nnapi_cpu;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
-  }
-
- private:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
-};
-
-class ArgMaxOpModel : public SingleOpModel, public AcceleratedModel {
- public:
-  ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, const char* device_name)
-      : SingleOpModel(), AcceleratedModel(device_name) {
-    Init(input_shape, input_type, axis_value, output_type);
-  }
-
-  ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, bool disallow_nnapi_cpu)
-      : SingleOpModel(), AcceleratedModel(disallow_nnapi_cpu) {
-    Init(input_shape, input_type, axis_value, output_type);
-  }
-
-  int input() const { return input_; }
-
- protected:
-  int input_;
-  int axis_;
-  int output_;
-
-  void Init(std::initializer_list<int> input_shape, TensorType input_type,
-            int axis_value, TensorType output_type) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
-    input_ = AddInput(input_type);
-    axis_ = AddConstInput(TensorType_INT32, {axis_value}, {1});
-    output_ = AddOutput(output_type);
-
-    SetBuiltinOp(BuiltinOperator_ARG_MAX, BuiltinOptions_ArgMaxOptions,
-                 CreateArgMaxOptions(builder_, output_type).Union());
-    BuildInterpreter({input_shape, {1}});
-  }
-};
-
-TEST_F(UnsupportedOperationOnDeviceTest,
-       ShouldUseDeviceFeatureLevelWhenSpecifyingTargetDevice) {
-  nnapi_mock_->SetAndroidSdkVersion(29);
-  nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
-
-  ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, "test-device");
-  m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m.Invoke();
-
-  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1)
-      << "Expected Max not to be delegates since it not supported before NNAPI "
-         "1.2 and device declares to support only NNAPI 1.1.";
-
-  nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
-
-  ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, "test-device");
-  m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m1.Invoke();
-
-  EXPECT_EQ(m1.CountOpsExecutedByCpuKernel(), 0)
-      << "Expected Max op to be delegated since it is supported in NNAPI 1.2.";
-}
-
-TEST_F(UnsupportedOperationOnDeviceTest,
-       ShouldUseDeviceFeatureLevelWhenDisablingCPU) {
-  nnapi_mock_->SetAndroidSdkVersion(29);
-  nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
-
-  ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, /*disallow_nnapi_cpu=*/true);
-  m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m.Invoke();
-
-  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1)
-      << "Expected Max not to be delegates since it not supported before NNAPI "
-         "1.2 and device declares to support only NNAPI 1.1.";
-
-  ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/false);
-  m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m1.Invoke();
-
-  EXPECT_EQ(m1.CountOpsExecutedByCpuKernel(), 0)
-      << "Expected Max op to be delegated since we enabled NNAPI CPU "
-         "implementation.";
-
-  nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
-
-  ArgMaxOpModel m2({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/true);
-  m2.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m2.Invoke();
-
-  EXPECT_EQ(m2.CountOpsExecutedByCpuKernel(), 0)
-      << "Expected Max op to be delegated since it is supported in NNAPI 1.2.";
 }
 
 }  // namespace

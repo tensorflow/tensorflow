@@ -912,9 +912,9 @@ TEST(FunctionCallFrame, Void_Void) {
   TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
   HasError(frame.SetArgs({a}), "Invalid argument");
-  Tensor v;
+  const Tensor* v;
   HasError(frame.GetArg(0, &v), "Invalid argument");
-  HasError(frame.SetRetval(0, v), "Invalid argument");
+  HasError(frame.SetRetval(0, *v), "Invalid argument");
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 0);
@@ -930,28 +930,28 @@ TEST(FunctionCallFrame, Float_Float_Float) {
            "Invalid argument: Expects arg[1] to be float");
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
-  Tensor v;
+  const Tensor* v;
   HasError(frame.GetArg(-1, &v), "Invalid argument");
   HasError(frame.GetArg(2, &v), "Invalid argument");
   TF_EXPECT_OK(frame.GetArg(0, &v));
-  test::ExpectTensorEqual<float>(a, v);
+  test::ExpectTensorEqual<float>(a, *v);
   TF_EXPECT_OK(frame.GetArg(1, &v));
-  test::ExpectTensorEqual<float>(b, v);
+  test::ExpectTensorEqual<float>(b, *v);
 
-  v = test::AsTensor<float>({-100});
-  HasError(frame.SetRetval(-1, v), "Invalid argument");
-  HasError(frame.SetRetval(1, v), "Invalid argument");
+  Tensor w = test::AsTensor<float>({-100});
+  HasError(frame.SetRetval(-1, w), "Invalid argument");
+  HasError(frame.SetRetval(1, w), "Invalid argument");
   HasError(frame.SetRetval(0, test::AsTensor<int64>({-100})),
            "Invalid argument: Expects ret[0] to be float");
 
   std::vector<Tensor> rets;
   HasError(frame.GetRetvals(&rets), "does not have value");
-  TF_EXPECT_OK(frame.SetRetval(0, v));
-  HasError(frame.SetRetval(0, v), "has already been set");
+  TF_EXPECT_OK(frame.SetRetval(0, *v));
+  HasError(frame.SetRetval(0, *v), "has already been set");
 
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 1);
-  test::ExpectTensorEqual<float>(rets[0], v);
+  test::ExpectTensorEqual<float>(rets[0], *v);
 }
 
 TEST(Canonicalize, Basic) {

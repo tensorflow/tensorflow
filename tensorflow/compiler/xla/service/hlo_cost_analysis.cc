@@ -498,7 +498,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
+  if (transpose->IsEffectiveBitcast()) {
+    return HandleBitcast(transpose);
+  }
   return Status::OK();
 }
 
@@ -704,6 +707,10 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
@@ -729,6 +736,16 @@ Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteDone(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
@@ -743,6 +760,15 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // the cost of each RNG is same as a transcendental operation.
   current_properties_[kTranscendentalsKey] =
       ShapeUtil::ElementsIn(random->shape());
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
+  // TODO(b/26346211): Implement better estimates for the RNG cost, since the
+  // cost changes with the implementation and the distribution. For now, assume
+  // the cost of each RNG is same as a transcendental operation.
+  current_properties_[kTranscendentalsKey] =
+      ShapeUtil::ElementsInRecursive(random->shape());
   return Status::OK();
 }
 

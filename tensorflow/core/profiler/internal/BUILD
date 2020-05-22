@@ -400,14 +400,16 @@ cc_library(
     ]),
 )
 
-# Linked into libtensorflow_framework.so via :framework_internal_impl.
 cc_library(
     name = "traceme_recorder_impl",
     srcs = [
         "traceme_recorder.cc",
         "traceme_recorder.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -421,8 +423,10 @@ tf_cc_test(
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -438,14 +442,30 @@ cc_library(
 
 cc_library(
     name = "profiler_factory",
-    srcs = ["profiler_factory.cc"],
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ] + if_static([
+        ":profiler_factory_impl",
+    ]),
+)
+
+cc_library(
+    name = "profiler_factory_impl",
+    srcs = [
+        "profiler_factory.cc",
+        "profiler_factory.h",
     ],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+    ],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ],
+    alwayslink = True,
 )
 
 filegroup(
@@ -471,14 +491,16 @@ cc_library(
     ]),
 )
 
-# Linked into libtensorflow_framework.so via :framework_internal_impl.
 cc_library(
     name = "annotation_stack_impl",
     srcs = [
         "annotation_stack.cc",
         "annotation_stack.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -492,15 +514,10 @@ tf_cc_test(
     srcs = ["scoped_annotation_test.cc"],
     deps = [
         ":annotation_stack",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/strings",
     ],
@@ -523,17 +540,6 @@ tf_cc_test(
         ":parse_annotation",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-filegroup(
-    name = "pywrap_eager_hdrs",
-    srcs = [
-        "profiler_interface.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "@com_google_absl//absl/strings",
     ],
 )

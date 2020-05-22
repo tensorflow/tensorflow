@@ -24,9 +24,10 @@ import numpy as np
 import six
 
 from tensorflow.python import keras
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_v1
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_v1
 from tensorflow.python.platform import test
@@ -41,16 +42,25 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(model_class, training_v1.Model)
 
+  def _check_layer_class(self, layer):
+    if ops.executing_eagerly_outside_functions():
+      self.assertIsInstance(layer, base_layer.Layer)
+      self.assertNotIsInstance(layer, base_layer_v1.Layer)
+    else:
+      self.assertIsInstance(layer, base_layer_v1.Layer)
+
   def test_functional_model(self):
     inputs = keras.Input(10)
     outputs = keras.layers.Dense(1)(inputs)
     model = keras.Model(inputs, outputs)
-    self._check_model_class(model.__class__)
+    self._check_model_class(model.__class__.__bases__[0])
+    self._check_layer_class(model)
 
   def test_sequential_model(self):
     model = keras.Sequential([keras.layers.Dense(1)])
-    model_class = model.__class__.__bases__[0]
+    model_class = model.__class__.__bases__[0].__bases__[0]
     self._check_model_class(model_class)
+    self._check_layer_class(model)
 
   def test_subclass_model(self):
 
@@ -62,6 +72,20 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model = MyModel()
     model_class = model.__class__.__bases__[0]
     self._check_model_class(model_class)
+    self._check_layer_class(model)
+
+  def test_layer(self):
+    class IdentityLayer(base_layer.Layer):
+      """A layer that returns it's input.
+
+      Useful for testing a layer without a variable.
+      """
+
+      def call(self, inputs):
+        return inputs
+
+    layer = IdentityLayer()
+    self._check_layer_class(layer)
 
   def test_multiple_subclass_model(self):
 
@@ -76,6 +100,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model = Model2()
     model_class = model.__class__.__bases__[0].__bases__[0]
     self._check_model_class(model_class)
+    self._check_layer_class(model)
 
   def test_user_provided_metaclass(self):
 
@@ -97,6 +122,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model = MyModel()
     model_class = model.__class__.__bases__[0].__bases__[0]
     self._check_model_class(model_class)
+    self._check_layer_class(model)
 
   def test_multiple_inheritance(self):
 
@@ -115,6 +141,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     self._check_model_class(bases[0])
     self.assertEqual(bases[1], Return2)
     self.assertEqual(model.return_2(), 2)
+    self._check_layer_class(model)
 
   def test_fit_error(self):
     if not ops.executing_eagerly_outside_functions():
@@ -124,7 +151,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model = keras.Sequential([keras.layers.Dense(1)])
     model.compile('sgd', 'mse')
     x, y = np.ones((10, 10)), np.ones((10, 1))
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       with self.assertRaisesRegexp(
           ValueError, 'instance was constructed with eager mode enabled'):
         model.fit(x, y, batch_size=2)

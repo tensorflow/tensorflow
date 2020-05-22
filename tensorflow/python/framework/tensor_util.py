@@ -25,8 +25,9 @@ from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.types import core
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -235,9 +236,9 @@ def _FlattenToStrings(nested_strings):
 
 
 _TENSOR_CONTENT_TYPES = frozenset([
-    dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
+    dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
+    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 
@@ -260,8 +261,12 @@ def _check_quantized(values):
 
 def _generate_isinstance_check(expected_types):
   def inner(values):
-    _ = [_check_failed(v) for v in nest.flatten(values)
-         if not isinstance(v, expected_types)]
+    for v in nest.flatten(values):
+      if not (isinstance(v, expected_types) or
+              (isinstance(v, np.ndarray) and
+               issubclass(v.dtype.type, expected_types))):
+        _check_failed(v)
+
   return inner
 
 _check_int = _generate_isinstance_check(
@@ -790,6 +795,8 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2", "Identity"):
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -975,28 +982,35 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+# TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
 def is_tensor(x):  # pylint: disable=invalid-name
-  """Checks whether `x` is a tensor or "tensor-like".
+  """Checks whether `x` is a TF-native type that can be passed to many TF ops.
 
-  If `is_tensor(x)` returns `True`, it is safe to assume that `x` is a tensor or
-  can be converted to a tensor using `ops.convert_to_tensor(x)`.
-  
-  Usage example:
-  
-  >>> tf.is_tensor(tf.constant([[1,2,3],[4,5,6],[7,8,9]])) 
-  True
-  >>> tf.is_tensor("Hello World")
-  False
-    
+  Use is_tensor to differentiate types that can ingested by TensorFlow ops
+  without any conversion (e.g., `tf.Tensor`, `tf.SparseTensor`, and
+  `tf.RaggedTensor`) from types that need to be converted into tensors before
+  they are ingested (e.g., numpy `ndarray` and Python scalars).
+
+  For example, in the following code block:
+
+  ```python
+  if not tf.is_tensor(t):
+    t = tf.convert_to_tensor(t)
+  return t.dtype
+  ```
+
+  we check to make sure that `t` is a tensor (and convert it if not) before
+  accessing its `shape` and `dtype`.
+
   Args:
     x: A python object to check.
 
   Returns:
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
-  return (isinstance(x, tensor_like._TensorLike) or  # pylint: disable=protected-access
-          ops.is_dense_tensor_like(x) or
+  return (isinstance(x, internal.NativeObject) or
+          isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
 
 
@@ -1010,7 +1024,7 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # If there are Dimension objects in the shape, unwrap them. This can be a
       # problem if v1 and v2 TensorShape objects get mixed up in partial
       # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
-      # not convertible to Tensors becasue of mixed content.
+      # not convertible to Tensors because of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 

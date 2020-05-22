@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
 #include "grpcpp/generic/generic_stub.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -106,14 +107,18 @@ class GrpcEagerClientThread : public core::RefCounted {
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
-                  GrpcEagerClientThread* thread)
-      : stub_(channel), thread_(thread) {
+                  GrpcEagerClientThread* thread, const string& target)
+      : stub_(channel), thread_(thread), target_(target) {
     // Hold a reference to make sure the corresponding EagerClientThread
     // outlives the client.
     thread_->Ref();
     cq_ = thread->completion_queue();
   }
   ~GrpcEagerClient() override { thread_->Unref(); }
+
+  bool allow_multiple_pending_requests() const override {
+    return EnableStreaming();
+  }
 
 #define CLIENT_METHOD(method)                                             \
   void method##Async(const method##Request* request,                      \
@@ -123,7 +128,8 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
         response, std::move(done_wrapped), /*call_opts=*/nullptr,         \
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true);   \
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,    \
+        &target_);                                                        \
   }
 
   CLIENT_METHOD(CreateContext);
@@ -141,7 +147,8 @@ class GrpcEagerClient : public EagerClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
         response, std::move(done_wrapped), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr);
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
 
     VLOG(1) << "Sending RPC to close remote eager context "
             << request->DebugString();
@@ -155,6 +162,18 @@ class GrpcEagerClient : public EagerClient {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
                  << " does not seem to exist.";
     }
+  }
+
+  void RunComponentFunctionAsync(CallOptions* call_opts,
+                                 const RunComponentFunctionRequest* request,
+                                 RunComponentFunctionResponse* response,
+                                 StatusCallback done) override {
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/RunComponentFunction",
+        *request, response, std::move(done_wrapped), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
   }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
@@ -189,13 +208,14 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   const GrpcEagerClientThread* thread_;
+  const string target_;
 
   ::grpc::CompletionQueue* cq_;
 
   mutable mutex mu_;
 
   std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
-      enqueue_dispatchers_ GUARDED_BY(mu_);
+      enqueue_dispatchers_ TF_GUARDED_BY(mu_);
 
   StatusCallback callback_wrapper(StatusCallback done) {
     Ref();
@@ -231,7 +251,7 @@ class GrpcEagerClientCache : public EagerClientCache {
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();
       core::RefCountPtr<EagerClient> worker(
-          new GrpcEagerClient(shared, thread));
+          new GrpcEagerClient(shared, thread, target));
       it = clients_.emplace(target, std::move(worker)).first;
     }
 
@@ -243,8 +263,8 @@ class GrpcEagerClientCache : public EagerClientCache {
  private:
   mutex assignment_mu_;
   std::unordered_map<std::string, size_t> target_assignments_
-      GUARDED_BY(assignment_mu_);
-  size_t next_round_robin_assignment_ GUARDED_BY(assignment_mu_);
+      TF_GUARDED_BY(assignment_mu_);
+  size_t next_round_robin_assignment_ TF_GUARDED_BY(assignment_mu_);
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same

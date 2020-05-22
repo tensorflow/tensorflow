@@ -57,7 +57,7 @@ class CpuExecutable : public Executable {
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   // This should be called after set_ir_module_string.
@@ -103,8 +103,7 @@ class CpuExecutable : public Executable {
                       std::vector<se::OwningDeviceMemory>,
                       std::vector<se::OwningDeviceMemory>>>
   CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
-                    int device_ordinal,
-                    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments);
+                    int device_ordinal, std::vector<ExecutionInput> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.

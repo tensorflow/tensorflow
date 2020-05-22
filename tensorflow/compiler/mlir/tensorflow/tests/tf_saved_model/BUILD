@@ -43,4 +43,5 @@ all_test_basenames = [py[:-3] for py in glob(
 [tf_saved_model_test(
     name = name,
     data = [":test_utilities"],
+    tags = ["no_pip"],
 ) for name in all_test_basenames]

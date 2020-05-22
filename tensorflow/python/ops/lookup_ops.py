@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -409,6 +410,65 @@ class TableInitializerBase(trackable_base.Trackable):
       # TODO(rohanj): Use context.shared_name() instead.
       shared_name += str(ops.uid())
     return shared_name
+
+
+@tf_export("lookup.experimental.DatasetInitializer")
+class DatasetInitializer(TableInitializerBase):
+  """Creates a table initializer from a `tf.data.Dataset`.
+
+  Sample usage:
+  ```python
+    keys = tf.data.Dataset.range(100)
+    values = tf.data.Dataset.range(100).map(
+        lambda x: string_ops.as_string(x * 2))
+    ds = tf.data.Dataset.zip((keys, values))
+    init = tf.lookup.experimental.DatasetInitializer(ds)
+    table = tf.lookup.StaticHashTable(init, "")
+    output = table.lookup([0, 1, 2])
+    assertEquals(outputs, ["0", "2", "4"])
+  ```
+
+  Attributes:
+    dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
+      first scalar is treated as a key and the second as value.
+
+  Raises: ValueError if `dataset` doesn't conform to specifications.
+  """
+
+  def __init__(self, dataset):
+    """Creates a table initializser from a `tf.data.Dataset`.
+
+    Args:
+      dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
+      first scalar is treated as a key and the second as value.
+
+    Raises: ValueError if `dataset` doesn't conform to specifications.
+    Returns: A `DatasetInitializer` object
+    """
+    # Assert that the dataset element spec is a tuple of TensorSpecs where
+    # each tensor is a scalar.
+    self.dataset = dataset
+    elem_spec = self.dataset.element_spec
+    if len(elem_spec) != 2:
+      raise ValueError("element spec size should be 2")
+    if not isinstance(elem_spec[0], tensor_spec.TensorSpec):
+      raise ValueError("elem_spec[0] should be of type TensorSpec")
+    if not isinstance(elem_spec[1], tensor_spec.TensorSpec):
+      raise ValueError("elem_spec[1] should be of type TensorSpec")
+    if elem_spec[0].shape.rank not in (None, 0):
+      raise ValueError("key tensor should be a scalar")
+    if elem_spec[1].shape.rank not in (None, 0):
+      raise ValueError("value tensor should be a scalar")
+
+    key_type = elem_spec[0].dtype
+    value_type = elem_spec[1].dtype
+    super(DatasetInitializer, self).__init__(key_type, value_type)
+
+  def initialize(self, table):
+    _check_table_dtypes(table, self._key_dtype, self._value_dtype)
+    init_op = gen_lookup_ops.initialize_table_from_dataset(
+        table.resource_handle, self.dataset._variant_tensor)  # pylint: disable=protected-access
+    return init_op
 
 
 @tf_export("lookup.KeyValueTensorInitializer")
@@ -821,7 +881,7 @@ def _as_string(tensor):
 
 
 class IdTableWithHashBuckets(LookupInterface):
-  """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+  r"""String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
@@ -850,8 +910,15 @@ class IdTableWithHashBuckets(LookupInterface):
   num_oov_buckets = 3
   input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
   table = tf.IdTableWithHashBuckets(
-      tf.StaticHashTable(tf.TextFileIdTableInitializer(filename),
-                         default_value),
+      tf.StaticHashTable(
+          tf.lookup.TextFileInitializer(
+              filename,
+              key_dtype=tf.string,
+              key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+              value_dtype=tf.int64,
+              value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
+              delimiter="\t"),
+          default_value),
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
@@ -1029,7 +1096,7 @@ class IdTableWithHashBuckets(LookupInterface):
 
 @tf_export("lookup.StaticVocabularyTable", v1=[])
 class StaticVocabularyTable(LookupInterface):
-  """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+  r"""String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
 
   For example, if an instance of `StaticVocabularyTable` is initialized with a
   string-to-id initializer that maps:
@@ -1058,7 +1125,12 @@ class StaticVocabularyTable(LookupInterface):
   num_oov_buckets = 3
   input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
   table = tf.lookup.StaticVocabularyTable(
-      tf.TextFileIdTableInitializer(filename), num_oov_buckets)
+      tf.lookup.TextFileInitializer(
+          filename,
+          key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+          value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
+          delimiter="\t"),
+      num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
   print(out.eval())
@@ -1521,7 +1593,7 @@ def index_to_string_table_from_file(vocabulary_file,
         value_column_index=value_column_index,
         delimiter=delimiter)
 
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 
@@ -1583,7 +1655,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 

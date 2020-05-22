@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -69,13 +70,14 @@ class MapFnTest(test.TestCase):
 
   def testMapSparseTensor(self):
     with self.cached_session():
-      with self.assertRaises(TypeError):
-        map_fn.map_fn(
-            lambda x: x,
-            sparse_tensor.SparseTensor(
-                indices=[[0, 0], [0, 1], [1, 0]],
-                values=constant_op.constant([0, 1, 2]),
-                dense_shape=[2, 2]))
+      st = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0]],
+          values=constant_op.constant([0, 1, 2]),
+          dense_shape=[2, 2])
+      result = map_fn.map_fn(lambda x: x, st)
+      self.assertAllEqual(result.indices, st.indices)
+      self.assertAllEqual(result.values, st.values)
+      self.assertAllEqual(result.dense_shape, st.dense_shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
@@ -184,6 +186,25 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(2 * nums, received[0])
     self.assertAllEqual(-nums, received[1])
     self.assertAllEqual(nums, received[2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMap_autograph_indirect(self):
+
+    def test_function(x):
+      cond = constant_op.constant(-1)
+      if cond == 0:
+        result = x
+      else:
+        result = x
+      return result
+
+    @def_function.function
+    def map_call(x):
+      return map_fn.map_fn(test_function, x)
+
+    x = constant_op.constant([1])
+    y = map_call(x)
+    self.assertAllEqual([1], self.evaluate(y))
 
   @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):

@@ -2,6 +2,7 @@
 #   Doc generator
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -22,10 +23,12 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
+    args = ["--module_prefix_skip=tpu.,distribute.tpu_strategy"],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
         "no_pip",
+        "no_rocm",
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
@@ -34,6 +37,29 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/preprocessing",
+        "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tf_doctest_tpu",
+    srcs = ["tf_doctest.py"],
+    args = ["--module=tpu.,distribute.tpu_strategy"],
+    disable_experimental = True,
+    disable_v3 = True,
+    main = "tf_doctest.py",
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":tf_doctest_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
     ],
 )
@@ -166,12 +192,32 @@ py_binary(
 )
 
 py_library(
+    # Opensource only
+    name = "base_dir_oss",
+    srcs = ["base_dir.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+py_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
     srcs_version = "PY3",
     deps = [
+        ":base_dir_oss",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",
+    ],
+)
+
+py_binary(
+    name = "build_java_api_docs",
+    srcs = ["build_java_api_docs.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

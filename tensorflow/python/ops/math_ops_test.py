@@ -682,6 +682,45 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
 
+  def testRHSDispatchingAndErrorRaising(self):
+    if context.executing_eagerly():
+      error = ValueError
+      error_message = (
+          r"Attempt to convert a value .* with an unsupported type")
+    else:
+      error = TypeError
+      error_message = (
+          r"Failed to convert object of type .* to Tensor")
+
+    class RHSReturnsTrue(object):
+
+      def __radd__(self, other):
+        return True
+    a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
+    self.assertEqual(a, True)
+
+    class RHSRaisesError(object):
+
+      def __radd__(self, other):
+        raise TypeError("RHS not implemented")
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
+      self.evaluate(a)
+
+    class RHSReturnsNotImplemented(object):
+
+      def __radd__(self, other):
+        return NotImplemented
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
+      self.evaluate(a)
+
+    class RHSNotImplemented(object):
+      pass
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
+      self.evaluate(a)
+
 
 class SignTest(test_util.TensorFlowTestCase):
 

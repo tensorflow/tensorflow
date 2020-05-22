@@ -181,7 +181,8 @@ TEST(NNOpsTest, BatchNormWithGlobalNormalizationGrad_ShapeFn) {
 TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
   ShapeInferenceTestOp op("FusedBatchNorm");
 
-  auto set_op = [&op](bool is_training, string data_format) {
+  auto set_op = [&op](bool is_training, float exponential_avg_factor,
+                      string data_format) {
     TF_ASSERT_OK(NodeDefBuilder("test", "FusedBatchNorm")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
@@ -190,10 +191,11 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
                      .Input(FakeInput(DT_FLOAT))
                      .Attr("data_format", data_format)
                      .Attr("is_training", is_training)
+                     .Attr("exponential_avg_factor", exponential_avg_factor)
                      .Finalize(&op.node_def));
   };
 
-  set_op(true, "NHWC");
+  set_op(true, 1.0, "NHWC");
   // Test rank errors.
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
   INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
@@ -207,7 +209,21 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
            "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0];"
            "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0]");
 
-  set_op(true, "NCHW");
+  set_op(true, 0.5, "NHWC");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,?,?,d1_0];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "[1,2,3,4];[4];[4];?;?",
+           "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0];"
+           "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0];"
+           "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0]");
+
+  set_op(true, 1.0, "NCHW");
   // Test rank errors.
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
   INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
@@ -221,7 +237,7 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
            "[d0_1|d1_0|d2_0];[d0_1|d1_0|d2_0];"
            "[d0_1|d1_0|d2_0];[d0_1|d1_0|d2_0]");
 
-  set_op(false, "NHWC");
+  set_op(false, 1.0, "NHWC");
   // Test rank errors.
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
   INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
@@ -239,7 +255,7 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
            "[d0_3|d1_0|d2_0|d3_0|d4_0];[d0_3|d1_0|d2_0|d3_0|d4_0];"
            "[d0_3|d1_0|d2_0|d3_0|d4_0];[d0_3|d1_0|d2_0|d3_0|d4_0]");
 
-  set_op(false, "NCHW");
+  set_op(false, 1.0, "NCHW");
   // Test rank errors.
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
   INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
@@ -271,22 +287,6 @@ TEST(NNOpsTest, FusedBatchNormGrad_ShapeFn) {
                      .Finalize(&op.node_def));
   };
 
-  set_op("NHWC");
-  // Test rank errors.
-  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
-  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "?;[1,2,3];?;?;?");
-  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
-  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
-  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
-  // Channel dim of first input is merged with the single dim in other 4 inputs.
-  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[0];[0]");
-  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[0];[0]");
-  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[0];[0]");
-  INFER_OK(op, "?;?;?;?;[1]", "[?,?,?,d4_0];[d4_0];[d4_0];[0];[0]");
-  INFER_OK(op, "[1,2,3,4];[1,2,3,4];[4];[4];[4]",
-           "[d0_0,d0_1,d0_2,d0_3|d2_0|d3_0|d4_0];"
-           "[d0_3|d2_0|d3_0|d4_0];[d0_3|d2_0|d3_0|d4_0];[0];[0]");
-
   set_op("NCHW");
   // Test rank errors.
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
@@ -302,6 +302,41 @@ TEST(NNOpsTest, FusedBatchNormGrad_ShapeFn) {
   INFER_OK(op, "[1,4,2,3];[1,4,2,3];[4];[4];[4]",
            "[d0_0,d0_1|d2_0|d3_0|d4_0,d0_2,d0_3];"
            "[d0_1|d2_0|d3_0|d4_0];[d0_1|d2_0|d3_0|d4_0];[0];[0]");
+
+  set_op("NHWC");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[0];[0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[0];[0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[0];[0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,?,?,d4_0];[d4_0];[d4_0];[0];[0]");
+  INFER_OK(op, "[1,2,3,4];[1,2,3,4];[4];[4];[4]",
+           "[d0_0,d0_1,d0_2,d0_3|d2_0|d3_0|d4_0];"
+           "[d0_3|d2_0|d3_0|d4_0];[d0_3|d2_0|d3_0|d4_0];[0];[0]");
+}
+
+TEST(NNOpsTest, Conv2DBackpropInput_ShapeFn) {
+  ShapeInferenceTestOp op("Conv2DBackpropInput");
+
+  // Test rank error.
+  INFER_ERROR("input_sizes to contain 4 values or 2 values", op,
+              "[3];[?,?,?,?];[?,?,?,?]");
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op,
+              "[4];[?,?,?,?];[?,?,?]");
+
+  // When input_sizes is a 4D shape and the convolution is grouped, the channel
+  // size of the input grad doesn't always equal the input channel size of the
+  // filter. So, when input_sizes is a 4D shape, the channel size of the input
+  // grad is determined by the content of input_sizes.
+  INFER_OK(op, "[4];[?,?,2,?];[1,?,?,?]", "[d2_0,?,?,?]");
+  // When input_sizes is a 2D shape, the channel size of the input grad always
+  // matches the filter shape.
+  INFER_OK(op, "[2];[?,?,2,?];[1,?,?,?]", "[d2_0,?,?,d1_2]");
 }
 
 TEST(NNOpsTest, Conv3DBackpropInput_ShapeFn) {

@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -49,6 +49,20 @@ Status CreateFileForDumping(llvm::StringRef name,
 // suffixing `name` with ".mlir".
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
                              llvm::StringRef dirname = "");
+
+// Reads the directory to dump the MLIR module from environment variables.
+// Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'
+// read from TEST_UNDECLARED_OUTPUTS_DIR. Returns nullptr if the directory
+// cannot be determined and generates a warning message.
+std::string GetDumpDirFromEnvVar();
+
+// Dumps a raw string to a file and returns the file name used.
+//
+// This will create a file name via prefixing `name` with the value of the
+// TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
+// suffixing `name` with ".mlir".
+std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
+                                llvm::StringRef dirname = "");
 
 }  // namespace tensorflow
 

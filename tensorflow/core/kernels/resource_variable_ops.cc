@@ -141,28 +141,21 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   ". This could mean that the variable was uninitialized. ",
                   status.ToString()));
 
-  {
-    tf_shared_lock ml(*variable->mu());
-    // We're acquiring a reference to the underlying buffer while
-    // holding a shared lock to guarantee ordering of reads and
-    // writes when in copy-on-write mode.
-    if (!variable->copy_on_read_mode.load()) {
-      const Tensor* t = variable->tensor();
-      OP_REQUIRES(
-          ctx, dtype_ == t->dtype(),
-          errors::InvalidArgument(
-              "Trying to read variable with wrong dtype. Expected ",
-              DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
-      ctx->set_output(0, *t);
-      return;
-    }
-  }
-  // Note: no need to check copy_on_read_mode again here as it only changes from
-  // false to true, never the other way around. We here do the copy under an
-  // exclusive lock to avoid racing writes.
-  mutex_lock ml(*variable->mu());
+  tf_shared_lock ml(*variable->mu());
+  // We're acquiring a reference to the underlying buffer while
+  // holding a shared lock to guarantee ordering of reads and
+  // writes when in copy-on-write mode.
   const Tensor* t = variable->tensor();
-  OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
+  if (!variable->copy_on_read_mode.load()) {
+    OP_REQUIRES(
+        ctx, dtype_ == t->dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+    ctx->set_output(0, *t);
+  } else {
+    OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
+  }
 }
 
 ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -229,6 +222,8 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("allowed_devices", &allowed_devices_));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
@@ -239,7 +234,8 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
                                                    &resource_, attr));
     resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
   }
 }
 
@@ -252,7 +248,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);
@@ -285,6 +282,7 @@ REGISTER_KERNEL_BUILDER(
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
@@ -514,6 +512,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_uint32(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -527,6 +526,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -720,7 +720,7 @@ class ResourceGatherOp : public OpKernel {
   }
 
  private:
-  // Add the batch offset derrived from params to each batch of indices.
+  // Add the batch offset derived from params to each batch of indices.
   // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]

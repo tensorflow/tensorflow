@@ -66,6 +66,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return CallContext::kParallel;
     default:
       return CallContext::kNone;
@@ -368,7 +369,7 @@ bool CallGraph::IsFlattened() const {
 std::vector<HloInstruction*> CallGraph::GetComputationCallers(
     HloComputation* c) {
   std::vector<HloInstruction*> callers;
-  for (auto callsite : GetNode(c).caller_callsites()) {
+  for (const auto& callsite : GetNode(c).caller_callsites()) {
     callers.push_back(callsite.instruction());
   }
   return callers;

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.h"
 
 namespace tflite {
 namespace ops {
@@ -38,6 +37,10 @@ constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kMaxChannels = 256;
+
+// Depthwise conv is quantized along dimension 3:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kDepthwiseConvQuantizedDimension = 3;
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -80,13 +83,14 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift)));
+        reinterpret_cast<int*>(data->per_channel_output_shift), num_channels));
   }
   return kTfLiteOk;
 }
@@ -94,12 +98,40 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  void* raw;
+  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
+  return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+#if defined(__ARM_FEATURE_DSP)
+  auto* params =
+      reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+
+  const int filter_width = SizeOfDimension(filter, 2);
+  const int filter_height = SizeOfDimension(filter, 1);
+
+  RuntimeShape input_shape = GetTensorShape(input);
+  const int input_depth = input_shape.Dims(3);
+
+  int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+  *buffer_idx = -1;
+  node->user_data = buffer_idx;
+
+  if (params->depth_multiplier == 1) {
+    const int32_t buf_size = arm_depthwise_conv_s8_opt_get_buffer_size(
+        input_depth, filter_width, filter_height);
+
+    if (buf_size > 0) {
+      TF_LITE_ENSURE_STATUS(
+          context->RequestScratchBufferInArena(context, buf_size, buffer_idx));
+    }
+  }
+#endif
   return kTfLiteOk;
 }
 
@@ -169,10 +201,12 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 
   if (op_params.depth_multiplier == 1) {
     int16_t* buf = nullptr;
-    const int32_t buf_size = arm_depthwise_conv_s8_opt_get_buffer_size(
-        input_depth, filter_width, filter_height);
-    TF_LITE_ENSURE_OK(context,
-                      get_cmsis_scratch_buffer(context, &buf, buf_size));
+    auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+    if (*buffer_idx > -1) {
+      void* raw = context->GetScratchBuffer(context, *buffer_idx);
+      buf = reinterpret_cast<int16_t*>(raw);
+    }
+
     TF_LITE_ENSURE_EQ(
         context,
         arm_depthwise_conv_s8_opt(
@@ -318,11 +352,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Depthwise conv is quantized along dimension 3:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+    TF_LITE_ENSURE(
+        context, affine_quantization->scale->size == 1 ||
+                     affine_quantization->scale->size ==
+                         filter->dims->data[kDepthwiseConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
   }
 
@@ -346,8 +380,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -356,8 +390,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {depthwise_conv::Init, depthwise_conv::Free,
-                                 depthwise_conv::Prepare, depthwise_conv::Eval};
+  static TfLiteRegistration r = {/*init=*/depthwise_conv::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/depthwise_conv::Prepare,
+                                 /*invoke=*/depthwise_conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

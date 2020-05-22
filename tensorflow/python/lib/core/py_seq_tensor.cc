@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
@@ -277,28 +280,34 @@ struct Converter {
 
   static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
                         TFE_TensorHandle** h, const char** error) {
-    /* TODO(josh11b): Allocator & attributes? */
-    Tensor result(ConverterTraits<T>::kTypeEnum,
-                  TensorShape(state->inferred_shape));
+    // TODO(josh11b): Allocator & attributes
+    AbstractTensorInterface* t;
     if (state->inferred_shape.empty()) { /* Scalar case */
       T value;
       auto scalar = ZeroDimArrayToScalar(obj, state);
       *error = ConverterTraits<T>::ConvertScalar(scalar, &value);
       Py_DECREF(scalar);
       if (*error != nullptr) return errors::InvalidArgument(*error);
-      result.scalar<T>()() = value;
+      t = ConverterTraits<T>::CreateScalar(ctx, value);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
     } else {
-      T* buf = result.flat<T>().data();
-      *error = Helper(obj, 0, state, &buf);
-      if (*error != nullptr) return errors::InvalidArgument(*error);
+      t = ConverterTraits<T>::CreateTensor(ctx, state->inferred_shape);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
+      if (t->NumElements() > 0) {
+        T* buf = static_cast<T*>(t->Data());
+        *error = Helper(obj, 0, state, &buf);
+        if (*error != nullptr) {
+          t->Release();
+          return errors::InvalidArgument(*error);
+        }
+      }
     }
-    tensorflow::TensorHandle* handle = nullptr;
-    auto status = tensorflow::TensorHandle::CreateLocalHandle(
-        result, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-    if (!status.ok()) {
-      return status;
-    }
-    *h = new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(handle)};
+    *h = tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(t));
+    t->Release();
     return Status::OK();
   }
 };
@@ -307,7 +316,14 @@ struct Converter {
 
 template <>
 struct ConverterTraits<int64> {
-  static const tensorflow::DataType kTypeEnum = DT_INT64;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int64 value) {
+    return tensorflow::unwrap(ctx)->CreateInt64Scalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_INT64, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, int64* out) {
 #if PY_MAJOR_VERSION < 3
@@ -340,7 +356,14 @@ typedef Converter<int64> Int64Converter;
 
 template <>
 struct ConverterTraits<uint64> {
-  static const tensorflow::DataType kTypeEnum = DT_UINT64;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, uint64 value) {
+    return tensorflow::unwrap(ctx)->CreateUint64Scalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_UINT64, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, uint64* out) {
 #if PY_MAJOR_VERSION < 3
@@ -370,7 +393,14 @@ typedef Converter<uint64> UInt64Converter;
 
 template <>
 struct ConverterTraits<int32> {
-  static const tensorflow::DataType kTypeEnum = DT_INT32;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int32 value) {
+    return tensorflow::unwrap(ctx)->CreateInt32Scalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_INT32, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, int32* out) {
     int64 i;
@@ -470,7 +500,15 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
 
 template <>
 struct ConverterTraits<float> {
-  static const tensorflow::DataType kTypeEnum = DT_FLOAT;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, float value) {
+    return tensorflow::unwrap(ctx)->CreateFloatScalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_FLOAT, dim_sizes);
+  }
+
   static const char* ConvertScalar(PyObject* v, float* out) {
     return ConvertOneFloat<float>(v, out);
   }
@@ -478,7 +516,15 @@ struct ConverterTraits<float> {
 
 template <>
 struct ConverterTraits<double> {
-  static const tensorflow::DataType kTypeEnum = DT_DOUBLE;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, double value) {
+    return tensorflow::unwrap(ctx)->CreateDoubleScalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_DOUBLE, dim_sizes);
+  }
+
   static const char* ConvertScalar(PyObject* v, double* out) {
     return ConvertOneFloat<double>(v, out);
   }
@@ -489,7 +535,15 @@ typedef Converter<float> FloatConverter;
 
 template <>
 struct ConverterTraits<Eigen::half> {
-  static const tensorflow::DataType kTypeEnum = DT_HALF;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               Eigen::half value) {
+    return tensorflow::unwrap(ctx)->CreateHalfScalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_HALF, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, Eigen::half* out) {
     return ConvertOneFloat<Eigen::half>(v, out);
@@ -502,7 +556,15 @@ typedef Converter<Eigen::half> NumpyHalfConverter;
 
 template <>
 struct ConverterTraits<tstring> {
-  static const tensorflow::DataType kTypeEnum = DT_STRING;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               tstring value) {
+    return tensorflow::unwrap(ctx)->CreateStringScalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_STRING, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, tstring* out) {
     if (PyBytes_Check(v)) {
@@ -561,7 +623,16 @@ bool IsPyDimension(PyObject* obj) {
 
 template <>
 struct ConverterTraits<complex128> {
-  static const tensorflow::DataType kTypeEnum = DT_COMPLEX128;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               complex128 value) {
+    return tensorflow::unwrap(ctx)->CreateComplex128Scalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_COMPLEX128, dim_sizes);
+  }
+
   static const char* ConvertScalar(PyObject* v, complex128* out) {
     if (PyComplex_Check(v)) {
       *out = complex128(PyComplex_RealAsDouble(v), PyComplex_ImagAsDouble(v));
@@ -581,8 +652,14 @@ typedef Converter<complex128> Complex128Converter;
 
 template <>
 struct ConverterTraits<bool> {
-  typedef bool Type;
-  static const tensorflow::DataType kTypeEnum = DT_BOOL;
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, bool value) {
+    return tensorflow::unwrap(ctx)->CreateBoolScalar(value);
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_BOOL, dim_sizes);
+  }
 
   static const char* ConvertScalar(PyObject* v, bool* out) {
     if (v == Py_True) {
@@ -604,23 +681,21 @@ typedef Converter<bool> BoolConverter;
 // The two may share underlying storage so changes to one may reflect in the
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
-  tensorflow::TensorHandle* handle;
-  tensorflow::Tensor t;
-  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-  }
-  if (!cppstatus.ok()) {
+  Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
+  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor,
+                                              true /*convert_string*/);
+
+  if (TF_PREDICT_FALSE(!status.ok())) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        cppstatus.error_message(), ").")
+                        status.error_message(), ").")
                         .c_str());
     return nullptr;
   }
-  return new TFE_TensorHandle{
-      std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+
+  return tensorflow::wrap(
+      tensorflow::unwrap(ctx)->CreateLocalHandle(tf_tensor->tensor));
 }
 
 }  // namespace
@@ -802,16 +877,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      tensorflow::TensorHandle* h = nullptr;
       Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
                     TensorShape(state.inferred_shape));
-      status = tensorflow::TensorHandle::CreateLocalHandle(
-          tensor, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &h);
-      if (!status.ok()) {
-        PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
-        return nullptr;
-      }
-      return new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(h)};
+      TensorInterface t(std::move(tensor));
+      return tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(&t));
     }
 
     default:

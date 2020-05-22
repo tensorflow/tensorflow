@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/micro_speech/command_responder.h"
 
 #include "am_bsp.h"  // NOLINT
@@ -40,8 +46,8 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   if (is_new_command) {
-    error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
-                           current_time);
+    TF_LITE_REPORT_ERROR(error_reporter, "Heard %s (%d) @%dms", found_command,
+                         score, current_time);
     if (found_command[0] == 'y') {
       am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
     }
@@ -53,3 +59,5 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
     }
   }
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

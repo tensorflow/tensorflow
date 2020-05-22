@@ -55,6 +55,11 @@ public final class TensorBufferFloat extends TensorBuffer {
   }
 
   @Override
+  public float getFloatValue(int absIndex) {
+    return buffer.getFloat(absIndex << 2);
+  }
+
+  @Override
   @NonNull
   public int[] getIntArray() {
     buffer.rewind();
@@ -64,6 +69,11 @@ public final class TensorBufferFloat extends TensorBuffer {
       arr[i] = (int) buffer.getFloat();
     }
     return arr;
+  }
+
+  @Override
+  public int getIntValue(int absIndex) {
+    return (int) buffer.getFloat(absIndex << 2);
   }
 
   @Override

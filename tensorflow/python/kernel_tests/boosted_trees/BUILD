@@ -69,7 +69,6 @@ tf_py_test(
     name = "training_ops_test",
     size = "small",
     srcs = ["training_ops_test.py"],
-    tags = ["noasan"],  # b/148159528
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python:array_ops",

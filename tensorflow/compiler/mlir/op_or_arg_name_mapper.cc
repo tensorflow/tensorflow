@@ -25,9 +25,9 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return absl::string_view(ref.data(), ref.size());
@@ -55,8 +55,10 @@ llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
   // to be unique.
   auto& val = prefix_it.first->second;
   llvm::SmallString<64> probe_name(prefix);
+  probe_name.append(GetSuffixSeparator());
+  const int probe_prefix_size = probe_name.size();
   while (true) {
-    probe_name.resize(prefix.size());
+    probe_name.resize(probe_prefix_size);
     // TODO(jpienaar): Subtract one so that the initial suffix is 0 instead
     // of 1.
     // TODO(jpienaar): Switch to radix 36 and update tests.
@@ -153,7 +155,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
     if (!name_from_loc.empty()) return name_from_loc;
     // If the location is none of the expected types, then simply use name
     // generated using the op type.
-    return op->getName().getStringRef();
+    return std::string(op->getName().getStringRef());
   }
   auto val = op_or_val.dyn_cast<mlir::Value>();
   auto name_from_loc = GetNameFromLoc(val.getLoc());
@@ -166,7 +168,11 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
       return llvm::formatv("{0}:{1}",
                            result.getOwner()->getName().getStringRef(),
                            result.getResultNumber());
-    return result.getOwner()->getName().getStringRef();
+    return std::string(result.getOwner()->getName().getStringRef());
+  }
+  // Use the ASM syntax for BloackArgument
+  if (auto arg = val.dyn_cast<mlir::BlockArgument>()) {
+    return "arg" + std::to_string(arg.getArgNumber());
   }
   return "";
 }

@@ -21,9 +21,11 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
@@ -42,8 +44,8 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
   }
   auto output_rz_or = rz_allocator->AllocateBytes(buffer.size());
   if (!output_rz_or.ok()) {
-    static std::once_flag rz_allocation_failure_logged;
-    std::call_once(rz_allocation_failure_logged, []() {
+    static absl::once_flag rz_allocation_failure_logged;
+    absl::call_once(rz_allocation_failure_logged, []() {
       LOG(WARNING) << "Failed to allocate memory for convolution redzone "
                    << "checking; skipping this check. This is benign and only "
                    << "means that we won't check cudnn for out-of-bounds reads "
@@ -62,8 +64,8 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
-    static std::once_flag failure_logged;
-    std::call_once(failure_logged, [&]() {
+    static absl::once_flag failure_logged;
+    absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
                    << rz_status.status().error_message()
@@ -210,6 +212,35 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
+// The following function allows deterministic ops to be implemented relatively
+// quickly using environment variables. It is intended to be temporary. The
+// longer-term intention is to enable deterministic ops via tf.config and
+// appropriate plumbing. See the discussion on PR 34951 for more information:
+// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
+// This function and associated comment are replicated in the following three
+// places:
+//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
+//   2. tensorflow/core/kernels/gpu_utils.cc
+//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
+// When implementing the plumbing, you should also search for the use of
+// TF_DETERMINISTIC_OPS on its own.
+// TODO(duncanriach): move to an API that uses tf.config and implement the first
+//                    phase of plumbing.
+bool RequireCudnnDeterminism() {
+  static bool require_cudnn_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                               /*default_val=*/false,
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
+  }();
+  return require_cudnn_determinism;
+}
+
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo) {
   std::vector<AutotuneResult> filtered_results;
@@ -219,31 +250,33 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
   if (filtered_results.empty()) {
     return errors::NotFound("No algorithm worked!");
   }
+  std::vector<AutotuneResult> filtered_results_no_scratch;
+  absl::c_copy_if(
+      filtered_results, std::back_inserter(filtered_results_no_scratch),
+      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
 
-  const auto best_result = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return proto_utils::FromDurationProto(lhs.run_time()) <
-               proto_utils::FromDurationProto(rhs.run_time());
-      });
-
-  const auto best_result_no_scratch = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(lhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(lhs.run_time())) <
-               std::make_tuple(rhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(rhs.run_time()));
-      });
-
-  algo->set_algorithm({best_result->conv().algorithm(),
-                       best_result->conv().tensor_ops_enabled()});
-  if (best_result_no_scratch != filtered_results.end() &&
-      best_result_no_scratch->scratch_bytes() == 0) {
-    algo->set_algorithm_no_scratch(
-        {best_result_no_scratch->conv().algorithm(),
-         best_result_no_scratch->conv().tensor_ops_enabled()});
+  auto selected_result = filtered_results.begin();
+  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
+  if (!RequireCudnnDeterminism()) {
+    auto compare_run_times = [](const AutotuneResult& lhs,
+                                const AutotuneResult& rhs) {
+      return proto_utils::FromDurationProto(lhs.run_time()) <
+             proto_utils::FromDurationProto(rhs.run_time());
+    };
+    selected_result = absl::c_min_element(filtered_results, compare_run_times);
+    selected_result_no_scratch =
+        absl::c_min_element(filtered_results_no_scratch, compare_run_times);
   }
+
+  algo->set_algorithm({selected_result->conv().algorithm(),
+                       selected_result->conv().tensor_ops_enabled()});
+  algo->set_scratch_size(selected_result->scratch_bytes());
+  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
+    algo->set_algorithm_no_scratch(
+        {selected_result_no_scratch->conv().algorithm(),
+         selected_result_no_scratch->conv().tensor_ops_enabled()});
+  }
+
   return Status::OK();
 }
 

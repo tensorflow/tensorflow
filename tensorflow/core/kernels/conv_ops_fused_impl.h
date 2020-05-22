@@ -61,7 +61,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
@@ -299,7 +299,7 @@ inline int64 ConvolveScratchSize() {
   return convolve_scratch_size;
 }
 
-// Finds the best convolutiun algorithm for the given ConvLaunch (cuda
+// Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
@@ -334,7 +334,7 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
       WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
   std::vector<tensorflow::AutotuneResult> results;
-  for (auto profile_algorithm : algorithms) {
+  for (const auto& profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     se::RedzoneAllocator rz_scratch_allocator(
         stream, &tf_allocator_adapter, se::GpuAsmOpts(),

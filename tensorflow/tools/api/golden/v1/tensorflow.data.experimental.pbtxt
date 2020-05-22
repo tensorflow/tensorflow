@@ -101,6 +101,10 @@ tf_module {
     argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "assert_cardinality"
+    argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
@@ -190,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "parse_example_dataset"
-    argspec: "args=[\'features\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\'], "
+    argspec: "args=[\'features\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "prefetch_to_device"

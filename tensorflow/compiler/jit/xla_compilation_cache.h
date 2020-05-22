@@ -78,7 +78,9 @@ class XlaCompilationCache : public ResourceBase {
                  xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
-  // XlaCompiler::CompileFunction.
+  // XlaCompiler::CompileFunction. If MLIR bridge is enabled through ConfigProto
+  // in OpKernelContext, then uses MLIR bridge for compilation instead of
+  // XlaCompiler, if possible.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
       absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
@@ -151,19 +153,19 @@ class XlaCompilationCache : public ResourceBase {
     int64 request_count = 0;
 
     // Did compilation succeed?
-    Status compilation_status GUARDED_BY(mu);
+    Status compilation_status TF_GUARDED_BY(mu);
 
     // Output of the XlaCompiler.
-    XlaCompiler::CompilationResult compilation_result GUARDED_BY(mu);
+    XlaCompiler::CompilationResult compilation_result TF_GUARDED_BY(mu);
 
     // The XLA executable compiled from <computation>. May be null if no
     // executable has been built.
-    std::unique_ptr<xla::LocalExecutable> executable GUARDED_BY(mu);
+    std::unique_ptr<xla::LocalExecutable> executable TF_GUARDED_BY(mu);
   };
 
   mutex compile_cache_mu_;
   absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      GUARDED_BY(compile_cache_mu_);
+      TF_GUARDED_BY(compile_cache_mu_);
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
@@ -185,7 +187,7 @@ class XlaCompilationCache : public ResourceBase {
 
   // Maps cluster names to compilation statistics for said cluster.
   absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
-      GUARDED_BY(cluster_compile_stats_mu_);
+      TF_GUARDED_BY(cluster_compile_stats_mu_);
 
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.

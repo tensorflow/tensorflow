@@ -202,7 +202,7 @@ class OptimizerTest(test.TestCase):
       ]
 
       self.evaluate(variables.global_variables_initializer())
-      # Run convert_ops to achieve the gradietns converting
+      # Run convert_ops to achieve the gradients converting
       self.evaluate(convert_ops)
       # Fetch params to validate initial values
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))

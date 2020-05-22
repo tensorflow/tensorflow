@@ -1,0 +1,87 @@
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+#
+# THIS IS A GENERATED DOCKERFILE.
+#
+# This file was assembled from multiple pieces, whose use is documented
+# throughout. Please refer to the TensorFlow dockerfiles documentation
+# for more information.
+
+# A list of assignees
+assignees:
+   - amahendrakar
+   - ravikyram
+   - Saduf2019
+# A list of assignees for compiler folder
+compiler_assignees:
+   - joker-eph
+# Cuda Comment
+cuda_comment: >
+   From the template it looks like you are installing **TensorFlow** (TF) prebuilt binaries:
+      * For TF-GPU - See point 1
+      * For TF-CPU - See point 2
+   -----------------------------------------------------------------------------------------------
+   
+   **1. Installing **TensorFlow-GPU** (TF) prebuilt binaries**
+   
+   
+   Make sure you are using compatible TF and CUDA versions.
+   Please refer following TF version and CUDA version compatibility table.
+   
+   | TF  | CUDA |
+   
+   | :-------------: | :-------------: |
+   
+   | 2.1.0 - 2.2.0  | 10.1 |
+   
+   | 1.13.1 - 2.0  | 10.0  |
+   
+   | 1.5.0 - 1.12.0 | 9.0 |
+   
+     * If you have above configuration and using _**Windows**_ platform -
+       * Try adding the CUDA, CUPTI, and cuDNN installation directories to the %PATH% environment variable.
+       * Refer [windows setup guide](https://www.tensorflow.org/install/gpu#windows_setup).
+     * If you have above configuration and using _**Ubuntu/Linux**_ platform -
+       * Try adding the CUDA, CUPTI, and cuDNN installation directories to the $LD_LIBRARY_PATH environment variable.
+       * Refer [linux setup guide](https://www.tensorflow.org/install/gpu#linux_setup).
+     * If error still persists then, apparently your CPU model does not support AVX instruction sets.
+       * Refer [hardware requirements](https://www.tensorflow.org/install/pip#hardware-requirements).
+   
+   -----------------------------------------------------------------------------------------------
+   
+   **2. Installing **TensorFlow** (TF) CPU prebuilt binaries**
+   
+   
+   *TensorFlow release binaries version 1.6 and higher are prebuilt with AVX instruction sets.*
+   
+   
+   Therefore on any CPU that does not have these instruction sets, either CPU or GPU version of TF will fail to load.
+   
+   Apparently, your CPU model does not support AVX instruction sets. You can still use TensorFlow with the alternatives given below:
+   
+      * Try Google Colab to use TensorFlow.
+         * The easiest way to use TF will be to switch to [google colab](https://colab.sandbox.google.com/notebooks/welcome.ipynb#recent=true). You get pre-installed latest stable TF version. Also you can use ```pip install```  to install any other preferred TF version.
+         * It has an added advantage since you can you easily switch to different hardware accelerators (cpu, gpu, tpu) as per the task.
+         * All you need is a good internet connection and you are all set.
+      * Try to build TF from sources by changing CPU optimization flags.
+   
+   *Please let us know if this helps.*
+   
+windows_comment: >
+   From the stack trace it looks like you are hitting windows path length limit.
+      * Try to disable path length limit on Windows 10.
+        * Refer [disable path length limit instructions guide.](https://mspoweruser.com/ntfs-260-character-windows-10/)
+   
+   Please let us know if this helps.

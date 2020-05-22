@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -29,13 +30,16 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
 
@@ -109,18 +113,17 @@ def make_variable(name,
   if initializer is not None and not callable(initializer):
     initializing_from_value = True
 
-  with ops.init_scope():
-    if initializing_from_value:
-      init_val = initializer
-      variable_dtype = None
-    else:
-      # Instantiate initializer if provided initializer is a type object.
-      if isinstance(
-          initializer,
-          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
-        initializer = initializer()
-      init_val = lambda: initializer(shape, dtype=dtype)
-      variable_dtype = dtype.base_dtype
+  if initializing_from_value:
+    init_val = initializer
+    variable_dtype = None
+  else:
+    # Instantiate initializer if provided initializer is a type object.
+    if isinstance(
+        initializer,
+        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      initializer = initializer()
+    init_val = functools.partial(initializer, shape, dtype=dtype)
+    variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
 
@@ -182,7 +185,8 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
 
   Returns:
-    keras_tensors: The Tensors found that came from a Keras Layer.
+    created_layers: List. The `TensorFlowOpLayer` instances created to wrap
+      the raw Tensorflow operations.
   """
   _, created_layers = _create_keras_history_helper(tensors, set(), [])
   return created_layers
@@ -244,7 +248,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              constants[i] = backend.function([], op_input)([])
+              if ops.executing_eagerly_outside_functions():
+                constants[i] = backend.eval_in_eager_or_function(op_input)
+              else:
+                constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -253,8 +260,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
       created_layers.append(op_layer)
-      op_layer._add_inbound_node(  # pylint: disable=protected-access
-          layer_inputs, op.outputs)
+      op_layer._set_connectivity_metadata(  # pylint: disable=protected-access
+          args=(layer_inputs,),
+          kwargs={},
+          outputs=op.outputs)
       processed_ops.update([op])
   return processed_ops, created_layers
 
@@ -393,6 +402,9 @@ def call_context():
   if getattr(_call_context, 'call_context', None) is None:
     _call_context.call_context = CallContext()
   return _call_context.call_context
+
+
+control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
 
 
 class CallContext(object):
@@ -651,44 +663,37 @@ def mark_as_return(outputs, acd):
   return nest.map_structure(_mark_as_return, outputs)
 
 
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True  # pylint: disable=protected-access
-  return method
-
-
 V2_DTYPE_BEHAVIOR = None
 
 
-# These two functions are not exported because we plan on removing them in the
-# future.
+@keras_export(v1=['keras.layers.enable_v2_dtype_behavior'])
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 
-  By default, the V2 dtype behavior is enabled in TensorFlow 2.
+  By default, the V2 dtype behavior is enabled in TensorFlow 2, so this function
+  is only useful if `tf.compat.v1.disable_v2_behavior` has been called. Since
+  mixed precision requires V2 dtype behavior to be enabled, this function allows
+  you to use mixed precision in Keras layers if `disable_v2_behavior` has been
+  called.
 
   When enabled, the dtype of Keras layers defaults to floatx (which is typically
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  For example, once enabled, the following block will run a Conv2D layer
-  in float32:
-
-  ```python
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  print(layer.dtype)  # Float32 when enabled. None when disabled.
-  # When enabled, will cast inputs to the layer's dtype, which is float32. When
-  # disabled, will do no casting, so the layer is done in float64.
-  y = layer(x)
-  ```
+  >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
+  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
+  float32
+  >>> y = layer(x)  # Layer casts inputs since V2 dtype behavior is enabled
+  >>> print(y.dtype.name)
+  float32
 
   A layer author can opt-out their layer from the automatic input casting by
   passing `autocast=False` to the base Layer's constructor. This disables the
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, the
+  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
   layer's dtype will default to the global policy instead of floatx. Layers
   will automatically cast inputs to the policy's compute_dtype.
   """
@@ -696,12 +701,11 @@ def enable_v2_dtype_behavior():
   V2_DTYPE_BEHAVIOR = True
 
 
+@keras_export(v1=['keras.layers.disable_v2_dtype_behavior'])
 def disable_v2_dtype_behavior():
   """Disables the V2 dtype behavior for Keras layers.
 
-  See `enable_v2_dtype_behavior`.
-
-  This function will be removed in the future.
+  See `tf.compat.v1.keras.layers.enable_v2_dtype_behavior`.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = False
@@ -783,6 +787,14 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+def no_ragged_support(inputs, layer_name):
+  input_list = nest.flatten(inputs)
+  if any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list):
+    raise ValueError('Layer %s does not support RaggedTensors as input. '
+                     'Inputs received: %s. You can try converting your '
+                     'input to an uniform tensor.' % (layer_name, inputs))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

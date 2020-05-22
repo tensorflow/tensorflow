@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -63,13 +64,28 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   CreateXSpace(&xspace);
 
   Trace trace;
-  ConvertXSpaceToTraceEvents(/*profile_start_time_ns*/ 100000,
-                             /*profile_end_time_ns*/ 200000, xspace, &trace);
+  ConvertXSpaceToTraceEvents(xspace, &trace);
 
   ASSERT_EQ(trace.devices_size(), 2);
   EXPECT_EQ(trace.devices().at(0).resources_size(), 2);
   EXPECT_EQ(trace.devices().at(1).resources_size(), 1);
   EXPECT_EQ(trace.trace_events_size(), 3);
+}
+
+TEST(ConvertXPlaneToTraceEvents, Drop) {
+  Trace trace;
+  for (int i = 0; i < 100; i++) {
+    trace.add_trace_events()->set_timestamp_ps((100 - i) % 50);
+  }
+
+  MaybeDropEventsForTraceViewer(&trace, 150);
+  EXPECT_EQ(trace.trace_events_size(), 100);  // No dropping.
+
+  MaybeDropEventsForTraceViewer(&trace, 50);
+  EXPECT_EQ(trace.trace_events_size(), 50);
+  for (const auto& event : trace.trace_events()) {
+    EXPECT_LT(event.timestamp_ps(), 25);
+  }
 }
 
 }  // namespace

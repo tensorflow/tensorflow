@@ -609,6 +609,31 @@ class FunctionalOpsTest(test.TestCase):
           self.assertAllEqual(Run(sess, 20.), 210.)
           self.assertAllEqual(Run(sess, 100.), 5050.)
 
+  def testToBool(self):
+    # For 0D tensors, the truthiness depends on whether the value is "zero".
+    self.assertAllEqual(gen_functional_ops.to_bool(0), False)
+    self.assertAllEqual(gen_functional_ops.to_bool(1), True)
+    self.assertAllEqual(gen_functional_ops.to_bool(42), True)
+    self.assertAllEqual(gen_functional_ops.to_bool(0.), False)
+    self.assertAllEqual(gen_functional_ops.to_bool(1.), True)
+    self.assertAllEqual(gen_functional_ops.to_bool(42.), True)
+    self.assertAllEqual(gen_functional_ops.to_bool(False), False)
+    self.assertAllEqual(gen_functional_ops.to_bool(True), True)
+    # For strings, "zero" is the empty string.
+    self.assertAllEqual(gen_functional_ops.to_bool(""), False)
+    self.assertAllEqual(gen_functional_ops.to_bool("a"), True)
+
+    # For >0D tensors, the truthiness only depends on whether there are
+    # elements or not.
+    self.assertAllEqual(gen_functional_ops.to_bool([]), False)
+    self.assertAllEqual(gen_functional_ops.to_bool([[]]), False)
+    self.assertAllEqual(gen_functional_ops.to_bool([[[]]]), False)
+    self.assertAllEqual(gen_functional_ops.to_bool([0]), True)
+    self.assertAllEqual(gen_functional_ops.to_bool([1]), True)
+    self.assertAllEqual(gen_functional_ops.to_bool([[0]]), True)
+    self.assertAllEqual(gen_functional_ops.to_bool([False]), True)
+    self.assertAllEqual(gen_functional_ops.to_bool([True]), True)
+
   # Like above, but using int32 in order to ensure that int32 tensors don't get
   # copied to the GPU during the application of the while.
   def testWhileInt32(self):
@@ -968,7 +993,7 @@ class PartitionedCallTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
 
     config = config_pb2.ConfigProto()
-    config.experimental.share_cluster_devices_in_session = True
+    config.share_cluster_devices_in_session = True
 
     with session.Session(workers[0].target, config=config) as sess:
       res = sess.run(f(a, b))

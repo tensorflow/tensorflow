@@ -76,19 +76,34 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
+  enum IndexingOrder {
+    // Thread reads consecutive elements.
+    LinearIndexingX,
+    // Thread reads strided elements while keeping memory coalescing.
+    StridedIndexingX,
+    // Thread reads a few consecutive elements then take a strided
+    // step. This can trigger vectorized reads and keep memory
+    // coalescing.
+    StridedLinearIndexingX
+  };
+
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
-                      int64 num_threads_x, bool is_dilated_x)
+                      int64 num_threads_x, IndexingOrder indexing_order,
+                      int vector_size, bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
-        dilated_x_(is_dilated_x) {
+        indexing_order_(indexing_order),
+        vector_size_(vector_size),
+        is_row_contiguous_(is_row_contiguous) {
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
+    if (indexing_order != LinearIndexingX) {
+      // StridedIndexingX, and StridedLinearIndexingX
+      // is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
@@ -118,7 +133,9 @@ class KernelMappingScheme {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
-  bool DilatedX() const { return dilated_x_; }
+  IndexingOrder GetIndexingOrder() const { return indexing_order_; }
+  int GetVectorSize() const { return vector_size_; }
+  bool GetRowContiguous() const { return is_row_contiguous_; }
 
  private:
   // The number of elements in each dimension.
@@ -133,12 +150,18 @@ class KernelMappingScheme {
   // Number of threads used to process elements in the Y direction of a tile.
   const int64 num_threads_y_;
 
-  // When num_threads_x threads process a total of tile_size_x elements in the
-  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
-  // elements. When dilated_x=false, the n elements processed by a thread are
-  // contiguous. On the other hand, when dilated_x=true the n elements are
-  // dilated by a factor of num_threads_x.
-  const bool dilated_x_;
+  // When num_threads_x threads process a total of tile_size_x
+  // elements in the X dimension of a tile, each threads process
+  // n=tile_size_x/num_threads_x elements.
+  // indexing_order defines which tile's elements each thread reads.
+  const IndexingOrder indexing_order_;
+
+  // vector_size_ only supported for row reduction and must be a divisor
+  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
+  // to trigger vectorized loads on GPUs while keeping memory
+  // coalescing.
+  const int vector_size_;
+  const bool is_row_contiguous_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
@@ -146,19 +169,18 @@ using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
-                                bool is_row_reduction)
-      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
+                                int num_partial_results, bool is_row_reduction)
+      : mapping_scheme_(mapping_scheme),
+        num_partial_results_(num_partial_results),
+        is_row_reduction_(is_row_reduction) {
+    if (num_partial_results > 1) {
+      CHECK_EQ(num_partial_results, (mapping_scheme.GetTileSizeX() /
+                                     mapping_scheme.GetNumThreadsX()));
+    }
+  }
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
-  }
-
-  void SetCurrentOutputInboundAddress(llvm::AllocaInst* a) {
-    current_output_inbound_address_ = a;
-  }
-
-  llvm::AllocaInst* GetCurrentOutputInboundAddress() const {
-    return current_output_inbound_address_;
   }
 
   // Gets writeable pointer to the address (or addresses) used to store
@@ -172,26 +194,45 @@ class ReductionCodegenInfo {
     return partial_result_addresses_;
   }
 
+  // Mutable pointer to the address of the input element to perform the
+  // reduction with.
   AddressVector* GetMutableReductionInputAddresses() {
     return &reduction_input_addresses_;
   }
+
+  std::vector<llvm::Value*>* GetMutableInitialValues() {
+    return &initial_values_;
+  }
+
+  absl::Span<llvm::Value* const> GetInitialValues() const {
+    return initial_values_;
+  }
+
+  // Returns the address of the input element to perform the reduction with.
   absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
     return reduction_input_addresses_;
   }
 
+  int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRowReduction() const { return is_row_reduction_; }
 
-  // Return the dimension that is being reduced between DimX and DimY.
-  int GetReducedDimensionEnum() const {
-    return IsRowReduction() ? KernelMappingScheme::DimX
-                            : KernelMappingScheme::DimY;
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
+  }
+
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
   }
 
  private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
+  std::vector<llvm::Value*> initial_values_;
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  llvm::AllocaInst* current_output_inbound_address_ = nullptr;
+  int num_partial_results_;
   bool is_row_reduction_;
 };
 

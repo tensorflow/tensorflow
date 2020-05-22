@@ -29,10 +29,10 @@ class Reshape : public GPUOperation {
  public:
   explicit Reshape(const OperationDef& definition)
       : GPUOperation(definition), work_group_size_(8, 4, 1) {}
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Reshape(Reshape&& operation);
@@ -41,7 +41,7 @@ class Reshape : public GPUOperation {
   Reshape& operator=(const Reshape&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   CLKernel kernel_;

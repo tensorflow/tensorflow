@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/test_helpers.h"
 
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <new>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace testing {
@@ -28,10 +37,7 @@ class StackAllocator : public flatbuffers::Allocator {
   StackAllocator() : data_(data_backing_), data_size_(0) {}
 
   uint8_t* allocate(size_t size) override {
-    if ((data_size_ + size) > kStackAllocatorSize) {
-      // TODO(petewarden): Add error reporting beyond returning null!
-      return nullptr;
-    }
+    TFLITE_DCHECK((data_size_ + size) <= kStackAllocatorSize);
     uint8_t* result = data_;
     data_ += size;
     data_size_ += size;
@@ -63,6 +69,185 @@ flatbuffers::FlatBufferBuilder* BuilderInstance() {
   return inst;
 }
 
+// A wrapper around FlatBuffer API to help build model easily.
+class ModelBuilder {
+ public:
+  typedef int32_t Tensor;
+  typedef int Operator;
+  typedef int Node;
+
+  // `builder` needs to be available until BuildModel is called.
+  explicit ModelBuilder(flatbuffers::FlatBufferBuilder* builder)
+      : builder_(builder) {}
+
+  // Registers an operator that will be used in the model.
+  Operator RegisterOp(BuiltinOperator op, const char* custom_code,
+                      int32_t version);
+
+  // Adds a tensor to the model.
+  Tensor AddTensor(TensorType type, std::initializer_list<int32_t> shape) {
+    return AddTensorImpl(type, /* is_variable */ false, shape);
+  }
+
+  // Adds a variable tensor to the model.
+  Tensor AddVariableTensor(TensorType type,
+                           std::initializer_list<int32_t> shape) {
+    return AddTensorImpl(type, /* is_variable */ true, shape);
+  }
+
+  // Adds a node to the model with given input and output Tensors.
+  Node AddNode(Operator op, std::initializer_list<Tensor> inputs,
+               std::initializer_list<Tensor> outputs);
+
+  // Constructs the flatbuffer model using `builder_` and return a pointer to
+  // it. The returned model has the same lifetime as `builder_`.
+  const Model* BuildModel(std::initializer_list<Tensor> inputs,
+                          std::initializer_list<Tensor> outputs);
+
+ private:
+  // Adds a tensor to the model.
+  Tensor AddTensorImpl(TensorType type, bool is_variable,
+                       std::initializer_list<int32_t> shape);
+
+  flatbuffers::FlatBufferBuilder* builder_;
+
+  static constexpr int kMaxOperatorCodes = 10;
+  flatbuffers::Offset<tflite::OperatorCode> operator_codes_[kMaxOperatorCodes];
+  int next_operator_code_id_ = 0;
+
+  static constexpr int kMaxOperators = 50;
+  flatbuffers::Offset<tflite::Operator> operators_[kMaxOperators];
+  int next_operator_id_ = 0;
+
+  static constexpr int kMaxTensors = 50;
+  flatbuffers::Offset<tflite::Tensor> tensors_[kMaxTensors];
+  int next_tensor_id_ = 0;
+};
+
+ModelBuilder::Operator ModelBuilder::RegisterOp(BuiltinOperator op,
+                                                const char* custom_code,
+                                                int32_t version) {
+  TFLITE_DCHECK(next_operator_code_id_ <= kMaxOperatorCodes);
+  operator_codes_[next_operator_code_id_] =
+      tflite::CreateOperatorCodeDirect(*builder_, op, custom_code, version);
+  next_operator_code_id_++;
+  return next_operator_code_id_ - 1;
+}
+
+ModelBuilder::Node ModelBuilder::AddNode(
+    ModelBuilder::Operator op,
+    std::initializer_list<ModelBuilder::Tensor> inputs,
+    std::initializer_list<ModelBuilder::Tensor> outputs) {
+  TFLITE_DCHECK(next_operator_id_ <= kMaxOperators);
+  operators_[next_operator_id_] = tflite::CreateOperator(
+      *builder_, op, builder_->CreateVector(inputs.begin(), inputs.size()),
+      builder_->CreateVector(outputs.begin(), outputs.size()),
+      BuiltinOptions_NONE);
+  next_operator_id_++;
+  return next_operator_id_ - 1;
+}
+
+const Model* ModelBuilder::BuildModel(
+    std::initializer_list<ModelBuilder::Tensor> inputs,
+    std::initializer_list<ModelBuilder::Tensor> outputs) {
+  // Model schema requires an empty buffer at idx 0.
+  constexpr size_t kBufferSize = 1;
+  const flatbuffers::Offset<Buffer> buffers[kBufferSize] = {
+      tflite::CreateBuffer(*builder_)};
+
+  // TFLM only supports single subgraph.
+  constexpr size_t subgraphs_size = 1;
+  const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
+      tflite::CreateSubGraph(
+          *builder_, builder_->CreateVector(tensors_, next_tensor_id_),
+          builder_->CreateVector(inputs.begin(), inputs.size()),
+          builder_->CreateVector(outputs.begin(), outputs.size()),
+          builder_->CreateVector(operators_, next_operator_id_),
+          builder_->CreateString("test_subgraph"))};
+  const flatbuffers::Offset<Model> model_offset = tflite::CreateModel(
+      *builder_, 0,
+      builder_->CreateVector(operator_codes_, next_operator_code_id_),
+      builder_->CreateVector(subgraphs, subgraphs_size),
+      builder_->CreateString("teset_model"),
+      builder_->CreateVector(buffers, kBufferSize));
+  tflite::FinishModelBuffer(*builder_, model_offset);
+  void* model_pointer = builder_->GetBufferPointer();
+  const Model* model = flatbuffers::GetRoot<Model>(model_pointer);
+  return model;
+}
+
+ModelBuilder::Tensor ModelBuilder::AddTensorImpl(
+    TensorType type, bool is_variable, std::initializer_list<int32_t> shape) {
+  TFLITE_DCHECK(next_tensor_id_ <= kMaxTensors);
+  tensors_[next_tensor_id_] = tflite::CreateTensor(
+      *builder_, builder_->CreateVector(shape.begin(), shape.size()), type,
+      /* buffer */ 0, /* name */ 0, /* quantization */ 0,
+      /* is_variable */ is_variable,
+      /* sparsity */ 0);
+  next_tensor_id_++;
+  return next_tensor_id_ - 1;
+}
+
+const Model* BuildSimpleStatefulModel() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
+
+  ModelBuilder model_builder(fb_builder);
+
+  const int op_id =
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op", 0);
+  const int input_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
+  const int median_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
+  const int invoke_count_tensor =
+      model_builder.AddTensor(TensorType_INT32, {1});
+
+  model_builder.AddNode(op_id, {input_tensor},
+                        {median_tensor, invoke_count_tensor});
+  return model_builder.BuildModel({input_tensor},
+                                  {median_tensor, invoke_count_tensor});
+}
+
+const Model* BuildSimpleModelWithBranch() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
+
+  ModelBuilder model_builder(fb_builder);
+  /* Model structure
+           | t0
+    +------|
+    |      v
+    |   +---------+
+    |   |   n0    |
+    |   |         |
+    |   +---------+
+    v           +
+                |
+  +---------+   | t1
+  |   n1    |   |
+  |         |   |
+  +---------+   |
+     |          |
+ t2  |          v
+     |   +---------+
+     +-->|    n2   |
+         |         |
+         +-------|-+
+                 |t3
+                 v
+  */
+  const int op_id =
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
+                               /* version= */ 0);
+  const int t0 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
+  const int t1 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
+  const int t2 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
+  const int t3 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
+  model_builder.AddNode(op_id, {t0}, {t1});      // n0
+  model_builder.AddNode(op_id, {t0}, {t2});      // n1
+  model_builder.AddNode(op_id, {t1, t2}, {t3});  // n2
+  return model_builder.BuildModel({t0}, {t3});
+}
+
 const Model* BuildSimpleMockModel() {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
@@ -76,7 +261,7 @@ const Model* BuildSimpleMockModel() {
                    builder->CreateVector(buffer_data, buffer_data_size))};
   constexpr size_t tensor_shape_size = 1;
   const int32_t tensor_shape[tensor_shape_size] = {1};
-  constexpr size_t tensors_size = 3;
+  constexpr size_t tensors_size = 4;
   const Offset<Tensor> tensors[tensors_size] = {
       CreateTensor(*builder,
                    builder->CreateVector(tensor_shape, tensor_shape_size),
@@ -90,20 +275,33 @@ const Model* BuildSimpleMockModel() {
                    builder->CreateVector(tensor_shape, tensor_shape_size),
                    TensorType_INT32, 0,
                    builder->CreateString("test_output_tensor"), 0, false),
+      CreateTensor(*builder,
+                   builder->CreateVector(tensor_shape, tensor_shape_size),
+                   TensorType_INT32, 0,
+                   builder->CreateString("test_output2_tensor"), 0, false),
   };
   constexpr size_t inputs_size = 1;
   const int32_t inputs[inputs_size] = {0};
-  constexpr size_t outputs_size = 1;
-  const int32_t outputs[outputs_size] = {2};
+  constexpr size_t outputs_size = 2;
+  const int32_t outputs[outputs_size] = {2, 3};
   constexpr size_t operator_inputs_size = 2;
   const int32_t operator_inputs[operator_inputs_size] = {0, 1};
   constexpr size_t operator_outputs_size = 1;
   const int32_t operator_outputs[operator_outputs_size] = {2};
-  constexpr size_t operators_size = 1;
-  const Offset<Operator> operators[operators_size] = {CreateOperator(
-      *builder, 0, builder->CreateVector(operator_inputs, operator_inputs_size),
-      builder->CreateVector(operator_outputs, operator_outputs_size),
-      BuiltinOptions_NONE)};
+  const int32_t operator2_outputs[operator_outputs_size] = {3};
+  constexpr size_t operators_size = 2;
+  const Offset<Operator> operators[operators_size] = {
+      CreateOperator(
+          *builder, 0,
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator_outputs, operator_outputs_size),
+          BuiltinOptions_NONE),
+      CreateOperator(
+          *builder, 0,
+          builder->CreateVector(operator_inputs, operator_inputs_size),
+          builder->CreateVector(operator2_outputs, operator_outputs_size),
+          BuiltinOptions_NONE),
+  };
   constexpr size_t subgraphs_size = 1;
   const Offset<SubGraph> subgraphs[subgraphs_size] = {
       CreateSubGraph(*builder, builder->CreateVector(tensors, tensors_size),
@@ -295,6 +493,22 @@ const Model* GetComplexMockModel() {
   return model;
 }
 
+const Model* GetSimpleModelWithBranch() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildSimpleModelWithBranch());
+  }
+  return model;
+}
+
+const Model* GetSimpleStatefulModel() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildSimpleStatefulModel());
+  }
+  return model;
+}
+
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
@@ -386,7 +600,7 @@ void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
   ErrorReporter* error_reporter = static_cast<ErrorReporter*>(context->impl_);
   va_list args;
   va_start(args, format);
-  error_reporter->Report(format, args);
+  TF_LITE_REPORT_ERROR(error_reporter, format, args);
   va_end(args);
 }
 
@@ -467,17 +681,6 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
   return result;
 }
 
-// Create Quantized tensor which contains a quantized version of the supplied
-// buffer.
-TfLiteTensor CreateQuantizedTensor(const float* input, uint8_t* quantized,
-                                   TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable) {
-  int input_size = ElementCount(*dims);
-  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
-  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name);
-}
-
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable) {
@@ -500,15 +703,6 @@ TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
   result.quantization = {kTfLiteAffineQuantization, nullptr};
   result.bytes = ElementCount(*dims) * sizeof(int16_t);
   return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(const float* input, int8_t* quantized,
-                                   TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable) {
-  int input_size = ElementCount(*dims);
-  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
-  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name);
 }
 
 TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,

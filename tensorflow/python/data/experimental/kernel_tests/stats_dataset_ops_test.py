@@ -380,8 +380,6 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMapAndBatchAutoTuneBufferUtilization(self):
-    self.skipTest("b/147897892: This test is flaky because thread utilization "
-                  "is recorded asynchronously")
 
     def dataset_fn():
       return dataset_ops.Dataset.range(100).apply(
@@ -423,7 +421,7 @@ class FeatureStatsDatasetTest(
       num_output = total_records // batch_size + 1
 
     self.parallelCallsStats(
-        dataset_fn, {"ParseExampleDataset"},
+        dataset_fn, {"ParseExampleDatasetV2"},
         num_output,
         check_elements=False)
 
@@ -441,19 +439,19 @@ class FeatureStatsDatasetTest(
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "features_count"), total_records)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "feature_values_count"), total_records)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "features_count"), total_records * 4)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 

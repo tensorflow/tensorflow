@@ -20,10 +20,10 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -97,7 +97,7 @@ mlir::LogicalResult EvaluateOperation(
   // Builds TF operation and sets all the attributes.
   std::string node_name = "unnamed";
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    node_name = attr.getValue();
+    node_name = std::string(attr.getValue());
   }
   auto node_def_or = ConvertTFDialectOpToNodeDef(
       inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);

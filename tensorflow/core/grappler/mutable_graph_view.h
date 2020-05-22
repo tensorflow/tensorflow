@@ -195,7 +195,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
 
   // Removes control dependency `fanin_node_name` from the target node named
   // `node_name`. If the node or fanin do not exist in the graph, nothing will
-  // be modified in the graph. To remove regular fanins, use RemoveRegualrFanin.
+  // be modified in the graph. To remove regular fanins, use RemoveRegularFanin.
   //
   // If the fanin being removed doesn't exist in the node's inputs, this will
   // not result in an error and the node will not be modified.

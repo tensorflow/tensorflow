@@ -16,7 +16,7 @@ limitations under the License.
 
 package tensorflow
 
-import tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
+import corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
 
 // #include "tensorflow/c/c_api.h"
 import "C"
@@ -90,7 +90,7 @@ type TensorInfo struct {
 	Shape Shape
 }
 
-func signatureDefFromProto(pb *tfpb.SignatureDef) Signature {
+func signatureDefFromProto(pb *corepb.SignatureDef) Signature {
 	inputs := make(map[string]TensorInfo)
 	for name, input := range pb.GetInputs() {
 		inputs[name] = tensorInfoFromProto(input)
@@ -106,7 +106,7 @@ func signatureDefFromProto(pb *tfpb.SignatureDef) Signature {
 	}
 }
 
-func tensorInfoFromProto(pb *tfpb.TensorInfo) TensorInfo {
+func tensorInfoFromProto(pb *corepb.TensorInfo) TensorInfo {
 	var dims []int64
 	for _, d := range pb.GetTensorShape().GetDim() {
 		dims = append(dims, d.GetSize())

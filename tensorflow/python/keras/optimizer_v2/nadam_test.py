@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -74,11 +73,11 @@ def nadam_update_numpy(param,
 
 class NadamOptimizerTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def testSparse(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     sparse_epsilon = 1e-7
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1, mcache = 0.0, 0.0, 0.0, 0.0, 1.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -122,10 +121,10 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  @test_util.run_deprecated_v1
   def testBasic(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1, mcache = 0.0, 0.0, 0.0, 0.0, 1.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

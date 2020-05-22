@@ -32,7 +32,7 @@ class SummaryTensorOpV2 : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     const Tensor& tag = c->input(0);
-    OP_REQUIRES(c, IsLegacyScalar(tag.shape()),
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(tag.shape()),
                 errors::InvalidArgument("tag must be scalar"));
     const Tensor& tensor = c->input(1);
     const Tensor& serialized_summary_metadata_tensor = c->input(2);
@@ -48,8 +48,8 @@ class SummaryTensorOpV2 : public OpKernel {
       tensor.AsProtoTensorContent(v->mutable_tensor());
     }
 
-    v->mutable_metadata()->ParseFromString(
-        serialized_summary_metadata_tensor.scalar<tstring>()());
+    ParseFromTString(serialized_summary_metadata_tensor.scalar<tstring>()(),
+                     v->mutable_metadata());
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));

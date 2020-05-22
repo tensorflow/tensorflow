@@ -11,9 +11,11 @@ _TF_SYSTEM_LIBS = "TF_SYSTEM_LIBS"
 VALID_LIBS = [
     "absl_py",
     "astor_archive",
+    "astunparse_archive",
     "boringssl",
     "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
+    "com_github_grpc_grpc",
     "com_google_protobuf",
     "com_googlesource_code_re2",
     "curl",
@@ -24,7 +26,6 @@ VALID_LIBS = [
     "functools32_archive",
     "gast_archive",
     "gif",
-    "grpc",
     "hwloc",
     "icu",
     "jsoncpp_git",
@@ -37,12 +38,13 @@ VALID_LIBS = [
     "pasta",
     "pcre",
     "png",
+    "pybind11",
     "six_archive",
     "snappy",
     "swig",
     "termcolor_archive",
     "wrapt",
-    "zlib_archive",
+    "zlib",
 ]
 
 def auto_configure_fail(msg):

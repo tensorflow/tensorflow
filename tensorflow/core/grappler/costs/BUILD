@@ -1,4 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -36,6 +40,25 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "analytical_cost_estimator.h",
+        "cost_estimator.h",
+        "graph_memory.h",
+        "graph_properties.h",
+        "measuring_cost_estimator.h",
+        "op_context.h",
+        "op_level_cost_estimator.h",
+        "utils.h",
+        "virtual_placer.h",
+        "virtual_scheduler.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "graph_properties",
     srcs = ["graph_properties.cc"],
@@ -43,6 +66,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
@@ -67,6 +91,7 @@ tf_cc_test(
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -138,9 +163,12 @@ tf_cuda_library(
     deps = [
         ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:gpu_id",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -231,6 +259,7 @@ cc_library(
     hdrs = ["virtual_scheduler.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         ":graph_properties",
         ":op_context",
         ":utils",
@@ -242,7 +271,9 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
-        "//tensorflow/core/grappler/costs:cost_estimator",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -280,6 +311,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/kernels:ops_util",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -330,6 +362,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_grappler(),
+    alwayslink = 1,
 )
 
 tf_cc_test(

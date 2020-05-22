@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: xla-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @noop
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<1x2xf32>)

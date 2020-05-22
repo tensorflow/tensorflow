@@ -1,13 +1,15 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/cost_graph_go_proto";
 
 message CostGraphDef {
   message Node {
@@ -74,4 +76,14 @@ message CostGraphDef {
     bool inaccurate = 17;
   }
   repeated Node node = 1;
+
+  // Total cost of this graph, typically used for balancing decisions.
+  message AggregatedCost {
+    // Aggregated cost value.
+    float cost = 1;
+
+    // Aggregated cost dimension (e.g. 'memory', 'compute', 'network').
+    string dimension = 2;
+  }
+  repeated AggregatedCost cost = 2;
 }

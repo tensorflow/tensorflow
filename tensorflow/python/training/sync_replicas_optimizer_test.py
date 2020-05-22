@@ -197,7 +197,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     local_step_1 = graphs[1].get_tensor_by_name("sync_rep_local_step:0")
     global_step = graphs[1].get_tensor_by_name("global_step:0")
 
-    # The steps should also be initilized.
+    # The steps should also be initialized.
     self.assertAllEqual(0, sessions[1].run(global_step))
     self.assertAllEqual(0, sessions[1].run(local_step_1))
 

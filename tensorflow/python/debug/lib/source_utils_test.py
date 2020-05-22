@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import os
+import sys
 import tempfile
+import zipfile
 
 import numpy as np
 
@@ -42,7 +45,41 @@ from tensorflow.python.util import tf_inspect
 
 
 def line_number_above():
-  return tf_inspect.stack()[1][2] - 1
+  """Get lineno of the AST node immediately above this function's call site.
+
+  It is assumed that there is no empty line(s) between the call site and the
+  preceding AST node.
+
+  Returns:
+    The lineno of the preceding AST node, at the same level of the AST.
+    If the preceding AST spans multiple lines:
+      - In Python 3.8+, the lineno of the first line is returned.
+      - In older Python versions, the lineno of the last line is returned.
+  """
+  # https://bugs.python.org/issue12458: In Python 3.8, traceback started
+  # to return the lineno of the first line of a multi-line continuation block,
+  # instead of that of the last line. Therefore, in Python 3.8+, we use `ast` to
+  # get the lineno of the first line.
+  call_site_lineno = tf_inspect.stack()[1][2]
+  if sys.version_info < (3, 8):
+    return call_site_lineno - 1
+  else:
+    with open(__file__, "rb") as f:
+      source_text = f.read().decode("utf-8")
+    source_tree = ast.parse(source_text)
+    prev_node = _find_preceding_ast_node(source_tree, call_site_lineno)
+    return prev_node.lineno
+
+
+def _find_preceding_ast_node(node, lineno):
+  """Find the ast node immediately before and not including lineno."""
+  for i, child_node in enumerate(node.body):
+    if child_node.lineno == lineno:
+      return node.body[i - 1]
+    if hasattr(child_node, "body"):
+      found_node = _find_preceding_ast_node(child_node, lineno)
+      if found_node:
+        return found_node
 
 
 class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
@@ -242,6 +279,40 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     # Clean up unrelated source file.
     os.remove(source_path)
 
+  def testLoadNonexistentNonParPathFailsWithIOError(self):
+    bad_path = os.path.join(self.get_temp_dir(), "nonexistent.py")
+    with self.assertRaisesRegexp(
+        IOError, "neither exists nor can be loaded.*par.*"):
+      source_utils.load_source(bad_path)
+
+  def testLoadingPythonSourceFileInParFileSucceeds(self):
+    # Create the .par file first.
+    temp_file_path = os.path.join(self.get_temp_dir(), "model.py")
+    with open(temp_file_path, "wb") as f:
+      f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
+    par_path = os.path.join(self.get_temp_dir(), "train_model.par")
+    with zipfile.ZipFile(par_path, "w") as zf:
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
+
+    source_path = os.path.join(par_path, "tensorflow_models", "model.py")
+    source_lines, _ = source_utils.load_source(source_path)
+    self.assertEqual(
+        source_lines, ["import tensorflow as tf", "x = tf.constant(42.0)", ""])
+
+  def testLoadingPythonSourceFileInParFileFailsRaisingIOError(self):
+    # Create the .par file first.
+    temp_file_path = os.path.join(self.get_temp_dir(), "model.py")
+    with open(temp_file_path, "wb") as f:
+      f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
+    par_path = os.path.join(self.get_temp_dir(), "train_model.par")
+    with zipfile.ZipFile(par_path, "w") as zf:
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
+
+    source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
+    with self.assertRaisesRegexp(
+        IOError, "neither exists nor can be loaded.*par.*"):
+      source_utils.load_source(source_path)
+
 
 @test_util.run_v1_only("b/120545219")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
@@ -306,7 +377,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     #   while/Less:0           4
     #   while/LoopCond:0       4
     #   while/Switch:0         1
-    #   while/Swtich:1         3
+    #   while/Switch:1         3
     #   while/Identity:0       3
     #   while/Add/y:0          3
     #   while/Add:0            3

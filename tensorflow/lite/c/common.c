@@ -79,7 +79,8 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic) {
+  if (t->allocation_type == kTfLiteDynamic ||
+      t->allocation_type == kTfLitePersistentRo) {
     free(t->data.raw);
   }
   t->data.raw = NULL;
@@ -119,7 +120,8 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
   }
 
   if (sparsity->dim_metadata) {
-    for (int i = 0; i < sparsity->dim_metadata_size; i++) {
+    int i = 0;
+    for (; i < sparsity->dim_metadata_size; i++) {
       TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
       if (metadata.format == kTfLiteDimSparseCSR) {
         TfLiteIntArrayFree(metadata.array_segments);
@@ -139,6 +141,11 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
+
+  if (t->dims_signature) {
+    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
+  }
+  t->dims_signature = NULL;
 
   TfLiteQuantizationFree(&t->quantization);
   TfLiteSparsityFree(t->sparsity);
@@ -166,7 +173,8 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
-  if (tensor->allocation_type != kTfLiteDynamic) {
+  if (tensor->allocation_type != kTfLiteDynamic &&
+      tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
   // TODO(b/145340303): Tensor data should be aligned.
@@ -203,6 +211,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteFloat64:
+      return "FLOAT64";
   }
   return "Unknown type";
 }

@@ -38,8 +38,12 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     explicit Dataset(OpKernelContext* ctx, DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
+      batch_size_ = -1;
       for (const PartialTensorShape& shape : input->output_shapes()) {
         if (!shape.unknown_rank()) {
+          if (batch_size_ < 0 && shape.dim_size(0) >= 0) {
+            batch_size_ = shape.dim_size(0);
+          }
           gtl::InlinedVector<int64, 4> partial_dim_sizes;
           for (int i = 1; i < shape.dims(); ++i) {
             partial_dim_sizes.push_back(shape.dim_size(i));
@@ -69,6 +73,17 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      if (batch_size_ > 0) {
+        return n * batch_size_;
+      }
+      return kUnknownCardinality;
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -93,7 +108,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             shapes_(params.dataset->output_shapes().size()) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -163,10 +179,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeUnknownRatioNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -211,15 +228,17 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 current_index_ GUARDED_BY(mu_);
-      int64 current_batch_size_ GUARDED_BY(mu_);
-      std::vector<Tensor> tensors_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      std::vector<TensorShape> shapes_ GUARDED_BY(mu_);
+      int64 current_index_ TF_GUARDED_BY(mu_);
+      int64 current_batch_size_ TF_GUARDED_BY(mu_);
+      std::vector<Tensor> tensors_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::vector<TensorShape> shapes_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> shapes_;
+    // batch_size_ may or may not be known, with -1 as unknown
+    int64 batch_size_;
   };
 };
 

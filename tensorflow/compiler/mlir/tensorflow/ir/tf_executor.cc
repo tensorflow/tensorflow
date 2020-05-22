@@ -26,64 +26,36 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_executor {
-namespace {
-
-// If the given tensor has elements of type with subtypes, then returns a new
-// type after dropping subtypes info. Otherwise, returns the original type as
-// is.
-ShapedType DropTypeSubTypes(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (!subtype_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(subtype_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-// If the given tensor has elements of type ref, then returns a new type
-// of the shape, but corresponding non-ref type as element type. Otherwise,
-// returns the original type as is.
-ShapedType DropRefType(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(ref_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+using TF::DropRefType;
+using TF::DropTypeSubTypes;
 
 struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -313,6 +285,19 @@ ParseResult ParseFetchOp(OpAsmParser &parser, OperationState &result) {
 
 YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
 
+// Checks if a tf_executor.island wraps a single operation and the single
+// operation results are perfectly forwarded to the islands yield.
+bool IslandOp::WrapsSingleOp() {
+  auto body = GetBody().without_terminator();
+  if (!hasSingleElement(body)) return false;
+
+  Operation &wrapped_op = *body.begin();
+  YieldOp yield = GetYield();
+  return wrapped_op.getNumResults() == yield.getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(), yield.getOperands().begin());
+}
+
 namespace {
 
 LogicalResult Verify(IslandOp island) {
@@ -359,23 +344,17 @@ void Print(IslandOp op, OpAsmPrinter &p) {
   // Check if we can print the short "wraps" form: that is if the island
   // contains a single operation and the result of this operation are perfectly
   // forwarded to the yield.
-  if (op.getAttrs().empty() &&
-      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+  if (op.getAttrs().empty() && op.WrapsSingleOp()) {
     Operation &wrapped_op = op.GetBody().front();
-    Operation &yield_op = op.GetBody().back();
+    YieldOp yield_op = op.GetYield();
     // The "wraps" syntax only encodes a single location.
     // In order to correctly round-trip, we can only use this syntax when all
     // the locations are identical.
     if (wrapped_op.getLoc() == op.getLoc() &&
         yield_op.getLoc() == op.getLoc()) {
-      if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
-          std::equal(wrapped_op.getResults().begin(),
-                     wrapped_op.getResults().end(),
-                     yield_op.getOperands().begin())) {
-        p << " wraps ";
-        p.printGenericOp(&op.GetBody().front());
-        return;
-      }
+      p << " wraps ";
+      p.printGenericOp(&wrapped_op);
+      return;
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
@@ -467,7 +446,7 @@ namespace {
 ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
-  if (parser.parseOperandList(op_infos, 2) || parser.parseColonTypeList(types))
+  if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
     return failure();
   if (types.size() != 1)
     return parser.emitError(parser.getNameLoc())
@@ -479,12 +458,15 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   // type).
   if (types.front().isa<FunctionType>()) {
     FunctionType type = types.front().cast<FunctionType>();
-    if (type.getNumInputs() != 2)
+    if (type.getNumInputs() < 2)
       return parser.emitError(parser.getNameLoc())
              << " expects a single data type and a predicate";
     result.types.assign(type.getResults().begin(), type.getResults().end());
     types.assign(type.getInputs().begin(), type.getInputs().end());
   } else {
+    if (op_infos.size() < 2)
+      return parser.emitError(parser.getNameLoc())
+             << " expects a single data type and a predicate";
     Type control_type = ControlType::get(parser.getBuilder().getContext());
     result.types.append(2, types[0]);
     result.types.push_back(control_type);
@@ -537,13 +519,44 @@ LogicalResult Verify(SwitchNOp switchn) {
            << "expect `num_outs` (" << num_outs.getInt() << ") results but got "
            << (switchn.getNumResults() - 1);
 
+  // Check that operand can be broadcasted to each output type.
   auto operand0_type = switchn.getOperand(0).getType();
-  for (Value result : switchn.outputs())
-    if (operand0_type != result.getType())
-      return switchn.emitOpError()
-             << "type mismatch between data operand and result: "
-             << operand0_type << " vs " << result.getType();
+  TensorType operand0_tensor_type = operand0_type.dyn_cast<TensorType>();
+  if (!operand0_tensor_type) {
+    return switchn.emitOpError()
+           << "expects data operand to have tensor type but got "
+           << operand0_type;
+  }
+  for (Type output_type : switchn.getResultTypes()) {
+    if (output_type.isa<ControlType>()) break;
 
+    TensorType output_tensor_type = output_type.dyn_cast<TensorType>();
+    if (!output_tensor_type) {
+      return switchn.emitOpError()
+             << "expects outputs to have tensor type but got " << output_type;
+    }
+
+    // If the output type is a ref type, then the operand type should also be of
+    // the same ref type. However, if the output type is a non-ref type T, then
+    // the operand can be tensor of type T or T_REF.
+    bool is_output_ref =
+        output_tensor_type.getElementType().isa<TF::TensorFlowRefType>();
+    if (is_output_ref &&
+        !operand0_tensor_type.getElementType().isa<TF::TensorFlowRefType>()) {
+      return switchn.emitOpError()
+             << "expects same operand and output element type but got "
+             << operand0_tensor_type << " vs " << output_tensor_type;
+    }
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropRefType(DropTypeSubTypes(operand0_tensor_type)),
+        DropRefType(DropTypeSubTypes(output_tensor_type)));
+    if (!broadcasted_type) {
+      return switchn.emitOpError()
+             << "expects data operand to be broadcastable with all output types"
+             << " but got " << operand0_tensor_type << " vs "
+             << output_tensor_type;
+    }
+  }
   return success();
 }
 
@@ -565,9 +578,9 @@ void Print(SwitchNOp switchn, OpAsmPrinter &p) {
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // Parsing:
-  //       %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+  //       %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
   // Where the first operand is the data to replicate, the second is an i32
-  // indicating which output to populate, followed by the keyword `by` and the
+  // indicating which output to populate, followed by the keyword `of` and the
   // number of outputs (+1 for the control token).
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
@@ -1059,16 +1072,16 @@ bool HasSingleOpInBlock(Block *block) {
 struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one fetch.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map graph results to fetch operands.
     rewriter.replaceOp(op, op.GetFetch().fetches());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1078,11 +1091,11 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
 struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one island.
-    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return failure();
 
     FetchOp fetch_op = op.GetFetch();
     auto island_op = llvm::cast<IslandOp>(block.front());
@@ -1112,7 +1125,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
         std::prev(island_body.end()));
     rewriter.replaceOp(op, new_rets);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace
@@ -1134,18 +1147,18 @@ struct DropEmptyIslandNoOperandNoDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1157,16 +1170,16 @@ struct DropEmptyIslandNoOperandOneDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
         !op.control().use_empty() ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1191,16 +1204,16 @@ namespace {
 struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
   using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
-                                     PatternRewriter &rewriter) const override {
-    if (op.getNumOperands() != 0) return matchFailure();
+  LogicalResult matchAndRewrite(ControlTriggerOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

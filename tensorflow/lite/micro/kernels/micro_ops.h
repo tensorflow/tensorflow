@@ -35,6 +35,7 @@ TfLiteRegistration* Register_ARG_MAX();
 TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_AVERAGE_POOL_2D();
 TfLiteRegistration* Register_CEIL();
+TfLiteRegistration* Register_CIRCULAR_BUFFER();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_COS();
@@ -54,6 +55,7 @@ TfLiteRegistration* Register_LOGICAL_OR();
 TfLiteRegistration* Register_LOGISTIC();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MAX_POOL_2D();
+TfLiteRegistration* Register_MEAN();
 TfLiteRegistration* Register_MINIMUM();
 TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_NEG();
@@ -66,6 +68,7 @@ TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_RESHAPE();
+TfLiteRegistration* Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration* Register_ROUND();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SIN();
@@ -74,8 +77,11 @@ TfLiteRegistration* Register_SPLIT();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_STRIDED_SLICE();
+TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_L2_NORMALIZATION();
+TfLiteRegistration* Register_TANH();
 
 }  // namespace micro
 }  // namespace ops

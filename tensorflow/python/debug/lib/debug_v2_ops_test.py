@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -658,7 +659,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
               tensor_id=x._id,
               output_dtype=dtypes.float64)), x._id
 
-    # Assert the same op is returns a consistant value
+    # Assert the same op is returns a consistent value
     x = np.zeros([100, 100], dtype=np.float16)
     x[32, 47] = np.nan
     x[0:4, 3] = np.inf
@@ -679,6 +680,39 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     tensor_2, tensor_id_2 = debug_summary(c)
     self.assertAllEqual(tensor_1, tensor_2)
     self.assertEqual(tensor_id_1, tensor_id_2)
+
+  def testCheckNumericsV2OpNegativeAndPositiveInf(self):
+    """Test that CheckNumericsV2 op distinguishes negative and positive infs."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([-1.0, 1.0])
+      t2 = constant_op.constant([0.0, 0.0])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"pass through test.*had -Inf and \+Inf values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
+
+  def testCheckNumericsV2OpNegativeAndPositiveInfAndNaN(self):
+    """CheckNumericsV2 op distinguishes - & + infs when nan is present."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([-1.0, 1.0, 0.0])
+      t2 = constant_op.constant([0.0, 0.0, 0.0])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"pass through test.*had -Inf, \+Inf, and NaN values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
+
+  def testCheckNumericsV2PositiveInfAndNaN(self):
+    """Test that CheckNumericsV2 op shows sign of inf when nan is present."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([0.0, 1.0])
+      t2 = constant_op.constant([0.0, 0.0])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"pass through test.*had \+Inf and NaN values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ void NcclBroadcaster::Run(StatusCallback done) {
   {
     // When all devices at this worker have called `SignalMultiNodeReady`, the
     // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
-    // implementation of `UnblockDepdendencies` keeps track of the number of
+    // implementation of `UnblockDependencies` keeps track of the number of
     // devices that have launched.
     profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
     col_ctx_->col_exec->UnblockDependencies(*col_params_);

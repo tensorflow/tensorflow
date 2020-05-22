@@ -36,6 +36,9 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -67,7 +70,11 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -119,7 +126,6 @@ cc_test(
         "nnapi_delegate_test.cc",
     ],
     tags = [
-        "no_oss",  # TODO(b/148092939): Re-enable.
         "no_windows",
         "tflite_not_portable_ios",
     ],
@@ -175,6 +181,7 @@ cc_test(
         ":nnapi_delegate",
         ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",

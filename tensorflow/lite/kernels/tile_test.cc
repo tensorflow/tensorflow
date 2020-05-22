@@ -202,6 +202,42 @@ TEST_P(TileTest, Int64Matrix64Multipliers) {
       /*multiply_type=*/TensorType_INT64, GetParam());
 }
 
+TEST_P(TileTest, StringMatrix) {
+  Check<std::string>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
+      /*multipliers_data=*/{1, 2}, /*exp_output_shape=*/{2, 6},
+      /*exp_output_data=*/
+      {"AA", "AB", "AC", "AA", "AB", "AC", "BA", "BB", "BC", "BA", "BB", "BC"},
+      /*input_type=*/TensorType_STRING,
+      /*multiply_type=*/TensorType_INT32, GetParam());
+}
+
+TEST_P(TileTest, StringMatrix64Multipliers) {
+  Check<std::string, int64_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/
+      {"AA", "AB", "AC", "BA", "BB", "BC", "AA", "AB", "AC", "BA", "BB", "BC"},
+      /*input_type=*/TensorType_STRING,
+      /*multiply_type=*/TensorType_INT64, GetParam());
+}
+
+TEST_P(TileTest, StringMatrix2) {
+  Check<std::string>(
+      /*input_shape=*/{3, 2, 1},
+      /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
+      /*multipliers_data=*/{2, 2, 2}, /*exp_output_shape=*/{6, 4, 2},
+      /*exp_output_data=*/
+      {"AA", "AA", "AB", "AB", "AA", "AA", "AB", "AB", "AC", "AC", "BA", "BA",
+       "AC", "AC", "BA", "BA", "BB", "BB", "BC", "BC", "BB", "BB", "BC", "BC",
+       "AA", "AA", "AB", "AB", "AA", "AA", "AB", "AB", "AC", "AC", "BA", "BA",
+       "AC", "AC", "BA", "BA", "BB", "BB", "BC", "BC", "BB", "BB", "BC", "BC"},
+      /*input_type=*/TensorType_STRING,
+      /*multiply_type=*/TensorType_INT32, GetParam());
+}
+
 INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));

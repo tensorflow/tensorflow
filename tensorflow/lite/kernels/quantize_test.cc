@@ -90,6 +90,28 @@ TEST(QuantizeOpTest, INT16) {
                                 12700, 12800}));
 }
 
+// rescale factor is around 2
+TEST(QuantizeOpTest, Int16Int16) {
+  QuantizeOpModel m({TensorType_INT16, {1, 1, 2, 5}, -16383, 16384},
+                    {TensorType_INT16, {1, 1, 2, 5}, 0, 16384});
+
+  m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({-32764, -32760, -32756, -32752, -32748, -32744,
+                                -32740, -32736, -32732, -32728}));
+}
+
+// zero point is -1, scale is 0.5
+TEST(QuantizeOpTest, Int16Int16SameScale) {
+  QuantizeOpModel m({TensorType_INT16, {1, 1, 2, 5}, -16384, 16384},
+                    {TensorType_INT16, {1, 1, 2, 5}, -16384, 16384});
+  m.SetInputAndQuantize<int16_t>({0, 1, 2, 3, 4, 5, 6, 7, 8, 37767});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({-1, 1, 3, 5, 7, 9, 11, 13, 15, 32767}));
+}
+
 // Input scale 0.500000, output scale 0.500000, input zeropoint -1, output
 // zeropoint -1
 TEST(QuantizeOpTest, Int8Int8SameScale) {

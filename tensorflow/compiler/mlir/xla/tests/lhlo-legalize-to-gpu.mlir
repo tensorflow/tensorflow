@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-gpu -split-input-file | FileCheck %s
+// RUN: xla-opt %s -lhlo-legalize-to-gpu -split-input-file | FileCheck %s --dump-input=fail
 
 func @reduce(%arg: memref<100x10xf32>,
              %init: memref<f32>,
@@ -16,20 +16,19 @@ func @reduce(%arg: memref<100x10xf32>,
 // CHECK: func @reduce(%[[ARG0:.*]]: memref<100x10xf32>, %[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<100xf32>) {
 // CHECK-DAG: %[[C100:.*]] = constant 100 : index
 // CHECK-DAG: %[[C1:.*]] = constant 1 : index
-// CHECK: "gpu.launch"(%[[C1]], %[[C1]], %[[C1]], %[[C100]], %[[C1]], %[[C1]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) ( {
-// CHECK:  ^bb0({{.*}} %[[VAL:.*]]: memref<100x10xf32>, %[[INIT:.*]]: memref<f32>, %[[RES:.*]]: memref<100xf32>)
-// CHECK:  %[[ACC:.*]] = load %[[INIT]][] : memref<f32>
-// CHECK:  store %[[ACC]], %[[RES]][%[[IDX:.*]]] : memref<100xf32>
+// CHECK: gpu.launch blocks({{.*}}, {{.*}}, {{.*}}) in ({{.*}} = %[[C1]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) threads(%[[IDX:.*]], {{.*}}, {{.*}}) in ({{.*}} = %[[C100]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) {
+// CHECK:  %[[ACC:.*]] = load %[[ARG1]][] : memref<f32>
+// CHECK:  store %[[ACC]], %[[ARG2]][%[[IDX:.*]]] : memref<100xf32>
 // CHECK-DAG: %[[LB:.*]] = constant 0 : index
 // CHECK-DAG: %[[UB:.*]] = constant 10 : index
 // CHECK-DAG: %[[STEP:.*]] = constant 1 : index
-// CHECK: loop.for %[[IDX1:.*]] = %[[LB]] to %[[UB]] step %[[STEP]] {
-// CHECK: %[[LHS:.*]] = linalg.slice %[[RES]][%[[IDX]]] : memref<100xf32>, index, memref<f32, #map0>
-// CHECK: %[[RHS:.*]] = linalg.slice %[[VAL]][%[[IDX]], %[[IDX1]]] : memref<100x10xf32>, index, index, memref<f32, #map0>
-// CHECK: "xla_lhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, #map0>, memref<f32, #map0>, memref<f32, #map0>) -> ()
+// CHECK: scf.for %[[IDX1:.*]] = %[[LB]] to %[[UB]] step %[[STEP]] {
+// CHECK: %[[LHS:.*]] = linalg.slice %[[ARG2]][%[[IDX]]] : memref<100xf32>, index, memref<f32, #map0>
+// CHECK: %[[RHS:.*]] = linalg.slice %[[ARG0]][%[[IDX]], %[[IDX1]]] : memref<100x10xf32>, index, index, memref<f32, #map0>
+// CHECK: "xla_lhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, {{.*}}>, memref<f32, {{.*}}>, memref<f32, {{.*}}>) -> ()
 // CHECK: }
-// CHECK: "gpu.return"() : () -> ()
-// CHECK: })
+// CHECK: gpu.terminator
+// CHECK: }
 // CHECK: return
 // CHECK: }
 // CHECK: }

@@ -20,9 +20,8 @@ source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
 install_ubuntu_16_pip_deps pip3.7
-update_bazel_linux
+install_bazelisk
 install_ctpu pip3.7
-ctpu_up -s v2-8 -g tensorflow-windows
 
 # Run configure.
 export TF_NEED_GCP=1
@@ -36,18 +35,32 @@ export TF2_BEHAVIOR=1
 
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
-tag_filters="tpu,requires-tpu,-no_tpu,-notpu,-no_oss,-no_oss_py37"
+test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
+tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
-bazel test --config=opt \
+bazel_args=(
+  --config=opt \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --noincompatible_strict_action_env \
-  --build_tag_filters=${tag_filters} \
-  --test_tag_filters=${tag_filters} \
-  --test_output=errors --verbose_failures=true --keep_going \
+  --build_tag_filters="${tag_filters}" \
+  --test_tag_filters="${tag_filters}" \
+  --test_output=errors --verbose_failures=true --keep_going
+)
+
+bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"
+
+ctpu_up -s v2-8 -p tensorflow-testing-tpu
+
+test_args=(
+  --test_timeout=120,600,-1,-1 \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
-  --test_arg=--test_dir_base="gs://kokoro-tpu-testing/tempdir/" \
-  --local_test_jobs=1 \
-  -- //tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...
+  --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \
+  --local_test_jobs=1
+)
+
+set +e
+bazel test "${bazel_args[@]}" "${test_args[@]}" -- "${test_patterns[@]}"
+test_xml_summary_exit

@@ -67,7 +67,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   }
   // Note: We can assume we have error checked inputs in PropagateFixedSizes.
 
-  // Check that the permutation has propogated.
+  // Check that the permutation has propagated.
   std::vector<int> const& perm = transpose_op->perm;
   if (perm.empty()) {
     return ::tensorflow::Status::OK();

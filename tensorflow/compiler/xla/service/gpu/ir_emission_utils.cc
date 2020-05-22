@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -126,17 +127,30 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    const stream_executor::DeviceDescription* device_description) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
     }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
       return {tile_z, 1, 64};
     }
-    return {tile_z, 1, 8};
+    int cc_major = 0, cc_minor = 0;
+    if (device_description != nullptr) {
+      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    }
+    int unroll_x = 8;
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+      unroll_x = 16;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
+    }
+    return {tile_z, 1, unroll_x};
   }
 
   // Column reduction.
@@ -343,9 +357,8 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                                      /*isSigned=*/true);
     }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
   llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
@@ -507,7 +520,7 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
 }
 
 bool AreFusedReductionOutputsConsistent(

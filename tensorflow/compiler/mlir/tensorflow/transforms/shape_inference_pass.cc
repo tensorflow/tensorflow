@@ -20,20 +20,21 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -46,30 +47,35 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-struct ShapeInference : public ModulePass<ShapeInference> {
-  void runOnModule() override {
-    auto module = getModule();
-    auto versions = module.getAttrOfType<DictionaryAttr>("tf.versions");
-    if (!versions) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-              << "Missing 'tf.versions' attribute on the module, abort.\n";);
+class ShapeInference
+    : public PassWrapper<ShapeInference, OperationPass<ModuleOp>> {
+ public:
+  ShapeInference() = default;
+  ShapeInference(const ShapeInference& that) {
+    propagate_caller_callee_constants_ =
+        that.propagate_caller_callee_constants_;
+  }
+
+  void runOnOperation() override {
+    auto module = getOperation();
+    auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
+    if (!producer_or.ok()) {
+      LLVM_DEBUG(llvm::dbgs() << producer_or.status().ToString(););
       return;
     }
-    auto producer = versions.get("producer").dyn_cast<IntegerAttr>();
-    if (!producer) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-              << "Missing 'producer' attribute on the module, abort.\n";);
-      return;
-    }
+    int64_t producer = producer_or.ValueOrDie();
     for (auto func : module.getOps<FuncOp>()) {
-      InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
-      // TODO(yuanzx): Verify that it is always fine to refine a function's
-      // return type, as long as we do not change the argument shapes.
-      InferShapeForFunctionType(func);
+      if (failed(InferShapeForFunction(func, /*arg_shapes=*/{}, producer,
+                                       propagate_caller_callee_constants_)))
+        return signalPassFailure();
     }
   }
+
+ private:
+  Option<bool> propagate_caller_callee_constants_{
+      *this, "propagate-caller-callee-constants",
+      llvm::cl::desc("Propagate constants between callers and callees"),
+      llvm::cl::init(true)};
 };
 
 PassRegistration<ShapeInference> pass(
@@ -77,7 +83,7 @@ PassRegistration<ShapeInference> pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass() {
   return std::make_unique<ShapeInference>();
 }
 

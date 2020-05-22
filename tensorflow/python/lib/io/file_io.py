@@ -165,7 +165,7 @@ class FileIO(object):
     self._read_buf.seek(offset)
 
   def readline(self):
-    r"""Reads the next line from the file. Leaves the '\n' at the end."""
+    r"""Reads the next line, keeping \n. At EOF, returns ''."""
     self._preread_check()
     return self._prepare_value(self._read_buf.readline())
 
@@ -345,14 +345,52 @@ def get_matching_files(filename):
     A list of strings containing filenames that match the given pattern(s).
 
   Raises:
-    errors.OpError: If there are filesystem / directory listing errors.
+  *  errors.OpError: If there are filesystem / directory listing errors.
   """
   return get_matching_files_v2(filename)
 
 
 @tf_export("io.gfile.glob")
 def get_matching_files_v2(pattern):
-  """Returns a list of files that match the given pattern(s).
+  r"""Returns a list of files that match the given pattern(s).
+
+  The patterns are defined as strings. Supported patterns are defined
+  here. Note that the pattern can be a Python iteratable of string patterns.
+
+  The format definition of the pattern is:
+
+  **pattern**: `{ term }`
+
+  **term**:
+    * `'*'`: matches any sequence of non-'/' characters
+    * `'?'`: matches a single non-'/' character
+    * `'[' [ '^' ] { match-list } ']'`: matches any single
+      character (not) on the list
+    * `c`: matches character `c`  where `c != '*', '?', '\\', '['`
+    * `'\\' c`: matches character `c`
+
+  **character range**:
+    * `c`: matches character `c` while `c != '\\', '-', ']'`
+    * `'\\' c`: matches character `c`
+    * `lo '-' hi`: matches character `c` for `lo <= c <= hi`
+
+  Examples:
+
+  >>> tf.io.gfile.glob("*.py")
+  ... # For example, ['__init__.py']
+
+  >>> tf.io.gfile.glob("__init__.??")
+  ... # As above
+
+  >>> files = {"*.py"}
+  >>> the_iterator = iter(files)
+  >>> tf.io.gfile.glob(the_iterator)
+  ... # As above
+
+  See the C++ function `GetMatchingPaths` in
+  [`core/platform/file_system.h`]
+  (../../../core/platform/file_system.h)
+  for implementation details.
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
@@ -523,13 +561,16 @@ def atomic_write_string_to_file(filename, contents, overwrite=True):
     overwrite: boolean, if false it's an error for `filename` to be occupied by
       an existing file.
   """
-  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
-  write_string_to_file(temp_pathname, contents)
-  try:
-    rename(temp_pathname, filename, overwrite)
-  except errors.OpError:
-    delete_file(temp_pathname)
-    raise
+  if not has_atomic_move(filename):
+    write_string_to_file(filename, contents)
+  else:
+    temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+    write_string_to_file(temp_pathname, contents)
+    try:
+      rename(temp_pathname, filename, overwrite)
+    except errors.OpError:
+      delete_file(temp_pathname)
+      raise
 
 
 @tf_export(v1=["gfile.DeleteRecursively"])
@@ -585,6 +626,30 @@ def is_directory_v2(path):
     return _pywrap_file_io.IsDirectory(compat.as_bytes(path))
   except errors.OpError:
     return False
+
+
+def has_atomic_move(path):
+  """Checks whether the file system supports atomic moves.
+
+  Returns whether or not the file system of the given path supports the atomic
+  move operation for a file or folder.  If atomic move is supported, it is
+  recommended to use a temp location for writing and then move to the final
+  location.
+
+  Args:
+    path: string, path to a file
+
+  Returns:
+    True, if the path is on a file system that supports atomic move
+    False, if the file system does not support atomic move. In such cases
+           we need to be careful about using moves. In some cases it is safer
+           not to use temporary locations in this case.
+  """
+  try:
+    return _pywrap_file_io.HasAtomicMove(compat.as_bytes(path))
+  except errors.OpError:
+    # defaults to True
+    return True
 
 
 @tf_export(v1=["gfile.ListDirectory"])

@@ -66,9 +66,9 @@ TEST_F(HloExecutionProfileTest, Basic) {
 
   EXPECT_THAT(execution_profile.ToString(
                   backend().default_stream_executor()->GetDeviceDescription()),
-              AllOf(ContainsRegex(StrCat(dot_cycles, R"(\b.*%)",
+              AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
-                    ContainsRegex(StrCat(add_cycles, R"(\b.*%)",
+                    ContainsRegex(StrCat(add_cycles, " cycles.*%",
                                          add_instruction->name()))));
 }
 }  // namespace

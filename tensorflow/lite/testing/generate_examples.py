@@ -29,7 +29,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import argparse
 import os
 import sys
@@ -132,4 +132,4 @@ if __name__ == "__main__":
     print("\nGot the following unparsed args, %r please fix.\n" % unparsed)
     exit(1)
   else:
-    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

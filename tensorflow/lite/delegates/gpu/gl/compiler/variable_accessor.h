@@ -60,7 +60,7 @@ class VariableAccessor : public InlineRewrite {
   // Returns const variables that need to be inlined in the a shader's code.
   std::string GetConstDeclarations() const;
 
-  // Returns shared varaible declarations that need to be inlined.
+  // Returns shared variable declarations that need to be inlined.
   std::string GetSharedVariableDeclarations() const;
 
   // Returns uniform parameter declarations that need to be inlined.

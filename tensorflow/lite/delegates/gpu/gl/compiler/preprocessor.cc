@@ -46,8 +46,8 @@ absl::string_view PastSubstr(absl::string_view s, absl::string_view subs) {
 
 }  // namespace
 
-Status TextPreprocessor::Rewrite(const std::string& input,
-                                 std::string* output) {
+absl::Status TextPreprocessor::Rewrite(const std::string& input,
+                                       std::string* output) {
   absl::string_view s = input;
   std::string result;
   while (true) {
@@ -57,7 +57,7 @@ Status TextPreprocessor::Rewrite(const std::string& input,
       break;
     }
     if (inline_block.size() == 1) {
-      return NotFoundError("Unable to find end of inline block");
+      return absl::NotFoundError("Unable to find end of inline block");
     }
     s = PastSubstr(s, inline_block);
     bool processed = false;
@@ -74,20 +74,20 @@ Status TextPreprocessor::Rewrite(const std::string& input,
           processed = true;
           break;
         case RewriteStatus::ERROR:
-          return InternalError(absl::StrCat("Error while rewriting '",
-                                            inline_block, "': ", result));
+          return absl::InternalError(absl::StrCat("Error while rewriting '",
+                                                  inline_block, "': ", result));
       }
     }
     if (!processed) {
       if (!keep_unknown_rewrites_) {
-        return NotFoundError(absl::StrCat("Didn't find inline rewrite for '",
-                                          inline_block, "'"));
+        return absl::NotFoundError(absl::StrCat(
+            "Didn't find inline rewrite for '", inline_block, "'"));
       }
       absl::StrAppend(&result, inline_block);
     }
   }
   *output = std::move(result);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

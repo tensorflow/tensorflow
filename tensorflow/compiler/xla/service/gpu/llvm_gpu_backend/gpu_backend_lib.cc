@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/CodeGen/CommandFlags.inc"
+#include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -68,33 +69,31 @@ namespace xla {
 namespace gpu {
 namespace {
 
+static llvm::codegen::RegisterCodeGenFlags CGF;
+
 // Inline threshold value to use in LLVM AMDGPU backend.
 const int kAMDGPUInlineThreshold = 0x100000;
 
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_35".
+// Gets the GPU name as it's known to LLVM for a given compute
+// capability.  If we see an unrecognized compute capability, we
+// return the highest one that is known and below the selected device.
 static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>({
-      {{3, 5}, 35},
-      {{3, 7}, 37},
-      {{5, 0}, 50},
-      {{5, 2}, 52},
-      {{5, 3}, 53},
-      {{6, 0}, 60},
-      {{6, 1}, 61},
-      {{6, 2}, 62},
-      {{7, 0}, 70},
-      {{7, 2}, 72},
-      {{7, 5}, 75},
-  });
+  int compute_capability_version =
+      compute_capability.first * 10 + compute_capability.second;
   int sm_version = 35;
-  auto it = m->find(compute_capability);
-  if (it != m->end()) {
-    sm_version = it->second;
-  } else {
+  // If the current compute capability isn't known, fallback to the
+  // most recent version before it.
+  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35}) {
+    if (v <= compute_capability_version) {
+      sm_version = v;
+      break;
+    }
+  }
+
+  if (sm_version != compute_capability_version) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
@@ -132,38 +131,41 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::Triple triple, absl::string_view cpu_name,
     const HloModuleConfig& hlo_module_config, absl::string_view feature_str) {
   std::string error;
-  const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
+  const llvm::Target* target =
+      llvm::TargetRegistry::lookupTarget("", triple, error);
   if (target == nullptr) {
     LOG(FATAL) << "Unable to find Target for triple '" << triple.str() << "'"
                << " -- " << error;
     return nullptr;
   }
 
-  TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
+  llvm::TargetOptions target_options =
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
 
   // The selection of codegen optimization level is copied from function
   // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
-  CodeGenOpt::Level codegen_opt_level;
+  llvm::CodeGenOpt::Level codegen_opt_level;
   switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
-      codegen_opt_level = CodeGenOpt::Less;
+      codegen_opt_level = llvm::CodeGenOpt::Less;
       break;
     case 2:
-      codegen_opt_level = CodeGenOpt::Default;
+      codegen_opt_level = llvm::CodeGenOpt::Default;
       break;
     case 3:
-      codegen_opt_level = CodeGenOpt::Aggressive;
+      codegen_opt_level = llvm::CodeGenOpt::Aggressive;
       break;
     default:
-      codegen_opt_level = CodeGenOpt::None;
+      codegen_opt_level = llvm::CodeGenOpt::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name),
-      llvm_ir::AsStringRef(feature_str), target_options, getRelocModel(),
-      getCodeModel(), codegen_opt_level));
+      llvm_ir::AsStringRef(feature_str), target_options,
+      llvm::codegen::getExplicitRelocModel(),
+      llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -175,7 +177,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
                            llvm::legacy::PassManagerBase* module_passes,
                            llvm::legacy::FunctionPassManager* function_passes,
                            int inline_threshold) {
-  PassManagerBuilder builder;
+  llvm::PassManagerBuilder builder;
   builder.OptLevel = opt_level;
   builder.SizeLevel = size_level;
 
@@ -198,7 +200,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 }
 
 // Emits the given module to a bit code file.
-void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
+void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
   std::error_code error_code;
   llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
                                llvm::sys::fs::F_None);
@@ -212,7 +214,8 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
 
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
-string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
+string EmitModuleToPTX(llvm::Module* module,
+                       llvm::TargetMachine* target_machine) {
   std::string ptx;  // need a std::string instead of a ::string.
   {
     llvm::raw_string_ostream stream(ptx);
@@ -280,8 +283,8 @@ Status LinkWithBitcodeVector(llvm::Module* module,
         LoadIRModule(bitcode_path, &module->getContext());
     if (linker.linkInModule(
             std::move(bitcode_module), llvm::Linker::Flags::LinkOnlyNeeded,
-            [](Module& M, const StringSet<>& GVS) {
-              internalizeModule(M, [&GVS](const GlobalValue& GV) {
+            [](llvm::Module& M, const llvm::StringSet<>& GVS) {
+              internalizeModule(M, [&GVS](const llvm::GlobalValue& GV) {
                 return !GV.hasName() || (GVS.count(GV.getName()) == 0);
               });
             })) {
@@ -492,8 +495,8 @@ namespace nvptx {
 StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
   string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -564,7 +567,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
 StatusOr<std::vector<uint8>> EmitModuleToHsaco(
-    Module* module, llvm::TargetMachine* target_machine) {
+    llvm::Module* module, llvm::TargetMachine* target_machine) {
   auto* env = tensorflow::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
@@ -686,7 +689,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
   return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
-                          hlo_module_config, "-code-object-v3");
+                          hlo_module_config, "+code-object-v3");
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
@@ -712,8 +715,8 @@ namespace amdgpu {
 StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;

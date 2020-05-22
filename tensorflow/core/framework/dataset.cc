@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -227,7 +228,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_types", dataset->output_dtypes())));
   }
-  for (auto attr : attrs) {
+  for (const auto& attr : attrs) {
     opts.reset(
         new GraphDefBuilder::Options(opts->WithAttr(attr.first, attr.second)));
   }
@@ -334,6 +335,27 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+Status IteratorBase::InitializeBase(IteratorContext* ctx,
+                                    const IteratorBase* parent,
+                                    const string& output_prefix) {
+  parent_ = parent;
+  id_ =
+      Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
+  if (parent_) {
+    parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
+                                        reinterpret_cast<uint64>(parent_));
+  }
+  if (const auto& model = ctx->model()) {
+    auto factory = [ctx, this](model::Node::Args args) {
+      return CreateNode(ctx, std::move(args));
+    };
+    model->AddNode(std::move(factory), prefix(), output_prefix, &node_);
+    cleanup_fns_.push_back(
+        [model, prefix = prefix()]() { model->RemoveNode(prefix); });
+  }
+  return Status::OK();
+}
+
 int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64 allocated_bytes = 0;
   DatasetBase* dataset;
@@ -391,6 +413,22 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
+Status DatasetBase::MakeIterator(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const string& output_prefix,
+    std::unique_ptr<IteratorBase>* iterator) const {
+  *iterator = MakeIteratorInternal(output_prefix);
+  Status s = (*iterator)->InitializeBase(ctx, parent, output_prefix);
+  if (s.ok()) {
+    s.Update((*iterator)->Initialize(ctx));
+  }
+  if (!s.ok()) {
+    // Reset the iterator to avoid returning an uninitialized iterator.
+    iterator->reset();
+  }
+  return s;
+}
+
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
@@ -413,6 +451,31 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
+    : params_(params) {
+  params_.dataset->Ref();
+  VLOG(2) << prefix() << " constructor";
+}
+
+DatasetBaseIterator::~DatasetBaseIterator() {
+  VLOG(2) << prefix() << " destructor";
+  params_.dataset->Unref();
+}
+
+string DatasetBaseIterator::BuildTraceMeName() {
+  string result = strings::StrCat(params_.prefix, "#id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
+
+  TraceMeMetadata metadata = GetTraceMeMetadata();
+  for (const auto& pair : metadata) {
+    strings::StrAppend(&result, ",", pair.first, "=", pair.second);
+  }
+  strings::StrAppend(&result, "#");
+  return result;
+}
+
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
@@ -421,7 +484,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx, out_tensors);
   RecordStop(ctx, /*start_output=*/true);
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
@@ -443,6 +506,10 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
+}
+
+string DatasetOpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
+  return strings::StrCat(name_view(), ":", type_string_view());
 }
 
 // static
@@ -508,6 +575,7 @@ void BackgroundWorker::Schedule(std::function<void()> work_item) {
 }
 
 void BackgroundWorker::WorkerLoop() {
+  tensorflow::ResourceTagger tag(kTFDataResourceTag, "Background");
   while (true) {
     std::function<void()> work_item = nullptr;
     {
@@ -544,6 +612,7 @@ namespace {
 class RunnerImpl : public Runner {
  public:
   void Run(const std::function<void()>& f) override {
+    tensorflow::ResourceTagger tag(kTFDataResourceTag, "Runner");
     f();
 
     // NOTE: We invoke a virtual function to prevent `f` being tail-called, and

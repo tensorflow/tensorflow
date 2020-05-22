@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -94,7 +93,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
@@ -116,7 +115,7 @@ class RingGathererTest : public ::testing::Test {
  protected:
   RingGathererTest() : device_type_(DEVICE_CPU) {}
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -135,7 +134,7 @@ class RingGathererTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices, DataType dtype,
             const DeviceType& device_type, int num_subdivs, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     device_type_ = device_type;
@@ -310,16 +309,13 @@ class RingGathererTest : public ::testing::Test {
           CHECK(actual.CopyFrom(*inst, inst->shape()));
           VLOG(1) << "actual " << actual.SummarizeValue(100);
         } else if (device_type_ == DEVICE_GPU) {
-          Notification note;
           Device* dev = instances_[di]->device_;
           auto* dev_info = dev->tensorflow_gpu_device_info();
           CHECK(dev_info);
-          dev_info->default_context->CopyDeviceTensorToCPU(
-              inst, "" /*tensor_name*/, dev, &actual, [&note](const Status& s) {
-                CHECK(s.ok());
-                note.Notify();
-              });
-          note.WaitForNotification();
+          CHECK(dev_info->default_context
+                    ->CopyDeviceTensorToCPUSync(inst, "" /*tensor_name*/, dev,
+                                                &actual)
+                    .ok());
         }
 
         auto alias = actual.template unaligned_flat<T>();
@@ -433,13 +429,10 @@ class RingGathererTest : public ::testing::Test {
         init_f(&cpu_tensor);
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        Notification note;
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &input_tensor_, [&note](const Status& s) {
-              CHECK(s.ok());
-              note.Notify();
-            });
-        note.WaitForNotification();
+        CHECK(dev_info->default_context
+                  ->CopyCPUTensorToDeviceSync(&cpu_tensor, device_,
+                                              &input_tensor_)
+                  .ok());
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }
@@ -528,7 +521,7 @@ class RingGathererTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 gather_counter_ GUARDED_BY(mu_) = 0;
+  int32 gather_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -603,7 +596,7 @@ TEST_F(RingGathererTest, InitializeParams) {
     }                                                                         \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Success tests
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 1, 0)
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 2, 0)
@@ -628,7 +621,7 @@ DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 11)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // GPU tests.  So long as the device names are all in a single tasks we
 // bypass inter-worker routing code and can fake multiple GPUs with a single
 // GPU, from the perspective of the RingGatherer logic.  So these tests

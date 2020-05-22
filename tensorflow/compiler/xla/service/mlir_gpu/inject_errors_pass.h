@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_INJECT_ERRORS_PASS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_INJECT_ERRORS_PASS_H_
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 
 // Returns a function pass that emits errors from all operations inside the
 // function.
-std::unique_ptr<OpPassBase<FuncOp>> createInjectErrorsForTestingPass();
+std::unique_ptr<OperationPass<FuncOp>> createInjectErrorsForTestingPass();
 
 }  // namespace mlir
 

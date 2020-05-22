@@ -17,7 +17,7 @@ set -e
 
 # Install latest bazel
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_linux
+install_bazelisk
 which bazel
 
 # We need py3 lint
@@ -25,6 +25,7 @@ sudo pip3 install pep8
 
 # TODO(gunan): figure out why we get stuck with later versions of pylint.
 # Install pylint.
+sudo python3 -m pip install setuptools --upgrade
 sudo python2 -m pip install pylint==1.6.4
 sudo python3 -m pip install pylint==1.6.4
 

@@ -30,19 +30,23 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
-#include "mlir/IR/AffineMap.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace mlir_gpu {
 namespace {
+
+using mlir::OpBuilder;
 
 // Various extracted information for input shapes.
 struct ShapeInfo {
@@ -92,7 +96,8 @@ ShapeInfo GetShapeInfo(
   }
 
   shape_info.affine_map = mlir::AffineMap::get(
-      /*dimCount=*/2 + spatial_dims.size(), /*symbolCount=*/0, affine_exprs);
+      /*dimCount=*/2 + spatial_dims.size(), /*symbolCount=*/0, affine_exprs,
+      builder.getContext());
 
   shape_info.element_type = [&] {
     switch (shape.element_type()) {
@@ -109,48 +114,6 @@ ShapeInfo GetShapeInfo(
   return shape_info;
 }
 
-bool IsSimpleLoop(mlir::AffineForOp loop) {
-  return loop.getLowerBoundMap().isSingleConstant() &&
-         loop.getLowerBoundMap().getSingleConstantResult() == 0 &&
-         loop.getStep() == 1 && loop.getUpperBoundMap().getNumResults() == 1 &&
-         std::next(loop.region().begin()) == loop.region().end();
-}
-
-struct BoundAffineMap {
-  mlir::AffineMap affine_map;
-  std::vector<mlir::Value> operands;
-};
-
-BoundAffineMap GetBoundAffineMapFrom(mlir::Operation* op) {
-  if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
-    return {load.getAffineMap(),
-            std::vector<mlir::Value>(load.getMapOperands().begin(),
-                                     load.getMapOperands().end())};
-  } else if (auto store = mlir::dyn_cast<mlir::AffineStoreOp>(op)) {
-    return {store.getAffineMap(),
-            std::vector<mlir::Value>(store.getMapOperands().begin(),
-                                     store.getMapOperands().end())};
-  } else {
-    CHECK(false);
-  }
-}
-
-mlir::Operation* CloneWithNewAffineMap(mlir::Operation* op,
-                                       BoundAffineMap new_affine,
-                                       mlir::OpBuilder builder) {
-  if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
-    return builder.create<mlir::AffineLoadOp>(
-        builder.getUnknownLoc(), load.getMemRef(), new_affine.affine_map,
-        new_affine.operands);
-  } else if (auto store = mlir::dyn_cast<mlir::AffineStoreOp>(op)) {
-    return builder.create<mlir::AffineStoreOp>(
-        builder.getUnknownLoc(), store.getValueToStore(), store.getMemRef(),
-        new_affine.affine_map, new_affine.operands);
-  } else {
-    CHECK(false);
-  }
-}
-
 void SetMemRef(mlir::Operation* op, mlir::Value memref) {
   if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
     load.setMemRef(memref);
@@ -159,127 +122,6 @@ void SetMemRef(mlir::Operation* op, mlir::Value memref) {
   } else {
     CHECK(false);
   }
-}
-
-std::vector<mlir::AffineForOp> CreateNestedSimpleLoops(
-    absl::Span<const int64_t> upper_bounds, mlir::OpBuilder builder) {
-  std::vector<mlir::AffineForOp> loops;
-  loops.reserve(upper_bounds.size());
-  for (int64_t dim : upper_bounds) {
-    auto loop =
-        builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
-    loops.push_back(loop);
-    builder = loop.getBodyBuilder();
-  }
-  return loops;
-}
-
-void SetBoundForSimpleLoop(mlir::AffineForOp loop, mlir::AffineExpr new_bound,
-                           mlir::OpBuilder builder) {
-  CHECK(IsSimpleLoop(loop));
-
-  loop.setUpperBoundMap(mlir::AffineMap::get(
-      loop.getUpperBoundMap().getNumDims(),
-      loop.getUpperBoundMap().getNumSymbols(), {new_bound}));
-}
-
-// Tile a loop with trip count N by `size`. For now, N has to be a multiple of
-// size, but later this constraint will be removed.
-//
-// The major loop (with trip count N / size) stays as-is, while the minor loop
-// (with trip count `size`) will take over the body of `target`, and be placed
-// as the new body of `target`.
-//
-// `target` has to be within the same "perfectly nested loop group" as `loop`.
-// See the documentation for mlir::getPerfectlyNestedLoops.
-//
-// Example:
-// Before tiling `loop` with tile size X:
-//   for (loop in N)
-//     for (unrelated_loop in ...)
-//       for (target in ...)
-//         // pass loop into affine maps
-// After:
-//   for (loop in N / X)
-//     for (unrelated_loop in ...)
-//       for (target in ...)
-//         for (tiled_loop in X)
-//           // rewrite all affine exprs from loop to `loop * X + tiled_loop`.
-//
-// Design note:
-// TileLoop is different from mlir::tile. At the moment, mlir::tile is not well
-// documented about the exact tiling semantics, but the observed behavior is:
-//   for (i from 0 to N)
-//     for (unrelated_loop in ...)
-//       for (target in ...)
-//         // pass i into affine maps
-// =>
-//   for (i from 0 to N, step = X)
-//     for (unrelated_loop in ...)
-//       for (target in ...)
-//         for (j from i to min(i + X, N), step = 1)
-//           // pass j into affine maps
-//
-// There are two differences between mlir::tile and TileLoop:
-// * TileLoop always puts the tiling logic "stepping" logic into AffineExprs.
-//   With that all index calculation is done in AffineExprs and easier to
-//   analyze in a single place.
-// * TileLoop doesn't plan to use use max() and min() to resolve the issue when
-//   N % X != 0. max() and min() are not representable in AffineExprs.
-//   TODO(timshen): support the case where N % X != 0.
-//
-// TODO(timshen): consider the possibility to reuse mlir::tile's logic to
-// achieve the same goal.
-mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
-                           mlir::AffineForOp target) {
-  CHECK(IsSimpleLoop(loop));
-  CHECK(IsSimpleLoop(target));
-  {
-    llvm::SmallVector<mlir::AffineForOp, 4> all_loops;
-    getPerfectlyNestedLoops(all_loops, loop);
-    CHECK(absl::c_linear_search(all_loops, target));
-  }
-
-  auto builder = target.getBodyBuilder();
-
-  auto inner_loop =
-      builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, size);
-  {
-    auto& inner_operations = inner_loop.getBody()->getOperations();
-    auto& target_operations = target.getBody()->getOperations();
-
-    inner_operations.splice(inner_operations.begin(), target_operations,
-                            target_operations.begin(),
-                            std::prev(target_operations.end(), 2));
-
-    mlir::AffineExpr length = loop.getUpperBoundMap().getResult(0);
-    CHECK_EQ(0, length.cast<mlir::AffineConstantExpr>().getValue() % size);
-    SetBoundForSimpleLoop(loop, length.ceilDiv(size), builder);
-  }
-
-  for (auto& use :
-       llvm::make_early_inc_range(loop.getInductionVar().getUses())) {
-    mlir::Operation* owner = use.getOwner();
-    BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
-    unsigned new_dim = affine_map.operands.size();
-    affine_map.operands.push_back(inner_loop.getInductionVar());
-    std::vector<mlir::AffineExpr> replacements;
-    for (int i = 0; i < affine_map.affine_map.getNumDims(); i++) {
-      if (affine_map.operands[i] == loop.getInductionVar()) {
-        replacements.push_back(builder.getAffineDimExpr(i) * size +
-                               builder.getAffineDimExpr(new_dim));
-      } else {
-        replacements.push_back(builder.getAffineDimExpr(i));
-      }
-    }
-    affine_map.affine_map = affine_map.affine_map.replaceDimsAndSymbols(
-        replacements, {}, affine_map.operands.size(), 0);
-    auto new_op =
-        CloneWithNewAffineMap(owner, affine_map, mlir::OpBuilder(owner));
-    owner->replaceAllUsesWith(new_op);
-    owner->erase();
-  }
-  return inner_loop;
 }
 
 // Hoist operations out of `where`. [begin_op, end_op) must be the first
@@ -316,7 +158,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     CHECK(std::next(begin_op) == end_op)
         << "alloc() needs to be hoisted by its own";
 
-    mlir::OpBuilder builder(where);
+    OpBuilder builder(where);
     mlir::MemRefType type = alloc.getType();
     CHECK(type.getAffineMaps().empty());
     ancestor_dimensions.insert(ancestor_dimensions.end(),
@@ -340,7 +182,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
           affine_map.operands.size(), builder.getContext());
 
       mlir::Operation* new_op =
-          CloneWithNewAffineMap(owner, affine_map, mlir::OpBuilder(owner));
+          CloneWithNewAffineMap(owner, affine_map, OpBuilder(owner));
       SetMemRef(new_op, new_alloc);
       owner->replaceAllUsesWith(new_op);
       owner->erase();
@@ -360,13 +202,13 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   }();
 
   if (any_op_is_loop_variant) {
-    auto builder = mlir::OpBuilder(where);
+    auto builder = OpBuilder(where);
     std::vector<mlir::AffineForOp> new_loops;
     for (auto dim : ancestor_dimensions) {
       auto where =
           builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
       new_loops.push_back(where);
-      builder = where.getBodyBuilder();
+      builder = OpBuilder::atBlockTerminator(where.getBody());
     }
     for (mlir::Operation& op :
          llvm::make_early_inc_range(llvm::make_range(begin_op, end_op))) {
@@ -385,21 +227,6 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
 
 mlir::Operation* HoistAndFix(mlir::Operation* op, mlir::AffineForOp where) {
   return HoistAndFix(op->getIterator(), std::next(op->getIterator()), where);
-}
-
-// Sinks a segment of perfectly nested loops to the bottom. It implements this
-// by rotating the loop nest by rotate_amount.
-void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
-                              int rotate_amount) {
-  CHECK_GE(rotate_amount, 0);
-  std::vector<unsigned> permutation(loops.size());
-  std::iota(permutation.begin(), permutation.end(), unsigned(0));
-  std::rotate(permutation.begin(),
-              permutation.begin() + loops.size() - rotate_amount,
-              permutation.end());
-  mlir::interchangeLoops(
-      llvm::ArrayRef<mlir::AffineForOp>(loops.begin(), loops.end()),
-      permutation);
 }
 
 struct InitialMlirConvAnchors {
@@ -421,7 +248,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     mlir::Value input, mlir::Value filter, mlir::Value output,
     const ShapeInfo& input_shape_info, const ShapeInfo& filter_shape_info,
     const ShapeInfo& output_shape_info, const Window& window,
-    mlir::OpBuilder builder) {
+    OpBuilder builder) {
   CHECK(input_shape_info.element_type == builder.getF16Type());
   CHECK(filter_shape_info.element_type == builder.getF16Type());
   CHECK(output_shape_info.element_type == builder.getF16Type());
@@ -431,7 +258,8 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   std::vector<mlir::AffineForOp> cartesian_product_loops =
       CreateNestedSimpleLoops(output_shape_info.nchw_dimensions, builder);
 
-  builder = cartesian_product_loops.back().getBodyBuilder();
+  builder =
+      OpBuilder::atBlockTerminator(cartesian_product_loops.back().getBody());
 
   mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
       location, mlir::MemRefType::get({}, builder.getF32Type()));
@@ -461,7 +289,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   int num_spatial_dims = output_spatial_indvars.size();
   CHECK_EQ(num_spatial_dims, filter_spatial_indvars.size());
 
-  builder = reduction_loops.back().getBodyBuilder();
+  builder = OpBuilder::atBlockTerminator(reduction_loops.back().getBody());
 
   mlir::Value loaded_input = [&] {
     std::vector<mlir::AffineExpr> input_indices;
@@ -492,9 +320,9 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
             mlir::AffineMap(input_shape_info.affine_map)
-                .compose(
-                    mlir::AffineMap::get(/*dimCount=*/2 + num_spatial_dims * 2,
-                                         /*symbolCount=*/0, input_indices)),
+                .compose(mlir::AffineMap::get(
+                    /*dimCount=*/2 + num_spatial_dims * 2,
+                    /*symbolCount=*/0, input_indices, builder.getContext())),
             input_vars),
         builder.getF32Type());
   }();
@@ -700,7 +528,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
 StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context) {
-  mlir::OpBuilder builder(context);
+  OpBuilder builder(context);
 
   const auto& dim_nums = conv->convolution_dimension_numbers();
   ShapeInfo input_shape_info =

@@ -37,6 +37,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
@@ -56,6 +57,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
+# pylint: disable=g-classes-have-attributes
 @keras_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
@@ -92,8 +94,8 @@ class Masking(Layer):
   # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
 
-  See [the masking and padding
-  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  See [the masking and padding guide](
+    https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 
@@ -127,9 +129,37 @@ class Masking(Layer):
 class Dropout(Layer):
   """Applies Dropout to the input.
 
-  Dropout consists in randomly setting
-  a fraction `rate` of input units to 0 at each update during training time,
-  which helps prevent overfitting.
+  The Dropout layer randomly sets input units to 0 with a frequency of `rate`
+  at each step during training time, which helps prevent overfitting.
+  Inputs not set to 0 are scaled up by 1/(1 - rate) such that the sum over
+  all inputs is unchanged.
+
+  Note that the Dropout layer only applies when `training` is set to True
+  such that no values are dropped during inference. When using `model.fit`,
+  `training` will be appropriately set to True automatically, and in other
+  contexts, you can set the kwarg explicitly to True when calling the layer.
+
+  (This is in contrast to setting `trainable=False` for a Dropout layer.
+  `trainable` does not affect the layer's behavior, as Dropout does
+  not have any variables/weights that can be frozen during training.)
+
+  >>> tf.random.set_seed(0)
+  >>> layer = tf.keras.layers.Dropout(.2, input_shape=(2,))
+  >>> data = np.arange(10).reshape(5, 2).astype(np.float32)
+  >>> print(data)
+  [[0. 1.]
+   [2. 3.]
+   [4. 5.]
+   [6. 7.]
+   [8. 9.]]
+  >>> outputs = layer(data, training=True)
+  >>> print(outputs)
+  tf.Tensor(
+  [[ 0.    1.25]
+   [ 2.5   3.75]
+   [ 5.    6.25]
+   [ 7.5   8.75]
+   [10.    0.  ]], shape=(5, 2), dtype=float32)
 
   Arguments:
     rate: Float between 0 and 1. Fraction of the input units to drop.
@@ -165,7 +195,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor(noise_shape)
+    return ops.convert_to_tensor_v2(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -200,7 +230,7 @@ class Dropout(Layer):
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 1D feature maps instead of individual elements. If adjacent frames
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -242,7 +272,7 @@ class SpatialDropout1D(Dropout):
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 2D feature maps instead of individual elements. If adjacent pixels
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -301,7 +331,7 @@ class SpatialDropout2D(Dropout):
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
-  This version performs the same function as Dropout, however it drops
+  This version performs the same function as Dropout, however, it drops
   entire 3D feature maps instead of individual elements. If adjacent voxels
   within feature maps are strongly correlated (as is normally the case in
   early convolution layers) then regular dropout will not regularize the
@@ -430,7 +460,7 @@ class Reshape(Layer):
   >>> # also supports shape inference using `-1` as dimension
   >>> model.add(tf.keras.layers.Reshape((-1, 2, 2)))
   >>> model.output_shape
-  (None, None, 2, 2)
+  (None, 3, 2, 2)
   """
 
   def __init__(self, target_shape, **kwargs):
@@ -465,7 +495,9 @@ class Reshape(Layer):
       is specified.
     """
     output_shape = list(output_shape)
-    msg = 'total size of new array must be unchanged'
+    msg = ('total size of new array must be unchanged, '
+           'input_shape = {}, output_shape = {}'
+           .format(input_shape, output_shape))
 
     known, unknown = 1, None
     for index, dim in enumerate(output_shape):
@@ -499,8 +531,13 @@ class Reshape(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return array_ops.reshape(inputs,
-                             (array_ops.shape(inputs)[0],) + self.target_shape)
+    result = array_ops.reshape(
+        inputs, (array_ops.shape(inputs)[0],) + self.target_shape)
+    if not context.executing_eagerly():
+      # Set the static shape for the result since it might lost during array_ops
+      # reshape, eg, some `None` dim in the result could be inferred.
+      result.set_shape(self.compute_output_shape(inputs.shape))
+    return result
 
   def get_config(self):
     config = {'target_shape': self.target_shape}
@@ -512,7 +549,7 @@ class Reshape(Layer):
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
-  Useful for e.g. connecting RNNs and convnets together.
+  Useful e.g. connecting RNNs and convnets.
 
   Example:
 
@@ -524,7 +561,7 @@ class Permute(Layer):
   ```
 
   Arguments:
-    dims: Tuple of integers. Permutation pattern, does not include the
+    dims: Tuple of integers. Permutation pattern does not include the
       samples dimension. Indexing starts at 1.
       For instance, `(2, 1)` permutes the first and second dimensions
       of the input.
@@ -570,8 +607,8 @@ class Permute(Layer):
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
-  If inputs are shaped `(batch,)` without a channel dimension, then flattening
-  adds an extra channel dimension and output shapes are `(batch, 1)`.
+  Note: If inputs are shaped `(batch,)` without a feature axis, then
+  flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
   Arguments:
     data_format: A string,
@@ -586,16 +623,15 @@ class Flatten(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Convolution2D(64, 3, 3,
-                          border_mode='same',
-                          input_shape=(3, 32, 32)))
-  # now: model.output_shape == (None, 64, 32, 32)
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Conv2D(64, 3, 3, input_shape=(3, 32, 32)))
+  >>> model.output_shape
+  (None, 1, 10, 64)
 
-  model.add(Flatten())
-  # now: model.output_shape == (None, 65536)
-  ```
+  >>> model.add(Flatten())
+  >>> model.output_shape
+  (None, 640)
+
   """
 
   def __init__(self, data_format=None, **kwargs):
@@ -707,15 +743,15 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced usecases, follow 
+  quick experimentation. For more advanced use cases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
-  for subclassing `tf.keras.layers.Layer`. 
-  
-  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
-  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
-  are saved by serializing the Python bytecode, whereas subclassed 
-  Layers can be saved via overriding their `get_config` method. Overriding 
-  `get_config` improves the portability of Models. Models that rely on 
+  for subclassing `tf.keras.layers.Layer`.
+
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers
+  are saved by serializing the Python bytecode, whereas subclassed
+  Layers can be saved via overriding their `get_config` method. Overriding
+  `get_config` improves the portability of Models. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
@@ -782,7 +818,7 @@ class Lambda(Layer):
       input shape: `output_shape = f(input_shape)`
     mask: Either None (indicating no masking) or a callable with the same
       signature as the `compute_mask` layer method, or a tensor that will be
-      returned as output mask regardless what the input is.
+      returned as output mask regardless of what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
   Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
@@ -802,7 +838,6 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    self._supports_ragged_inputs = True
     self._output_shape = output_shape
 
     # Warning on every invocation will be quite irksome in Eager mode.
@@ -868,9 +903,10 @@ class Lambda(Layer):
       # checking only to immediately discard it.
       return
 
-    tracked_weights = set(v.experimental_ref() for v in self.weights)
-    untracked_new_vars = [v for v in created_variables
-                          if v.experimental_ref() not in tracked_weights]
+    tracked_weights = set(v.ref() for v in self.weights)
+    untracked_new_vars = [
+        v for v in created_variables if v.ref() not in tracked_weights
+    ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
@@ -886,8 +922,9 @@ class Lambda(Layer):
       ).format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
-    untracked_used_vars = [v for v in accessed_variables
-                           if v.experimental_ref() not in tracked_weights]
+    untracked_used_vars = [
+        v for v in accessed_variables if v.ref() not in tracked_weights
+    ]
     if untracked_used_vars and not self._already_warned:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
@@ -1029,24 +1066,31 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: If the input to the layer has a rank greater than 2, then
-  it is flattened prior to the initial dot product with `kernel`.
+  Note: If the input to the layer has a rank greater than 2, then `Dense`
+  computes the dot product between the `inputs` and the `kernel` along the
+  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  For example, if input has dimensions `(batch_size, d0, d1)`,
+  then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+  along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
+  (there are `batch_size * d0` such sub-tensors).
+  The output in this case will have shape `(batch_size, d0, units)`.
+
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
   Example:
 
-  ```python
-  # as first layer in a sequential model:
-  model = Sequential()
-  model.add(Dense(32, input_shape=(16,)))
-  # now the model will take as input arrays of shape (*, 16)
-  # and output arrays of shape (*, 32)
-
-  # after the first layer, you don't need to specify
-  # the size of the input anymore:
-  model.add(Dense(32))
-  ```
+  >>> # Create a `Sequential` model and add a Dense layer as the first layer.
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.Input(shape=(16,)))
+  >>> model.add(tf.keras.layers.Dense(32, activation='relu'))
+  >>> # Now the model will take as input arrays of shape (None, 16)
+  >>> # and output arrays of shape (None, 32).
+  >>> # Note that after the first layer, you don't need to specify
+  >>> # the size of the input anymore:
+  >>> model.add(tf.keras.layers.Dense(32))
+  >>> model.output_shape
+  (None, 32)
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -1060,7 +1104,7 @@ class Dense(Layer):
       the `kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
+      the output of the layer (its "activation").
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.
@@ -1117,8 +1161,7 @@ class Dense(Layer):
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],
@@ -1141,8 +1184,9 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    rank = len(inputs.shape)
-    if rank > 2:
+    base_layer_utils.no_ragged_support(inputs, self.name)
+    rank = inputs.shape.rank
+    if rank is not None and rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.

@@ -34,8 +34,6 @@ enum class OperationType {
   UNKNOWN = 0,
   ABS,
   ADD,
-  // TODO(eignasheva): remove APPLY_MASK operation, is should be just MUL
-  APPLY_MASK,
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   CONCAT,
@@ -45,18 +43,22 @@ enum class OperationType {
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
   LOG,
   LSTM,
+  MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MINIMUM,
   MUL,
-  MULTIPLY_SCALAR,
   PAD,
   POOLING_2D,
   POW,
   PRELU,
+  // Used to accurately run inference on quantized models.
+  QUANTIZE_AND_DEQUANTIZE,
   RELU,
   RESHAPE,
   RESIZE,
@@ -66,18 +68,21 @@ enum class OperationType {
   SLICE,
   SOFTMAX,
   SPACE_TO_BATCH,
+  SPACE_TO_DEPTH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
   SUB,
   TANH,
   TRANSPOSE,
-  UPSAMPLE_2D,
 };
 
 std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
+
+typedef absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
+    TensorOrScalar;
 
 struct Padding2D {
   Padding2D() = default;
@@ -197,8 +202,15 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Pooling3DAttributes& attr);
 
 // @return shape of a tensor after Concat operation is applied to the given
 //         input.
-Status CalculateOutputShape(const std::vector<BHWC>& input,
-                            const ConcatAttributes& attr, BHWC* output_shape);
+absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWC* output_shape);
+
+// @return shape of a tensor after Concat operation is applied to the given
+//         input.
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape);
 
 // @return padding for pooling operation to make sure output keep the same shape
 // as the given input.
@@ -355,30 +367,34 @@ struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
 };
 
-struct MultiplyScalarAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+struct MultiplyAttributes {
+  TensorOrScalar param;
 };
 
-enum class UpsamplingType {
-  NEAREST = 0,
-  BILINEAR = 1,
+enum class SamplingType {
+  UNKNOWN = 0,
+  NEAREST = 1,
+  BILINEAR = 2,
 };
 
-struct Upsample2DAttributes {
+struct Resize2DAttributes {
   HW new_shape;
 
-  UpsamplingType type = UpsamplingType::NEAREST;
+  SamplingType type = SamplingType::UNKNOWN;
 
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+  bool half_pixel_centers = false;
 };
 
-struct Upsample3DAttributes {
+// TODO(b/147771327): rename to Resize3D
+struct Resize3DAttributes {
   HWD new_shape;
 
-  UpsamplingType type = UpsamplingType::NEAREST;
+  SamplingType type = SamplingType::NEAREST;
 
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
@@ -386,19 +402,18 @@ struct Upsample3DAttributes {
 };
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample2DAttributes& attr);
+                           const Resize2DAttributes& attr);
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample3DAttributes& attr);
+                           const Resize3DAttributes& attr);
 
-// @return shape of a tensor after upscale operation is applied to the given
+// @return shape of a tensor after scale operation is applied to the given
 // input.
-BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr);
+BHWC CalculateOutputShape(const BHWC& input, const Resize2DAttributes& attr);
 
-// @return shape of a tensor after upscale operation is applied to the given
+// @return shape of a tensor after scale operation is applied to the given
 // input.
-BHWDC CalculateOutputShape(const BHWDC& input,
-                           const Upsample3DAttributes& attr);
+BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr);
 
 enum class PaddingContentType {
   ZEROS = 0,
@@ -415,6 +430,17 @@ struct PadAttributes {
 
 // @return shape of a tensor after Pad operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr);
+
+struct Pad3DAttributes {
+  PaddingContentType type = PaddingContentType::ZEROS;
+
+  BHWDC prepended;
+  BHWDC appended;
+};
+
+// @return shape of a tensor after Pad3D operation is applied to the given
+// input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr);
 
 struct ConstTensorAttributes {
   Tensor<BHWC, DataType::FLOAT32> tensor;
@@ -435,8 +461,7 @@ struct SliceAttributes {
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr);
 
 struct AddAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+  TensorOrScalar param;
 };
 
 struct FullyConnectedAttributes {
@@ -448,6 +473,13 @@ struct FullyConnectedAttributes {
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr);
+
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
+
+struct ElementwiseAttributes {
+  TensorOrScalar param;
+};
 
 struct ReshapeAttributes {
   BHWC new_shape;
@@ -461,6 +493,18 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct SpaceToDepthAttributes {
+  int block_size;
+};
+
+// These help perform a combination of Quantize & Dequantize to adjust float
+// values like quantized inference would.
+struct QuantizeAndDequantizeAttributes {
+  float min = 0;
+  float max = 0;
+  float scale = 0;
+};
 
 }  // namespace gpu
 }  // namespace tflite

@@ -42,7 +42,7 @@ namespace tensorflow {
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-Status OpDefForOp(const char* op_name, const OpDef** op_def);
+Status OpDefForOp(const string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes
@@ -107,6 +107,14 @@ class AttrBuilder {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
+    cached_cache_key_ = absl::nullopt;
+    return *this;
+  }
+
+  size_t NumAttributes() const { return encoded_attrs_.size(); }
+
+  AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
+    AddAttrIfNotPresent(attr_name, value);
     cached_cache_key_ = absl::nullopt;
     return *this;
   }

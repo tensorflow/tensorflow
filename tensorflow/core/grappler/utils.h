@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <functional>
 #include <iterator>
-#include <set>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -41,84 +41,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// A utility class to lookup a node and its outputs by node name.
-class NodeMap {
- public:
-  // Note: The NodeMap will store pointers to nodes in graph, which may become
-  // invalid if graph is changed.
-  explicit NodeMap(GraphDef* graph);
-  NodeDef* GetNode(const string& name) const;
-  bool NodeExists(const string& name) const;
-  const std::set<NodeDef*>& GetOutputs(const string& node_name) const;
-  // This method doesn't record the outputs of the added node; the outputs need
-  // to be explicitly added by the AddOutput method.
-  void AddNode(const string& name, NodeDef* node);
-  void RemoveNode(const string& name);
-  void UpdateInput(const string& node_name, const string& old_input_name,
-                   const string& new_input_name);
-  void AddOutput(const string& node_name, const string& output_name);
-  void RemoveInputs(const string& node_name);
-  void RemoveOutput(const string& node_name, const string& output_name);
-  void RemoveOutputs(const string& node_name);
-  void UpdateOutput(const string& node_name, const string& old_output_name,
-                    const string& new_output_name);
-
- private:
-  const std::set<NodeDef*> empty_set_;
-  gtl::FlatMap<string, NodeDef*> nodes_;
-  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
-};
-
-// A vector with a set. The set stores the same elements as the vector, and
-// quickly answers whether a value is in the vector. Duplicated elements are not
-// allowed for now.
-template <class T, class Hash = std::hash<T>>
-class SetVector {
- public:
-  // Returns false if value already existed in the set, true otherwise.
-  bool PushBack(const T& value) {
-    if (!set_.insert(value).second) {
-      return false;
-    }
-    vector_.push_back(value);
-    return true;
-  }
-
-  T PopBack() {
-    T back = vector_.back();
-    set_.erase(back);
-    vector_.pop_back();
-    return back;
-  }
-
-  bool Exists(const T& value) const { return set_.find(value) != set_.end(); }
-
-  bool Empty() const { return vector_.empty(); }
-
-  void Reserve(int64 size) { vector_.reserve(size); }
-
- private:
-  gtl::FlatSet<T, Hash> set_;
-  std::vector<T> vector_;
-};
-
-// Returns formatted string from TensorId specific to grappler. Specifically,
-// for the 0 port (first output), only the node name is returned.
-string TensorIdToString(const TensorId& tensor_id);
-
-// Returns formatted string from SafeTensorId specific to grappler.
-// Specifically, for the 0 port (first output), only the node name is returned.
-string SafeTensorIdToString(const SafeTensorId& tensor_id);
-
-// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
-// the ^ character.
-bool IsControlInput(const string& name);
-
-// True iff tensor index refers to a control input.
-bool IsControlInput(const TensorId& tensor_id);
-
-// True iff 'name1' and 'name2' refer to the same input.
-bool IsSameInput(const string& name1, const string& name2);
+// Utilities for manipulating node name and input strings.
 
 // Returns the trailing position number (or zero if no number is present) if
 // NodeName(input_name) is equal to node_name. Returns -1 for control inputs.
@@ -174,6 +97,162 @@ inline int NodePosition(const string& name) {
   ParseNodeNameAsStringPiece(name, &position);
   return position;
 }
+
+// A utility class to lookup a node and its outputs by node name.
+class NodeMap {
+ public:
+  // Note: The NodeMap will store pointers to nodes in graph, which may become
+  // invalid if graph is changed.
+  explicit NodeMap(GraphDef* graph);
+
+  // Get unordered list of fanouts from node. Notice, that the order is
+  // non-deterministic.
+  const absl::flat_hash_set<NodeDef*>& GetOutputs(
+      const string& node_name) const {
+    auto it = outputs_.find(node_name);
+    if (it == outputs_.end()) {
+      return empty_set_;
+    }
+    return it->second;
+  }
+
+  // Get fanouts ordered by name.
+  std::vector<NodeDef*> GetOutputsOrderedByNodeName(
+      const string& node_name) const {
+    std::vector<NodeDef*> result;
+    auto it = outputs_.find(node_name);
+    if (it != outputs_.end()) {
+      const absl::flat_hash_set<NodeDef*>& outputs = it->second;
+      result.reserve(outputs.size());
+      result.assign(outputs.begin(), outputs.end());
+      std::sort(result.begin(), result.end(),
+                [](const NodeDef* n1, const NodeDef* n2) {
+                  return n1->name() < n2->name();
+                });
+    }
+    return result;
+  }
+
+  // This method doesn't record the outputs of the added node; the outputs need
+  // to be explicitly added by the AddOutput method.
+  void AddNode(const string& node_name, NodeDef* node) {
+    DCHECK(node != nullptr);
+    auto ret = nodes_.emplace(node_name, node);
+    DCHECK(ret.second)
+        << "Pair (" << node_name << "," << node
+        << ") is not inserted because the same key already exists.";
+  }
+
+  void RemoveNode(const string& name) {
+    nodes_.erase(NodeName(name));
+    outputs_.erase(NodeName(name));
+  }
+
+  NodeDef* GetNode(const string& name) const {
+    const string node_name = NodeName(name);
+    auto it = nodes_.find(node_name);
+    if (it == nodes_.end()) {
+      VLOG(1) << "Node could not be found: " << name;
+      return nullptr;
+    }
+    return it->second;
+  }
+
+  bool NodeExists(const string& name) const {
+    const string node_name = NodeName(name);
+    return nodes_.find(node_name) != nodes_.end();
+  }
+
+  void AddOutput(const string& node_name, const string& output_name) {
+    auto output_node = nodes_[NodeName(output_name)];
+    DCHECK(output_node) << "Output node " << output_name
+                        << " is missing in NodeMap.";
+    outputs_[node_name].insert(output_node);
+  }
+
+  void RemoveOutput(const string& node_name, const string& output_name) {
+    outputs_[node_name].erase(nodes_[NodeName(output_name)]);
+  }
+
+  void UpdateInput(const string& node_name, const string& old_input_name,
+                   const string& new_input_name) {
+    RemoveOutput(NodeName(old_input_name), node_name);
+    AddOutput(NodeName(new_input_name), node_name);
+  }
+
+  void RemoveInputs(const string& node_name) {
+    auto node = nodes_[node_name];
+    for (const auto& input : node->input()) {
+      RemoveOutput(NodeName(input), node->name());
+    }
+  }
+
+  void RemoveOutputs(const string& node_name) { outputs_.erase(node_name); }
+
+  void UpdateOutput(const string& node_name, const string& old_output_name,
+                    const string& new_output_name) {
+    absl::flat_hash_set<NodeDef*>& outputs = outputs_[node_name];
+    outputs.erase(nodes_[NodeName(old_output_name)]);
+    outputs.insert(nodes_[NodeName(new_output_name)]);
+  }
+
+ private:
+  const absl::flat_hash_set<NodeDef*> empty_set_;
+  absl::node_hash_map<string, NodeDef*> nodes_;
+  absl::node_hash_map<string, absl::flat_hash_set<NodeDef*>> outputs_;
+};
+
+// A vector with a set. The set stores the same elements as the vector, and
+// quickly answers whether a value is in the vector. Duplicated elements are not
+// allowed for now.
+template <class T, class Hash = std::hash<T>>
+class SetVector {
+ public:
+  // Returns false if value already existed in the set, true otherwise.
+  bool PushBack(const T& value) {
+    if (!set_.insert(value).second) {
+      return false;
+    }
+    vector_.push_back(value);
+    return true;
+  }
+
+  T PopBack() {
+    T back = vector_.back();
+    set_.erase(back);
+    vector_.pop_back();
+    return back;
+  }
+
+  bool Exists(const T& value) const { return set_.find(value) != set_.end(); }
+
+  bool Empty() const { return vector_.empty(); }
+
+  void Reserve(int64 size) { vector_.reserve(size); }
+
+ private:
+  gtl::FlatSet<T, Hash> set_;
+  std::vector<T> vector_;
+};
+
+// Returns formatted string from TensorId specific to grappler. Specifically,
+// for the 0 port (first output), only the node name is returned.
+string TensorIdToString(const TensorId& tensor_id);
+
+// Returns formatted string from SafeTensorId specific to grappler.
+// Specifically, for the 0 port (first output), only the node name is returned.
+string SafeTensorIdToString(const SafeTensorId& tensor_id);
+
+// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
+// the ^ character.
+bool IsControlInput(const string& name);
+
+// True iff tensor index refers to a control input.
+bool IsControlInput(const TensorId& tensor_id);
+
+// True iff 'name1' and 'name2' refer to the same input.
+bool IsSameInput(const string& name1, const string& name2);
+
 
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,

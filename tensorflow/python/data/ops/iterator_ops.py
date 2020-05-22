@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
@@ -448,7 +449,7 @@ class Iterator(trackable.Trackable):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
@@ -551,7 +552,11 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   in eager mode and inside of tf.functions.
   """
 
-  def __init__(self, dataset=None, components=None, element_spec=None):
+  def __init__(self,
+               dataset=None,
+               components=None,
+               element_spec=None,
+               job_token=None):
     """Creates a new iterator from the given dataset.
 
     If `dataset` is not specified, the iterator will be created from the given
@@ -564,6 +569,9 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
       components: Tensor components to construct the iterator from.
       element_spec: A nested structure of `TypeSpec` objects that
         represents the type specification of elements of the iterator.
+      job_token: A token to use for reading from a tf.data service job. Data
+        will be partitioned among all iterators using the same token. If `None`,
+        the iterator will not read from the tf.data service.
 
     Raises:
       ValueError: If `dataset` is not provided and either `components` or
@@ -571,10 +579,11 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
         `components` and `element_spec` is provided.
     """
 
-    error_message = "Either `dataset` or both `components` and "
-    "`element_spec` need to be provided."
+    error_message = ("Either `dataset` or both `components` and "
+                     "`element_spec` need to be provided.")
 
     self._device = context.context().device_name
+    self._job_token = job_token
 
     if dataset is None:
       if (components is None or element_spec is None):
@@ -617,7 +626,11 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
           gen_dataset_ops.anonymous_iterator_v2(
               output_types=self._flat_output_types,
               output_shapes=self._flat_output_shapes))
-      gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      if self._job_token is None:
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      else:
+        gen_experimental_dataset_ops.make_data_service_iterator(
+            ds_variant, self._job_token, self._iterator_resource)
       # Delete the resource when this object is deleted
       self._resource_deleter = IteratorResourceDeleter(
           handle=self._iterator_resource,
@@ -677,7 +690,7 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
@@ -743,7 +756,17 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def _gather_saveables_for_checkpoint(self):
 
     def _saveable_factory(name):
-      return _IteratorSaveable(self._iterator_resource, name)
+      """Returns a SaveableObject for serialization/deserialization."""
+      policy = None
+      if self._dataset:
+        policy = self._dataset.options().experimental_external_state_policy
+      if policy:
+        return _IteratorSaveable(
+            self._iterator_resource,
+            name,
+            external_state_policy=policy)
+      else:
+        return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
 
@@ -818,7 +841,7 @@ def get_next_as_optional(iterator):
   will have no value.
 
   Args:
-    iterator: A `tf.compat.v1.data.Iterator` object.
+    iterator: An iterator for an instance of `tf.data.Dataset`.
 
   Returns:
     An `Optional` object representing the next value from the iterator (if it

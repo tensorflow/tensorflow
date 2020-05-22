@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -25,23 +26,79 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace tf_device {
+
+//===----------------------------------------------------------------------===//
+// TF Device Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TFInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlining TF Device operations.
+  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+    // For now, enable inlining all operations.
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Attempts to materialize a conversion for a type mismatch between a call
+  // from this dialect, and a callable region. This method should generate an
+  // operation that takes 'input' as the only operand, and produces a single
+  // result of 'resultType'. If a conversion can not be generated, nullptr
+  // should be returned.
+  // This is just re-using the same logic as the TensorFlow dialect right now.
+  Operation* materializeCallConversion(OpBuilder& builder, Value input,
+                                       Type result_type,
+                                       Location conversion_loc) const final {
+    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+      return nullptr;
+    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
+                                      /*truncate=*/builder.getBoolAttr(false));
+  }
+};
+
+// Checks if a block wraps a single operation and the single operation results
+// are perfectly forwarded to the block's terminator.
+bool BlockWrapsSingleOp(Block* block) {
+  auto body = block->without_terminator();
+  if (!hasSingleElement(body)) return false;
+
+  Operation& wrapped_op = *body.begin();
+  Operation* terminator = block->getTerminator();
+  return wrapped_op.getNumResults() == terminator->getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(),
+                    terminator->getOperands().begin());
+}
+}  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
     : Dialect(/*name=*/"tf_device", context) {
@@ -49,7 +106,17 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
       >();
+
+  addInterfaces<TFInlinerInterface>();
 }
+
+//===----------------------------------------------------------------------===//
+// tf_device.launch
+//===----------------------------------------------------------------------===//
+
+// Checks if a tf_device.launch wraps a single operation and the single
+// operation results are perfectly forwarded to the launch return.
+bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
 // tf_device.return
@@ -75,6 +142,84 @@ void Print(ReturnOp op, OpAsmPrinter* p) {
   }
 }
 }  // anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// tf_device.parallel_execute
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+LogicalResult Verify(ParallelExecuteOp op) {
+  const auto& regions = op.getOperation()->getRegions();
+  if (regions.size() < 2) {
+    return op.emitOpError() << "must have at least two regions.";
+  }
+
+  int output_index = 0;
+  for (auto& region_and_index : llvm::enumerate(regions)) {
+    auto& region = region_and_index.value();
+    auto* region_terminator = region.front().getTerminator();
+
+    // Check that output types of regions match return operand types.
+    for (auto result_type : region_terminator->getOperandTypes()) {
+      if (result_type !=
+          op.getOperation()->getResult(output_index++).getType()) {
+        return op.emitOpError() << "output types must be a concatenated "
+                                << "list of output types for each regions.";
+      }
+    }
+  }
+
+  // Check that total number of outputs from regions match the output types of
+  // the parallel_execute op.
+  const int num_output_types = op.getOperation()->getNumResults();
+  if (num_output_types != output_index) {
+    return op.emitOpError()
+           << "number of output types (" << num_output_types << ") "
+           << "must match the total number of outputs from all "
+           << "regions (" << output_index << ").";
+  }
+
+  return success();
+}
+
+}  // namespace
+
+// static
+void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
+                              int num_regions,
+                              llvm::ArrayRef<Type> output_types) {
+  DCHECK_GE(num_regions, 2);
+  for (int i = 0; i < num_regions; ++i) {
+    Region* region = state.addRegion();
+    region->push_back(new Block);
+  }
+  state.addTypes(output_types);
+}
+
+Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
+  return getOperation()->getRegion(index).front();
+}
+
+Operation::result_range ParallelExecuteOp::GetRegionOutputs(
+    unsigned region_index) {
+  int num_region_results =
+      GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
+
+  int return_value_offset = 0;
+  for (int region_id = 0; region_id < region_index; ++region_id)
+    return_value_offset +=
+        GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
+
+  Operation::result_range region_results(getOperation(),
+                                         /*startIndex=*/return_value_offset,
+                                         /*count=*/num_region_results);
+  return region_results;
+}
+
+bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
+  return BlockWrapsSingleOp(&GetRegionBlockWithIndex(index));
+}
 
 //===----------------------------------------------------------------------===//
 // tf_device.replicate
@@ -213,10 +358,26 @@ LogicalResult Verify(ReplicateOp op) {
     return op.emitOpError() << "expects 'n' to be at least 2, got " << n;
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue() && op.devices().getValue().size() != n)
-    return op.emitOpError()
-           << "expects number of devices (" << op.devices().getValue().size()
-           << ") to be equal to 'n' (" << n << ")";
+  if (op.devices().hasValue()) {
+    for (auto device_attr : op.devices().getValue().getValue()) {
+      auto device_list = device_attr.second.dyn_cast_or_null<ArrayAttr>();
+      if (!device_list)
+        return op.emitError()
+               << "expects 'devices' to be a map alias and device name list.";
+
+      bool is_device_string = llvm::all_of(device_list, [](Attribute attr) {
+        return attr.dyn_cast_or_null<StringAttr>();
+      });
+      if (!is_device_string)
+        return op.emitOpError() << "expects 'devices' to be a consists of "
+                                   "string list as values.";
+
+      if (device_list.size() != n)
+        return op.emitOpError()
+               << "expects number of devices (" << device_list.size()
+               << ") to be equal to 'n' (" << n << ")";
+    }
+  }
 
   Block& block = op.body().front();
 
@@ -264,15 +425,22 @@ LogicalResult Verify(ReplicateOp op) {
 template <typename OperandsTy, typename ResultsTy>
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<OperandsTy, Type>> replicated_inputs,
     ResultsTy replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
-  if (!devices.empty()) {
-    DCHECK_EQ(devices.size(), n);
-    state->addAttribute("devices", builder->getStrArrayAttr(devices));
+
+  llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
+  device_list.reserve(devices.size());
+  for (auto alias_and_devices : devices) {
+    NamedAttribute device_name_attr = builder->getNamedAttr(
+        alias_and_devices.getFirst(),
+        builder->getStrArrayAttr(alias_and_devices.getSecond()));
+    device_list.emplace_back(device_name_attr);
   }
+  state->addAttribute("devices", builder->getDictionaryAttr(device_list));
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -294,20 +462,22 @@ void BuildReplicateOp(
 }  // anonymous namespace
 
 void ReplicateOp::build(
-    Builder* builder, OperationState& state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    OpBuilder& builder, OperationState& state, int n,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
-  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
 }
 
 void ReplicateOp::build(
-    Builder* builder, OperationState& state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    OpBuilder& builder, OperationState& state, int n,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
     Operation::result_type_range replica_output_types) {
-  BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
+  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
 }
 
@@ -325,16 +495,16 @@ namespace {
 struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
   using OpRewritePattern<LaunchOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(LaunchOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(LaunchOp op,
+                                PatternRewriter& rewriter) const override {
     Block& block = op.GetBody();
     // Check if launch only has a return.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map launch results to return operands.
     rewriter.replaceOp(op, block.front().getOperands());
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

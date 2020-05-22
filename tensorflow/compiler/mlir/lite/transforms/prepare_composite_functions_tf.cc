@@ -23,30 +23,40 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
+// The cmd line flag to turn on/off Tf.Text API fusion.
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> fuse_tftext(
+    "tfl-fuse-tftext", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Fuse TF.Text API ops when it's true"),
+    llvm::cl::init(false));
 
 namespace mlir {
 namespace TFL {
 namespace {
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
+constexpr char kTfTextAPIPRefix[] = "tftext:";
 
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
@@ -91,14 +101,15 @@ class ConvertEmbeddedLookupFunc {
 // body with the corresponding fused TFLite op. The replacement need not always
 // be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public FunctionPass<PrepareCompositeFunctionsPass> {
+    : public PassWrapper<PrepareCompositeFunctionsPass,
+                         OperationPass<ModuleOp>> {
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
  private:
   void ConvertTFImplements(FuncOp func, StringAttr attr);
-  void ConvertTFAPIImplements(FuncOp func, StringAttr attr);
-  void runOnFunction() override;
+  void ConvertTFAPIImplements(FuncOp func, StringAttr attr, ModuleOp module);
+  void runOnOperation() override;
 };
 
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
@@ -131,43 +142,88 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
   }
 }
 
+LogicalResult CheckOutputConsumer(
+    Operation* call_op, int expected_num_outputs,
+    llvm::DenseSet<int> expected_consumer_indices) {
+  if (call_op->getNumResults() != expected_num_outputs) return failure();
+
+  for (int i = 0; i < expected_num_outputs; ++i) {
+    auto it = expected_consumer_indices.find(i);
+    if (it == expected_consumer_indices.end()) {
+      // Unexpected consumer.
+      if (!call_op->getResult(i).use_empty()) return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
+  bool check_failed = false;
+  for (auto func : module.getOps<FuncOp>()) {
+    func.walk([&](Operation* op) {
+      auto call_op = dyn_cast_or_null<CallOpInterface>(op);
+      if (call_op && op->getAttrOfType<SymbolRefAttr>("f").getRootReference() ==
+                         lstm_func.getName()) {
+        // Keras LSTM have 5 outputs.
+        // We should make sure only the first or the second output are consumed.
+        if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
+          check_failed = true;
+      }
+    });
+  }
+
+  if (check_failed) return failure();
+  return success();
+}
+
 void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
-                                                           StringAttr attr) {
+                                                           StringAttr attr,
+                                                           ModuleOp module) {
   // Keras lstm tf.api_implements usually has attribute like "lstm_abcde91...".
   // TODO(b/147436982): we need to make sure that only the
   // outputs(full sequence) is used, not the last_output, not the new_states.
   // We will discard everything except the outputs.
   // And the outputs is in the shape of [batch, time, units].
   if (attr.getValue().startswith("lstm_")) {
+    // Check if the keras lstm can be fused, if not, we just don't do anything.
+    if (failed(CheckFusableKerasLstm(func, module))) return;
+
     func.eraseBody();
     func.addEntryBlock();
 
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
+  } else if (fuse_tftext && attr.getValue().startswith(kTfTextAPIPRefix)) {
+    if (failed(ConvertTFTextAPI(func, attr.getValue()))) {
+      return signalPassFailure();
+    }
   }
 }
 
-void PrepareCompositeFunctionsPass::runOnFunction() {
-  auto func = getFunction();
-  // We have two kinds of implements:
-  // 1) tf._implements.
-  // 2) tf.api_implements.
-  // We need to handle them separately.
-  auto tf_implements_attr = func.getAttrOfType<StringAttr>(kTFImplements);
-  if (tf_implements_attr) {
-    ConvertTFImplements(func, tf_implements_attr);
-  } else {
+void PrepareCompositeFunctionsPass::runOnOperation() {
+  auto module = getOperation();
+  for (auto func : module.getOps<FuncOp>()) {
+    // We have two kinds of implements:
+    // 1) tf._implements.
+    // 2) tf.api_implements.
+    // We need to handle them separately.
+    auto tf_implements_attr = func.getAttrOfType<StringAttr>(kTFImplements);
+    if (tf_implements_attr) {
+      ConvertTFImplements(func, tf_implements_attr);
+    }
+
     auto tf_api_implements_attr =
         func.getAttrOfType<StringAttr>(kTFAPIImplements);
-    if (!tf_api_implements_attr) return;
-    // TODO(b/147536816): Keras lstm should set up the correct attributes.
-    ConvertTFAPIImplements(func, tf_api_implements_attr);
+    if (tf_api_implements_attr) {
+      // TODO(b/147536816): Keras lstm should set up the correct attributes.
+      ConvertTFAPIImplements(func, tf_api_implements_attr, module);
+    }
   }
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareCompositeFunctionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 

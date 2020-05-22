@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
-#include <atomic>
 #include <functional>
 #include <unordered_set>
 #include <utility>
@@ -31,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -85,19 +85,18 @@ class OpKernel {
   // expensive initialization in the descendant's constructor.
   explicit OpKernel(OpKernelConstruction* context);
 
-  // Specialized constructor that enables the descendant to provide a different
-  // `NodeDef` value. For example, this constructor can be used to provide a
-  // stripped-down `NodeDef` that does not contain the full set of attrs (such
-  // as tensor values) if the descendant stores them in a different form.
-  explicit OpKernel(OpKernelConstruction* context,
-                    std::unique_ptr<const NodeDef> node_def,
-                    bool is_deferred = false);
-
   // Specialized constructor that allows a kernel implementation to mark itself
   // as a "deferred" op. If true, the executor will provide access to the
   // `OpKernelContext::inc_num_deferred_ops_function()` and
   // `OpKernelContext::dec_num_deferred_ops_function()` methods at run-time.
-  explicit OpKernel(OpKernelConstruction* context, bool is_deferred);
+  OpKernel(OpKernelConstruction* context, bool is_deferred);
+
+  // Specialized constructor that enables the descendant to provide a custom
+  // `NodeDef` value. For example, this constructor can be used to provide a
+  // stripped-down `NodeDef` that does not contain the full set of attrs (such
+  // as tensor values) if the descendant stores them in a different form.
+  OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
+           bool is_deferred);
 
   virtual ~OpKernel();
 
@@ -135,59 +134,36 @@ class OpKernel {
 
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
-  virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
-
-  // Initial time (in CPU cycles) we expect an operation to take.  Used to
-  // determine whether an operation should be place in a threadpool.  Operations
-  // start out "expensive".
-  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
-  static const uint64 kCostDecay = 10;
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() {
-    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
-                          kOpIsExpensiveThresholdCycles);
-  }
+  virtual bool IsExpensive() { return expensive_; }
 
   // Returns a pointer to the tensor stored inside constant ops.
   virtual const Tensor* const_tensor() const { return nullptr; }
 
-  // Updates the dynamic cost estimate, which is used to determine whether this
-  // op is expensive. The new cost estimate is a weighted average of the old
-  // cost estimate and the latest cost.
-  void UpdateCostEstimate(uint64 elapsed_cycles) {
-    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simultaneous
-    // updates may result in one or more updates being ignored.  This does not
-    // affect correctness but may slow down the update frequency.
-    cost_estimate_.store(
-        (kCostDecay - 1) * cost_estimate_.load(std::memory_order_relaxed) /
-                kCostDecay +
-            (elapsed_cycles / kCostDecay),
-        std::memory_order_relaxed);
-  }
-
   // Accessors.
-  const NodeDef& def() const { return *def_; }
-  const string& name() const;              // Same as def().name()
+  const NodeDef& def() const { return props_->node_def; }
+  const string& name() const { return props_->node_def.name(); }
   absl::string_view name_view() const { return name_view_; }
-  const string& type_string() const;       // Same as def().op()
+  const string& type_string() const { return props_->node_def.op(); }
   absl::string_view type_string_view() const { return type_string_view_; }
-  const string& requested_device() const;  // Same as def().device()
+  const string& requested_input(int i) const {
+    return props_->node_def.input(i);
+  }
+  const string& requested_device() const { return props_->node_def.device(); }
 
-  int num_inputs() const { return input_types_.size(); }
-  DataType input_type(int i) const { return input_types_[i]; }
-  const DataTypeVector& input_types() const { return input_types_; }
+  int num_inputs() const { return props_->input_types.size(); }
+  DataType input_type(int i) const { return props_->input_types[i]; }
+  const DataTypeVector& input_types() const { return props_->input_types; }
   const MemoryTypeVector& input_memory_types() const {
     return input_memory_types_;
   }
-  const string& requested_input(int i) const;  // Same as def().input(i)
 
-  int num_outputs() const { return output_types_.size(); }
-  DataType output_type(int o) const { return output_types_[o]; }
-  const DataTypeVector& output_types() const { return output_types_; }
+  int num_outputs() const { return props_->output_types.size(); }
+  DataType output_type(int o) const { return props_->output_types[o]; }
+  const DataTypeVector& output_types() const { return props_->output_types; }
   const MemoryTypeVector& output_memory_types() const {
     return output_memory_types_;
   }
@@ -195,41 +171,22 @@ class OpKernel {
   Status InputRange(StringPiece input_name, int* start, int* stop) const;
   Status OutputRange(StringPiece output_name, int* start, int* stop) const;
 
-  // We allow legacy scalars within Google up until GraphDef version 6.
-  // TODO(irving): Remove when we can drop support for GraphDef version 5.
-  bool allow_legacy_scalars() const {
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-    return graph_def_version_ < 6;
-#else
-    return false;
-#endif
-  }
-
-  // Allow either scalars or (if allowing legacy scalars) shape (1,).
-  bool IsLegacyScalar(const TensorShape& shape) const {
-    return shape.dims() == 0 || (allow_legacy_scalars() && shape.dims() == 1 &&
-                                 shape.dim_size(0) == 1);
-  }
-
-  // Allow rank 1 or (if allowing legacy scalars) rank 0.
-  bool IsLegacyVector(const TensorShape& shape) const {
-    return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
-  }
-
-  // Turn a shape Tensor into a TensorShape
-  // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
-  Status MakeShape(const Tensor& shape, TensorShape* out) const;
-
-  static int DeviceNumaNode(const DeviceBase* device);
-
   // Returns `true` if and only if this kernel uses deferred execution.
   bool is_deferred() const { return is_deferred_; }
 
+  // Returns a trace string for current computation, op name/type and input
+  // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
+  // should use the default implementation.
+  // Override this function to add OpKernel specific attributes that are
+  // necessary for cost analysis.
+  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+
+ protected:
+  string GetTraceArgument(OpKernelContext* ctx);
+
  private:
-  const std::unique_ptr<const NodeDef> def_;
-  const DataTypeVector input_types_;
+  const std::shared_ptr<const NodeProperties> props_;
   const MemoryTypeVector input_memory_types_;
-  const DataTypeVector output_types_;
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
@@ -238,7 +195,6 @@ class OpKernel {
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;
-  std::atomic_uint_fast64_t cost_estimate_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -266,7 +222,6 @@ class AsyncOpKernel : public OpKernel {
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
   AsyncOpKernel* AsAsync() override { return this; }
-  const AsyncOpKernel* AsAsync() const override { return this; }
 
   void Compute(OpKernelContext* context) override;
 };
@@ -301,12 +256,10 @@ class PersistentTensor {
 class OpKernelConstruction {
  public:
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
-                       Allocator* allocator, const NodeDef* node_def,
-                       const OpDef* op_def, FunctionLibraryRuntime* flib,
+                       Allocator* allocator, FunctionLibraryRuntime* flib,
                        ResourceMgr* resource_mgr,
-                       const DataTypeSlice& input_types,
+                       const std::shared_ptr<const NodeProperties>& props,
                        const MemoryTypeSlice& input_memory_types,
-                       const DataTypeSlice& output_types,
                        const MemoryTypeSlice& output_memory_types,
                        int graph_def_version, Status* status);
 
@@ -347,20 +300,22 @@ class OpKernelConstruction {
                              Tensor** out_tensor);
 
   // User-supplied configuration of this operation.
-  const NodeDef& def() const { return *def_; }
+  const NodeDef& def() const { return props_->node_def; }
 
   // For inspecting the inputs to this operation.
-  int num_inputs() const { return input_types_.size(); }
-  DataType input_type(int i) const { return input_types_[i]; }
-  const DataTypeSlice& input_types() const { return input_types_; }
+  int num_inputs() const { return props_->input_types.size(); }
+  DataType input_type(int i) const { return props_->input_types[i]; }
+  const DataTypeSlice& input_types() const { return props_->input_types_slice; }
   const MemoryTypeSlice& input_memory_types() const {
     return input_memory_types_;
   }
 
   // For inspecting the outputs expected from this operation.
-  int num_outputs() const { return output_types_.size(); }
-  DataType output_type(int i) const { return output_types_[i]; }
-  const DataTypeSlice& output_types() const { return output_types_; }
+  int num_outputs() const { return props_->output_types.size(); }
+  DataType output_type(int i) const { return props_->output_types[i]; }
+  const DataTypeSlice& output_types() const {
+    return props_->output_types_slice;
+  }
   const MemoryTypeSlice& output_memory_types() const {
     return output_memory_types_;
   }
@@ -420,19 +375,15 @@ class OpKernelConstruction {
   const DeviceType device_type_;
   DeviceBase* const device_;
   Allocator* allocator_;
-  const NodeDef* def_;
-  const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
   ResourceMgr* const resource_mgr_;
-  DataTypeSlice input_types_;
+  std::shared_ptr<const NodeProperties> props_;
   MemoryTypeSlice input_memory_types_;
-  DataTypeSlice output_types_;
   MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
 
-  // Allow op_def_ across from OpKernel, but not from subclasses.
-  // TODO(irving): Remove protos from this header entirely.
+  // Allow access from OpKernel ctor.
   friend class OpKernel;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
@@ -541,6 +492,7 @@ class OpOutputList {
   DataType expected_output_dtype(int i) const;
   Status allocate(int i, const TensorShape& shape, Tensor** output);
   void set(int i, const Tensor& tensor);
+  void set(int i, Tensor&& tensor);
   void set_ref(int i, mutex* mu, Tensor* tensor_for_ref);
   int size() const { return stop_ - start_; }
   Iterator begin() const { return Iterator(this, 0); }
@@ -590,11 +542,11 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
-  GraphDef raw_graph GUARDED_BY(mu);
-  GraphDef optimized_graph GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs TF_GUARDED_BY(mu);
+  GraphDef raw_graph TF_GUARDED_BY(mu);
+  GraphDef optimized_graph TF_GUARDED_BY(mu);
 
-  bool dirty GUARDED_BY(mu);
+  bool dirty TF_GUARDED_BY(mu);
 
   GraphCollector() : dirty(false) {}
 
@@ -616,7 +568,7 @@ struct GraphCollector {
     dirty = true;
   }
 
-  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+  void ClearGraphs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     raw_graph.Clear();
     optimized_graph.Clear();
     partitioned_graphs.clear();
@@ -682,7 +634,6 @@ class OpKernelContext {
 
     bool track_allocations = false;
     bool log_memory = false;
-    bool record_tensor_accesses = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -697,8 +648,6 @@ class OpKernelContext {
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
     RendezvousInterface* rendezvous = nullptr;
-    const std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>*
-        create_rendezvous;
 
     // Mechanism for executing a collective op that needs to coordinate
     // with parallel instances running on other devices.
@@ -739,19 +688,25 @@ class OpKernelContext {
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
+    bool run_all_kernels_inline = false;
+    const string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
 
     // Support for forwarding reservations (used by ScopedAllocator).
-    static const int kNeverForward = -2;
-    static const int kNoReservation = -1;
+    static constexpr int kNeverForward = -2;
+    static constexpr int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
 
     // For tracking actively running deferred ops.
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
+
+    // For implementing `OpKernelContext::output_required()`. If null, all
+    // outputs are required.
+    bool* outputs_required_array = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -870,6 +825,16 @@ class OpKernelContext {
   // If non-null, kernels should populate with any partition subgraphs created.
   GraphCollector* graph_collector() { return params_->graph_collector; }
 
+  // If True, hint that all kernels in functions called by this kernel, should
+  // be treated as "inexpensive", and hence executed on the scheduling thread.
+  bool run_all_kernels_inline() const {
+    return params_->run_all_kernels_inline;
+  }
+
+  // Returns the registered name for the executor type that is executing the
+  // current kernel. If empty, the default executor is used.
+  const string& executor_type() const;
+
   // Input to output forwarding.
 
   // Set the output Ref Tensor at output_index to be an alias of the
@@ -961,10 +926,9 @@ class OpKernelContext {
   // should call allocate_output(index, ...), set_output(index, ...),
   // set_output_ref(index, ...), or set the status to a non-ok value.
   // If it returns false, it may output, but is not required to do so.
-  // TODO(mrry): Convert this to return Status, and implement a string
-  // name version.
   bool output_required(int index) const {
-    return true;  // TODO(josh11b): implement
+    return !params_->outputs_required_array ||
+           params_->outputs_required_array[index];
   }
 
   // Allocation of tensors during kernel execution inside the Compute
@@ -1073,6 +1037,9 @@ class OpKernelContext {
   // REQUIRES: 'tensor' must have the same MemoryType as
   // output_memory_types[index]. See comment above.
   Status set_output(StringPiece name, const Tensor& tensor);
+  Status set_output(StringPiece name, Tensor&& tensor);
+  void set_output(int index, const Tensor& tensor);
+  void set_output(int index, Tensor&& tensor);
 
   // To output a reference.  Caller retains ownership of mu and tensor_for_ref,
   // and they must outlive all uses within the step. See comment above.
@@ -1127,10 +1094,6 @@ class OpKernelContext {
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
   RendezvousInterface* rendezvous() const { return params_->rendezvous; }
-  Status create_rendezvous(const int64 step_id, const DeviceMgr* device_mgr,
-                           Rendezvous** r) const {
-    return (*params_->create_rendezvous)(step_id, device_mgr, r);
-  }
 
   CollectiveExecutor* collective_executor() const {
     return params_->collective_executor;
@@ -1226,11 +1189,6 @@ class OpKernelContext {
   // TODO(tucker): Add example usage.
   DeviceBase* device() const { return params_->device; }
 
-  // Retrieve list of referenced tensors in out_vector. Once this is
-  // called, it is not legal to reference any more tensors.  Should
-  // not be called from Op kernels.
-  void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
-
   // Per-step container for use by white-listed internal ops.
   ScopedStepContainer* step_container() const {
     return params_->step_container;
@@ -1249,7 +1207,6 @@ class OpKernelContext {
   // The following functions all have versions that return Status
   // to capture error conditions, and are strongly preferred.
   Tensor* mutable_output(int index);
-  void set_output(int index, const Tensor& tensor);
   mutex* input_ref_mutex(int index);
   void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
   TensorValue release_output(int index);
@@ -1259,25 +1216,26 @@ class OpKernelContext {
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
   void record_temp_memory_allocation(int64 size, const Tensor& t)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  int64 temp_memory_allocated() const
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
   void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
   int64 persistent_memory_allocated() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   std::vector<int64> persistent_alloc_ids() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
-  void clear_recorded_memory() LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  void clear_recorded_memory() TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   bool input_is_ref(int index) const;
 
@@ -1312,13 +1270,6 @@ class OpKernelContext {
  private:
   bool record_memory_consumption_ = false;
 
-  // Internal method to add a tensor's buffer to the list of buffers
-  // referenced during the execution of the Op, so that GPUs may
-  // accurately track the memory that may not be reused until the Op
-  // execution completes.
-  void record_tensor_reference(const Tensor& tensor);
-  void really_record_tensor_reference(const Tensor& tensor);
-
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
                          Tensor* out_tensor,
@@ -1331,17 +1282,19 @@ class OpKernelContext {
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
 
+  // Helpers for `set_output()`.
+
+  // Returns `true` if the tensor was copied into an allocated output.
+  bool maybe_set_output_by_allocate_and_copy(int index, const Tensor& tensor);
+
+  void maybe_track_allocations_for_set_output(const Tensor& tensor);
+
+  Status get_input_index(StringPiece name, int* out_index) const;
+  Status get_output_index(StringPiece name, int* out_index) const;
+
   // Initialize the allocated_scope_ids_ set the first time this method is
   // called.
   void maybe_initialize_scope_id_set();
-
-  // This is called by PersistentTensor::AccessTensor whenever the
-  // wrapped tensor is retrieved, to ensure the runtime knows that the
-  // Tensor is being accessed within an Op. This is necessary for
-  // memory safety of devices like GPUs that queue Ops for
-  // asynchronous execution after the Compute() method completes.
-  friend class PersistentTensor;
-  void NotifyUseOfPersistentTensor(const Tensor& tensor);
 
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
@@ -1357,19 +1310,22 @@ class OpKernelContext {
   // recorded.
   struct TrackingState {
     mutable mutex mu;
-    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators GUARDED_BY(mu);
-
-    UniqueTensorReferences referenced_tensors GUARDED_BY(mu);
+    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
+        TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
     gtl::InlinedVector<std::pair<const void*, int64>, 2>
-        temp_tensor_buffer_and_size GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
+        temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
+
+  // For access to `params_->op_kernel`.
+  friend void CheckNotInComputeAsync(OpKernelContext* ctx,
+                                     const char* correct_macro_name);
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1421,15 +1377,23 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const;
 std::unique_ptr<OpKernel> CreateOpKernel(DeviceType device_type,
                                          DeviceBase* device,
                                          Allocator* allocator,
-                                         const NodeDef& def,
+                                         const NodeDef& node_def,
                                          int graph_def_version, Status* status);
+
+std::unique_ptr<OpKernel> CreateOpKernel(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const std::shared_ptr<const NodeProperties>& props, int graph_def_version,
+    Status* status);
+
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const NodeDef& def, int graph_def_version,
-                      OpKernel** kernel);
+                      const std::shared_ptr<const NodeProperties>& props,
+                      int graph_def_version, OpKernel** kernel);
+
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      ResourceMgr* resource_mgr, const NodeDef& def,
+                      ResourceMgr* resource_mgr,
+                      const std::shared_ptr<const NodeProperties>& props,
                       int graph_def_version, OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
@@ -1649,23 +1613,6 @@ inline bool OpKernelContext::input_is_ref(int index) const {
   return value.is_ref();
 }
 
-inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  DCHECK_EQ(params_->device->RequiresRecordingAccessedTensors(),
-            params_->record_tensor_accesses);
-  if (params_->record_tensor_accesses) {
-    really_record_tensor_reference(tensor);
-  }
-}
-
-inline void OpKernelContext::retrieve_accessed_tensors(
-    TensorReferenceVector* out_vector) {
-  if (params_->record_tensor_accesses) {
-    DCHECK(tracking_state_);
-    mutex_lock l(tracking_state_->mu);
-    tracking_state_->referenced_tensors.FreezeAndReturnReferences(out_vector);
-  }
-}
-
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
@@ -1680,17 +1627,9 @@ inline mutex* OpKernelContext::input_ref_mutex(int index) {
   return (*params_->inputs)[index].mutex_if_ref;
 }
 
-inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
-  if (t.IsInitialized()) {
-    record_tensor_reference(t);
-  }
-}
-
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
-  // No need to record_tensor_reference since the output must already
-  // have been set by a call that did so.
   return outputs_[index].tensor;
 }
 
@@ -1783,24 +1722,17 @@ inline void OpOutputList::set(int i, const Tensor& tensor) {
   ctx_->set_output(start_ + i, tensor);
 }
 
+inline void OpOutputList::set(int i, Tensor&& tensor) {
+  DCHECK_GE(i, 0);
+  DCHECK_LT(i, stop_ - start_);
+  ctx_->set_output(start_ + i, std::move(tensor));
+}
+
 inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   DCHECK_GE(i, 0);
   DCHECK_LT(i, stop_ - start_);
   ctx_->set_output_ref(i, mu, tensor_for_ref);
 }
-
-// Convenience macros for asserting and handling exceptional conditions.
-// Analogous to the CHECK* macros provided by logging.h.
-//
-// Example use:
-// void Compute(OperationContext* context) {
-//   OP_REQUIRES(context, context->num_inputs() == 2,
-//               errors::InvalidArgument("FooOp requires 2 arguments"));
-//   ...
-//   Status status = SomeUncertainMethod();
-//   OP_REQUIRES_OK(context, status);
-//   ...
-// }
 
 // Generate a fatal error if OP_REQUIRES or OP_REQUIRES_OK are used in
 // AsyncOpKernel implementations. If these macros are used and the condition
@@ -1814,44 +1746,6 @@ inline void CheckNotInComputeAsync(XlaOpKernelContext*, const char*) {}
 inline void CheckNotInComputeAsync(OpKernelConstruction*, const char*) {}
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name);
-
-#define OP_REQUIRES(CTX, EXP, STATUS)                     \
-  do {                                                    \
-    if (!TF_PREDICT_TRUE(EXP)) {                          \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_ASYNC"); \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS));    \
-      return;                                             \
-    }                                                     \
-  } while (0)
-
-#define OP_REQUIRES_OK(CTX, ...)                             \
-  do {                                                       \
-    ::tensorflow::Status _s(__VA_ARGS__);                    \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
-      return;                                                \
-    }                                                        \
-  } while (0)
-
-#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \
-  do {                                                 \
-    if (!TF_PREDICT_TRUE(EXP)) {                       \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
-      (CALLBACK)();                                    \
-      return;                                          \
-    }                                                  \
-  } while (0)
-
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
-  do {                                                      \
-    ::tensorflow::Status _s(STATUS);                        \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
-      (CALLBACK)();                                         \
-      return;                                               \
-    }                                                       \
-  } while (0)
 
 }  // namespace tensorflow
 

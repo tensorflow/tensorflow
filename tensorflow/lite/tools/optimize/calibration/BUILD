@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
@@ -75,6 +76,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -89,6 +91,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -112,6 +115,7 @@ cc_library(
         ":calibration_logger",
         "//tensorflow/lite:framework",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 

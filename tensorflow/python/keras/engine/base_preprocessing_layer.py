@@ -22,13 +22,18 @@ import collections
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.ops import math_ops
+from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -117,11 +122,6 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       data_dict[name] = var.numpy()
     return data_dict
 
-  def _dataset_is_infinite(self, dataset):
-    """True if the passed dataset is infinite."""
-    return math_ops.equal(
-        cardinality.cardinality(dataset), cardinality.INFINITE)
-
   def _get_dataset_iterator(self, dataset):
     """Gets an iterator from a tf.data.Dataset."""
     return dataset_ops.make_one_shot_iterator(dataset).get_next
@@ -142,23 +142,33 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     else:
       accumulator = self._combiner.restore(self._restore_updates())
 
-    if not isinstance(data, (dataset_ops.DatasetV2, np.ndarray)):
+    if not isinstance(data,
+                      (dataset_ops.DatasetV2,
+                       np.ndarray,
+                       ops.Tensor,
+                       ragged_tensor.RaggedTensor)):
       raise ValueError(
-          'adapt() requires a Dataset or a Numpy array as input, got {}'.format(
-              type(data)))
+          '`adapt()` requires a batched Dataset, a Tensor, '
+          'or a Numpy array as input, '
+          'got {}'.format(type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
-      if self._dataset_is_infinite(data):
+      if tf_utils.dataset_is_infinite(data):
         raise ValueError(
-            'The dataset passed to "adapt()" has an infinite number of '
-            'elements. Please use dataset.take(...) to make the number '
+            'The dataset passed to `adapt()` has an infinite number of '
+            'elements. Please use `dataset.take(...)` to make the number '
             'of elements finite.')
       next_data = self._get_dataset_iterator(data)
+      # TODO(fchollet): consider checking if the dataset is already batched
+      # and otherwise batching it.
+    elif isinstance(data, (ops.Tensor, ragged_tensor.RaggedTensor)):
+      next_data = self._get_dataset_iterator(
+          dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
       generator, _ = training_generator.convert_to_generator_like(
-          data, batch_size=len(data))
+          data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.
       next_data = lambda: next(generator)
@@ -214,6 +224,45 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     with ops.init_scope():
       for var_name, value in updates.items():
         self.state_variables[var_name].assign(value)
+
+
+def convert_to_list(values, sparse_default_value=None):
+  """Convert a TensorLike, CompositeTensor, or ndarray into a Python list."""
+  if ragged_tensor.is_ragged(values):
+    # There is a corner case when dealing with ragged tensors: if you get an
+    # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
+    # you can't call to_list() on it without evaluating it first. However,
+    # because we don't yet fully support composite tensors across Keras,
+    # K.get_value() won't evaluate the tensor.
+    # TODO(momernick): Get Keras to recognize composite tensors as Tensors
+    # and then replace this with a call to K.get_value.
+    if (isinstance(values, ragged_tensor.RaggedTensor) and
+        not context.executing_eagerly()):
+      values = K.get_session(values).run(values)
+    values = values.to_list()
+
+  # TODO(momernick): Add a sparse_tensor.is_sparse() method to replace this
+  # check.
+  if isinstance(values,
+                (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+    if sparse_default_value is None:
+      if dtypes.as_dtype(values.values.dtype) == dtypes.string:
+        sparse_default_value = ''
+      else:
+        sparse_default_value = -1
+    dense_tensor = sparse_ops.sparse_tensor_to_dense(
+        values, default_value=sparse_default_value)
+    values = K.get_value(dense_tensor)
+
+  if isinstance(values, (ops.EagerTensor, ops.Tensor)):
+    values = K.get_value(values)
+
+  # We may get passed a ndarray or the code above may give us a ndarray.
+  # In either case, we want to force it into a standard python list.
+  if isinstance(values, np.ndarray):
+    values = values.tolist()
+
+  return values
 
 
 class Combiner(object):

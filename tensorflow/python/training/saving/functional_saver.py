@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
@@ -52,15 +53,17 @@ class _SingleDeviceSaver(object):
             "Expected a list of SaveableObjects, got %s." % (saveable,))
     self._saveable_objects = saveable_objects
 
-  def save(self, file_prefix):
+  def save(self, file_prefix, options=None):
     """Save the saveable objects to a checkpoint with `file_prefix`.
 
     Args:
       file_prefix: A string or scalar string Tensor containing the prefix to
         save under.
+      options: Optional `CheckpointOptions` object.
     Returns:
       An `Operation`, or None when executing eagerly.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     tensor_names = []
     tensors = []
     tensor_slices = []
@@ -69,19 +72,22 @@ class _SingleDeviceSaver(object):
         tensor_names.append(spec.name)
         tensors.append(spec.tensor)
         tensor_slices.append(spec.slice_spec)
-    with ops.device("cpu:0"):
+    save_device = options.experimental_io_device or "cpu:0"
+    with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, tensor_slices, tensors)
 
-  def restore(self, file_prefix):
+  def restore(self, file_prefix, options=None):
     """Restore the saveable objects from a checkpoint with `file_prefix`.
 
     Args:
       file_prefix: A string or scalar string Tensor containing the prefix for
         files to read from.
+      options: Optional `CheckpointOptions` object.
 
     Returns:
       A dictionary mapping from SaveableObject names to restore operations.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     restore_specs = []
     tensor_structure = []
     for saveable in self._saveable_objects:
@@ -91,7 +97,8 @@ class _SingleDeviceSaver(object):
         saveable_tensor_structure.append(spec.name)
         restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
     tensor_names, tensor_slices, tensor_dtypes = zip(*restore_specs)
-    with ops.device("cpu:0"):
+    restore_device = options.experimental_io_device or "cpu:0"
+    with ops.device(restore_device):
       restored_tensors = io_ops.restore_v2(
           file_prefix, tensor_names, tensor_slices, tensor_dtypes)
     structured_restored_tensors = nest.pack_sequence_as(
@@ -190,15 +197,17 @@ class MultiDeviceSaver(object):
       with ops.control_dependencies(restore_ops.values()):
         return array_ops.identity(file_prefix)
 
-  def save(self, file_prefix):
+  def save(self, file_prefix, options=None):
     """Save the saveable objects to a checkpoint with `file_prefix`.
 
     Args:
       file_prefix: A string or scalar string Tensor containing the prefix to
         save under.
+      options: Optional `CheckpointOptions` object.
     Returns:
       An `Operation`, or None when executing eagerly.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     for callback in self._before_save_callbacks:
       callback()
 
@@ -221,14 +230,20 @@ class MultiDeviceSaver(object):
     #     <train dir>/
     #        myckpt{.index, .data-?????-of-?????}
     #
+    #   Filesystems with eventual consistency (such as S3), don't need a
+    #   temporary location. Using a temporary directory in those cases might
+    #   cause situations where files are not available during copy.
+    #
     # Users only need to interact with the user-specified prefix, which is
     # "<train dir>/myckpt" in this case.  Save() and Restore() work with the
     # prefix directly, instead of any physical pathname.  (On failure and
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
-    sharded_suffix = "_temp_%s/part" % uuid.uuid4().hex
-
-    with ops.device("cpu:0"):
+    with ops.device("CPU"):
+      sharded_suffix = array_ops.where(
+          string_ops.regex_full_match(file_prefix, "^s3://.*"),
+          constant_op.constant(".part"),
+          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 
@@ -247,32 +262,37 @@ class MultiDeviceSaver(object):
       with ops.device(device):
         # _SingleDeviceSaver will use the CPU device when necessary, but initial
         # read operations should be placed on the SaveableObject's device.
-        sharded_saves.append(saver.save(shard_prefix))
+        sharded_saves.append(saver.save(shard_prefix, options))
 
     with ops.control_dependencies(sharded_saves):
-      # Co-locates the merge step with the last device.
-      with ops.device(saveable_object_util.set_cpu0(last_device)):
+      # Merge on the io_device if specified, otherwise co-locates the merge op
+      # with the last device used.
+      merge_device = (options.experimental_io_device or
+                      saveable_object_util.set_cpu0(last_device))
+      with ops.device(merge_device):
         # V2 format write path consists of a metadata merge step.  Once merged,
         # attempts to delete the temporary directory, "<user-fed prefix>_temp".
         return gen_io_ops.merge_v2_checkpoints(
             sharded_prefixes, file_prefix, delete_old_dirs=True)
 
-  def restore(self, file_prefix):
+  def restore(self, file_prefix, options=None):
     """Restore the saveable objects from a checkpoint with `file_prefix`.
 
     Args:
       file_prefix: A string or scalar string Tensor containing the prefix for
         files to read from.
+      options: Optional `CheckpointOptions` object.
 
     Returns:
       A dictionary mapping from SaveableObject names to restore operations.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     restore_ops = {}
     # Sort by device name to avoid propagating non-deterministic dictionary
     # ordering in some Python versions.
     for device, saver in sorted(self._single_device_savers.items()):
       with ops.device(device):
-        restore_ops.update(saver.restore(file_prefix))
+        restore_ops.update(saver.restore(file_prefix, options))
 
     for callback in self._after_restore_callbacks:
       callback()

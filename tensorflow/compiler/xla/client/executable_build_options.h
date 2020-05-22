@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -76,6 +77,23 @@ class ExecutableBuildOptions {
   int num_partitions() const { return num_partitions_; }
   ExecutableBuildOptions& set_num_partitions(int num_partitions);
 
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
+  ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
+
+  // If set, this specifies a static device assignment for the computation.
+  // Otherwise, the computation will be compiled generically and can be run with
+  // any device assignment compatible with the computation's replica and
+  // partition counts.
+  bool has_device_assignment() const { return device_assignment_.has_value(); }
+  ExecutableBuildOptions& set_device_assignment(
+      const DeviceAssignment& device_assignment);
+  const DeviceAssignment& device_assignment() const {
+    CHECK(device_assignment_.has_value());
+    return device_assignment_.value();
+  }
+
   // Whether input and output buffers are aliased if the associated parameter is
   // passed-through XLA modules without being changed.
   bool alias_passthrough_params() const { return alias_passthrough_params_; }
@@ -91,6 +109,8 @@ class ExecutableBuildOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
+  bool use_spmd_partitioning_ = false;
+  absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
 };
 

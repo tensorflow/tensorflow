@@ -9,6 +9,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RemoteTensorHandleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message ResourceDtypeAndShape {
   DataType dtype = 1;
@@ -20,11 +21,11 @@ message RemoteTensorHandle {
   int64 op_id = 1;
   // The index into the outputs of the operation that produced this tensor.
   int32 output_num = 2;
-  // Device of the operation that produced this tensor. Cannot be empty.
+  // Device where the tensor is located. Cannot be empty.
   // For multi-device functions, it's the default device passed to placer.
   string device = 3;
-  // Device where the tensor is located. Can be empty if the operation producing
-  // this tensor is a multi-device function.
+  // Device of the operation producing this tensor. Can be empty if the
+  // operation producing this tensor is a multi-device function.
   string op_device = 4;
   // Tensor type.
   DataType dtype = 5;

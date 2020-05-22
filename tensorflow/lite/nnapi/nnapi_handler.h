@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_NNAPI_NNAPI_HANDLER_H_
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
@@ -73,6 +74,10 @@ class NnApiHandler {
     };
   }
 
+  void StubGetDeviceWith(int(stub)(uint32_t, ANeuralNetworksDevice**)) {
+    nnapi_->ANeuralNetworks_getDevice = stub;
+  }
+
   template <int Value>
   void GetDeviceNameReturns() {
     nnapi_->ANeuralNetworksDevice_getName =
@@ -83,6 +88,11 @@ class NnApiHandler {
   }
 
   void GetDeviceNameReturnsName(const std::string& name);
+
+  void StubGetDeviceNameWith(int(stub)(const ANeuralNetworksDevice*,
+                                       const char**)) {
+    nnapi_->ANeuralNetworksDevice_getName = stub;
+  }
 
   // Configure all the functions related to device browsing to support
   // a device with the given name and the cpu fallback nnapi-reference.
@@ -95,6 +105,10 @@ class NnApiHandler {
       *model = reinterpret_cast<ANeuralNetworksModel*>(1);
       return Value;
     };
+  }
+
+  void StubModelCreateWith(int(stub)(ANeuralNetworksModel** model)) {
+    nnapi_->ANeuralNetworksModel_create = stub;
   }
 
   template <int Value>
@@ -117,6 +131,13 @@ class NnApiHandler {
         [](ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
            uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
            const uint32_t* outputs) { return Value; };
+  }
+
+  void StubAddOperationWith(
+      int(stub)(ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
+                uint32_t inputCount, const uint32_t* inputs,
+                uint32_t outputCount, const uint32_t* outputs)) {
+    nnapi_->ANeuralNetworksModel_addOperation = stub;
   }
 
   template <int Value>
@@ -171,6 +192,12 @@ class NnApiHandler {
         };
   }
 
+  void StubCompilationCreateForDevicesWith(int(stub)(
+      ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
+      uint32_t numDevices, ANeuralNetworksCompilation** compilation)) {
+    nnapi_->ANeuralNetworksCompilation_createForDevices = stub;
+  }
+
   template <int Value>
   void CompilationFinishReturns() {
     nnapi_->ANeuralNetworksCompilation_finish =
@@ -210,7 +237,46 @@ class NnApiHandler {
         [](ANeuralNetworksExecution* execution) { return Value; };
   }
 
-  void SetAndroidSdkVersion(int version);
+  template <int Value>
+  void GetSupportedOperationsForDevicesReturns() {
+    nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
+        [](const ANeuralNetworksModel* model,
+           const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+           bool* supportedOps) { return Value; };
+  }
+
+  void StubGetSupportedOperationsForDevicesWith(
+      int(stub)(const ANeuralNetworksModel* model,
+                const ANeuralNetworksDevice* const* devices,
+                uint32_t numDevices, bool* supportedOps)) {
+    nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices = stub;
+  }
+
+  template <int Value>
+  void ExecutionStartComputeReturns() {
+    nnapi_->ANeuralNetworksExecution_startCompute =
+        [](ANeuralNetworksExecution* execution, ANeuralNetworksEvent** event) {
+          *event = reinterpret_cast<ANeuralNetworksEvent*>(1);
+          return Value;
+        };
+  }
+
+  template <int Value>
+  void EventWaitReturns() {
+    nnapi_->ANeuralNetworksEvent_wait = [](ANeuralNetworksEvent* event) {
+      return Value;
+    };
+  }
+
+  /*
+   * Sets the SDK Version in the nnapi structure.
+   * If set_unsupported_ops_to_null is set to true, all the functions not
+   * available at the given sdk level will be set to null too.
+   */
+  void SetAndroidSdkVersion(int version,
+                            bool set_unsupported_ops_to_null = false);
+
+  const NnApi* GetNnApi() { return nnapi_; }
 
  protected:
   explicit NnApiHandler(NnApi* nnapi) : nnapi_(nnapi) { DCHECK(nnapi); }

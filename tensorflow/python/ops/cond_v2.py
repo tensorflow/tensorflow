@@ -26,6 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -279,6 +280,7 @@ def _build_cond(pred,
     if_op._false_graph = false_graph
     util.maybe_set_lowering_attr(if_op)
     util.maybe_propagate_compile_time_consts_in_xla(if_op)
+    _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
     # Prevent fetching since the variant outputs can't be fetched directly.
     if_op.graph.prevent_fetching(if_op)
 
@@ -1105,6 +1107,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
   if case_op is not None:
     util.maybe_set_lowering_attr(case_op)
     util.maybe_propagate_compile_time_consts_in_xla(case_op)
+    _set_read_only_resource_inputs_attr(case_op, branch_graphs)
     # Prevent fetching since the variant outputs can't be fetched directly.
     case_op.graph.prevent_fetching(case_op)
 
@@ -1119,3 +1122,28 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
   tensors = [array_ops.identity(t) for t in tensors]
 
   return _pack_sequence_as(branch_graphs[0].structured_outputs, tensors)
+
+
+def _set_read_only_resource_inputs_attr(op, branch_graphs):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: If or Case Operation.
+    branch_graphs: List of branch FuncGraphs.
+  """
+  # The first entry in `op.inputs` is the predicate which is not passed to
+  # branch graphs so len(branch_graph[i].inputs) == len(op.inputs) - 1.
+  read_only_indices = set(range(len(op.inputs) - 1))
+  for branch_graph in branch_graphs:
+    assert len(branch_graph.inputs) == len(op.inputs) - 1, "should never happen"
+    if not read_only_indices:
+      break
+    branch_read_only_indices = acd.get_read_only_resource_input_indices_graph(
+        branch_graph)
+    read_only_indices = read_only_indices.intersection(branch_read_only_indices)
+  # Convert indices in `branch_graphs[i].inputs` to `op.inputs`.
+  read_only_indices = [i + 1 for i in read_only_indices]
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        sorted(read_only_indices))

@@ -393,7 +393,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         and caused the preparation of this run-end CLI (if any).
       passed_filter_exclude_node_names: (None or str) Regular expression used
         with the tensor filter to exclude ops with names matching the regular
-        expresssion.
+        expression.
     """
 
     if tf_error:

@@ -138,6 +138,28 @@ class TensorCodeGenerator {
       const std::string& s, const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
+  // Optimization for textures, so as in opencl we can use read_imagef for any
+  // texture type.
+  std::string ReadAsTypeWHS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
   std::string WriteWHS(const std::string& var_name, const std::string& x,
                        const std::string& y, const std::string& s) const;
 
@@ -160,6 +182,9 @@ class TensorCodeGenerator {
   // texture type.
   std::string ReadAsFloat(
       const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+  std::string ReadAsType(
+      DataType type, const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
@@ -207,14 +232,14 @@ std::string GetXStrideCorrected(const std::string& src_x,
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
-  const int dst_slices = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int dst_groups = IntegralDivideRoundUp(dst_slices, out_group_size);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {
@@ -263,6 +288,15 @@ TextureAddressMode GetFastestZeroMode(const CLDevice& device);
 // but 8s-channel will be empty, then last plane (batch of 4 channels) will
 // have this mask (1, 1, 1, 0).
 float4 GetMaskForLastPlane(int channels);
+
+// returns first work group from wgs that has size not bigger than max_wg_size
+// if no suitable groups among wgs, returns {1, 1, 1}
+int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
+
+// task_size as amount of FLT4 processed elements.
+int GetRecommendedBlockSizeForConv(const CLDevice& device,
+                                   CalculationsPrecision precision,
+                                   int task_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

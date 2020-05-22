@@ -22,6 +22,7 @@ namespace toco {
 namespace tflite {
 namespace {
 
+// TODO(b/150701120): port the tests to tools/versioning/op_version_test.cc.
 TEST(OpVersionTest, MinimumVersionForSameOpVersions) {
   Model model;
   // Float convolutional kernel is introduced since '1.5.0'.
@@ -136,18 +137,6 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   model.operators.push_back(std::move(fc));
 
   EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "1.10.0");
-}
-
-TEST(OpVersionTest, CompareVersionString) {
-  EXPECT_TRUE(CompareVersion("1.9", "1.13"));
-  EXPECT_FALSE(CompareVersion("1.13", "1.13"));
-  EXPECT_TRUE(CompareVersion("1.14", "1.14.1"));
-  EXPECT_FALSE(CompareVersion("1.14.1", "1.14"));
-  EXPECT_FALSE(CompareVersion("1.14.1", "1.9"));
-  EXPECT_FALSE(CompareVersion("1.0.9", "1.0.8"));
-  EXPECT_FALSE(CompareVersion("2.1.0", "1.2.0"));
-  EXPECT_TRUE(CompareVersion("", "1.13"));
-  EXPECT_FALSE(CompareVersion("", ""));
 }
 
 }  // namespace

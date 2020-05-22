@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 70
+// Next ID: 72
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -171,13 +171,17 @@ message HloInstructionProto {
   xla.OpSharding sharding = 40;
 
   // Backend configuration for the instruction. Has backend-specific meaning.
-  string backend_config = 43;
+  bytes backend_config = 43;
 
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
   // Deprecated, but keeping it for backward compatibility. Use channel_id.
   // Non-positive all_reduce_id is equivalent to no all_reduce_id.
   int64 all_reduce_id = 45 [deprecated = true];
+
+  // If true, interprets ids in ReplicaGroup as global device ids, which is
+  // a linearized id of `replica_id * partition_count + partition_id`.
+  bool use_global_device_ids = 71;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
@@ -241,6 +245,9 @@ message HloInstructionProto {
   // Specifies if all elements updated are guaranteed to be unique by
   // the caller.
   bool unique_indices = 69;
+
+  // RNG algorithm used by kRngBitGenerator.
+  xla.RandomAlgorithm rng_algorithm = 70;
 }
 
 // Serialization of HloComputation.
@@ -351,6 +358,11 @@ message DynamicParameterBindingProto {
   repeated Binding entries = 1;
 }
 
+message CrossProgramPrefetch {
+  int64 parameter = 1;
+  repeated int64 index = 2;
+}
+
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -374,6 +386,8 @@ message HloModuleProto {
   HloInputOutputAliasProto input_output_alias = 8;
 
   DynamicParameterBindingProto dynamic_parameter_binding = 9;
+
+  repeated CrossProgramPrefetch cross_program_prefetches = 10;
 }
 
 // Serialization of LogicalBuffer.

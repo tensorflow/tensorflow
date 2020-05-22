@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -121,7 +122,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
 void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
                                  BuiltinOptions builtin_options_type,
                                  flatbuffers::Offset<void> builtin_options) {
-  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
   operators_.push_back(CreateOperator(
       builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
       builder_.CreateVector<int32_t>(outputs_), builtin_options_type,
@@ -163,7 +164,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   builder_.Finish(CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
                               subgraphs_flatbuffer, description, buffers));
 
-  auto* model = GetModel(builder_.GetBufferPointer());
+  uint8_t* buffer_pointer = builder_.GetBufferPointer();
+  UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
     auto resolver = new ops::builtin::BuiltinOpResolver();
@@ -172,8 +174,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_, num_threads) ==
-        kTfLiteOk);
+  CHECK(InterpreterBuilder(GetModel(buffer_pointer), *resolver_)(
+            &interpreter_, num_threads) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 
@@ -199,7 +201,6 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
 void SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
-    // TODO(b/124505407): Check the result and fail accordingly.
     interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
   }
 
@@ -343,5 +344,33 @@ int SingleOpModel::CountOpsExecutedByCpuKernel() {
 }
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }
+
+void MultiOpModel::AddBuiltinOp(
+    BuiltinOperator type, BuiltinOptions builtin_options_type,
+    const flatbuffers::Offset<void>& builtin_options,
+    const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
+  const int opcode_index = opcodes_.size() - 1;
+  operators_.push_back(CreateOperator(
+      builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
+      builder_.CreateVector<int32_t>(outputs), builtin_options_type,
+      builtin_options,
+      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS));
+}
+
+void MultiOpModel::AddCustomOp(
+    const string& name, const std::vector<uint8_t>& custom_option,
+    const std::function<TfLiteRegistration*()>& registration,
+    const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
+  custom_registrations_[name] = registration;
+  opcodes_.push_back(
+      CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, name.data()));
+  const int opcode_index = opcodes_.size() - 1;
+  operators_.push_back(CreateOperator(
+      builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
+      builder_.CreateVector<int32_t>(outputs), BuiltinOptions_NONE, 0,
+      builder_.CreateVector<uint8_t>(custom_option),
+      CustomOptionsFormat_FLEXBUFFERS));
+}
 
 }  // namespace tflite

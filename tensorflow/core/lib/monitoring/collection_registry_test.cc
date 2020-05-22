@@ -368,11 +368,12 @@ TEST(CollectMetricsTest, PercentileSampler) {
       std::unique_ptr<PercentileSampler<2>>(PercentileSampler<2>::New(
           {"/tensorflow/test/pctsampler_with_labels",
            "Percentile sampler with labels.", "MyLabel0", "MyLabel1"},
-          {25.0, 50.0, 75.0}, 1024));
-  auto sampler_without_labels = std::unique_ptr<PercentileSampler<0>>(
-      PercentileSampler<0>::New({"/tensorflow/test/pctsampler_without_labels",
-                                 "Percentile sampler without labels."},
-                                {25.0, 50.0, 75.0}, 1024));
+          {25.0, 50.0, 75.0}, 1024, UnitOfMeasure::kNumber));
+  auto sampler_without_labels =
+      std::unique_ptr<PercentileSampler<0>>(PercentileSampler<0>::New(
+          {"/tensorflow/test/pctsampler_without_labels",
+           "Percentile sampler without labels."},
+          {25.0, 50.0, 75.0}, 1024, UnitOfMeasure::kNumber));
 
   sampler_with_labels->GetCell("Label00", "Label10")->Add(0.7);
   sampler_with_labels->GetCell("Label01", "Label11")->Add(1.5);

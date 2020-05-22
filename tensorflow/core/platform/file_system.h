@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/platform/cord.h"
@@ -145,6 +146,13 @@ class FileSystem {
   virtual tensorflow::Status GetMatchingPaths(const string& pattern,
                                               std::vector<string>* results) = 0;
 
+  /// \brief Checks if the given filename matches the pattern.
+  ///
+  /// This function provides the equivalent of posix fnmatch, however it is
+  /// implemented without fnmatch to ensure that this can be used for cloud
+  /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
+  virtual bool Match(const std::string& filename, const std::string& pattern);
+
   /// \brief Obtains statistics for the given path.
   virtual tensorflow::Status Stat(const string& fname,
                                   FileStatistics* stat) = 0;
@@ -212,9 +220,12 @@ class FileSystem {
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
   /// The implementation in this class cleans up the path, removing
-  /// duplicate /'s, resolving .. and . (more details in
-  /// tensorflow::lib::io::CleanPath).
-  virtual string TranslateName(const string& name) const;
+  /// duplicate /'s, resolving .. and removing trailing '/'.
+  /// This respects relative vs. absolute paths, but does not
+  /// invoke any system calls (getcwd(2)) in order to resolve relative
+  /// paths with respect to the actual working directory.  That is, this is
+  /// purely string manipulation, completely independent of process state.
+  virtual std::string TranslateName(const std::string& name) const;
 
   /// \brief Returns whether the given path is a directory or not.
   ///
@@ -226,8 +237,108 @@ class FileSystem {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tensorflow::Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  virtual Status HasAtomicMove(const string& path, bool* has_atomic_move);
+
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
+
+  /// \brief The separator this filesystem uses.
+  ///
+  /// This is implemented as a part of the filesystem, because even on windows,
+  /// a user may need access to filesystems with '/' separators, such as cloud
+  /// filesystems.
+  virtual char Separator() const;
+
+  /// \brief Split a path to its basename and dirname.
+  ///
+  /// Helper function for Basename and Dirname.
+  std::pair<StringPiece, StringPiece> SplitPath(StringPiece uri) const;
+
+  /// \brief returns the final file name in the given path.
+  ///
+  /// Returns the part of the path after the final "/".  If there is no
+  /// "/" in the path, the result is the same as the input.
+  virtual StringPiece Basename(StringPiece path) const;
+
+  /// \brief Returns the part of the path before the final "/".
+  ///
+  /// If there is a single leading "/" in the path, the result will be the
+  /// leading "/".  If there is no "/" in the path, the result is the empty
+  /// prefix of the input.
+  StringPiece Dirname(StringPiece path) const;
+
+  /// \brief Returns the part of the basename of path after the final ".".
+  ///
+  /// If there is no "." in the basename, the result is empty.
+  StringPiece Extension(StringPiece path) const;
+
+  /// \brief Clean duplicate and trailing, "/"s, and resolve ".." and ".".
+  ///
+  /// NOTE: This respects relative vs. absolute paths, but does not
+  /// invoke any system calls (getcwd(2)) in order to resolve relative
+  /// paths with respect to the actual working directory.  That is, this is
+  /// purely string manipulation, completely independent of process state.
+  std::string CleanPath(StringPiece path) const;
+
+  /// \brief Creates a URI from a scheme, host, and path.
+  ///
+  /// If the scheme is empty, we just return the path.
+  std::string CreateURI(StringPiece scheme, StringPiece host,
+                        StringPiece path) const;
+
+  ///  \brief Creates a temporary file name with an extension.
+  std::string GetTempFilename(const std::string& extension) const;
+
+  /// \brief Return true if path is absolute.
+  bool IsAbsolutePath(tensorflow::StringPiece path) const;
+
+#ifndef SWIG  // variadic templates
+  /// \brief Join multiple paths together.
+  ///
+  /// This function also removes the unnecessary path separators.
+  /// For example:
+  ///
+  ///  Arguments                  | JoinPath
+  ///  ---------------------------+----------
+  ///  '/foo', 'bar'              | /foo/bar
+  ///  '/foo/', 'bar'             | /foo/bar
+  ///  '/foo', '/bar'             | /foo/bar
+  ///
+  /// Usage:
+  /// string path = io::JoinPath("/mydir", filename);
+  /// string path = io::JoinPath(FLAGS_test_srcdir, filename);
+  /// string path = io::JoinPath("/full", "path", "to", "filename");
+  template <typename... T>
+  std::string JoinPath(const T&... args) {
+    return JoinPathImpl({args...});
+  }
+#endif /* SWIG */
+
+  std::string JoinPathImpl(
+      std::initializer_list<tensorflow::StringPiece> paths);
+
+  /// \brief Populates the scheme, host, and path from a URI.
+  ///
+  /// scheme, host, and path are guaranteed by this function to point into the
+  /// contents of uri, even if empty.
+  ///
+  /// Corner cases:
+  /// - If the URI is invalid, scheme and host are set to empty strings and the
+  ///  passed string is assumed to be a path
+  /// - If the URI omits the path (e.g. file://host), then the path is left
+  /// empty.
+  void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
+                StringPiece* path) const;
 
   FileSystem() {}
 

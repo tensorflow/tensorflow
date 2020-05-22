@@ -242,14 +242,22 @@ class BaseSaverBuilder(object):
     #     <train dir>/
     #        myckpt{.index, .data-?????-of-?????}
     #
+    #   Filesystems with eventual consistency (such as S3), don't need a
+    #   temporary location. Using a temporary directory in those cases might
+    #   cause situations where files are not available during copy.
+    #
     # Users only need to interact with the user-specified prefix, which is
     # "<train dir>/myckpt" in this case.  Save() and Restore() work with the
     # prefix directly, instead of any physical pathname.  (On failure and
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
-    _SHARDED_SUFFIX = "_temp_%s/part" % uuid.uuid4().hex
-    tmp_checkpoint_prefix = string_ops.string_join(
-        [checkpoint_prefix, _SHARDED_SUFFIX])
+    with ops.device("CPU"):
+      _SHARDED_SUFFIX = array_ops.where(
+          string_ops.regex_full_match(checkpoint_prefix, "^s3://.*"),
+          constant_op.constant(".part"),
+          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
+      tmp_checkpoint_prefix = string_ops.string_join(
+          [checkpoint_prefix, _SHARDED_SUFFIX])
 
     num_shards = len(per_device)
     sharded_saves = []
@@ -1144,6 +1152,7 @@ class Saver(object):
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
 
+    save_path = compat.as_str(save_path)
     if global_step is not None:
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
@@ -1654,7 +1663,7 @@ def saver_from_object_based_checkpoint(checkpoint_path,
       `var_list` will be set to all saveable objects.
     builder: a `BaseSaverBuilder` instance. If `None`, a new `BulkSaverBuilder`
       will be created.
-    names_to_keys: dict mapping string tensor names to checkpooint keys. If
+    names_to_keys: dict mapping string tensor names to checkpoint keys. If
       `None`, this dict will be generated from the checkpoint file.
     cached_saver: Cached `Saver` object with remapped variables.
 

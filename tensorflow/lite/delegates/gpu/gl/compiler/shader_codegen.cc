@@ -32,8 +32,8 @@ ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
                              const GpuInfo& gpu_info)
     : options_(options), gpu_type_(gpu_info.type) {}
 
-Status ShaderCodegen::Build(CompiledNodeAttributes attr,
-                            ShaderCode* shader_code) const {
+absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
+                                  ShaderCode* shader_code) const {
   VariableAccessor variable_accessor(options_.inline_parameters,
                                      options_.vulkan_support);
   ObjectAccessor object_accessor(gpu_type_ == GpuType::MALI,
@@ -41,18 +41,18 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
 
   const auto add_object = [&](const std::string& name, Object&& object) {
     if (!object_accessor.AddObject(name, std::forward<Object>(object))) {
-      return AlreadyExistsError(absl::StrCat("Object \"", name, "\""));
+      return absl::AlreadyExistsError(absl::StrCat("Object \"", name, "\""));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   const auto add_uniform_parameter = [&](Variable&& variable) {
     const std::string name = variable.name;
     if (!variable_accessor.AddUniformParameter(std::move(variable))) {
-      return AlreadyExistsError(
+      return absl::AlreadyExistsError(
           absl::StrCat("Uniform parameter \"", name, "\""));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (auto&& object : attr.code.objects) {
@@ -62,7 +62,8 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
   for (auto&& variable : attr.code.shared_variables) {
     const std::string name = variable.name;
     if (!variable_accessor.AddSharedVariable(std::move(variable))) {
-      return AlreadyExistsError(absl::StrCat("Shared variable \"", name, "\""));
+      return absl::AlreadyExistsError(
+          absl::StrCat("Shared variable \"", name, "\""));
     }
   }
 
@@ -169,7 +170,7 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
       ShaderCode(variable_accessor.GetUniformParameters(),
                  object_accessor.GetObjects(), attr.code.workload,
                  attr.code.workgroup, partial_source_code, attr.node_indices);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

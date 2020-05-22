@@ -23,8 +23,8 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
-#include "flatbuffers/minireflect.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/minireflect.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace tflite {

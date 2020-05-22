@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines common C types and APIs for implementing operations,
 // delegates and other constructs in TensorFlow Lite. The actual operations and
-// delegtes can be defined using C++, but the interface between the interpreter
+// delegates can be defined using C++, but the interface between the interpreter
 // and the operations are C.
 //
 // Summary of abstractions
@@ -29,6 +29,9 @@ limitations under the License.
 // TfLiteDelegate - allows delegation of nodes to alternative backends.
 //
 // Some abstractions in this file are created and managed by Interpreter.
+//
+// NOTE: The order of values in these structs are "semi-ABI stable". New values
+// should be added only to the end of structs and never reordered.
 
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_
@@ -41,11 +44,15 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef enum TfLiteStatus { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
+typedef enum TfLiteStatus {
+  kTfLiteOk = 0,
+  kTfLiteError = 1,
+  kTfLiteDelegateError = 2
+} TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
-// need. Access to the external contexts is controled by one of the
+// need. Access to the external contexts is controlled by one of the
 // corresponding support files.
 typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
@@ -143,31 +150,52 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // error macros while avoiding names that have pre-conceived meanings like
 // assert and check.
 
+// Try to make all reporting calls through TF_LITE_KERNEL_LOG rather than
+// calling the context->ReportError function directly, so that message strings
+// can be stripped out if the binary size needs to be severely optimized.
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_KERNEL_LOG(context, ...)            \
+  do {                                              \
+    (context)->ReportError((context), __VA_ARGS__); \
+  } while (false)
+
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)        \
+  do {                                                \
+    if ((context) != nullptr) {                       \
+      (context)->ReportError((context), __VA_ARGS__); \
+    }                                                 \
+  } while (false)
+#else  // TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_KERNEL_LOG(context, ...)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
+#endif  // TF_LITE_STRIP_ERROR_STRINGS
+
 // Check whether value is true, and if not return kTfLiteError from
 // the current function (and report the error string msg).
-#define TF_LITE_ENSURE_MSG(context, value, msg)            \
-  do {                                                     \
-    if (!(value)) {                                        \
-      (context)->ReportError((context), __FILE__ " " msg); \
-      return kTfLiteError;                                 \
-    }                                                      \
+#define TF_LITE_ENSURE_MSG(context, value, msg)        \
+  do {                                                 \
+    if (!(value)) {                                    \
+      TF_LITE_KERNEL_LOG((context), __FILE__ " " msg); \
+      return kTfLiteError;                             \
+    }                                                  \
   } while (0)
 
 // Check whether the value `a` is true, and if not return kTfLiteError from
 // the current function, while also reporting the location of the error.
-#define TF_LITE_ENSURE(context, a)                                          \
-  do {                                                                      \
-    if (!(a)) {                                                             \
-      (context)->ReportError((context), "%s:%d %s was not true.", __FILE__, \
-                             __LINE__, #a);                                 \
-      return kTfLiteError;                                                  \
-    }                                                                       \
+#define TF_LITE_ENSURE(context, a)                                      \
+  do {                                                                  \
+    if (!(a)) {                                                         \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s was not true.", __FILE__, \
+                         __LINE__, #a);                                 \
+      return kTfLiteError;                                              \
+    }                                                                   \
   } while (0)
 
 #define TF_LITE_ENSURE_STATUS(a) \
   do {                           \
-    if ((a) != kTfLiteOk) {      \
-      return kTfLiteError;       \
+    const TfLiteStatus s = (a);  \
+    if (s != kTfLiteOk) {        \
+      return s;                  \
     }                            \
   } while (0)
 
@@ -175,29 +203,30 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
-#define TF_LITE_ENSURE_EQ(context, a, b)                                       \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      (context)->ReportError((context), "%s:%d %s != %s (%d != %d)", __FILE__, \
-                             __LINE__, #a, #b, (a), (b));                      \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_ENSURE_EQ(context, a, b)                                   \
+  do {                                                                     \
+    if ((a) != (b)) {                                                      \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s != %s (%d != %d)", __FILE__, \
+                         __LINE__, #a, #b, (a), (b));                      \
+      return kTfLiteError;                                                 \
+    }                                                                      \
   } while (0)
 
-#define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                                 \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      (context)->ReportError((context), "%s:%d %s != %s (%s != %s)", __FILE__, \
-                             __LINE__, #a, #b, TfLiteTypeGetName(a),           \
-                             TfLiteTypeGetName(b));                            \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                             \
+  do {                                                                     \
+    if ((a) != (b)) {                                                      \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s != %s (%s != %s)", __FILE__, \
+                         __LINE__, #a, #b, TfLiteTypeGetName(a),           \
+                         TfLiteTypeGetName(b));                            \
+      return kTfLiteError;                                                 \
+    }                                                                      \
   } while (0)
 
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
-    if ((status) != kTfLiteOk) {           \
-      return kTfLiteError;                 \
+    const TfLiteStatus s = (status);       \
+    if ((s) != kTfLiteOk) {                \
+      return s;                            \
     }                                      \
   } while (0)
 
@@ -224,6 +253,7 @@ typedef enum {
   kTfLiteComplex64 = 8,
   kTfLiteInt8 = 9,
   kTfLiteFloat16 = 10,
+  kTfLiteFloat64 = 11,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -291,15 +321,23 @@ typedef union TfLitePtrUnion {
   void* data;
 } TfLitePtrUnion;
 
-// Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
-// data (or data externally allocated). kTfLiteArenaRw is arena allocated
-// data. kTfLiteDynamic is for tensors that are allocated during evaluation.
+// Memory allocation strategies.
+//  * kTfLiteMmapRo: Read-only memory-mapped data, or data externally allocated.
+//  * kTfLiteArenaRw: Arena allocated with no guarantees about persistence,
+//        and available during eval.
+//  * kTfLiteArenaRwPersistent: Arena allocated but persistent across eval, and
+//        only available during eval.
+//  * kTfLiteDynamic: Allocated during eval, or for string tensors.
+//  * kTfLitePersistentRo: Allocated and populated during prepare. This is
+//        useful for tensors that can be computed during prepare and treated
+//        as constant inputs for downstream ops (also in prepare).
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
   kTfLiteArenaRw,
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
+  kTfLitePersistentRo,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -391,6 +429,12 @@ typedef struct TfLiteTensor {
   // This is optional. The field is NULL if a tensor is dense.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteSparsity* sparsity;
+
+  // Optional. Encodes shapes with unknown dimensions with -1. This field is
+  // only populated when unknown dimensions exist in a read-write tensor (i.e.
+  // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
+  // `dims_signature` contains [1, -1, -1, 3]).
+  const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
 #ifndef TF_LITE_STATIC_MEMORY

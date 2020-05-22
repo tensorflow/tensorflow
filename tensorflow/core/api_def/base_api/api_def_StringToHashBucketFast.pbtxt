@@ -26,5 +26,10 @@ This function may be used when CPU time is scarce and inputs are trusted or
 unimportant. There is a risk of adversaries constructing inputs that all hash
 to the same bucket. To prevent this problem, use a strong hash function with
 `tf.string_to_hash_bucket_strong`.
+
+Examples:
+
+>>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
+array([0, 2, 2])
 END
 }

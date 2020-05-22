@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
+
 #include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -59,7 +60,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     int num_dimensions = NumDimensions(input);
 
     if (num_dimensions > 4) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Op Concatenation does not currently support num dimensions >4 "
           "Tensor '%s' has %d dimensions.",
@@ -176,9 +177,9 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   op_params.output_zeropoint = output->params.zero_point;
   op_params.output_scale = output->params.scale;
 
-  reference_ops::ConcatenationWithScaling(
-      op_params, inputs_shape_ptr, inputs_data, GetTensorShape(output),
-      GetTensorData<uint8>(output));
+  reference_ops::ConcatenationWithScaling(op_params, inputs_shape_ptr,
+                                          inputs_data, GetTensorShape(output),
+                                          GetTensorData<uint8>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -202,7 +203,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Op Concatenation does not currently support Type '%s'.",
           TfLiteTypeGetName(output_type));
       return kTfLiteError;
@@ -214,9 +215,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {};
-  r.prepare = concatenation::Prepare;
-  r.invoke = concatenation::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/concatenation::Prepare,
+                                 /*invoke=*/concatenation::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

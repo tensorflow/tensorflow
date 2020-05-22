@@ -648,6 +648,62 @@ This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 
+REGISTER_OP("XlaSpmdFullToShardShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto input_handle = c->input(0);
+      if (!c->RankKnown(input_handle)) {
+        return shape_inference::UnknownShape(c);
+      }
+      string sharding_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      std::vector<shape_inference::DimensionHandle> dims;
+      for (int64 i = 0; i < c->Rank(input_handle); ++i) {
+        auto dim = c->Value(c->Dim(input_handle, i));
+        xla::OpSharding sharding;
+        sharding.ParseFromString(sharding_attr);
+        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+        if (dim != shape_inference::InferenceContext::kUnknownDim &&
+            sharding.type() == xla::OpSharding::OTHER && partitions_i != 1) {
+          dim = (dim + partitions_i - 1) / partitions_i;
+        }
+        dims.push_back(c->MakeDim(dim));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from automatic partitioning to
+manual partitioning. It annotates the input (full-shape, to be automatically
+partitioned) with the same sharding used by manual partitioning, and outputs a
+shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+shape is not evenly partitionable, the padding region will be masked with 0s.
+)doc");
+
+REGISTER_OP("XlaSpmdShardToFullShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .Attr("full_shape: shape")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      TensorShape shape_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from manual partitioning to
+automatic partitioning. It converts the shard-shaped, manually partitioned input
+into full-shaped tensor to be partitioned automatically with the same sharding
+used by manual partitioning.
+)doc");
+
 REGISTER_OP("XlaSharding")
     .Input("input: T")
     .Output("output: T")
@@ -674,7 +730,7 @@ REGISTER_OP("XlaGather")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
-    .SetShapeFn(UnchangedRank)
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Wraps the XLA Gather operator documented at
   https://www.tensorflow.org/xla/operation_semantics#gather

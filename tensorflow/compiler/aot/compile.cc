@@ -20,9 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
+#include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -38,10 +40,19 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tfcompile {
+
+static llvm::ManagedStatic<QuantizeXlaFn> quantize_xla;
+
+bool RegisterQuantizeFn(const QuantizeXlaFn& fn) {
+  if (*quantize_xla) return false;
+  *quantize_xla = fn;
+  return true;
+}
 
 namespace {
 
@@ -104,15 +115,20 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
           .ValueOrDie();
   xla::XlaComputation computation;
   if (flags.mlir_components == "Bridge") {
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToXlaViaMlir(graph_def, config, &computation));
-  } else {
-    if (!flags.mlir_components.empty()) {
-      return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
-    }
+    TF_RETURN_IF_ERROR(ConvertGraphDefToXlaViaMlir(
+        graph_def, config, &computation, flags.debug_info,
+        flags.debug_info_path_begin_marker));
+  } else if (flags.mlir_components.empty() || flags.mlir_components == "None") {
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
                                             client, &computation));
+  } else {
+    return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
+
+  if (flags.experimental_quantize && *quantize_xla) {
+    TF_RETURN_IF_ERROR((*quantize_xla)(config, &computation));
+  }
+
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
@@ -142,7 +158,7 @@ static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
   }
 }
 
-static std::once_flag targets_init;
+static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
@@ -166,8 +182,25 @@ static void InitializeTargets() {
   LLVMInitializeX86AsmPrinter();
 }
 
+// Replaces {{tag.type tag.name}} in the error message with tag_name.
+// TODO(bixia): We currently only handlge tag.type == "node".
+//
+// In the error message, a graph node is represented as {{tag.type, tag.name}},
+// to allow a Python debugger to insert source information about the graph node.
+// For example, a Python add expression may be represented as
+// {{node, x_y_sum}} = Add(x, y) in the error message. See routine interpolate
+// in tensorflow/python/framework/error_interpolation.py for more detail.
+static std::string InterpolateErrorMessage(std::string message) {
+  // See _NAME_REGEX in tensorflow/python/framework/error_interpolation.py
+  // Change "prefix {{node tag.name}} suffix" to "prefix tag.name suffix".
+  static LazyRE2 pattern{"(.*){{node (.*)}}(.*)"};
+  RE2::GlobalReplace(&message, *pattern, "\\1\\2\\3");
+
+  return message;
+}
+
 Status Main(const MainFlags& flags) {
-  std::call_once(targets_init, &InitializeTargets);
+  absl::call_once(targets_init, &InitializeTargets);
 
   // Process config.
   tf2xla::Config config;
@@ -192,8 +225,13 @@ Status Main(const MainFlags& flags) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(
-      CompileGraph(std::move(graph_def), config, flags, &compile_result));
+
+  Status status =
+      CompileGraph(std::move(graph_def), config, flags, &compile_result);
+  if (!status.ok()) {
+    return Status(status.code(),
+                  InterpolateErrorMessage(status.error_message()));
+  }
 
   // Write output files.
   Env* env = Env::Default();

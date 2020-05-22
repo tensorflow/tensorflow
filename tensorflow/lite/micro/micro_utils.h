@@ -34,6 +34,9 @@ uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale);
 int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
                                       const int zero_point);
 
+int16_t FloatToAsymmetricQuantizedInt16(const float value, const float scale,
+                                        const int zero_point);
+
 int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale);
 
 // Converts a float value into a signed thirty-two-bit quantized value.  Note
@@ -47,9 +50,10 @@ int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale);
 //        asymmetric symmetric  per channel
 // int8  |     X    |    X    |     X      |
 // uint8 |     X    |    X    |            |
+// int16 |     X    |         |            |
 // int32 |          |    X    |     X      |
 //
-// The per-op quantizaiton spec can be found here:
+// The per-op quantization spec can be found here:
 // https://www.tensorflow.org/lite/performance/quantization_spec
 
 void AsymmetricQuantize(const float* input, int8_t* output, int num_elements,
@@ -57,6 +61,9 @@ void AsymmetricQuantize(const float* input, int8_t* output, int num_elements,
 
 void AsymmetricQuantize(const float* input, uint8_t* output, int num_elements,
                         float scale, int zero_point = 128);
+
+void AsymmetricQuantize(const float* input, int16_t* output, int num_elements,
+                        float scale, int zero_point = 0);
 
 void SymmetricQuantize(const float* input, int32_t* output, int num_elements,
                        float scale);

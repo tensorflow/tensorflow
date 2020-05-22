@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "HM01B0.h"
 
 #include "HM01B0_Walking1s_01.h"
@@ -94,7 +100,7 @@ static uint32_t hm01b0_write_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -138,7 +144,7 @@ static uint32_t hm01b0_read_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -468,7 +474,7 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t* psCfg, uint16_t* pui16MID) {
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //
@@ -756,3 +762,5 @@ uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg) {
                    HM01B0_REG_MODE_SELECT_STREAMING_NFRAMES, 1);
   hm01b0_write_reg(psCfg, HM01B0_REG_GRP_PARAM_HOLD, 0x01, 1);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

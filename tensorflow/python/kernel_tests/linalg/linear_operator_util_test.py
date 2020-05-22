@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -188,36 +189,6 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
       linear_operator_util.broadcast_matrix_batch_dims([y, x])
 
 
-class CholeskySolveWithBroadcastTest(test.TestCase):
-
-  def test_static_dims_broadcast(self):
-    # batch_shape = [2]
-    chol = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 7)
-    chol_broadcast = chol + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
-    self.assertAllEqual((2, 3, 7), result.shape)
-    expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_dynamic_dims_broadcast_64bit(self):
-    # batch_shape = [2, 2]
-    chol = rng.rand(2, 3, 3)
-    rhs = rng.rand(2, 1, 3, 7)
-    chol_broadcast = chol + np.zeros((2, 2, 1, 1))
-    rhs_broadcast = rhs + np.zeros((2, 2, 1, 1))
-
-    chol_ph = array_ops.placeholder_with_default(chol, shape=None)
-    rhs_ph = array_ops.placeholder_with_default(rhs, shape=None)
-
-    result, expected = self.evaluate([
-        linear_operator_util.cholesky_solve_with_broadcast(chol_ph, rhs_ph),
-        linalg_ops.cholesky_solve(chol_broadcast, rhs_broadcast)
-    ])
-    self.assertAllClose(expected, result)
-
-
 class MatrixSolveWithBroadcastTest(test.TestCase):
 
   def test_static_dims_broadcast_matrix_has_extra_dims(self):
@@ -303,74 +274,6 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     self.assertAllClose(expected, result)
 
 
-class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
-
-  def test_static_dims_broadcast_matrix_has_extra_dims(self):
-    # batch_shape = [2]
-    matrix = rng.rand(2, 3, 3)
-    rhs = rng.rand(3, 7)
-    rhs_broadcast = rhs + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs)
-    self.assertAllEqual((2, 3, 7), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_static_dims_broadcast_rhs_has_extra_dims(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    # batch_shape = [2]
-    matrix = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 2)
-    matrix_broadcast = matrix + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs)
-    self.assertAllEqual((2, 3, 2), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(matrix_broadcast, rhs)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_static_dims_broadcast_rhs_has_extra_dims_and_adjoint(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    # batch_shape = [2]
-    matrix = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 2)
-    matrix_broadcast = matrix + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs, adjoint=True)
-    self.assertAllEqual((2, 3, 2), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(
-        matrix_broadcast, rhs, adjoint=True)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_dynamic_dims_broadcast_64bit(self):
-    # batch_shape = [2]
-    matrix = rng.rand(2, 3, 3)
-    rhs = rng.rand(3, 7)
-    rhs_broadcast = rhs + np.zeros((2, 1, 1))
-
-    matrix_ph = array_ops.placeholder_with_default(matrix, shape=None)
-    rhs_ph = array_ops.placeholder_with_default(rhs, shape=None)
-
-    result, expected = self.evaluate([
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            matrix_ph, rhs_ph),
-        linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
-    ])
-    self.assertAllClose(expected, result)
-
-
 class DomainDimensionStubOperator(object):
 
   def __init__(self, domain_dimension):
@@ -441,6 +344,89 @@ class UseOperatorOrProvidedHintUnlessContradictingTest(test.TestCase,
           provided_hint_value=provided_hint_value,
           message="my error message")
 
+
+class BlockwiseTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("split_dim_1", [3, 3, 4], -1),
+      ("split_dim_2", [2, 5], -2),
+      )
+  def test_blockwise_input(self, op_dimension_values, split_dim):
+
+    op_dimensions = [
+        tensor_shape.Dimension(v) for v in op_dimension_values]
+    unknown_op_dimensions = [
+        tensor_shape.Dimension(None) for _ in op_dimension_values]
+
+    batch_shape = [2, 1]
+    arg_dim = 5
+    if split_dim == -1:
+      blockwise_arrays = [np.zeros(batch_shape + [arg_dim, d])
+                          for d in op_dimension_values]
+    else:
+      blockwise_arrays = [np.zeros(batch_shape + [d, arg_dim])
+                          for d in op_dimension_values]
+
+    blockwise_list = [block.tolist() for block in blockwise_arrays]
+    blockwise_tensors = [ops.convert_to_tensor(block)
+                         for block in blockwise_arrays]
+    blockwise_placeholders = [
+        array_ops.placeholder_with_default(block, shape=None)
+        for block in blockwise_arrays]
+
+    # Iterables of non-nested structures are always interpreted as blockwise.
+    # The list of lists is interpreted as blockwise as well, regardless of
+    # whether the operator dimensions are known, since the sizes of its elements
+    # along `split_dim` are non-identical.
+    for op_dims in [op_dimensions, unknown_op_dimensions]:
+      for blockwise_inputs in [
+          blockwise_arrays, blockwise_list,
+          blockwise_tensors, blockwise_placeholders]:
+        self.assertTrue(linear_operator_util.arg_is_blockwise(
+            op_dims, blockwise_inputs, split_dim))
+
+  def test_non_blockwise_input(self):
+    x = np.zeros((2, 3, 4, 6))
+    x_tensor = ops.convert_to_tensor(x)
+    x_placeholder = array_ops.placeholder_with_default(x, shape=None)
+    x_list = x.tolist()
+
+    # For known and matching operator dimensions, interpret all as non-blockwise
+    op_dimension_values = [2, 1, 3]
+    op_dimensions = [tensor_shape.Dimension(d) for d in op_dimension_values]
+    for inputs in [x, x_tensor, x_placeholder, x_list]:
+      self.assertFalse(linear_operator_util.arg_is_blockwise(
+          op_dimensions, inputs, -1))
+
+    # The input is still interpreted as non-blockwise for unknown operator
+    # dimensions (`x_list` has an outermost dimension that does not matcn the
+    # number of blocks, and the other inputs are not iterables).
+    unknown_op_dimensions = [
+        tensor_shape.Dimension(None) for _ in op_dimension_values]
+    for inputs in [x, x_tensor, x_placeholder, x_list]:
+      self.assertFalse(linear_operator_util.arg_is_blockwise(
+          unknown_op_dimensions, inputs, -1))
+
+  def test_ambiguous_input_raises(self):
+    x = np.zeros((3, 4, 2)).tolist()
+    op_dimensions = [tensor_shape.Dimension(None) for _ in range(3)]
+
+    # Since the leftmost dimension of `x` is equal to the number of blocks, and
+    # the operators have unknown dimension, the input is ambiguous.
+    with self.assertRaisesRegexp(ValueError, "structure is ambiguous"):
+      linear_operator_util.arg_is_blockwise(op_dimensions, x, -2)
+
+  def test_mismatched_input_raises(self):
+    x = np.zeros((2, 3, 4, 6)).tolist()
+    op_dimension_values = [4, 3]
+    op_dimensions = [tensor_shape.Dimension(v) for v in op_dimension_values]
+
+    # The dimensions of the two operator-blocks sum to 7. `x` is a
+    # two-element list; if interpreted blockwise, its corresponding dimensions
+    # sum to 12 (=6*2). If not interpreted blockwise, its corresponding
+    # dimension is 6. This is a mismatch.
+    with self.assertRaisesRegexp(ValueError, "dimension does not match"):
+      linear_operator_util.arg_is_blockwise(op_dimensions, x, -1)
 
 if __name__ == "__main__":
   test.main()

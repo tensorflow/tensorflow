@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import copy
 import sys
+import textwrap
 import traceback
 
 import six  # pylint: disable=unused-import
@@ -49,7 +50,7 @@ class _TFShouldUseHelper(object):
     if context.executing_eagerly():
       # If warn_in_eager, sated == False.  Otherwise true.
       self._sated = not warn_in_eager
-    elif ops.get_default_graph()._building_function:  # pylint: disable=protected-access
+    elif ops.inside_function():
       if error_in_function:
         self._sated = False
         ops.add_exit_callback_to_default_func_graph(
@@ -182,7 +183,7 @@ def _add_should_use_warning(x, error_in_function=False, warn_in_eager=False):
   if context.executing_eagerly() and not warn_in_eager:
     return x
 
-  if ops.get_default_graph()._building_function and not error_in_function:  # pylint: disable=protected-access
+  if ops.inside_function() and not error_in_function:
     # We don't currently log warnings in tf.function calls, so just skip it.
     return x
 
@@ -231,20 +232,27 @@ def should_use_result(fn=None, warn_in_eager=False, error_in_function=False):
     The wrapped function.
   """
   def decorated(fn):
+    """Decorates the input function."""
     def wrapped(*args, **kwargs):
       return _add_should_use_warning(fn(*args, **kwargs),
                                      warn_in_eager=warn_in_eager,
                                      error_in_function=error_in_function)
+    fn_doc = fn.__doc__ or ''
+    split_doc = fn_doc.split('\n', 1)
+    if len(split_doc) == 1:
+      updated_doc = fn_doc
+    else:
+      brief, rest = split_doc
+      updated_doc = '\n'.join([brief, textwrap.dedent(rest)])
+
+    note = ('\n\nNote: The output of this function should be used. If it is '
+            'not, a warning will be logged or an error may be raised. '
+            'To mark the output as used, call its .mark_used() method.')
     return tf_decorator.make_decorator(
         target=fn,
         decorator_func=wrapped,
         decorator_name='should_use_result',
-        decorator_doc=(
-            (fn.__doc__ or '') +
-            ('\n\n  '
-             '**NOTE** The output of this function should be used.  If it is '
-             'not, a warning will be logged or an error may be raised.  '
-             'To mark the output as used, call its .mark_used() method.')))
+        decorator_doc=updated_doc + note)
 
   if fn is not None:
     return decorated(fn)

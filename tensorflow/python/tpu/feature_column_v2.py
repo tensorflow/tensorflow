@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import math
 
 import enum
@@ -30,15 +31,18 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu.feature_column import _is_running_on_cpu
 from tensorflow.python.tpu.feature_column import _record_variable_scope_and_name
 from tensorflow.python.tpu.feature_column import _SUPPORTED_CATEGORICAL_COLUMNS_V2
+from tensorflow.python.tpu.feature_column import _SUPPORTED_SEQUENCE_COLUMNS
 from tensorflow.python.tpu.feature_column import _TPUBaseEmbeddingColumn
 from tensorflow.python.util.tf_export import tf_export
 # pylint: disable=protected-access
 
 _ALLOWED_DEVICES = ['cpu', 'tpu_tensor_core', 'tpu_embedding_core']
+_TENSOR_CORE_MASK_KEY_SUFFIX = '__TENSOR_CORE_MASK'
 
 
 class EmbeddingDevice(enum.Enum):
@@ -55,7 +59,8 @@ def embedding_column_v2(categorical_column,
                         max_sequence_length=0,
                         learning_rate_fn=None,
                         embedding_lookup_device=None,
-                        tensor_core_shape=None):
+                        tensor_core_shape=None,
+                        use_safe_embedding_lookup=True):
   """TPU version of `tf.compat.v1.feature_column.embedding_column`.
 
   Note that the interface for `tf.tpu.experimental.embedding_column` is
@@ -105,7 +110,10 @@ def embedding_column_v2(categorical_column,
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of embedding_column, otherwise performence
+      may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core".
       If specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
@@ -121,6 +129,13 @@ def embedding_column_v2(categorical_column,
       the intended dense shape to run embedding lookup for this feature on
       TensorCore. The batch dimension can be left None or -1 to indicate
       a dynamic shape. Only rank 2 shapes currently supported.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A  `_TPUEmbeddingColumnV2`.
@@ -162,10 +177,13 @@ def embedding_column_v2(categorical_column,
   elif embedding_lookup_device == 'tpu_embedding_core':
     embedding_lookup_device = EmbeddingDevice.TPU_EMBEDDING_CORE
 
-  if (embedding_lookup_device == EmbeddingDevice.TPU_TENSOR_CORE and
-      not tensor_core_shape):
-    raise ValueError('Using embedding_lookup_device=tpu_tensor_core requires '
-                     'tensor_core_shape to be set.')
+  if embedding_lookup_device == EmbeddingDevice.TPU_TENSOR_CORE:
+    if not tensor_core_shape:
+      raise ValueError('Using embedding_lookup_device=tpu_tensor_core requires '
+                       'tensor_core_shape to be set.')
+    if isinstance(categorical_column, _SUPPORTED_SEQUENCE_COLUMNS):
+      raise ValueError('embedding_lookup_device=tpu_tensor_core currently does '
+                       'not support sequence columns.')
 
   if not embedding_lookup_device:
     return _TPUEmbeddingColumnV2(
@@ -174,7 +192,8 @@ def embedding_column_v2(categorical_column,
         combiner=combiner,
         initializer=initializer,
         max_sequence_length=max_sequence_length,
-        learning_rate_fn=learning_rate_fn)
+        learning_rate_fn=learning_rate_fn,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
   else:
     return _TPUDeviceSpecificEmbeddingColumnV2(
         categorical_column=categorical_column,
@@ -184,7 +203,8 @@ def embedding_column_v2(categorical_column,
         max_sequence_length=max_sequence_length,
         learning_rate_fn=learning_rate_fn,
         embedding_lookup_device=embedding_lookup_device,
-        tensor_core_shape=tensor_core_shape)
+        tensor_core_shape=tensor_core_shape,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
 
 @tf_export(v1=['tpu.experimental.shared_embedding_columns'])
@@ -196,7 +216,8 @@ def shared_embedding_columns_v2(categorical_columns,
                                 max_sequence_lengths=None,
                                 learning_rate_fn=None,
                                 embedding_lookup_device=None,
-                                tensor_core_shape=None):
+                                tensor_core_shape=None,
+                                use_safe_embedding_lookup=True):
   """TPU version of `tf.compat.v1.feature_column.shared_embedding_columns`.
 
   Note that the interface for `tf.tpu.experimental.shared_embedding_columns` is
@@ -254,7 +275,10 @@ def shared_embedding_columns_v2(categorical_columns,
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of shared_embedding_columns, otherwise
+      performence may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
       specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
@@ -270,6 +294,13 @@ def shared_embedding_columns_v2(categorical_columns,
       intended dense shape to run embedding lookup for this feature on
       TensorCore. The batch dimension can be left None or -1 to indicate a
       dynamic shape. Only rank 2 shapes currently supported.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A  list of `_TPUSharedEmbeddingColumnV2`.
@@ -347,10 +378,14 @@ def shared_embedding_columns_v2(categorical_columns,
   elif embedding_lookup_device == 'tpu_embedding_core':
     embedding_lookup_device = EmbeddingDevice.TPU_EMBEDDING_CORE
 
-  if (embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE and
-      not tensor_core_shape):
-    raise ValueError('Using embedding_lookup_device=tpu_tensor_core requires '
-                     'tensor_core_shape to be set.')
+  if embedding_lookup_device == EmbeddingDevice.TPU_TENSOR_CORE:
+    if not tensor_core_shape:
+      raise ValueError('Using embedding_lookup_device=tpu_tensor_core requires '
+                       'tensor_core_shape to be set.')
+    for c in sorted_columns:
+      if isinstance(c, _SUPPORTED_SEQUENCE_COLUMNS):
+        raise ValueError('embedding_lookup_device=tpu_tensor_core currently '
+                         'does not support sequence columns.')
 
   # Create the state (_SharedEmbeddingColumnLayer) here.
   for categorical_column, max_sequence_length in zip(
@@ -363,7 +398,8 @@ def shared_embedding_columns_v2(categorical_columns,
           initializer=initializer,
           shared_embedding_collection_name=shared_embedding_collection_name,
           max_sequence_length=max_sequence_length,
-          learning_rate_fn=learning_rate_fn)
+          learning_rate_fn=learning_rate_fn,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
     else:
       column = _TPUSharedDeviceSpecificEmbeddingColumnV2(
           categorical_column=categorical_column,
@@ -374,7 +410,8 @@ def shared_embedding_columns_v2(categorical_columns,
           max_sequence_length=max_sequence_length,
           learning_rate_fn=learning_rate_fn,
           embedding_lookup_device=embedding_lookup_device,
-          tensor_core_shape=tensor_core_shape)
+          tensor_core_shape=tensor_core_shape,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
     tpu_columns.append(column)
 
   return tpu_columns
@@ -389,7 +426,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
               combiner='mean',
               initializer=None,
               max_sequence_length=0,
-              learning_rate_fn=None):
+              learning_rate_fn=None,
+              use_safe_embedding_lookup=True):
     return fc_lib.EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -399,7 +437,16 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
         ckpt_to_load_from=None,
         tensor_name_in_ckpt=None,
         max_norm=None,
-        trainable=True)
+        trainable=True,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.dimension, self.combiner,
+            self.initializer, self._max_sequence_length, self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
 
   def __init__(self,
                categorical_column,
@@ -407,7 +454,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
                combiner='mean',
                initializer=None,
                max_sequence_length=0,
-               learning_rate_fn=None):
+               learning_rate_fn=None,
+               use_safe_embedding_lookup=True):
     _TPUBaseEmbeddingColumn.__init__(
         self,
         categorical_column,
@@ -564,13 +612,25 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
               initializer=None,
               shared_embedding_collection_name=None,
               max_sequence_length=0,
-              learning_rate_fn=None):
+              learning_rate_fn=None,
+              use_safe_embedding_lookup=True):
     return fc_lib.SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,
         combiner=combiner,
         shared_embedding_column_creator=shared_embedding_column_creator,
-        max_norm=None)
+        max_norm=None,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.shared_embedding_column_creator,
+            self.combiner, self._initializer,
+            self._shared_embedding_collection_name, self._max_sequence_length,
+            self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUSharedEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
 
   def __init__(self,
                categorical_column,
@@ -579,7 +639,8 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
                initializer=None,
                shared_embedding_collection_name=None,
                max_sequence_length=0,
-               learning_rate_fn=None):
+               learning_rate_fn=None,
+               use_safe_embedding_lookup=True):
 
     _TPUBaseEmbeddingColumn.__init__(
         self,
@@ -756,7 +817,13 @@ def sparse_embedding_aggregate_slice(params,
     if combiner == 'sum':
       return aggregate_emb
     elif combiner == 'mean':
-      return aggregate_emb / math_ops.reduce_sum(values_mask_broadcast, axis=1)
+      # In the case we have an empty row, both aggregate_emb and
+      # math_ops.reduce_sum(values_mask_broadcast, axis=1) will be 0. Thus,
+      # we can take max it with a non-zero value to prevent NaNs. Note that
+      # math_ops.reduce_sum(values_mask_broadcast, axis=1) will have integer
+      # values so 1.0 is the smallest value.
+      return aggregate_emb / math_ops.maximum(
+          math_ops.reduce_sum(values_mask_broadcast, axis=1), 1.0)
     else:
       raise ValueError('Dense TPU Embedding does not support combiner '
                        'other than sum and mean.')
@@ -800,6 +867,20 @@ def pad_sparse_embedding_lookup_indices(sparse_indices, padded_size):
   return padded_values, padded_mask
 
 
+def _check_invalid_cases(embedding_lookup_device):
+  """Checks for invalid embedding_lookup_device configurations."""
+  if (tpu.under_tpu_inference_context() and
+      embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE):
+    raise ValueError(
+        'Using embedding_lookup_device=tpu_embedding_core during inference '
+        'is not supported.')
+  if embedding_lookup_device == EmbeddingDevice.CPU:
+    if not tpu.under_tpu_inference_context():
+      raise ValueError(
+          'Using TPUEmbeddingColumn with embedding_lookup_device="cpu" '
+          'during training is not supported.')
+
+
 class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
   """TPUEmbeddingColumn which allows serving on TensorCore."""
 
@@ -823,46 +904,108 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
       del kwargs['embedding_lookup_device']
     _TPUEmbeddingColumnV2.__init__(self, *args, **kwargs)
 
-  def create_state(self, state_manager):
-    if (tpu.under_tpu_inference_context() and
-        self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE):
-      raise ValueError(
-          'Using embedding_lookup_device=tpu_embedding_core during inference '
-          'is not supported.')
-    if self._embedding_lookup_device == EmbeddingDevice.CPU:
-      if tpu.under_tpu_inference_context():
-        return fc_lib.EmbeddingColumn.create_state(self, state_manager)
-      else:
-        raise ValueError(
-            'Using TPUEmbeddingColumn with embedding_lookup_device="cpu" '
-            'during training is not supported.')
+  def __deepcopy__(self, memo):
+    return _TPUDeviceSpecificEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()),
+        tensor_core_shape=self._tensor_core_shape,
+        embedding_lookup_device=self._embedding_lookup_device)
 
-    return super(_TPUDeviceSpecificEmbeddingColumnV2,
-                 self).create_state(state_manager)
+  def create_state(self, state_manager):
+    _check_invalid_cases(self._embedding_lookup_device)
+    # CPU case.
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
+      return fc_lib.EmbeddingColumn.create_state(self, state_manager)
+    # TPU_EMBEDDING_CORE case.
+    elif self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE:
+      return super(_TPUDeviceSpecificEmbeddingColumnV2,
+                   self).create_state(state_manager)
+
+    # TPU_EMBEDDING_CORE case.
+    return fc_lib.EmbeddingColumn.create_state(self, state_manager)
 
   def get_dense_tensor(self, transformation_cache, state_manager):
     """Private method that follows get_dense_tensor."""
-
-    # If we aren't inferencing on TensorCore, just delegate to parent.
-    if not tpu.under_tpu_inference_context() or not self._tensor_core_shape:
+    _check_invalid_cases(self._embedding_lookup_device)
+    # CPU Case.
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
       return super(_TPUDeviceSpecificEmbeddingColumnV2,
                    self).get_dense_tensor(transformation_cache, state_manager)
-    sparse_tensor = transformation_cache.get(self.categorical_column.name,
-                                             state_manager)
+    # TPU_EMBEDDING_CORE case.
+    elif self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE:
+      return super(_TPUDeviceSpecificEmbeddingColumnV2,
+                   self).get_dense_tensor(transformation_cache, state_manager)
 
-    # Use outside compile to densify and pad the input tensors.
-    def host_computation():
-      return pad_sparse_embedding_lookup_indices(sparse_tensor,
-                                                 self._tensor_core_shape[1])
+    # TPU_EMBEDDING_CORE cases.
+    if tpu.under_tpu_inference_context():
+      # For inference, use outside compile to densify and pad the input tensors.
+      sparse_tensor = transformation_cache.get(self.categorical_column.name,
+                                               state_manager)
 
-    values, mask = tpu.outside_compilation(host_computation)
+      def host_computation():
+        return pad_sparse_embedding_lookup_indices(sparse_tensor,
+                                                   self._tensor_core_shape[1])
 
-    # Do a dense embedding lookup on TensorCore.
-    embedding_weights = state_manager.get_variable(self, 'embedding_weights')
-    embedding = sparse_embedding_aggregate_slice(embedding_weights,
-                                                 (values, mask),
-                                                 self.get_combiner())
-    return embedding
+      values, mask = tpu.outside_compilation(host_computation)
+    else:
+      # For training, the inputs should already have been densified and padded.
+      values = transformation_cache.get(self.categorical_column.name,
+                                        state_manager)
+      mask = transformation_cache.get(
+          self.categorical_column.name + _TENSOR_CORE_MASK_KEY_SUFFIX,
+          state_manager)
+    embedding_weights = state_manager.get_variable(
+        self, name='embedding_weights')
+    return sparse_embedding_aggregate_slice(embedding_weights, (values, mask),
+                                            self.get_combiner())
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    _check_invalid_cases(self._embedding_lookup_device)
+    # CPU Case.
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
+      return super(_TPUDeviceSpecificEmbeddingColumnV2,
+                   self)._get_dense_tensor(inputs, weight_collections,
+                                           trainable)
+    # TPU_EMBEDDING_CORE case.
+    elif self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE:
+      return super(_TPUDeviceSpecificEmbeddingColumnV2,
+                   self)._get_dense_tensor(inputs, weight_collections,
+                                           trainable)
+
+    # TPU_EMBEDDING_CORE cases.
+    if tpu.under_tpu_inference_context():
+      # For inference, use outside compile to densify and pad the input tensors.
+      sparse_tensor = inputs.get(self.get_feature_key_name())
+
+      def host_computation():
+        return pad_sparse_embedding_lookup_indices(sparse_tensor,
+                                                   self._tensor_core_shape[1])
+
+      values, mask = tpu.outside_compilation(host_computation)
+    else:
+      # For training, the inputs should already have been densified and padded.
+      values = inputs.get(self.get_feature_key_name())
+      mask = inputs.get(self.get_feature_key_name() +
+                        _TENSOR_CORE_MASK_KEY_SUFFIX)
+
+    embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
+    if (weight_collections and
+        ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections):
+      weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+    embedding_weights = variable_scope.get_variable(
+        name='embedding_weights',
+        shape=embedding_shape,
+        dtype=dtypes.float32,
+        initializer=self.initializer,
+        trainable=self.trainable and trainable,
+        collections=weight_collections)
+    return sparse_embedding_aggregate_slice(embedding_weights, (values, mask),
+                                            self.get_combiner())
 
 
 class _TPUSharedDeviceSpecificEmbeddingColumnV2(_TPUSharedEmbeddingColumnV2):
@@ -889,34 +1032,48 @@ class _TPUSharedDeviceSpecificEmbeddingColumnV2(_TPUSharedEmbeddingColumnV2):
       del kwargs['embedding_lookup_device']
     _TPUSharedEmbeddingColumnV2.__init__(self, *args, **kwargs)
 
+  def __deepcopy__(self, memo):
+    return _TPUSharedDeviceSpecificEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()),
+        tensor_core_shape=self._tensor_core_shape,
+        embedding_lookup_device=self._embedding_lookup_device)
+
   def _get_dense_tensor_internal(self, transformation_cache, state_manager):
     """Private method that follows _get_dense_tensor_internal."""
-    if (tpu.under_tpu_inference_context() and
-        self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE):
-      raise ValueError('Using embedding_lookup_device=tpu_embedding_core '
-                       'during inference is not supported.')
-    if self._embedding_lookup_device == EmbeddingDevice.CPU:
-      if tpu.under_tpu_inference_context():
-        return super(_TPUSharedDeviceSpecificEmbeddingColumnV2,
-                     self)._get_dense_tensor_internal(transformation_cache,
-                                                      state_manager)
-      else:
-        raise ValueError(
-            'Using TPUSharedEmbeddingColumn with '
-            'embedding_lookup_device="cpu" during training is not supported.')
-    sparse_tensor = transformation_cache.get(self.categorical_column.name,
-                                             state_manager)
+    _check_invalid_cases(self._embedding_lookup_device)
+    # CPU Case.
+    is_cpu = self._embedding_lookup_device == EmbeddingDevice.CPU
+    is_cpu = is_cpu or _is_running_on_cpu()
+    if is_cpu:
+      return super(_TPUSharedDeviceSpecificEmbeddingColumnV2,
+                   self)._get_dense_tensor_internal(transformation_cache,
+                                                    state_manager)
+    # TPU_EMBEDDING_CORE case.
+    if self._embedding_lookup_device == EmbeddingDevice.TPU_EMBEDDING_CORE:
+      return super(_TPUSharedDeviceSpecificEmbeddingColumnV2,
+                   self)._get_dense_tensor_internal(transformation_cache,
+                                                    state_manager)
 
-    # Use outside compile to densify and pad the input tensors.
-    def host_computation():
-      return pad_sparse_embedding_lookup_indices(sparse_tensor,
-                                                 self._tensor_core_shape[1])
+    # TPU_EMBEDDING_CORE cases.
+    if tpu.under_tpu_inference_context():
+      # For inference, use outside compile to densify and pad the input tensors.
+      sparse_tensor = transformation_cache.get(self.categorical_column.name,
+                                               state_manager)
 
-    values, mask = tpu.outside_compilation(host_computation)
+      def host_computation():
+        return pad_sparse_embedding_lookup_indices(sparse_tensor,
+                                                   self._tensor_core_shape[1])
+
+      values, mask = tpu.outside_compilation(host_computation)
+    else:
+      # For training, the inputs should already have been densified and padded.
+      values = transformation_cache.get(self.categorical_column.name,
+                                        state_manager)
+      mask = transformation_cache.get(
+          self.categorical_column.name + _TENSOR_CORE_MASK_KEY_SUFFIX,
+          state_manager)
 
     # Do a dense embedding lookup on TensorCore.
     embedding_weights = self.shared_embedding_column_creator.embedding_weights
-    embedding = sparse_embedding_aggregate_slice(embedding_weights,
-                                                 (values, mask),
-                                                 self.get_combiner())
-    return embedding
+    return sparse_embedding_aggregate_slice(embedding_weights, (values, mask),
+                                            self.get_combiner())

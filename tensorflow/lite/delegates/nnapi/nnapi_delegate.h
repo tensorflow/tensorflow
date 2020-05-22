@@ -17,13 +17,25 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
+
+namespace delegate {
+namespace nnapi {
+class NNAPIDelegateKernel;
+}  // namespace nnapi
+}  // namespace delegate
+
+using tflite::delegate::nnapi::NNAPIDelegateKernel;
 
 // TFliteDelegate to interface with NNAPI.
 class StatefulNnApiDelegate : public TfLiteDelegate {
@@ -69,13 +81,53 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // kernels, but allowing CPU allows partial acceleration of models. If this
     // is set to true, NNAPI is only used if the whole model is accelerated.
     bool disallow_nnapi_cpu = false;
+
+    // Specifies the max number of partitions to delegate. A value <= 0 means
+    // no limit.
+    // If the delegation of the full set of supported nodes would generate a
+    // number of partition greater than this parameter, only
+    // <max_number_delegated_partitions> of them will be actually accelerated.
+    // The selection is currently done sorting partitions in decreasing order
+    // of number of nodes and selecting them until the limit is reached.
+    int max_number_delegated_partitions = 3;
+
+    // allow fp32 compuation to be run in fp16.
+    bool allow_fp16 = false;
+
+    // Specifies the relative priority for executions of the model.
+    // Available values are {ANEURALNETWORKS_PRIORITY_LOW,
+    // ANEURALNETWORKS_PRIORITY_MEDIUM, ANEURALNETWORKS_PRIORITY_HIGH,
+    // ANEURALNETWORKS_PRIORITY_DEFAULT}.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model. If the device is not able to complete the compilation within the
+    // specified duration, the compilation may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model. If the device is not able to complete the execution within the
+    // specified duration, the execution may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_execution_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution. If a WHILE loop condition model does not output false
+    // within the specified duration, the execution will be aborted. If set to
+    // 0, the default timeout for loops will be used.
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
   };
 
   // Uses default options.
   StatefulNnApiDelegate();
 
+  explicit StatefulNnApiDelegate(const NnApi* nnapi);
+
   // The constructor that accepts options from user.
   explicit StatefulNnApiDelegate(Options options);
+
+  StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
@@ -129,6 +181,13 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
  private:
   // Encapsulates all delegate data.
   struct Data {
+    // Pointer to NNAPI implementation to be used by this delegate as
+    // set when building the StatefulNnApiDelegate instance.
+    // Will generally be the NnApiInstance() singleton but can be overridden
+    // for testing or for users needing to wrap or stub parts of NNAPI.
+    // The ownership of the nnapi instance is left to the caller of
+    // the StatefulNnApiDelegate constructor.
+    const NnApi* nnapi;
     // Preferred Power/perf trade-off.
     Options::ExecutionPreference execution_preference;
     // Selected NNAPI accelerator name.
@@ -141,9 +200,42 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
-    // Constains a non zero value if any NNAPI method call
+    // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
-    int nnapi_errno;
+    int nnapi_errno = ANEURALNETWORKS_NO_ERROR;
+    // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
+    // when trying to understand if all nodes are supported by the target
+    // accelerators.
+    // The key is the index of the first node in the partition.
+    // Couldn't use unique_ptr because of problems building on gcc
+    std::unordered_map<int, NNAPIDelegateKernel*> delegate_state_cache;
+    // Maximum number of NNAPI partition to delegate. Zero or negative means
+    // no limit. Copied from StatefulNnApiDelegate::Options
+    int max_number_delegated_partitions;
+    // allow fp32 computation to be run in fp16.
+    bool allow_fp16;
+    // Specifies the relative priority for executions of the model.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model.
+    uint64_t max_execution_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
+
+    explicit Data(const NnApi* nnapi);
+    ~Data();
+
+    // Caches an initialised NNAPIDelegateKernel.
+    void CacheDelegateKernel(const TfLiteDelegateParams* delegate_params,
+                             NNAPIDelegateKernel* delegate_state);
+    // Returns a cached NNAPIDelegateKernel if available and removes it
+    // from the cache transferring the ownership to the caller.
+    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+        const TfLiteDelegateParams* delegate_params);
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate
@@ -173,6 +265,34 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static void DoFreeBufferHandle(TfLiteContext* context,
                                  TfLiteDelegate* delegate,
                                  TfLiteBufferHandle* handle);
+
+  // Returns the nodes that can be delegated via NNAPI to the accelerator
+  // specified in the delegate options and information about the way the
+  // graph will be partitioned if the supported nodes will be delegated.
+  // Partition information is composed by the number of partitions and
+  // the delegate parameters associated to each partition.
+  // The method also caches in delegate->data the NNApiDelegateKernel instances
+  // that have been created during the device evaluation.
+  // All arguments are expected to be non-null.
+  static TfLiteStatus GetNodesSupportedByAccelerator(
+      TfLiteContext* context, TfLiteDelegate* delegate, const NnApi* nnapi,
+      const std::vector<int>& supported_nodes,
+      std::vector<int>* device_supported_nodes, int* num_partitions,
+      TfLiteDelegateParams** params_array, int* nnapi_errno);
+
+  // Alters the given array of nodes_to_delegate to limit the number of NNAPI
+  // owned partition to be less or equal than num_partitions. If num_partitions
+  // is less or equal to zero the input is left unaltered.
+  // The nodes_to_delegate array is expected to contain at element 0 the number
+  // of nodes to delegate and in remaining elements the set of nodes
+  // that would be delegated to NNAPI if this function wouldn't be
+  // called. It will be altered storing in the first element the count of
+  // nodes to actually delegate and in the remainder of the array the indexes.
+  // The params_array params might be altered during the functions execution.
+  static TfLiteStatus LimitDelegatedPartitions(
+      int max_partitions,
+      std::vector<TfLiteDelegateParams> partition_params_array,
+      std::vector<int>* nodes_to_delegate);
 
   // Delegate data presented through TfLiteDelegate::data_.
   Data delegate_data_;

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -220,6 +221,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   c += "      for (int s = 0; s < src_size.z; ++s) {\n";
   const auto mode = GetFastestZeroMode(device);
+  const bool conditional_read = device.IsMali();
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -229,9 +231,15 @@ std::string GenerateConvolutionTransposedCode(
         c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
              "; addr_" + id + " += dz_" + id + ";\n";
       } else if (manual_clamp) {
-        c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
-             " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" + id +
-             " += dz;\n";
+        if (conditional_read) {
+          c += "        FLT4 src" + id + " = in_x" + xindex + " && in_y" +
+               yindex + " ? " + src_tensor.Read("addr_" + id) +
+               " : (FLT4)(0.0f); addr_" + id + " += dz;\n";
+        } else {
+          c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
+               " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" +
+               id + " += dz;\n";
+        }
       } else {
         c += "        FLT4 src" + id + " = " +
              src_tensor.ReadWHSB("sx" + xindex, "sy" + yindex, "s", batch_id,
@@ -304,7 +312,24 @@ ConvolutionTransposed::ConvolutionTransposed(
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.stride.w, attr.stride.h),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h),
-      block_size_(2, 2, 2) {}
+      block_size_(2, 2, 2) {
+  const bool is_f16 = definition.precision == CalculationsPrecision::F16;
+  if (device.IsMali()) {
+    MaliInfo mali_info = device.GetInfo().mali_info;
+    if (mali_info.IsMidgard()) {
+      block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
+    } else {
+      block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
+    }
+  }
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  if (dst_depth == 1 || dst_depth == 3) {
+    if (!device.IsMali()) {
+      block_size_.y *= block_size_.z;
+    }
+    block_size_.z = 1;
+  }
+}
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
     : GPUOperation(std::move(operation)),
@@ -343,7 +368,8 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
   return *this;
 }
 
-Status ConvolutionTransposed::Compile(const CreationContext& creation_context) {
+absl::Status ConvolutionTransposed::Compile(
+    const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, biases_, *creation_context.device, weights_are_buffer_,
       block_size_, linked_operations_);
@@ -355,7 +381,7 @@ Status ConvolutionTransposed::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status ConvolutionTransposed::BindArguments() {
+absl::Status ConvolutionTransposed::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (weights_are_buffer_) {
@@ -374,34 +400,33 @@ Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvolutionTransposed::GetGridSize() const {
   const int aligned_w = AlignByN(dst_[0]->Width(), stride_.x * block_size_.x);
   const int aligned_h = AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
-  const int grid_x =
-      IntegralDivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(aligned_h, block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.z);
+  const int grid_x = DivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(aligned_h, block_size_.y);
+  const int grid_z = DivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvolutionTransposed::Tune(const TuningParameters& params) {
+absl::Status ConvolutionTransposed::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &work_group_size_);
 }
 
-Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status CreateConvolutionTransposed(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const ConvolutionTransposedAttributes& attr,
-                                   ConvolutionTransposed* result) {
+absl::Status CreateConvolutionTransposed(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr,
+    ConvolutionTransposed* result) {
   *result = ConvolutionTransposed(definition, attr, *creation_context.device);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
@@ -413,8 +438,7 @@ Status CreateConvolutionTransposed(const CreationContext& creation_context,
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

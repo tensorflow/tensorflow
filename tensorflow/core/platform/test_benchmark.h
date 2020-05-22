@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/test_benchmark.h"
+#include "tensorflow/core/platform/google/test_benchmark.h"  // IWYU pragma: export
 #else
-#include "tensorflow/core/platform/default/test_benchmark.h"
+#include "tensorflow/core/platform/default/test_benchmark.h"  // IWYU pragma: export
 #endif  // PLATFORM_GOOGLE
 
 

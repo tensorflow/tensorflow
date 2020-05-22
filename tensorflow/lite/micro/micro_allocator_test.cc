@@ -68,7 +68,8 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor = tflite::testing::Create1dFlatbufferTensor(100);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
@@ -92,7 +93,8 @@ TF_LITE_MICRO_TEST(TestInitializeQuantizedTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateQuantizedFlatbufferTensor(100);
@@ -117,7 +119,8 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateMissingQuantizationFlatbufferTensor(100);
@@ -139,11 +142,15 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
 TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  constexpr size_t arena_size = 1024;
+  constexpr size_t arena_size =
+      760 /* minimal arena size at the time of writting */ +
+      16 /* alignment */ + 100 /* leave some headroom for future proof */;
   uint8_t arena[arena_size];
   tflite::MicroAllocator allocator(&context, model, arena, arena_size,
                                    micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(3, context.tensors_size);
+  TF_LITE_MICRO_EXPECT_EQ(4, context.tensors_size);
+  // Memory planning hasn't been finalized, so the used bytes is unknown.
+  TF_LITE_MICRO_EXPECT_EQ(0, allocator.used_bytes());
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.FinishTensorAllocation());
   // No allocation to be done afterwards.
@@ -153,6 +160,7 @@ TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
   tflite::testing::VerifyMockTensor(&context.tensors[0]);
   tflite::testing::VerifyMockWeightTensor(&context.tensors[1]);
   tflite::testing::VerifyMockTensor(&context.tensors[2]);
+  tflite::testing::VerifyMockTensor(&context.tensors[3]);
 
   TF_LITE_MICRO_EXPECT_NE(context.tensors[1].data.raw,
                           context.tensors[0].data.raw);
@@ -160,6 +168,37 @@ TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
                           context.tensors[0].data.raw);
   TF_LITE_MICRO_EXPECT_NE(context.tensors[1].data.raw,
                           context.tensors[2].data.raw);
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[3].data.raw,
+                          context.tensors[0].data.raw);
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[3].data.raw,
+                          context.tensors[1].data.raw);
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[3].data.raw,
+                          context.tensors[2].data.raw);
+  TF_LITE_MICRO_EXPECT_LE(allocator.used_bytes(), 760 + 100);
+}
+
+TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
+  const tflite::Model* model = tflite::testing::GetSimpleModelWithBranch();
+  TfLiteContext context;
+  constexpr size_t arena_size = 4096;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator allocator(&context, model, arena, arena_size,
+                                   micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.FinishTensorAllocation());
+
+  uint8_t* start = context.tensors[0].data.uint8;
+  // Check test_helpers.cc BuildSimpleModelWithBranch for model structure.
+  // t0 is the first tensor, so place it in offset 0.
+  TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[0].data.uint8 - start);
+  // bytes = 2 * 2 * 3 * sizeof(float32) = 48, same for other tensors.
+  TF_LITE_MICRO_EXPECT_EQ(48, context.tensors[0].bytes);
+  // t1 can't reuse any memory, as n0 requires both t0 and t1.
+  TF_LITE_MICRO_EXPECT_EQ(48, context.tensors[1].data.uint8 - start);
+  // t2 can't reuse any memory, as n1 requires both t0 and t2. Also n2 requires
+  // both t1 and t2.
+  TF_LITE_MICRO_EXPECT_EQ(96, context.tensors[2].data.uint8 - start);
+  // t3 reuses the same memory from t0 as t0 is not an input to any node.
+  TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[3].data.uint8 - start);
 }
 
 TF_LITE_MICRO_TEST(TestFinishComplexTensorAllocation) {

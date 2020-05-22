@@ -85,17 +85,36 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     const std::string test_name = tensorflow::str_util::StringReplace(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(), "/",
         "_", /*replace_all=*/true);
-    root_dir_ = tensorflow::io::JoinPath(
-        ::testing::TempDir(),
-        tensorflow::strings::StrCat("tf_fs_", rng_val_, "_", test_name));
+    if (!cloud_path_.empty()) {
+      // We have to join path for non-local filesystem manually to make sure
+      // that this test will run on Windows since `tensorflow::io::JoinPath`
+      // behaves differently on Windows. `tmp_dir` should be something like
+      // `path/to/tmp/dir/`. After joining path, we will have
+      // /path/to/tmp/dir/tf_fs_rng_name/`
+      root_dir_ = tensorflow::strings::StrCat(
+          "/", tmp_dir_,
+          tensorflow::strings::StrCat("tf_fs_", rng_val_, "_", test_name), "/");
+    } else {
+      root_dir_ = tensorflow::io::JoinPath(
+          tmp_dir_,
+          tensorflow::strings::StrCat("tf_fs_", rng_val_, "_", test_name));
+    }
+    if (!GetParam().empty()) {
+      root_dir_ = tensorflow::strings::StrCat(GetParam(), "://", cloud_path_,
+                                              root_dir_);
+    }
     env_ = Env::Default();
   }
 
   void SetUp() override {
-    if (mkdir(root_dir_.c_str(), 0755) != 0) {
-      int error_code = errno;
-      GTEST_SKIP() << "Cannot create working directory: "
-                   << tensorflow::IOError(root_dir_, error_code);
+    FileSystem* fs = nullptr;
+    Status s = env_->GetFileSystemForFile(root_dir_, &fs);
+    if (fs == nullptr || !s.ok())
+      GTEST_SKIP() << "No filesystem registered: " << s;
+
+    s = fs->CreateDir(root_dir_);
+    if (!s.ok()) {
+      GTEST_SKIP() << "Cannot create working directory: " << s;
     }
   }
 
@@ -115,9 +134,10 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   std::string GetURIForPath(StringPiece path) {
     const std::string translated_name =
         tensorflow::io::JoinPath(root_dir_, path);
-    if (GetParam().empty()) return translated_name;
-
-    return tensorflow::strings::StrCat(GetParam(), "://", translated_name);
+    // We have already checked `GetParam().empty()` in
+    // `ModularFileSystemTest()`. root_dir_ should contain `GetParam() + "://"`
+    // if it isn't empty.
+    return translated_name;
   }
 
   // Converts absolute paths to paths relative to root_dir_.
@@ -133,15 +153,28 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     rng_val_ = distribution(gen);
   }
 
+  static void SetCloudPath(const std::string& cloud_path) {
+    cloud_path_ = cloud_path;
+    if (cloud_path_.back() == '/') cloud_path_.pop_back();
+  }
+
+  static void SetTmpDir(const std::string& tmp_dir) {
+    tmp_dir_ = tmp_dir.empty() ? ::testing::TempDir() : tmp_dir;
+  }
+
  protected:
   Env* env_;
 
  private:
   std::string root_dir_;
   static int rng_val_;
+  static std::string cloud_path_;
+  static std::string tmp_dir_;
 };
 
 int ModularFileSystemTest::rng_val_;
+std::string ModularFileSystemTest::cloud_path_;
+std::string ModularFileSystemTest::tmp_dir_;
 
 // As some of the implementations might be missing, the tests should still pass
 // if the returned `Status` signals the unimplemented state.
@@ -1569,7 +1602,7 @@ TEST_P(ModularFileSystemTest, TestRoundTrip) {
   if (!status.ok())
     GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
-  char scratch[64 /* big enough to accomodate test_data */] = {0};
+  char scratch[64 /* big enough to accommodate test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size(), &result, scratch);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
@@ -1729,6 +1762,20 @@ static bool GetURIScheme(const std::string& scheme) {
   return true;
 }
 
+// This function is used for cloud filesystem
+// `S3` and `GCS` require the `root_dir_` to have bucket name
+// `HDFS` requires the `root_dir` to have namenode
+// `root_dir_ = scheme + "://" cloud_path_ + root_dir_`
+static bool SetCloudPath(const std::string& cloud_path_) {
+  ModularFileSystemTest::SetCloudPath(cloud_path_);
+  return true;
+}
+
+static bool SetTmpDir(const std::string& tmp_dir_) {
+  ModularFileSystemTest::SetTmpDir(tmp_dir_);
+  return true;
+}
+
 }  // namespace
 }  // namespace tensorflow
 
@@ -1741,7 +1788,12 @@ GTEST_API_ int main(int argc, char** argv) {
       tensorflow::Flag("dso", tensorflow::LoadDSO, "",
                        "Path to shared object to load"),
       tensorflow::Flag("scheme", tensorflow::GetURIScheme, "",
-                       "URI scheme to test")};
+                       "URI scheme to test"),
+      tensorflow::Flag("cloud_path", tensorflow::SetCloudPath, "",
+                       "Path for cloud filesystem (namenode for hdfs, "
+                       "bucketname for s3/gcs)"),
+      tensorflow::Flag("tmp_dir", tensorflow::SetTmpDir, "",
+                       "Temporary directory to store test data.")};
   if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
     std::cout << tensorflow::Flags::Usage(argv[0], flag_list);
     return -1;

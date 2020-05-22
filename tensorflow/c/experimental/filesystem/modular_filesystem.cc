@@ -164,16 +164,18 @@ Status ModularFileSystem::GetChildren(const std::string& dir,
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(dir);
-  char** children;
+  // Note that `children` is allocated by the plugin and freed by core
+  // TensorFlow, so we need to use `plugin_memory_free_` here.
+  char** children = nullptr;
   const int num_children =
       ops_->get_children(filesystem_.get(), translated_name.c_str(), &children,
                          plugin_status.get());
   if (num_children >= 0) {
     for (int i = 0; i < num_children; i++) {
       result->push_back(std::string(children[i]));
-      free(children[i]);
+      plugin_memory_free_(children[i]);
     }
-    free(children);
+    plugin_memory_free_(children);
   }
 
   return StatusFromTF_Status(plugin_status.get());
@@ -185,15 +187,17 @@ Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
     return internal::GetMatchingPaths(this, Env::Default(), pattern, result);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  char** matches;
+  // Note that `matches` is allocated by the plugin and freed by core
+  // TensorFlow, so we need to use `plugin_memory_free_` here.
+  char** matches = nullptr;
   const int num_matches = ops_->get_matching_paths(
       filesystem_.get(), pattern.c_str(), &matches, plugin_status.get());
   if (num_matches >= 0) {
     for (int i = 0; i < num_matches; i++) {
       result->push_back(std::string(matches[i]));
-      free(matches[i]);
+      plugin_memory_free_(matches[i]);
     }
-    free(matches);
+    plugin_memory_free_(matches);
   }
 
   return StatusFromTF_Status(plugin_status.get());
@@ -357,7 +361,8 @@ std::string ModularFileSystem::TranslateName(const std::string& name) const {
   CHECK(p != nullptr) << "TranslateName(" << name << ") returned nullptr";
 
   std::string ret(p);
-  free(p);
+  // Since `p` is allocated by plugin, free it using plugin's method.
+  plugin_memory_free_(p);
   return ret;
 }
 
@@ -435,7 +440,25 @@ Status ModularWritableFile::Tell(int64* position) {
 }
 
 Status RegisterFilesystemPlugin(const std::string& dso_path) {
-  return filesystem_registration::RegisterFilesystemPluginImpl(dso_path);
+  // Step 1: Load plugin
+  Env* env = Env::Default();
+  void* dso_handle;
+  TF_RETURN_IF_ERROR(env->LoadLibrary(dso_path.c_str(), &dso_handle));
+
+  // Step 2: Load symbol for `TF_InitPlugin`
+  void* dso_symbol;
+  TF_RETURN_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
+
+  // Step 3: Call `TF_InitPlugin`
+  TF_FilesystemPluginInfo info;
+  memset(&info, 0, sizeof(info));
+  auto TF_InitPlugin =
+      reinterpret_cast<int (*)(TF_FilesystemPluginInfo*)>(dso_symbol);
+  TF_InitPlugin(&info);
+
+  // Step 4: Do the actual registration
+  return filesystem_registration::RegisterFilesystemPluginImpl(&info);
 }
 
 }  // namespace tensorflow

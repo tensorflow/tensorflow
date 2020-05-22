@@ -4094,7 +4094,7 @@ ENTRY main {
 
 TEST_P(HloEvaluatorBf16Test, Bitcast) {
   // Regression test for b/114735354.
-  constexpr absl::string_view hlo_text_base = R"(
+  const absl::string_view hlo_text_base = R"(
 HloModule Bitcast
 
 ENTRY main {
@@ -4121,7 +4121,7 @@ ENTRY main {
 
 // Check that s32 under/overflow doesn't trigger a ubsan failure.
 TEST_F(HloEvaluatorTest, Int32Overflow) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
 HloModule Test
 
 ENTRY main {
@@ -4150,7 +4150,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, GetDimensionSize) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
 HloModule Test
 
 ENTRY main {
@@ -4184,7 +4184,7 @@ ENTRY main {
 
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
 HloModule Test
 
 ENTRY main {
@@ -4211,7 +4211,7 @@ ENTRY main {
 
 // Check that we get a useful error if we pass too many or too few inputs.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongNumberOfInputs) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
 HloModule Test
 
 ENTRY main {
@@ -4233,7 +4233,7 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule FusionInputLayout
 
     fused_computation {
@@ -4255,7 +4255,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
 }
 
 TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule FusionOutputLayout
 
     fused_computation {
@@ -4276,7 +4276,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
 }
 
 TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule MOFusionOutputLayout
 
     fused_computation {
@@ -4301,7 +4301,7 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
 
 // Tests that custom_calls fail to evaluate when no handler is specified.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_NoHandler
     ENTRY kernel_entry {
       parameter.0 = u32[2,2]{1,0} parameter(0)
@@ -4318,7 +4318,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
 
 // Tests when a custom_call handler returns an error.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_HandlerError
     ENTRY kernel_entry {
       parameter.0 = u32[2,2]{1,0} parameter(0)
@@ -4342,7 +4342,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
 // We sum the operands so that we can verify the operand and output literals
 // are properly mapped for access.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_ManyInputs
     ENTRY kernel_entry {
       parameter.0 = u32[1]{0} parameter(0)
@@ -4378,7 +4378,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteF16) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
   HloModule test
 
   ENTRY IsFiniteTest {
@@ -4395,7 +4395,7 @@ TEST_F(HloEvaluatorTest, IsFiniteF16) {
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteBf16) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
   HloModule test
 
   ENTRY IsFiniteTest {
@@ -4414,7 +4414,7 @@ TEST_F(HloEvaluatorTest, IsFiniteBf16) {
 // Check that evaluating `f32[<huge>, 0] iota` doesn't oom (it's an empty
 // array!).
 TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY t {
     ROOT i = f32[1000000000000, 0] iota(), iota_dimension=0
@@ -4427,16 +4427,38 @@ TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
 }
 
 TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
-  constexpr absl::string_view hlo_text = R"(
+  const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY CopyStartCopyDone {
     init = f32[] constant(42.0)
-    copy-start = (f32[]{:S(1)}, u32[]) copy-start(init)
+    copy-start = (f32[]{:S(1)}, f32[], u32[]) copy-start(init)
     ROOT copy-done = f32[] copy-done(copy-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal expected = LiteralUtil::CreateR0<float>(42.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, MapBF16) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  map_computation {
+    p = bf16[] parameter(0)
+    add = bf16[] add(p, p)
+    ROOT conv = f32[] convert(add)
+  }
+
+  ENTRY CopyStartCopyDone {
+    c = bf16[3] constant({1, 2, 3})
+    ROOT map = f32[3] map(c), to_apply=map_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({2.f, 4.f, 6.f});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));

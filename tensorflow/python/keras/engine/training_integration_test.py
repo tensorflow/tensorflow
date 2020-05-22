@@ -150,7 +150,6 @@ class CoreLayerIntegrationTest(keras_parameterized.TestCase):
                             layer_kwargs):
     batch_size = 2
     run_eagerly = testing_utils.should_run_eagerly()
-    experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     def map_fn(_):
       x = keras.backend.random_uniform(shape=data_shape)
@@ -169,12 +168,10 @@ class CoreLayerIntegrationTest(keras_parameterized.TestCase):
     layer = keras.layers.Dense(1, activation=None)(layer)
     model = keras.models.Model(inp, layer)
 
-    model.compile(loss='mse', optimizer='sgd', run_eagerly=run_eagerly,
-                  experimental_run_tf_function=experimental_run_tf_function)
+    model.compile(loss='mse', optimizer='sgd', run_eagerly=run_eagerly)
     model.fit(dataset, verbose=2, epochs=2)
 
-    model.compile(loss='mse', optimizer='sgd', run_eagerly=run_eagerly,
-                  experimental_run_tf_function=experimental_run_tf_function)
+    model.compile(loss='mse', optimizer='sgd', run_eagerly=run_eagerly)
     model.fit(dataset.repeat(2), verbose=2, epochs=2, steps_per_epoch=2)
 
     eval_dataset = dataset_ops.DatasetV2.range(4).map(map_fn).batch(batch_size)

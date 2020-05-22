@@ -36,6 +36,25 @@ filegroup(
     ]),
 )
 
+filegroup(
+    name = "cpu_runtime_srcs",
+    srcs = [
+        "cpu_function_runtime.cc",
+        "executable_run_options.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "cpu_runtime_hdrs",
+    srcs = [
+        "cpu_function_runtime.h",
+        "executable_run_options.h",
+        "types.h",
+    ],
+    visibility = [":friends"],
+)
+
 tf_proto_library_cc(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
@@ -142,7 +161,8 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -232,6 +252,7 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -310,6 +331,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -427,6 +449,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -619,7 +642,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -721,6 +743,7 @@ tf_cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -881,6 +904,7 @@ cc_library(
             ":xla_proto_cc",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
+            "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/container:node_hash_map",
             "@com_google_absl//absl/strings",
@@ -893,7 +917,10 @@ cc_library(
     srcs = ["cpu_function_runtime.cc"],
     hdrs = ["cpu_function_runtime.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:framework_lite"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 tf_cc_test(
@@ -919,6 +946,7 @@ cc_library(
     name = "refcounting_hash_map",
     hdrs = ["refcounting_hash_map.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",

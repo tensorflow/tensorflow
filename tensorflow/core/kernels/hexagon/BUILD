@@ -19,7 +19,7 @@ tf_cc_test(
         "graph_transferer_test.cc",
         "hexagon_graph_execution_test.cc",
     ],
-    data = ["//tensorflow/core:example_parser_configuration_testdata"],
+    data = ["//tensorflow/core/example:example_parser_configuration_testdata"],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",

@@ -34,8 +34,10 @@ struct PassConfig {
         quant_specs(std::move(specs)),
         skip_control_dialect(false),
         form_clusters(false),
-        inline_functions(false),
-        unfold_batch_matmul(true) {}
+        unfold_batch_matmul(true),
+        legalize_tf_while(true),
+        shape_inference(true),
+        runtime_verification(true) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -55,12 +57,17 @@ struct PassConfig {
   // are formed by grouping consecutive ops of the same device, under a
   // `tf_device.launch` op.
   bool form_clusters;
-  // Inline function calls within the main function in the MLIR module, prior
-  // to legalization to TFLite.
-  bool inline_functions;
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
   bool unfold_batch_matmul;
+  // Whether to legalize TF While to TFL While.
+  // Note: This is staging step and will be removed.
+  // TODO(b/137395003): Remove post switching legalization.
+  bool legalize_tf_while;
+  // Whether to do shape inference.
+  bool shape_inference;
+  // Whether to do TFLite runtime verification.
+  bool runtime_verification;
 };
 
 }  // namespace TFL

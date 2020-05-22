@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import test_utils
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.compat import compat
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -34,10 +35,18 @@ DATA_FORMATS = (
     ("_data_format_NCHW", "NCHW"),
 )
 
+DATA_FORMATS_AND_AVG_FACTORS = (
+    ("_data_format_NHWC_no_averaging", "NHWC", 1.0),
+    ("_data_format_NHWC_averaging", "NHWC", 0.6),
+    ("_data_format_NCHW_no_averaging", "NCHW", 1.0),
+    ("_data_format_NCHW_averaging", "NCHW", 0.6),
+)
+
 
 class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
 
-  def _reference_training(self, x, scale, offset, epsilon, data_format):
+  def _reference_training(self, x, scale, offset, old_mean, old_var, epsilon,
+                          exponential_avg_factor, data_format):
     if data_format != "NHWC":
       raise ValueError("data_format must be NHWC, got %s." % data_format)
     x_square = x * x
@@ -49,6 +58,11 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     factor = element_count / max(element_count - 1, 1)
     corrected_var = var * factor
     normalized = (x - mean) / np.sqrt(var + epsilon)
+    if exponential_avg_factor != 1.0:
+      mean = (1.0 -
+              exponential_avg_factor) * old_mean + exponential_avg_factor * mean
+      corrected_var = (1.0 - exponential_avg_factor
+                      ) * old_var + exponential_avg_factor * corrected_var
     return (normalized * scale + offset), mean, var, corrected_var
 
   def _reference_grad(self, x, grad_y, scale, mean, var, epsilon, data_format):
@@ -81,9 +95,11 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(np.float32)
     offset_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
+    exponential_avg_factor = 1.0
     data_format_src = "NHWC"
     y_ref, mean_ref, var_ref, _ = self._reference_training(
-        x_val, scale_val, offset_val, epsilon, data_format_src)
+        x_val, scale_val, offset_val, None, None, epsilon,
+        exponential_avg_factor, data_format_src)
 
     with self.session() as sess, self.test_scope():
       # To avoid constant folding
@@ -114,7 +130,11 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
       })
       self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
 
-  def _testLearning(self, use_gradient_checker, data_format):
+  def _testLearning(self, use_gradient_checker, data_format,
+                    exponential_avg_factor):
+    if not compat.forward_compatible(2020, 3,
+                                     6) and exponential_avg_factor != 1.0:
+      self.skipTest("running average not available.")
     channel = 3
     x_shape = [2, 2, 6, channel]
     scale_shape = [channel]
@@ -122,13 +142,14 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(np.float32)
     offset_val = np.random.random_sample(scale_shape).astype(np.float32)
     mean_val = np.random.random_sample(scale_shape).astype(np.float32)
-    var_val = np.random.random_sample(scale_shape).astype(np.float32)
+    var_val_corr = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
     # When in training mode, fused_batchnorm applies an implicit Bessel's
     # correction. So we have to use the corrected variance here, as well.
     y_ref, mean_ref, _, var_ref_corr = self._reference_training(
-        x_val, scale_val, offset_val, epsilon, data_format_src)
+        x_val, scale_val, offset_val, mean_val, var_val_corr, epsilon,
+        exponential_avg_factor, data_format_src)
 
     with self.session() as sess, self.test_scope():
       # To avoid constant folding
@@ -142,15 +163,38 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
       scale = array_ops.placeholder(np.float32, shape=scale_shape, name="scale")
       offset = array_ops.placeholder(
           np.float32, shape=scale_shape, name="offset")
+      if exponential_avg_factor == 1.0:
+        old_mean = None
+        old_var = None
+      else:
+        old_mean = array_ops.placeholder(
+            np.float32, shape=scale_shape, name="old_mean")
+        old_var = array_ops.placeholder(
+            np.float32, shape=scale_shape, name="old_var")
       y, mean, var = nn.fused_batch_norm(
           t_val,
           scale,
           offset,
-          mean=None,
-          variance=None,
+          mean=old_mean,
+          variance=old_var,
           epsilon=epsilon,
+          exponential_avg_factor=exponential_avg_factor,
           data_format=data_format,
           is_training=True)
+      if exponential_avg_factor == 1.0:
+        feed_dict = {
+            t_val: x_val_converted,
+            scale: scale_val,
+            offset: offset_val,
+        }
+      else:
+        feed_dict = {
+            t_val: x_val_converted,
+            scale: scale_val,
+            offset: offset_val,
+            old_mean: mean_val,
+            old_var: var_val_corr
+        }
       # Check gradient.
       if use_gradient_checker:
         err = gradient_checker.compute_gradient_error(
@@ -158,29 +202,22 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
             x_val_converted.shape,
             y,
             x_val_converted.shape,
-            extra_feed_dict={
-                t_val: x_val_converted,
-                scale: scale_val,
-                offset: offset_val
-            })
+            extra_feed_dict=feed_dict)
         self.assertLess(err, 1e-3)
 
-      y_val, mean_val, var_val = sess.run([y, mean, var], {
-          t_val: x_val_converted,
-          scale: scale_val,
-          offset: offset_val
-      })
-      self.assertAllClose(mean_val, mean_ref, atol=1e-3)
-      self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
-      self.assertAllClose(var_val, var_ref_corr, atol=1e-3)
+      y_tf, mean_tf, var_tf = sess.run([y, mean, var], feed_dict)
+      self.assertAllClose(y_tf, y_ref_converted, atol=1e-3)
+      self.assertAllClose(mean_tf, mean_ref, atol=1e-3)
+      self.assertAllClose(var_tf, var_ref_corr, atol=1e-3)
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testLearning(self, data_format):
-    self._testLearning(False, data_format)
+  @parameterized.named_parameters(*DATA_FORMATS_AND_AVG_FACTORS)
+  def testLearning(self, data_format, exponential_avg_factor):
+    self._testLearning(False, data_format, exponential_avg_factor)
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testLearningWithGradientChecker(self, data_format):
-    self._testLearning(True, data_format)
+  @parameterized.named_parameters(*DATA_FORMATS_AND_AVG_FACTORS)
+  def testLearningWithGradientChecker(self, data_format,
+                                      exponential_avg_factor):
+    self._testLearning(True, data_format, exponential_avg_factor)
 
   @parameterized.named_parameters(*DATA_FORMATS)
   def testGradientTraining(self, data_format):

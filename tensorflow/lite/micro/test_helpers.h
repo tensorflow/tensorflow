@@ -18,8 +18,12 @@ limitations under the License.
 
 // Useful functions for writing tests.
 
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -32,6 +36,12 @@ const Model* GetSimpleMockModel();
 // Returns a flatbuffer TensorFlow Lite model with more inputs, variable
 // tensors, and operators.
 const Model* GetComplexMockModel();
+
+// Returns a simple flatbuffer model with two branches.
+const Model* GetSimpleModelWithBranch();
+
+// Returns a flatbuffer model with `simple_stateful_op`
+const Model* GetSimpleStatefulModel();
 
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
@@ -79,11 +89,6 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(const float* input, uint8_t* quantized,
-                                   TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable = false);
-
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable = false);
@@ -92,10 +97,16 @@ TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(const float* input, int8_t* quantized,
+template <typename T>
+TfLiteTensor CreateQuantizedTensor(const float* input, T* quantized,
                                    TfLiteIntArray* dims, float scale,
                                    int zero_point, const char* name,
-                                   bool is_variable = false);
+                                   bool is_variable = false) {
+  int input_size = ElementCount(*dims);
+  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
+  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name,
+                               is_variable);
+}
 
 TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        TfLiteIntArray* dims, float input_scale,

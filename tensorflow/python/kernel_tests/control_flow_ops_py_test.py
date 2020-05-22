@@ -31,6 +31,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -148,6 +149,14 @@ def filter_test_messages(s):
   """Returns a list of messages printed by enqueue_print_op."""
   prefix = "ControlFlowOpsTest: "
   return [l[len(prefix):] for l in s.split("\n") if l.startswith(prefix)]
+
+
+def tf_function_in_tf2(f):
+  if tf2.enabled():
+    # In TF1 do not wrap with tf.function so that we can test the v1 control
+    # flow code path.
+    return def_function.function(f)
+  return f
 
 
 @test_util.with_control_flow_v2
@@ -800,9 +809,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return control_flow_ops.cond(
           pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
 
+    # This was needed for backwards compatibility with TF2 Estimators which
+    # rely on variable names.
+    prefix = "cond/" if context.executing_eagerly() else ""
+
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+        "Tensor %strue_branch:0 in true_fn is accessed from false_fn." %
+        prefix):
       f()
 
   def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
@@ -827,9 +841,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
            lambda: br4_fn(inputs)])
 
+    # This was needed for backwards compatibility with TF2 Estimators which
+    # rely on variable names.
+    prefix = "switch_case/indexed_case/" if context.executing_eagerly() else ""
     with self.assertRaisesRegexp(
-        ValueError,
-        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+        ValueError, "Tensor %sbr1_identity:0 in branch 1 is "
+        "accessed from branch 4." % prefix):
       f()
 
   def testCondListOutput(self):
@@ -2994,6 +3011,25 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
 
+  @test_util.run_deprecated_v1
+  def testTfFunctionInV1WhileLoop(self):
+
+    # This test specifically tests that creating a Const node inside a
+    # tf.function inside a v1 while_loop while inlining is turned on works.
+    config = opt_cfg()
+    assert config.graph_options.optimizer_options.do_function_inlining
+    with session.Session(config=config):
+
+      @def_function.function
+      def loop_body(i):
+        # Here we create the const.
+        return i + 1.
+
+      loop_cond = lambda i: True
+      x = control_flow_ops.while_loop(
+          loop_cond, loop_body, [0.], maximum_iterations=5)
+      self.assertAllEqual(x, 5.)
+
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 
     with self.cached_session(use_gpu=use_gpu):
@@ -3207,31 +3243,37 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(gradient_checker_v2._to_numpy(var2_grad_val),
                         [3., 0., 0.])
 
-  @test_util.run_deprecated_v1
   def testWhileGrad_Gather(self):
     # NOTE(skyewm): this test is interesting because the gather gradient
     # function returns an IndexedSlices.
-    x = constant_op.constant([1., 1., 1., 1., 1.])
-    y = control_flow_ops.while_loop(
-        lambda i, _: i < 3,
-        lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
-        [0, x[:1]])[1]
-    z = y * 3.0
-    grad = gradients_impl.gradients(z, x)[0]
+    @tf_function_in_tf2
+    def fn():
+      x = constant_op.constant([1., 1., 1., 1., 1.])
+      y = control_flow_ops.while_loop(
+          lambda i, _: i < 3,
+          lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
+          [0, x[:1]])[1]
+      z = y * 3.0
+      grad = gradients_impl.gradients(z, x)[0]
+      return y, grad
+    y, grad = fn()
     self.assertEqual(self.evaluate(y), 8.)
     self.assertAllEqual(self.evaluate(grad), [24., 0., 0., 0., 0.])
 
-  @test_util.run_deprecated_v1
   def testWhileGrad_GatherNoFanOut(self):
     # NOTE(skyewm): this test is interesting because the gather gradient
     # function returns an IndexedSlices.
-    x = constant_op.constant([1., 1., 1., 1., 1.])
-    y = control_flow_ops.while_loop(
-        lambda i, _: i < 3,
-        lambda i, x: (i + 1, array_ops.gather(x, [0])),
-        [0, x[:1]])[1]
-    z = y * 3.0
-    grad = gradients_impl.gradients(z, x)[0]
+    @tf_function_in_tf2
+    def fn():
+      x = constant_op.constant([1., 1., 1., 1., 1.])
+      y = control_flow_ops.while_loop(
+          lambda i, _: i < 3,
+          lambda i, x: (i + 1, array_ops.gather(x, [0])),
+          [0, x[:1]])[1]
+      z = y * 3.0
+      grad = gradients_impl.gradients(z, x)[0]
+      return y, grad
+    y, grad = fn()
     self.assertEqual(self.evaluate(y), 1.)
     self.assertAllEqual(self.evaluate(grad), [3., 0., 0., 0., 0.])
 
@@ -3918,7 +3960,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(32.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
-  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInside(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -3939,7 +3980,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(156.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
-  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInsideNoShape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -3954,11 +3994,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       rx, _ = control_flow_ops.while_loop(c, b, [x, y])
 
-      r = gradients_impl.gradients(rx, y)[0]
+      grad_y = gradients_impl.gradients(rx, y)[0]
+      grad_x = gradients_impl.gradients(rx, x)[0]
       feed_dict = {x: [3.0, 4.0], y: [2.0, 3.0]}
-      self.assertAllClose([0.0, 0.0], sess.run(r, feed_dict=feed_dict))
-      r = gradients_impl.gradients(rx, x)[0]
-      self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
+      self.assertAllClose([0.0, 0.0], sess.run(grad_y, feed_dict=feed_dict))
+      self.assertAllClose([156.0, 400.0], sess.run(grad_x, feed_dict=feed_dict))
       name = "gradients/while/stopped_grad"
       all_ops = x.graph.get_operations()
       self.assertFalse(any(name in op.name for op in all_ops))

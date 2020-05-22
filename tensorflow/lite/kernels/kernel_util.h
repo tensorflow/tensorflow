@@ -82,6 +82,10 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
 }
 
 // Determines whether tensor is constant.
+// TODO(b/138199592): Introduce new query which checks for constant OR
+// persistent-read-only, which would be useful for most tensor kernels that
+// are potentially dynamic based on the input tensor value availability at the
+// time of prepare.
 inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
 }
@@ -96,6 +100,14 @@ inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     tensor->allocation_type = kTfLiteDynamic;
+    tensor->data.raw = nullptr;
+  }
+}
+
+// Sets tensor to persistent and read-only.
+inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
+  if (tensor->allocation_type != kTfLitePersistentRo) {
+    tensor->allocation_type = kTfLitePersistentRo;
     tensor->data.raw = nullptr;
   }
 }

@@ -37,6 +37,10 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kMaxChannels = 256;
 
+// Depthwise conv is quantized along dimension 3:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kDepthwiseConvQuantizedDimension = 3;
+
 // Size of the cached buffer we'll be using to hold reordered weights.
 constexpr int kReshapedFilterDataSize = 1 * 1024;
 
@@ -82,13 +86,14 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift)));
+        reinterpret_cast<int*>(data->per_channel_output_shift), num_channels));
   }
   return kTfLiteOk;
 }
@@ -142,7 +147,7 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
   const int needed_size =
       output_depth * filter_width * filter_height * input_depth;
   if (needed_size > kReshapedFilterDataSize) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "Size too large for reshaped weight buffer (%d needed, %d available)",
         needed_size, kReshapedFilterDataSize);
@@ -292,16 +297,6 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteDepthwiseConvParams* params, OpData* data,
                const TfLiteTensor* input, const TfLiteTensor* filter,
@@ -411,7 +406,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       static bool has_warned = false;
       if (!has_warned) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Multiple depthwise conv ops match optimization parameters, but "
             "only the first will use the fast path, because there's only one "
@@ -468,11 +463,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Depthwise conv is quantized along dimension 3:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+    TF_LITE_ENSURE(
+        context, affine_quantization->scale->size == 1 ||
+                     affine_quantization->scale->size ==
+                         filter->dims->data[kDepthwiseConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
   }
 
@@ -494,8 +489,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantized(context, node, params, &data, input, filter, bias, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -504,11 +499,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {};
-  r.init = depthwise_conv::Init;
-  r.free = depthwise_conv::Free;
-  r.prepare = depthwise_conv::Prepare;
-  r.invoke = depthwise_conv::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/depthwise_conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -24,10 +24,6 @@ namespace tensorflow {
 class FunctionLibraryRuntime;
 class OpKernel;
 
-// Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
-// set.
-bool CanCreateXlaKernel(const NodeDef& node_def);
-
 // Given a supported NodeDef, returns a XlaLaunchOp that computes the node.
 Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
                        std::unique_ptr<OpKernel>* kernel);

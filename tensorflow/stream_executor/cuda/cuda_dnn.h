@@ -19,10 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
@@ -219,16 +219,15 @@ class CudnnSupport : public dnn::DnnSupport {
       Stream* stream, const DeviceMemory<float>& x,
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
-      const DeviceMemory<float>& estimated_variance,
+      const DeviceMemory<float>& estimated_var_iance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::half>& x,
@@ -237,13 +236,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
@@ -535,15 +533,15 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) override;
 
-  bool DoXYPad(Stream* stream, const dnn::BatchDescriptor &dimensions,
-               const DeviceMemory<float> &input_data,
-               int64 left_pad, int64 right_pad, int64 top_pad,
-               int64 bottom_pad, DeviceMemory<float> *output_data) override;
+  bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
+               const DeviceMemory<float>& input_data, int64 left_pad,
+               int64 right_pad, int64 top_pad, int64 bottom_pad,
+               DeviceMemory<float>* output_data) override;
 
-  bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor &dimensions,
-                 const DeviceMemory<float> &input_data,
-                 int64 left_trim, int64 right_trim, int64 top_trim,
-                 int64 bottom_trim, DeviceMemory<float> *output_data) override;
+  bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
+                 const DeviceMemory<float>& input_data, int64 left_trim,
+                 int64 right_trim, int64 top_trim, int64 bottom_trim,
+                 DeviceMemory<float>* output_data) override;
 
   bool DoMemcpyD2HQuantized(Stream* stream,
                             const DeviceMemory<float>& device_unquantized_src,
@@ -572,7 +570,8 @@ class CudnnSupport : public dnn::DnnSupport {
                          DeviceMemoryBase costs_data,
                          const dnn::RnnStateTensorDescriptor& grads_desc,
                          DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8> scratch_memory) override;
+                         DeviceMemory<uint8> scratch_memory,
+                         int ctc_loss_algo_id) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -596,13 +595,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<U>& estimated_variance,
       const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
       DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
       DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<U>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      ScratchAllocator* workspace_allocator);
 
   template <class T, class U>
   port::Status DoBatchNormalizationBackwardImpl(
@@ -692,7 +690,7 @@ class CudnnSupport : public dnn::DnnSupport {
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const CudnnRnnStateTensorDescriptor& grads_desc,
       DeviceMemoryBase grads_data, const CudnnCtcLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory);
+      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
 
  private:
   port::Status DoPrepareForConvolution(
@@ -714,8 +712,8 @@ class CudnnSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator,
-      DeviceMemory<uint8>* scratch_memory) override;
+      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+      int* ctc_loss_algo_id) override;
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };

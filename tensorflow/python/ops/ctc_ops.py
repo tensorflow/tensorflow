@@ -43,6 +43,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -70,6 +71,7 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
+@dispatch.add_dispatch_support
 def ctc_loss(labels,
              inputs=None,
              sequence_length=None,
@@ -284,6 +286,7 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 
 @tf_export("nn.ctc_greedy_decoder")
+@dispatch.add_dispatch_support
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
 
@@ -333,6 +336,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
 
 
 @tf_export(v1=["nn.ctc_beam_search_decoder"])
+@dispatch.add_dispatch_support
 def ctc_beam_search_decoder(inputs,
                             sequence_length,
                             beam_width=100,
@@ -395,6 +399,7 @@ def ctc_beam_search_decoder(inputs,
 
 
 @tf_export("nn.ctc_beam_search_decoder", v1=["nn.ctc_beam_search_decoder_v2"])
+@dispatch.add_dispatch_support
 def ctc_beam_search_decoder_v2(inputs,
                                sequence_length,
                                beam_width=100,
@@ -601,9 +606,18 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
       updates=batch_state_major,
       shape=[batch_size * num_labels, num_frames])
   scatter = array_ops.reshape(scatter, [batch_size, num_labels, num_frames])
+
+  mask = array_ops.ones_like(batch_state_major, dtype=dtypes.bool)
+  mask = array_ops.scatter_nd(
+      indices=indices,
+      updates=mask,
+      shape=[batch_size * num_labels, num_frames])
+  mask = array_ops.reshape(mask, [batch_size, num_labels, num_frames])
+
   scatter = array_ops.where(
-      math_ops.equal(scatter, 0.0),
-      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)), scatter)
+      mask, scatter,
+      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)))
+
   label_olabels = array_ops.transpose(scatter, [2, 0, 1])
   label_olabels = label_olabels[:, :, 1:]
 
@@ -658,6 +672,17 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
     olabel_log_probs = _state_to_olabel(labels, num_labels, fwd_bwd_log_probs)
 
   grad = math_ops.exp(ilabel_log_probs) - math_ops.exp(olabel_log_probs)
+
+  # Applies the sequence mask for the gradient. It is enough to appply the mask
+  # only for ilabel_log_probs because olabel_log_probs already consider the
+  # mask. However, it is just safe and clean to apply it for the gradient.
+  max_logit_length = _get_dim(logits, 0)
+  logit_mask = array_ops.sequence_mask(logit_length, max_logit_length,
+                                       dtypes.float32)
+  logit_mask = array_ops.transpose(logit_mask, perm=[1, 0])
+  logit_mask = array_ops.expand_dims(logit_mask, axis=2)
+  grad *= logit_mask
+
   loss = -log_likelihood
   return loss, grad
 
@@ -711,6 +736,7 @@ def _ctc_loss_shape(op):
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss_v2"])
+@dispatch.add_dispatch_support
 def ctc_loss_v2(labels,
                 logits,
                 label_length,
@@ -805,6 +831,7 @@ def ctc_loss_v2(labels,
 
 
 @tf_export("nn.ctc_loss", v1=[])
+@dispatch.add_dispatch_support
 def ctc_loss_v3(labels,
                 logits,
                 label_length,
@@ -937,7 +964,7 @@ def ctc_loss_dense(labels,
     The dense implementation supports both CPU, GPU and TPU. A fast path is
     provided that significantly improves memory use for large vocabulary if the
     caller preprocesses label sequences to get unique label indices on the CPU
-    (eg. in the data input pipeline) using ctc_ops.unique and simplies this in
+    (eg. in the data input pipeline) using ctc_ops.unique and simplifies this in
     the optional "unique" kwarg. This is especially useful for TPU and GPU but
     also works with if used on CPU.
 
@@ -999,6 +1026,14 @@ def ctc_loss_dense(labels,
 
     if unique:
       unique_y, unique_idx = unique
+      if blank_index != 0:
+        unique_y = array_ops.where(unique_y < blank_index, unique_y + 1,
+                                   unique_y)
+        label_mask_len = math_ops.reduce_max(unique_idx, axis=1) + 1
+        max_label_length = _get_dim(unique_y, 1)
+        label_mask = array_ops.sequence_mask(label_mask_len, max_label_length)
+        unique_y = array_ops.where(label_mask, unique_y,
+                                   array_ops.zeros_like(unique_y))
       args.extend([unique_y, unique_idx])
 
     @custom_gradient.custom_gradient
@@ -1028,6 +1063,7 @@ def ctc_loss_dense(labels,
 
 
 @tf_export("nn.collapse_repeated")
+@dispatch.add_dispatch_support
 def collapse_repeated(labels, seq_length, name=None):
   """Merge repeated labels into single labels.
 
@@ -1098,7 +1134,7 @@ def dense_labels_to_sparse(dense, length):
     length: int tensor of shape [batch] The length of each sequence in dense.
 
   Returns:
-    tf.SparseTensor with values only for the valid elements of sequences.
+    tf.sparse.SparseTensor with values only for the valid elements of sequences.
   """
 
   flat_values = array_ops.reshape(dense, [-1])
@@ -1125,6 +1161,7 @@ def dense_labels_to_sparse(dense, length):
 
 
 @tf_export("nn.ctc_unique_labels")
+@dispatch.add_dispatch_support
 def ctc_unique_labels(labels, name=None):
   """Get unique labels and indices for batched labels for `tf.nn.ctc_loss`.
 

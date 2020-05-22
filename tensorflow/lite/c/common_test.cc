@@ -95,6 +95,7 @@ TEST(Quantization, TestQuantizationFree) {
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;
+  t.dims_signature = nullptr;
   t.quantization.type = kTfLiteAffineQuantization;
   t.sparsity = nullptr;
   auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -110,6 +111,7 @@ TEST(Sparsity, TestSparsityFree) {
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;
+  t.dims_signature = nullptr;
 
   // A dummy CSR sparse matrix.
   t.sparsity = static_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));

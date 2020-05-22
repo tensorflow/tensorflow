@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -24,6 +28,39 @@ limitations under the License.
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
+
+namespace internal {
+
+// A helper class to encapsulate the implementation of APIs in Context.
+// context->impl_ points to an instance of this class.
+// Check tensorflow/lite/c/common.h for detailed descriptions.
+class ContextHelper {
+ public:
+  explicit ContextHelper(ErrorReporter* error_reporter,
+                         MicroAllocator* allocator)
+      : allocator_(allocator), error_reporter_(error_reporter) {}
+
+  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
+                                               void** ptr);
+
+  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
+                                                  size_t bytes,
+                                                  int* buffer_idx);
+
+  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
+
+  static void ReportOpError(struct TfLiteContext* context, const char* format,
+                            ...);
+
+  void SetNodeIndex(int idx) { current_node_idx_ = idx; }
+
+ private:
+  MicroAllocator* allocator_;
+  ErrorReporter* error_reporter_;
+  int current_node_idx_ = -1;
+};
+
+}  // namespace internal
 
 class MicroInterpreter {
  public:
@@ -39,10 +76,15 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
+  ~MicroInterpreter();
+
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
   TfLiteStatus AllocateTensors();
 
+  // In order to support partial graph runs for strided models, this can return
+  // values other than kTfLiteOk and kTfLiteError.
+  // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
   size_t tensors_size() const { return context_.tensors_size; }
@@ -94,14 +136,20 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  ErrorReporter* error_reporter() { return error_reporter_; }
-
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
     return node_and_registrations_[node_index];
   }
+
+  // For debugging only.
+  // Returns the actual used arena in bytes. This method gives the optimal arena
+  // size. It's only available after `AllocateTensors` has been called.
+  // Note that normally `tensor_arena` requires 16 bytes alignment to fully
+  // utilize the space. If it's not the case, the optimial arena size would be
+  // arena_used_bytes() + 16.
+  size_t arena_used_bytes() const { return allocator_.used_bytes(); }
 
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
@@ -109,7 +157,7 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
-  NodeAndRegistration* node_and_registrations_;
+  NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
   const OpResolver& op_resolver_;
@@ -117,13 +165,11 @@ class MicroInterpreter {
   TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
-  bool tensors_prepared_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
+  internal::ContextHelper context_helper_;
 };
 
 }  // namespace tflite

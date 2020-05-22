@@ -32,7 +32,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -51,15 +50,18 @@ class SubclassedModelNoConfig(keras.Model):
     self.a = a
     self.b = b
     self.shared = CustomLayerNoConfig(a, b)
-    self.all_layers = [
+    self.all_layers = []
+
+  def build(self, input_shape):
+    self.all_layers.extend([
         self.shared,
-        CustomLayerWithConfig(a + 1, b + 2),
-        CustomLayerNoConfig(a + 3, b + 4),
+        CustomLayerWithConfig(self.a + 1, self.b + 2),
+        CustomLayerNoConfig(self.a + 3, self.b + 4),
         keras.Sequential([
             # TODO(b/145029112): Bug with losses when there are shared layers.
             # self.shared,  <-- Enable when bug is fixed.
-            CustomLayerNoConfig(a + 5, b + 6)
-        ])]
+            CustomLayerNoConfig(self.a + 5, self.b + 6)])])
+    super(SubclassedModelNoConfig, self).build(input_shape)
 
   def call(self, inputs):
     x = inputs
@@ -88,13 +90,18 @@ class CustomLayerNoConfig(keras.layers.Layer):
     def a_regularizer():
       return self.a * 2
     self.add_loss(a_regularizer)
+    self.sum_metric = keras.metrics.Sum(name='inputs_sum')
+    self.unused_metric = keras.metrics.Sum(name='not_added_to_metrics')
 
   def build(self, input_shape):
     self.c = variables.Variable(
         constant_op.constant(1.0, shape=input_shape[1:]), name=self.name+'_c')
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
+    self.add_metric(self.sum_metric(inputs))
+    self.add_metric(inputs, aggregation='mean', name='mean')
+
     return inputs + self.c
 
 
@@ -121,12 +128,17 @@ class TestModelRevive(keras_parameterized.TestCase):
   def _assert_revived_correctness(self, model, revived):
     self.assertAllEqual(model.input_names, revived.input_names)
     self.assertAllEqual(model.output_names, revived.output_names)
-    self.assertTrue(all([
-        i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
-        for (i, r) in zip(model.inputs, revived.inputs)]))
-    self.assertTrue(all([
-        i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
-        for (i, r) in zip(model.outputs, revived.outputs)]))
+    if model.inputs is not None:
+      self.assertTrue(
+          all([
+              i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
+              for (i, r) in zip(model.inputs, revived.inputs)
+          ]))
+      self.assertTrue(
+          all([
+              i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
+              for (i, r) in zip(model.outputs, revived.outputs)
+          ]))
 
     self.assertAllClose(self.evaluate(model.weights),
                         self.evaluate(revived.weights))
@@ -136,6 +148,11 @@ class TestModelRevive(keras_parameterized.TestCase):
     self.assertAllClose(model(input_arr), revived(input_arr))
     self.assertAllClose(sum(model.losses), sum(revived.losses))
     self.assertAllClose(len(model.losses), len(revived.losses))
+    self.assertEqual(len(model.metrics), len(revived.metrics))
+    # TODO(b/150403085): Investigate why the metric order changes when running
+    # this test in tf-nightly.
+    self.assertAllClose(sorted([m.result() for m in model.metrics]),
+                        sorted([m.result() for m in revived.metrics]))
     model_layers = {layer.name: layer for layer in model.layers}
     revived_layers = {layer.name: layer for layer in revived.layers}
     self.assertAllEqual(model_layers.keys(), revived_layers.keys())
@@ -205,9 +222,8 @@ class TestModelRevive(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(
         layers, input_shape=input_shape)
 
-    # The inputs attribute must be defined in order to save the model.
-    if not model.inputs:
-      model._set_inputs(tensor_spec.TensorSpec((None, 2, 3)))
+    # Run data through the Model to create save spec and weights.
+    model.predict(np.ones((10, 2, 3)), batch_size=10)
 
     # Test that the correct checkpointed values are loaded, whether the layer is
     # created from the config or SavedModel.
@@ -220,7 +236,8 @@ class TestModelRevive(keras_parameterized.TestCase):
 
   def test_revive_subclassed_with_nested_model(self):
     model = SubclassedModelNoConfig(1., 2.)
-    model._set_inputs(tensor_spec.TensorSpec((None, 2, 3)))
+    # Run data through the Model to create save spec and weights.
+    model.predict(np.ones((10, 2, 3)), batch_size=10)
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)

@@ -34,7 +34,7 @@ class EagerOpRewrite {
 
   virtual ~EagerOpRewrite() {}
 
-  // To be implemnted by an Eager op rewrite pass.
+  // To be implemented by an Eager op rewrite pass.
   virtual Status Run(EagerOperation* orig_op,
                      std::unique_ptr<tensorflow::EagerOperation>* out_op) = 0;
 

@@ -5,7 +5,7 @@ op {
     name: "superdiag"
     description: <<END
 Tensor of shape `[..., 1, M]`, representing superdiagonals of
-tri-diagonal matrices to the left of multiplication. Last element is ingored.
+tri-diagonal matrices to the left of multiplication. Last element is ignored.
 END
   }
   in_arg {
@@ -19,7 +19,7 @@ END
     name: "subdiag"
     description: <<END
 Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
-matrices to the left of multiplication. First element is ingored.
+matrices to the left of multiplication. First element is ignored.
 END
   }
   in_arg {

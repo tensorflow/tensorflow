@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -70,7 +71,7 @@ class ParseExampleOp : public OpKernel {
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "dense_keys", &dense_keys_t));
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "sparse_keys", &sparse_keys_t));
     }
-    std::call_once(flag_, [&dense_keys_t, &sparse_keys_t, &ragged_keys_t]() {
+    absl::call_once(flag_, [&dense_keys_t, &sparse_keys_t, &ragged_keys_t]() {
       metrics::RecordParseDenseFeature(dense_keys_t.size());
       metrics::RecordParseSparseFeature(sparse_keys_t.size());
       metrics::RecordParseRaggedFeature(ragged_keys_t.size());
@@ -284,7 +285,7 @@ class ParseExampleOp : public OpKernel {
 
   ParseExampleAttrs attrs_;
   int op_version_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
@@ -434,7 +435,7 @@ class ParseSequenceExampleOp : public OpKernel {
                                      &feature_list_sparse_keys));
       OP_REQUIRES_OK(ctx, ctx->input("feature_list_ragged_keys",
                                      &feature_list_ragged_keys));
-      std::call_once(flag_, [&]() {
+      absl::call_once(flag_, [&]() {
         metrics::RecordParseDenseFeature(
             context_dense_keys->NumElements() +
             feature_list_dense_keys->NumElements());
@@ -568,57 +569,115 @@ class ParseSequenceExampleOp : public OpKernel {
       const Tensor* dense_keys, const Tensor* sparse_keys,
       const Tensor* ragged_keys,
       const OpInputList& context_dense_defaults) const {
+    // Convert the tensors/attrs to ArraySlices once, instead of re-evaluating
+    // them in each loop iteration.
+    gtl::ArraySlice<tstring> dense_keys_slice =
+        dense_keys
+            ? gtl::ArraySlice<tstring>(dense_keys->flat<tstring>().data(),
+                                       attrs_.num_context_dense)
+            : attrs_.context_dense_keys;
+    gtl::ArraySlice<tstring> sparse_keys_slice =
+        sparse_keys
+            ? gtl::ArraySlice<tstring>(sparse_keys->flat<tstring>().data(),
+                                       attrs_.num_context_sparse)
+            : attrs_.context_sparse_keys;
+    gtl::ArraySlice<tstring> ragged_keys_slice =
+        ragged_keys
+            ? gtl::ArraySlice<tstring>(ragged_keys->flat<tstring>().data(),
+                                       attrs_.num_context_ragged)
+            : gtl::ArraySlice<tstring>(nullptr, 0);
+
     example::FastParseExampleConfig config;
+    config.dense.reserve(attrs_.num_context_dense);
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
-      const tstring& key = dense_keys ? dense_keys->flat<tstring>()(d)
-                                      : attrs_.context_dense_keys[d];
-      config.dense.push_back({key, attrs_.context_dense_types[d],
-                              attrs_.context_dense_shapes[d],
-                              context_dense_defaults[d],
-                              false /* attrs_.context_variable_length[d] */,
-                              0 /*attrs_.context_elements_per_stride[d] */});
+      const tstring& key = dense_keys_slice[d];
+      config.dense.emplace_back(key, attrs_.context_dense_types[d],
+                                attrs_.context_dense_shapes[d],
+                                context_dense_defaults[d],
+                                false /* attrs_.context_variable_length[d] */,
+                                0 /*attrs_.context_elements_per_stride[d] */);
     }
+    config.sparse.reserve(attrs_.num_context_sparse);
     for (int d = 0; d < attrs_.num_context_sparse; ++d) {
-      const tstring& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
-                                       : attrs_.context_sparse_keys[d];
-      config.sparse.push_back({key, attrs_.context_sparse_types[d]});
+      const tstring& key = sparse_keys_slice[d];
+      config.sparse.emplace_back(key, attrs_.context_sparse_types[d]);
     }
+    config.ragged.reserve(attrs_.num_context_ragged);
     for (int d = 0; d < attrs_.num_context_ragged; ++d) {
-      config.ragged.push_back({ragged_keys->flat<tstring>()(d),
-                               attrs_.context_ragged_value_types[d],
-                               attrs_.context_ragged_split_types[d]});
+      config.ragged.emplace_back(ragged_keys_slice[d],
+                                 attrs_.context_ragged_value_types[d],
+                                 attrs_.context_ragged_split_types[d]);
     }
     return config;
+  }
+
+  static Tensor ConstructDefaultScalar(DataType dtype) {
+    switch (dtype) {
+      case DT_INT64:
+        return Tensor(static_cast<int64>(0));
+      case DT_FLOAT:
+        return Tensor(static_cast<float>(0.0));
+      case DT_STRING:
+        return Tensor("");
+      default:
+        return Tensor(DT_INVALID);
+    }
   }
 
   example::FastParseExampleConfig MakeFeatureListConfig(
       const Tensor* dense_keys, const Tensor* sparse_keys,
       const Tensor* ragged_keys,
       const Tensor* feature_list_dense_missing_assumed_empty) const {
+    // Convert the tensors/attrs to ArraySlices once, instead of re-evaluating
+    // them in each loop iteration.
+    gtl::ArraySlice<tstring> dense_keys_slice =
+        dense_keys
+            ? gtl::ArraySlice<tstring>(dense_keys->flat<tstring>().data(),
+                                       attrs_.num_feature_list_dense)
+            : attrs_.feature_list_dense_keys;
+    gtl::ArraySlice<tstring> sparse_keys_slice =
+        sparse_keys
+            ? gtl::ArraySlice<tstring>(sparse_keys->flat<tstring>().data(),
+                                       attrs_.num_feature_list_sparse)
+            : attrs_.feature_list_sparse_keys;
+    gtl::ArraySlice<tstring> ragged_keys_slice =
+        ragged_keys
+            ? gtl::ArraySlice<tstring>(ragged_keys->flat<tstring>().data(),
+                                       attrs_.num_feature_list_ragged)
+            : gtl::ArraySlice<tstring>(nullptr, 0);
+    // Use an empty slice to indicate that the map in attrs_ should be used
+    // instead.
+    gtl::ArraySlice<bool> feature_list_dense_missing_assumed_empty_slice =
+        feature_list_dense_missing_assumed_empty
+            ? gtl::ArraySlice<bool>(
+                  feature_list_dense_missing_assumed_empty->flat<bool>().data(),
+                  attrs_.num_feature_list_dense)
+            : gtl::ArraySlice<bool>(nullptr, 0);
+
     example::FastParseExampleConfig config;
+    config.dense.reserve(attrs_.num_feature_list_dense);
     for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
-      const tstring& key = dense_keys ? dense_keys->flat<tstring>()(d)
-                                      : attrs_.feature_list_dense_keys[d];
+      const tstring& key = dense_keys_slice[d];
       bool missing_assumed_empty =
-          feature_list_dense_missing_assumed_empty
-              ? feature_list_dense_missing_assumed_empty->flat<bool>()(d)
+          !feature_list_dense_missing_assumed_empty_slice.empty()
+              ? feature_list_dense_missing_assumed_empty_slice[d]
               : attrs_.feature_list_dense_missing_assumed_empty.count(key) > 0;
       DataType dtype = attrs_.feature_list_dense_types[d];
-      Tensor default_value = Tensor(dtype, TensorShape({}));
-      config.dense.push_back(
-          {key, dtype, attrs_.feature_list_dense_shapes[d], default_value,
-           missing_assumed_empty,
-           0 /*attrs_.feature_list_elements_per_stride[d] */});
+      config.dense.emplace_back(
+          key, dtype, attrs_.feature_list_dense_shapes[d],
+          ConstructDefaultScalar(dtype), missing_assumed_empty,
+          0 /*attrs_.feature_list_elements_per_stride[d] */);
     }
+    config.sparse.reserve(attrs_.num_feature_list_sparse);
     for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
-      const tstring& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
-                                       : attrs_.feature_list_sparse_keys[d];
-      config.sparse.push_back({key, attrs_.feature_list_sparse_types[d]});
+      const tstring& key = sparse_keys_slice[d];
+      config.sparse.emplace_back(key, attrs_.feature_list_sparse_types[d]);
     }
+    config.ragged.reserve(attrs_.num_feature_list_ragged);
     for (int d = 0; d < attrs_.num_feature_list_ragged; ++d) {
-      config.ragged.push_back({ragged_keys->flat<tstring>()(d),
-                               attrs_.feature_list_ragged_value_types[d],
-                               attrs_.feature_list_ragged_split_types[d]});
+      config.ragged.emplace_back(ragged_keys_slice[d],
+                                 attrs_.feature_list_ragged_value_types[d],
+                                 attrs_.feature_list_ragged_split_types[d]);
     }
     return config;
   }
@@ -707,7 +766,7 @@ class ParseSequenceExampleOp : public OpKernel {
 
   ParseSequenceExampleAttrs attrs_;
   int op_version_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSequenceExample").Device(DEVICE_CPU),
@@ -753,7 +812,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         attrs_.num_feature_list_dense);
     std::vector<string> feature_list_sparse_keys_t(
         attrs_.num_feature_list_sparse);
-    std::call_once(
+    absl::call_once(
         flag_, [&context_dense_keys_t, &context_sparse_keys_t,
                 &feature_list_dense_keys_t, &feature_list_sparse_keys_t]() {
           metrics::RecordParseDenseFeature(context_dense_keys_t.size() +
@@ -891,9 +950,6 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
                                          &feature_list_dense_values));
 
-#ifdef TENSORFLOW_LITE_PROTOS
-    SequenceExample ex;
-#else
     // Allocate the SequenceExample on an arena. Provides better memory locality
     // and greatly speeds up destruction.
     protobuf::ArenaOptions options;
@@ -906,7 +962,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     options.max_block_size = std::max(options.max_block_size, block_size);
     protobuf::Arena arena(options);
     auto& ex = *protobuf::Arena::CreateMessage<SequenceExample>(&arena);
-#endif
+
     OP_REQUIRES(
         ctx, ParseProtoUnlimited(&ex, serialized_t()),
         errors::InvalidArgument("Could not parse example input, value: '",
@@ -1129,7 +1185,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
 
  protected:
   ParseSingleSequenceExampleAttrs attrs_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),

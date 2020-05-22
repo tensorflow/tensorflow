@@ -29,8 +29,24 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 
+# Image preprocessing layers.
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import CenterCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomFlip
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomContrast
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomHeight
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomRotation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomTranslation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomWidth
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomZoom
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Resizing
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
+
 # Preprocessing layers.
 if tf2.enabled():
+  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
+  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding as CategoryEncodingV1
+  CategoryEncodingV2 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
   NormalizationV2 = Normalization
@@ -38,13 +54,17 @@ if tf2.enabled():
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
   TextVectorizationV2 = TextVectorization
 else:
+  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding
+  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding as CategoryEncodingV2
+  CategoryEncodingV1 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
   NormalizationV1 = Normalization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
+from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
+from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
@@ -58,6 +78,7 @@ from tensorflow.python.keras.layers.advanced_activations import Softmax
 from tensorflow.python.keras.layers.convolutional import Conv1D
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.keras.layers.convolutional import Conv3D
+from tensorflow.python.keras.layers.convolutional import Conv1DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv2DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv3DTranspose
 from tensorflow.python.keras.layers.convolutional import SeparableConv1D
@@ -106,6 +127,9 @@ from tensorflow.python.keras.layers.dense_attention import Attention
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
+# Einsum-based dense layer/
+from tensorflow.python.keras.layers.einsum_dense import EinsumDense
+
 # Locally-connected layers.
 from tensorflow.python.keras.layers.local import LocallyConnected1D
 from tensorflow.python.keras.layers.local import LocallyConnected2D
@@ -135,6 +159,8 @@ from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
 from tensorflow.python.keras.layers.normalization import LayerNormalization
+from tensorflow.python.keras.layers.normalization_v2 import SyncBatchNormalization
+
 if tf2.enabled():
   from tensorflow.python.keras.layers.normalization_v2 import BatchNormalization
   from tensorflow.python.keras.layers.normalization import BatchNormalization as BatchNormalizationV1
@@ -228,8 +254,27 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 
 # Serialization functions
+from tensorflow.python.keras.layers import serialization
 from tensorflow.python.keras.layers.serialization import deserialize
 from tensorflow.python.keras.layers.serialization import serialize
+
+
+class VersionAwareLayers(object):
+  """Utility to be used internally to access layers in a V1/V2-aware fashion.
+
+  When using layers within the Keras codebase, under the constraint that
+  e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
+  corresponding to the current runtime (TF1 or TF2), do not simply access
+  `layers.BatchNormalization` since it would ignore e.g. an early
+  `compat.v2.disable_v2_behavior()` call. Instead, use an instance
+  of `VersionAwareLayers` (which you can use just like the `layers` module).
+  """
+
+  def __getattr__(self, name):
+    serialization.populate_deserializable_objects()
+    if name in serialization.LOCAL.ALL_OBJECTS:
+      return serialization.LOCAL.ALL_OBJECTS[name]
+    return super(VersionAwareLayers, self).__getattr__(name)
 
 del absolute_import
 del division

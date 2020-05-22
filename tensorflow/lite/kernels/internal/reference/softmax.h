@@ -15,10 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 
+#include <limits>
+#include <vector>
+
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -43,27 +46,27 @@ inline void Softmax(const SoftmaxParams& params,
       max = std::max(max, input_data[i * depth + c]);
     }
 
-    // TODO(b/148114827): Improve this code.
     // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      sum += std::exp(static_cast<double>(input_data[i * depth + c] - max) *
-                      params.beta);
+      sum += std::exp((input_data[i * depth + c] - max) *
+                      static_cast<float>(params.beta));
     }
 
     // Compute result.
     for (int c = 0; c < depth; ++c) {
-      output_data[i * depth + c] =
-          std::exp(static_cast<double>(input_data[i * depth + c] - max) *
-                   params.beta) /
-          static_cast<double>(sum);
+      output_data[i * depth + c] = std::exp((input_data[i * depth + c] - max) *
+                                            static_cast<float>(params.beta)) /
+                                   sum;
     }
   }
 }
 
+// Quantized softmax with int8/uint8 input and int8/uint8/int16 output.
+template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const uint8* input_data,
-                    const RuntimeShape& output_shape, uint8* output_data) {
+                    const RuntimeShape& input_shape, const InputT* input_data,
+                    const RuntimeShape& output_shape, OutputT* output_data) {
   const int32 input_beta_multiplier = params.input_multiplier;
   const int32 input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
@@ -86,7 +89,7 @@ inline void Softmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    uint8 max_in_row = 0;
+    InputT max_in_row = std::numeric_limits<InputT>::min();
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
@@ -122,48 +125,98 @@ inline void Softmax(const SoftmaxParams& params,
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         int32 unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), num_bits_over_unit + 31 - 8);
+            (shifted_scale * exp_in_0).raw(),
+            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
 
-        output_data[i * depth + c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)),
-                     static_cast<int32>(0)));
+        const int32 shifted_output =
+            unsat_output +
+            static_cast<int32>(std::numeric_limits<OutputT>::min());
 
+        output_data[i * depth + c] = static_cast<OutputT>(std::max(
+            std::min(shifted_output,
+                     static_cast<int32>(std::numeric_limits<OutputT>::max())),
+            static_cast<int32>(std::numeric_limits<OutputT>::min())));
       } else {
-        output_data[i * depth + c] = 0;
+        output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
       }
     }
   }
 }
 
-// Performs softmax along the input of size (input_size * batch_size).
-inline void Softmax(const float* in, const int input_size, const int batch_size,
-                    const float beta, float* out) {
-  //  TF_LITE_ASSERT(input_size > 0);
+// Quantized softmax with int16 input and int16 output.
+inline void SoftmaxInt16(const SoftmaxParams& params,
+                         const RuntimeShape& input_shape,
+                         const int16_t* input_data,
+                         const RuntimeShape& output_shape,
+                         int16_t* output_data) {
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  // For each batch
-  for (int b = 0; b < batch_size; b++) {
-    // Find the max coeff.
-    float max_coeff = in[0];
-    for (int i = 1; i < input_size; i++) {
-      if (in[i] > max_coeff) max_coeff = in[i];
+  for (int i = 0; i < outer_size; ++i) {
+    // Find the largest element
+    int16_t max_in_row = std::numeric_limits<int16_t>::min();
+    for (int c = 0; c < depth; ++c) {
+      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
 
-    // Compute the normalized sum of exps.
-    float exp_sum = 0.0;
-    for (int i = 0; i < input_size; i++) {
-      out[i] = std::exp((in[i] - max_coeff) * beta);
-      exp_sum += out[i];
+    // Compute exp(input - max_input)
+    std::vector<int16_t> exp_result_Q015(depth);
+    for (int c = 0; c < depth; ++c) {
+      int32_t input_diff = input_data[i * depth + c] - max_in_row;
+      // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
+      int32_t scaled_diff = MultiplyByQuantizedMultiplier(
+          input_diff, params.input_multiplier, params.input_left_shift);
+      // recenter to [-32768, 32767]
+      int32_t sym_scaled_diff = scaled_diff + 32767;
+      int16_t sat_sym_scaled_diff =
+          std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
+                   static_cast<int32_t>(32767));
+      // apply the exp() LUT activation function
+      exp_result_Q015[c] =
+          generic_int16_table_lookup(sat_sym_scaled_diff, params.exp_lut);
     }
 
-    // Divide by the sum of exps.
-    float reciprocal_sum_exp = 1.f / exp_sum;
-    for (int i = 0; i < input_size; i++) {
-      out[i] *= reciprocal_sum_exp;
+    // sum_of_exps is a Q16.15 fixed point format.
+    int32_t sum_of_exps = 0;
+    for (int c = 0; c < depth; ++c) {
+      // Q16.15 + Q0.15
+      sum_of_exps += exp_result_Q015[c];
     }
 
-    // Advance in and out pointers for the next batch.
-    in += input_size;
-    out += input_size;
+    // Compute the reciprocal 1/sum_of_exps
+    uint8_t headroom_plus_one =
+        CountLeadingZeros(static_cast<uint32_t>(sum_of_exps));
+    int32_t shifted_sum =
+        ((static_cast<int64_t>(sum_of_exps) << (headroom_plus_one - 1)) +
+         (1 << 13)) >>
+        14;
+    // since the LUT computes 1/(1 + x) we need to first compute x = (sum - 1).
+    // also, the LUT expects a symmetrical input, so we must also recenter x
+    // from [0, 65535] to [-32768, 32767].
+    int32_t sym_shifted_sum = shifted_sum + (-((1 << 15) + (1 << 16)));
+    int16_t sat_sym_shifted_sum = static_cast<int16_t>(
+        std::min(std::max(sym_shifted_sum, static_cast<int32_t>(-32768)),
+                 static_cast<int32_t>(32767)));
+    // apply 1/(1 + x) LUT activation function
+    int16_t reciprocal_scale_Q015 = generic_int16_table_lookup(
+        sat_sym_shifted_sum, params.one_over_one_plus_x_lut);
+
+    // Rescale the exp_result with reciprocal
+    // range of output is [0, 32767] correspond to [0.0, 1.0]
+    for (int c = 0; c < depth; ++c) {
+      uint8_t right_shift = 31 - headroom_plus_one;
+      int64_t round = 1 << (right_shift - 1);
+      int32_t result = (static_cast<int64_t>(exp_result_Q015[c]) *
+                            static_cast<int64_t>(reciprocal_scale_Q015) +
+                        round) >>
+                       right_shift;
+      output_data[i * depth + c] = static_cast<int16_t>(
+          std::min(std::max(result, static_cast<int32_t>(0)),
+                   static_cast<int32_t>(32767)));
+    }
   }
 }
 

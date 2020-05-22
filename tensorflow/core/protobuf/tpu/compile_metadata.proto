@@ -55,6 +55,10 @@ message TPUCompileMetadataProto {
 
     // Whether this argument is placed on fast memory or not.
     bool fast_mem = 7;
+
+    // Whether to let XLA to decide the layout during compilation, as opposed to
+    // using a fixed layout determined by the shape.
+    bool unrestricted_layout = 9;
   }
   repeated Arg args = 1;
 
@@ -86,7 +90,7 @@ message TPUCompileMetadataProto {
   string session_handle = 9;
 
   // Fingerprint of guaranteed_const value. The fingerprint computation inside
-  // tpu_compile_op may be slow. The compuation can be avoided by setting the
+  // tpu_compile_op may be slow. The computation can be avoided by setting the
   // fingerprint value here.
   string guaranteed_const_fingerprint = 10;
 

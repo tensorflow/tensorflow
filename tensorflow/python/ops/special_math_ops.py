@@ -38,30 +38,39 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_special_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
 @tf_export('math.lbeta', v1=['math.lbeta', 'lbeta'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('lbeta')
 def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
-  Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
+  Given one-dimensional $z = [z_1,...,z_K]$, we define
 
-  $$Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)$$
+  $$Beta(z) = \frac{\prod_j \Gamma(z_j)}{\Gamma(\sum_j z_j)},$$
 
-  And for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  $$lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)$$.
+  where $\Gamma$ is the gamma function.
 
-  In other words, the last dimension is treated as the `z` vector.
+  And for $n + 1$ dimensional $x$ with shape $[N_1, ..., N_n, K]$, we define
 
-  Note that if `z = [u, v]`, then
-  \\(Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt\\), which defines the
-  traditional bivariate beta function.
+  $$lbeta(x)[i_1, ..., i_n] = \log{|Beta(x[i_1, ..., i_n, :])|}.$$
+
+  In other words, the last dimension is treated as the $z$ vector.
+
+  Note that if $z = [u, v]$, then
+
+  $$Beta(z) = \frac{\Gamma(u)\Gamma(v)}{\Gamma(u + v)}
+    = \int_0^1 t^{u-1} (1 - t)^{v-1} \mathrm{d}t,$$
+
+  which defines the traditional bivariate beta function.
 
   If the last dimension is empty, we follow the convention that the sum over
   the empty set is zero, and the product is one.
@@ -94,7 +103,155 @@ def lbeta(x, name=None):
     return result
 
 
+@tf_export('math.special.dawsn')
+@dispatch.add_dispatch_support
+def dawsn(x, name=None):
+  """Computes Dawson's integral of `x` element-wise.
+
+  Dawson's integral is defined as `exp(-x**2)` times the integral of
+  `exp(t**2)` from `0` to `x`, with the domain of definition all real numbers.
+
+  Dawson's function is odd.
+  >>> tf.math.special.dawsn([-1., -0.5, 0.5, 1.]).numpy()
+  array([-0.5380795, -0.4244364, 0.4244364,  0.5380795], dtype=float32)
+
+  This implementation is based off of the Cephes math library.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types:
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.dawsn
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'dawsn', [x]):
+    return gen_special_math_ops.dawsn(x)
+
+
+@tf_export('math.special.expint')
+@dispatch.add_dispatch_support
+def expint(x, name=None):
+  """Computes the Exponential integral of `x` element-wise.
+
+  The Exponential integral is defined as the integral of `exp(t) / t` from
+  `-inf` to `x`, with the domain of definition all positive real numbers.
+
+  >>> tf.math.special.expint([1., 1.1, 2.1, 4.1]).numpy()
+  array([ 1.8951179,  2.1673784,  5.3332353, 21.048464], dtype=float32)
+
+  This implementation is based off of the Cephes math library.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types:
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.expi
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'expint', [x]):
+    return gen_special_math_ops.expint(x)
+
+
+@tf_export('math.special.fresnel_cos')
+@dispatch.add_dispatch_support
+def fresnel_cos(x, name=None):
+  """Computes Fresnel's cosine integral of `x` element-wise.
+
+  The Fresnel cosine integral is defined as the integral of `cos(t^2)` from
+  `0` to `x`, with the domain of definition all real numbers.
+
+  The Fresnel cosine integral is odd.
+  >>> tf.math.special.fresnel_cos([-1., -0.1, 0.1, 1.]).numpy()
+  array([-0.7798934 , -0.09999753,  0.09999753,  0.7798934 ], dtype=float32)
+
+  This implementation is based off of the Cephes math library.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types:
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.fresnel second output.
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'fresnel_cos', [x]):
+    return gen_special_math_ops.fresnel_cos(x)
+
+
+@tf_export('math.special.fresnel_sin')
+@dispatch.add_dispatch_support
+def fresnel_sin(x, name=None):
+  """Computes Fresnel's sine integral of `x` element-wise.
+
+  The Fresnel sine integral is defined as the integral of `sin(t^2)` from
+  `0` to `x`, with the domain of definition all real numbers.
+
+  >>> tf.math.special.fresnel_sin([-1., -0.1, 0.1, 1.]).numpy()
+  array([-0.43825912, -0.00052359,  0.00052359,  0.43825912], dtype=float32)
+
+  This implementation is based off of the Cephes math library.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types:
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.fresnel first output.
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'fresnel_sin', [x]):
+    return gen_special_math_ops.fresnel_sin(x)
+
+
+@tf_export('math.special.spence')
+@dispatch.add_dispatch_support
+def spence(x, name=None):
+  """Computes Spence's integral of `x` element-wise.
+
+  Spence's integral is defined as the integral of `log(t) / (1 - t)` from
+  `1` to `x`, with the domain of definition all non-negative real numbers.
+
+  >>> tf.math.special.spence([0.5, 1., 2., 3.]).numpy()
+  array([ 0.58224034,  0.        , -0.82246685, -1.4367464], dtype=float32)
+
+  This implementation is based off of the Cephes math library.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types:
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.spence
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'spence', [x]):
+    return gen_special_math_ops.spence(x)
+
+
 @tf_export('math.bessel_i0')
+@dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
 
@@ -119,6 +276,7 @@ def bessel_i0(x, name=None):
 
 
 @tf_export('math.bessel_i1')
+@dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
 
@@ -176,6 +334,7 @@ def _enclosing_tpu_context():
 
 
 @tf_export('einsum', 'linalg.einsum')
+@dispatch.add_dispatch_support
 def einsum(equation, *inputs, **kwargs):
   """Tensor contraction over specified indices and outer product.
 

@@ -64,7 +64,7 @@ class DataLoader(object):
     return data, label, length
 
   def pad(self, data, seq_length, dim):
-    """Get neighboor padding."""
+    """Get neighbour padding."""
     noise_level = 20
     padded_data = []
     # Before- Neighbour padding

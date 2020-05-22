@@ -54,8 +54,8 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
 #endif
 
     g_PreviousCommandTimestamp = current_time;
-    error_reporter->Report("\nHeard %s (%d) @%dms", found_command, score,
-                           current_time);
+    TF_LITE_REPORT_ERROR(error_reporter, "\nHeard %s (%d) @%dms", found_command,
+                         score, current_time);
 
 #if USE_MAYA
     uint32_t delay = 60;

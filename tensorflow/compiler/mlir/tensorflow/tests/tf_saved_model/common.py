@@ -29,7 +29,7 @@ from absl import flags
 from absl import logging
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_mlir  # pylint: disable=g-direct-tensorflow-import
 
 # Use /tmp to make debugging the tests easier (see README.md)
 flags.DEFINE_string('save_model_path', '',
@@ -84,13 +84,13 @@ def do_test(create_module_fn, exported_names=None, show_debug_info=False):
     tf.saved_model.save(
         create_module_fn(), save_model_path, options=save_options)
     logging.info('Saved model to: %s', save_model_path)
-    mlir = pywrap_tensorflow.experimental_convert_saved_model_to_mlir(
+    mlir = pywrap_mlir.experimental_convert_saved_model_to_mlir(
         save_model_path, ','.join(exported_names), show_debug_info)
     # We don't strictly need this, but it serves as a handy sanity check
     # for that API, which is otherwise a bit annoying to test.
     # The canonicalization shouldn't affect these tests in any way.
-    mlir = pywrap_tensorflow.experimental_run_pass_pipeline(
-        mlir, 'canonicalize', show_debug_info)
+    mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',
+                                                      show_debug_info)
     print(mlir)
 
   app.run(app_main)

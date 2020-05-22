@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 
+#include <cstring>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -29,15 +32,22 @@ namespace tflite {
 // Op versions discussed in this file are enumerated here:
 // tensorflow/lite/tools/versioning/op_version.cc
 
+inline int MicroOpResolverAnyVersion() { return 0; }
+
 template <unsigned int tOpCount = TFLITE_REGISTRATIONS_MAX>
 class MicroOpResolver : public OpResolver {
  public:
+  explicit MicroOpResolver(ErrorReporter* error_reporter = nullptr)
+      : error_reporter_(error_reporter) {}
+
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                                    int version) const override {
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == op) &&
-          (registration.version == version)) {
+          (registration.version == MicroOpResolverAnyVersion() ||
+           version == MicroOpResolverAnyVersion() ||
+           registration.version == version)) {
         return &registration;
       }
     }
@@ -49,46 +59,79 @@ class MicroOpResolver : public OpResolver {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
           (strcmp(registration.custom_name, op) == 0) &&
-          (registration.version == version)) {
+          (registration.version == MicroOpResolverAnyVersion() ||
+           version == MicroOpResolverAnyVersion() ||
+           registration.version == version)) {
         return &registration;
       }
     }
     return nullptr;
   }
 
-  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration,
-                  int min_version = 1, int max_version = 1) {
-    for (int version = min_version; version <= max_version; ++version) {
-      if (registrations_len_ >= tOpCount) {
-        // TODO(b/147748244) - Add error reporting hooks so we can report this!
-        return;
+  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
+                          TfLiteRegistration* registration, int version = 1) {
+    if (registrations_len_ >= tOpCount) {
+      if (error_reporter_) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Couldn't register builtin op #%d, resolver size "
+                             "is too small (%d)",
+                             op, tOpCount);
       }
-      TfLiteRegistration* new_registration =
-          &registrations_[registrations_len_];
-      registrations_len_ += 1;
-
-      *new_registration = *registration;
-      new_registration->builtin_code = op;
-      new_registration->version = version;
+      return kTfLiteError;
     }
+    TfLiteRegistration* new_registration = &registrations_[registrations_len_];
+    registrations_len_ += 1;
+
+    *new_registration = *registration;
+    new_registration->builtin_code = op;
+    new_registration->version = version;
+
+    return kTfLiteOk;
   }
 
-  void AddCustom(const char* name, TfLiteRegistration* registration,
-                 int min_version = 1, int max_version = 1) {
+  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
+                          TfLiteRegistration* registration, int min_version,
+                          int max_version) {
     for (int version = min_version; version <= max_version; ++version) {
-      if (registrations_len_ >= tOpCount) {
-        // TODO(b/147748244) - Add error reporting hooks so we can report this!
-        return;
+      TfLiteStatus add_status = AddBuiltin(op, registration, version);
+      if (add_status != kTfLiteOk) {
+        return add_status;
       }
-      TfLiteRegistration* new_registration =
-          &registrations_[registrations_len_];
-      registrations_len_ += 1;
-
-      *new_registration = *registration;
-      new_registration->builtin_code = BuiltinOperator_CUSTOM;
-      new_registration->custom_name = name;
-      new_registration->version = version;
     }
+    return kTfLiteOk;
+  }
+
+  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
+                         int version = 1) {
+    if (registrations_len_ >= tOpCount) {
+      if (error_reporter_) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Couldn't register custom op '%s', resolver size is too small (%d)",
+            name, tOpCount);
+      }
+      return kTfLiteError;
+    }
+    TfLiteRegistration* new_registration = &registrations_[registrations_len_];
+    registrations_len_ += 1;
+
+    *new_registration = *registration;
+    new_registration->builtin_code = BuiltinOperator_CUSTOM;
+    new_registration->custom_name = name;
+    new_registration->version = version;
+
+    return kTfLiteOk;
+  }
+
+  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
+                         int min_version, int max_version) {
+    for (int version = min_version; version <= max_version; ++version) {
+      TfLiteStatus add_status = AddCustom(name, registration, version);
+      if (add_status != kTfLiteOk) {
+        return add_status;
+      }
+    }
+    return kTfLiteOk;
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }
@@ -96,6 +139,7 @@ class MicroOpResolver : public OpResolver {
  private:
   TfLiteRegistration registrations_[tOpCount];
   unsigned int registrations_len_ = 0;
+  ErrorReporter* error_reporter_;
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

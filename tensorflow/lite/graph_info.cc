@@ -17,32 +17,10 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/context_util.h"
 
 namespace tflite {
-
 namespace {
-
-// Provide a range iterable wrapper for TfLiteIntArray* (C lists that TfLite
-// C api uses. Can't use the google array_view, since we can't depend on even
-// absl for embedded device reasons.
-// TODO(aselle): Move this into central utilities.
-class TfLiteIntArrayView {
- public:
-  // Construct a view of a TfLiteIntArray*. Note, `int_array` should be non-null
-  // and this view does not take ownership of it.
-  explicit TfLiteIntArrayView(const TfLiteIntArray* int_array)
-      : int_array_(int_array) {}
-
-  typedef const int* const_iterator;
-  const_iterator begin() const { return int_array_->data; }
-  const_iterator end() const { return &int_array_->data[int_array_->size]; }
-
-  TfLiteIntArrayView(const TfLiteIntArrayView&) = default;
-  TfLiteIntArrayView& operator=(const TfLiteIntArrayView& rhs) = default;
-
- private:
-  const TfLiteIntArray* int_array_;
-};
 
 // Helper class that actually performs partitioning by node sub set.
 // Outputs to a provided `NodeSubset` structure.
@@ -213,11 +191,11 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   std::vector<NodeSubset>* node_subsets_;
   std::vector<NodeSubset::Type> node_type_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned, kEpochNotReady if it
-  // is an input or constant.
+  // negative values of kEpochNotReady if not assigned, kEpochAlwaysReady if it
+  // is an input to the whole model or a constant that has no dependencies.
   std::vector<int> tensor_epochs_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned.
+  // negative values of kEpochNotReady if not assigned.
   std::vector<int> node_epochs_;
 };
 

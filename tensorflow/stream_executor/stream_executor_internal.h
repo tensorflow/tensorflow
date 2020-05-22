@@ -286,8 +286,9 @@ class StreamExecutorInterface {
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
-                         void **mem, size_t *bytes) {
+  virtual bool GetSymbol(const std::string &symbol_name,
+                         ModuleHandle module_handle, void **mem,
+                         size_t *bytes) {
     return false;
   }
 

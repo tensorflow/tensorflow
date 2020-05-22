@@ -1,0 +1,14 @@
+op {
+  name: "InfeedEnqueuePrelinearizedBuffer"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

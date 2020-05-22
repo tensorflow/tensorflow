@@ -183,8 +183,8 @@ bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
 TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
     const CustomOpMap& custom_op_map,
-    absl::flat_hash_map<int32_t, TensorT*>* tensor_map) {
-  SubGraphT* subgraph = model->subgraphs.at(0).get();
+    absl::flat_hash_map<int32_t, TensorT*>* tensor_map, int subgraph_index) {
+  SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
   const OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
 
   std::vector<int32_t> op_input_indices =
@@ -259,10 +259,14 @@ void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
   tensor_raw->name = name;
   tensor_raw->shape = shape;
+  if (!shape_signature.empty()) {
+    tensor_raw->shape_signature = shape_signature;
+  }
 
   tensor->reset(tensor_raw);
 }
@@ -346,112 +350,107 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
-  // TODO(suharshs): When models support multiple subgraphs, add support.
-  if (model->subgraphs.size() != 1) {
-    LOG(ERROR) << "Quantize weights tool only supports tflite models with one "
-                  "subgraph.";
-    return kTfLiteError;
-  }
+  for (int subgraph_index = 0; subgraph_index < model->subgraphs.size();
+       ++subgraph_index) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
 
-  SubGraphT* subgraph = model->subgraphs.at(0).get();
+    absl::flat_hash_map<int32_t, TensorT*> tensor_map;
+    for (int i = 0; i < subgraph->operators.size(); ++i) {
+      OperatorT* op = subgraph->operators[i].get();
+      TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
+          model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map,
+          subgraph_index));
+    }
 
-  absl::flat_hash_map<int32_t, TensorT*> tensor_map;
-  for (int i = 0; i < subgraph->operators.size(); ++i) {
-    OperatorT* op = subgraph->operators[i].get();
-    TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
-        model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map));
-  }
+    for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
+      // Quantize the tensor.
+      TF_LITE_ENSURE_STATUS(
+          utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second));
+    }
 
-  // The hash map ensures that we quantize each tensor exactly once.
-  // TODO(suharshs): This map key isn't sufficient when we support multiple
-  // subgraphs.
-  for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
-    // Quantize the tensor.
-    TF_LITE_ENSURE_STATUS(
-        utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second));
-  }
-
-  // Examine the tensor consumers to determine which require dequantize ops.
-  for (const auto& tensor_pair : tensor_map) {
-    int32_t tensor_idx = tensor_pair.first;
-    TensorT* tensor = tensor_pair.second;
-    std::vector<ConsumerOpInfo> consumer_op_infos =
-        GetTensorConsumers(model.get(), subgraph, tensor_idx);
-    if (IsQuantizationPassThroughOps(model.get(), consumer_op_infos)) {
-      std::tie(tensor_idx, tensor, consumer_op_infos) =
-          PassQuantizationAndGetConsumers(model.get(), subgraph,
-                                          consumer_op_infos, custom_op_map);
-      if (tensor_idx < 0) {
-        // Error message is already logged by PassQuantizationAndGetConsumers.
-        return kTfLiteError;
+    // Examine the tensor consumers to determine which require dequantize ops.
+    for (const auto& tensor_pair : tensor_map) {
+      int32_t tensor_idx = tensor_pair.first;
+      TensorT* tensor = tensor_pair.second;
+      std::vector<ConsumerOpInfo> consumer_op_infos =
+          GetTensorConsumers(model.get(), subgraph, tensor_idx);
+      if (IsQuantizationPassThroughOps(model.get(), consumer_op_infos)) {
+        std::tie(tensor_idx, tensor, consumer_op_infos) =
+            PassQuantizationAndGetConsumers(model.get(), subgraph,
+                                            consumer_op_infos, custom_op_map);
+        if (tensor_idx < 0) {
+          // Error message is already logged by PassQuantizationAndGetConsumers.
+          return kTfLiteError;
+        }
       }
-    }
 
-    std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
-    for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
-      OperatorT* consumer_op = consumer_op_info.op;
-      const OperatorCodeT* consumer_op_code =
-          model->operator_codes[consumer_op->opcode_index].get();
-      // If the op is a hybrid op and all the required tensors are quantized,
-      // we have no further work to do, but for all ops that require
-      // dequantization we need to add a Dequantize op.
-      bool eval_hybrid =
-          use_hybrid_evaluation &&
-          IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map) &&
-          CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
-                                    custom_op_map) &&
-          IsQuantizedInput(consumer_op_code, custom_op_map,
-                           consumer_op_info.op_input_idx);
-      if (!eval_hybrid) {
-        dequant_op_infos.push_back(consumer_op_info);
+      std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
+      for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
+        OperatorT* consumer_op = consumer_op_info.op;
+        const OperatorCodeT* consumer_op_code =
+            model->operator_codes[consumer_op->opcode_index].get();
+        // If the op is a hybrid op and all the required tensors are quantized,
+        // we have no further work to do, but for all ops that require
+        // dequantization we need to add a Dequantize op.
+        bool eval_hybrid =
+            use_hybrid_evaluation &&
+            IsHybridEvaluationOp(consumer_op, consumer_op_code,
+                                 custom_op_map) &&
+            CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
+                                      custom_op_map) &&
+            IsQuantizedInput(consumer_op_code, custom_op_map,
+                             consumer_op_info.op_input_idx);
+        if (!eval_hybrid) {
+          dequant_op_infos.push_back(consumer_op_info);
+        }
       }
-    }
 
-    // Check if this tensor is an output tensor.
-    int32_t output_index = -1;
-    for (int32_t i = 0; i < subgraph->outputs.size(); ++i) {
-      if (subgraph->outputs[i] == tensor_idx) {
-        output_index = i;
-        break;
+      // Check if this tensor is an output tensor.
+      int32_t output_index = -1;
+      for (int32_t i = 0; i < subgraph->outputs.size(); ++i) {
+        if (subgraph->outputs[i] == tensor_idx) {
+          output_index = i;
+          break;
+        }
       }
+
+      // If no ops require dequant and it is not output, we are done for this
+      // tensor.
+      if (dequant_op_infos.empty() && output_index < 0) {
+        continue;
+      }
+
+      // Create a new tensor to be the output of the dequantize op.
+      std::unique_ptr<TensorT> dequantize_output;
+      const string dequant_name = tensor->name + "_dequantize";
+      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
+                        TensorType_FLOAT32, &dequantize_output);
+      const int32_t dequantize_output_idx = subgraph->tensors.size();
+      subgraph->tensors.push_back(std::move(dequantize_output));
+
+      // Create the Dequantize operation.
+      std::unique_ptr<OperatorT> dequantize_op;
+      utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
+                                    dequantize_output_idx);
+
+      // Update the op_input of all the ops that need the created dequantize
+      // operation.
+      int32_t min_op_idx = subgraph->operators.size();
+      for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
+        dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
+            dequantize_output_idx;
+        min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+      }
+      // Update output name.
+      if (output_index >= 0) {
+        subgraph->outputs[output_index] = dequantize_output_idx;
+      }
+
+      // Insert the newly created Dequantize operation before the earliest
+      // consumer, since TFLite requires operators to be topo-sorted.
+      subgraph->operators.insert(subgraph->operators.begin() + min_op_idx,
+                                 std::move(dequantize_op));
     }
-
-    // If no ops require dequant and it is not output, we are done for this
-    // tensor.
-    if (dequant_op_infos.empty() && output_index < 0) {
-      continue;
-    }
-
-    // Create a new tensor to be the output of the dequantize op.
-    std::unique_ptr<TensorT> dequantize_output;
-    const string dequant_name = tensor->name + "_dequantize";
-    utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
-                      &dequantize_output);
-    const int32_t dequantize_output_idx = subgraph->tensors.size();
-    subgraph->tensors.push_back(std::move(dequantize_output));
-
-    // Create the Dequantize operation.
-    std::unique_ptr<OperatorT> dequantize_op;
-    utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                                  dequantize_output_idx);
-
-    // Update the op_input of all the ops that need the created dequantize
-    // operation.
-    int32_t min_op_idx = subgraph->operators.size();
-    for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
-      dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
-          dequantize_output_idx;
-      min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
-    }
-    // Update output name.
-    if (output_index >= 0) {
-      subgraph->outputs[output_index] = dequantize_output_idx;
-    }
-
-    // Insert the newly created Dequantize operation before the earliest
-    // consumer, since TFLite requires operators to be topo-sorted.
-    subgraph->operators.insert(subgraph->operators.begin() + min_op_idx,
-                               std::move(dequantize_op));
   }
 
   // Update the modified operator code versions.
@@ -469,69 +468,69 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
-  // TODO(suharshs): When models support multiple subgraphs, add support.
-  if (model->subgraphs.size() != 1) {
-    LOG(ERROR) << "Quantize weights tool only supports tflite models with one "
-                  "subgraph.";
-    return kTfLiteError;
-  }
+  for (int subgraph_index = 0; subgraph_index < model->subgraphs.size();
+       ++subgraph_index) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
 
-  SubGraphT* subgraph = model->subgraphs.at(0).get();
-
-  absl::flat_hash_map<int32_t, TensorT*> tensor_map;
-  for (int i = 0; i < subgraph->operators.size(); ++i) {
-    OperatorT* op = subgraph->operators[i].get();
-    for (auto tensor_idx : op->inputs) {
-      TensorT* tensor = subgraph->tensors[tensor_idx].get();
-      BufferT* buffer = model->buffers[tensor->buffer].get();
-      if (buffer == nullptr) {
-        return kTfLiteError;
-      }
-      // Quantize tensors that have data to quantize.
-      bool is_constant = !model->buffers[tensor->buffer].get()->data.empty();
-      if (tensor->type == TensorType_FLOAT32 && is_constant) {
-        tensor_map.insert({tensor_idx, tensor});
+    absl::flat_hash_map<int32_t, TensorT*> tensor_map;
+    for (int i = 0; i < subgraph->operators.size(); ++i) {
+      OperatorT* op = subgraph->operators[i].get();
+      for (auto tensor_idx : op->inputs) {
+        // Skip optional tensors.
+        if (tensor_idx == kTfLiteOptionalTensor) {
+          continue;
+        }
+        TensorT* tensor = subgraph->tensors[tensor_idx].get();
+        BufferT* buffer = model->buffers[tensor->buffer].get();
+        if (buffer == nullptr) {
+          return kTfLiteError;
+        }
+        // Quantize tensors that have data to quantize.
+        bool is_constant = !model->buffers[tensor->buffer].get()->data.empty();
+        if (tensor->type == TensorType_FLOAT32 && is_constant) {
+          tensor_map.insert({tensor_idx, tensor});
+        }
       }
     }
-  }
 
-  // The hash map ensures that we quantize each tensor exactly once.
-  for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
-    // Quantize the tensor.
-    TF_LITE_ENSURE_STATUS(
-        utils::QuantizeTensorFloat16(model.get(), tensor_pair.second));
+    // The hash map ensures that we quantize each tensor exactly once.
+    for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
+      // Quantize the tensor.
+      TF_LITE_ENSURE_STATUS(
+          utils::QuantizeTensorFloat16(model.get(), tensor_pair.second));
 
-    int32_t tensor_idx = tensor_pair.first;
-    TensorT* tensor = tensor_pair.second;
-    std::vector<ConsumerOpInfo> dequant_op_infos =
-        GetTensorConsumers(model.get(), subgraph, tensor_idx);
+      int32_t tensor_idx = tensor_pair.first;
+      TensorT* tensor = tensor_pair.second;
+      std::vector<ConsumerOpInfo> dequant_op_infos =
+          GetTensorConsumers(model.get(), subgraph, tensor_idx);
 
-    // Create a new tensor to be the output of the dequantize op.
-    std::unique_ptr<TensorT> dequantize_output;
-    const string dequant_name = tensor->name + "_dequantize";
-    utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
-                      &dequantize_output);
-    const int32_t dequantize_output_idx = subgraph->tensors.size();
-    subgraph->tensors.push_back(std::move(dequantize_output));
+      // Create a new tensor to be the output of the dequantize op.
+      std::unique_ptr<TensorT> dequantize_output;
+      const string dequant_name = tensor->name + "_dequantize";
+      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
+                        TensorType_FLOAT32, &dequantize_output);
+      const int32_t dequantize_output_idx = subgraph->tensors.size();
+      subgraph->tensors.push_back(std::move(dequantize_output));
 
-    // Create the Dequantize operation.
-    std::unique_ptr<OperatorT> dequantize_op;
-    utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                                  dequantize_output_idx);
+      // Create the Dequantize operation.
+      std::unique_ptr<OperatorT> dequantize_op;
+      utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
+                                    dequantize_output_idx);
 
-    // Update the op_input of all the ops that need the created dequantize
-    // operation.
-    int32_t min_op_idx = subgraph->operators.size();
-    for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
-      dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
-          dequantize_output_idx;
-      min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+      // Update the op_input of all the ops that need the created dequantize
+      // operation.
+      int32_t min_op_idx = subgraph->operators.size();
+      for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
+        dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
+            dequantize_output_idx;
+        min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+      }
+
+      // Insert the newly created Dequantize operation before the earliest
+      // consumer, since TFLite requires operators to be topo-sorted.
+      subgraph->operators.insert(subgraph->operators.begin() + min_op_idx,
+                                 std::move(dequantize_op));
     }
-
-    // Insert the newly created Dequantize operation before the earliest
-    // consumer, since TFLite requires operators to be topo-sorted.
-    subgraph->operators.insert(subgraph->operators.begin() + min_op_idx,
-                               std::move(dequantize_op));
   }
 
   flatbuffers::Offset<Model> output_model_location =

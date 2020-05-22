@@ -164,7 +164,7 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterDelete(
     TfLiteInterpreter* interpreter);
 
 // Returns the number of input tensors associated with the model.
-TFL_CAPI_EXPORT extern int TfLiteInterpreterGetInputTensorCount(
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetInputTensorCount(
     const TfLiteInterpreter* interpreter);
 
 // Returns the tensor associated with the input index.

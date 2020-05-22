@@ -93,7 +93,9 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
   for trackable in non_slot_objects:
     if (isinstance(trackable, optimizer_v1.Optimizer)
         # TODO(b/110718070): Fix Keras imports.
-        or hasattr(trackable, "_create_or_restore_slot_variable")):
+        # Note: dir() is used rather than hasattr() here to avoid triggering
+        # custom __getattr__ code, see b/152031870 for context.
+        or "_create_or_restore_slot_variable" in dir(trackable)):
       naming_scheme = _slot_variable_naming_for_optimizer(
           optimizer_path=object_names[trackable])
       slot_names = trackable.get_slot_names()

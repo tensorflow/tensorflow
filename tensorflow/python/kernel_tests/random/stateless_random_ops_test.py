@@ -20,12 +20,15 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.platform import test
@@ -48,7 +51,7 @@ def invert_philox(key, value):
   return np.array(value)
 
 
-class StatelessOpsTest(test.TestCase):
+class StatelessOpsTest(test.TestCase, parameterized.TestCase):
 
   def _test_match(self, cases):
     # Stateless ops should be the same as stateful ops on the first call
@@ -129,31 +132,137 @@ class StatelessOpsTest(test.TestCase):
           yield (functools.partial(stateless.stateless_multinomial, **kwds),
                  functools.partial(random_ops.multinomial, **kwds))
 
+  def _gamma_cases(self):
+    for dtype in np.float16, np.float32, np.float64:
+      for alpha in ([[.5, 1., 2.]], [[0.5, 0.5], [0.8, 0.2], [0.25, 0.75]]):
+        kwds = dict(alpha=constant_op.constant(alpha, dtype=dtype), dtype=dtype)
+        yield (
+            functools.partial(stateless.stateless_random_gamma,
+                              shape=(10,) + tuple(np.shape(alpha)), **kwds),
+            functools.partial(random_ops.random_gamma, shape=(10,), **kwds))
+
+  def _poisson_cases(self):
+    for lam_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
+      for out_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
+        for lam in ([[5.5, 1., 2.]], [[7.5, 10.5], [3.8, 8.2], [1.25, 9.75]]):
+          kwds = dict(
+              lam=constant_op.constant(lam_dtype(lam), dtype=lam_dtype),
+              dtype=out_dtype)
+          yield (
+              functools.partial(stateless.stateless_random_poisson,
+                                shape=(10,) + tuple(np.shape(lam)),
+                                **kwds),
+              functools.partial(random_ops.random_poisson, shape=(10,), **kwds))
+
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testMatchFloat(self):
     self._test_match(self._float_cases())
 
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testMatchInt(self):
     self._test_match(self._int_cases())
 
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testMatchMultinomial(self):
     self._test_match(self._multinomial_cases())
 
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  @test_util.run_deprecated_v1
+  def testMatchGamma(self):
+    self._test_match(self._gamma_cases())
+
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  @test_util.run_deprecated_v1
+  def testMatchPoisson(self):
+    self._test_match(self._poisson_cases())
+
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testDeterminismFloat(self):
     self._test_determinism(
         self._float_cases(shape_dtypes=(dtypes.int32, dtypes.int64)))
 
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testDeterminismInt(self):
     self._test_determinism(
         self._int_cases(shape_dtypes=(dtypes.int32, dtypes.int64)))
 
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   @test_util.run_deprecated_v1
   def testDeterminismMultinomial(self):
     self._test_determinism(self._multinomial_cases())
+
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  @test_util.run_deprecated_v1
+  def testDeterminismGamma(self):
+    self._test_determinism(self._gamma_cases())
+
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  @test_util.run_deprecated_v1
+  def testDeterminismPoisson(self):
+    self._test_determinism(self._poisson_cases())
+
+  def assertDTypeEqual(self, a, b):
+    self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))
+
+  def assertNoEqualPair(self, ls):
+    for i in range(len(ls)):
+      for j in range(i + 1, len(ls)):
+        self.assertFalse(math_ops.reduce_all(ls[i] == ls[j]))
+
+  @parameterized.parameters(['int32', 'int64'])
+  @test_util.run_v2_only
+  def testSplit(self, dtype):
+    """Test for `split`."""
+    seed = constant_op.constant([1, 2], dtype=dtype)
+    new_seed = stateless.split(seed, 3)
+    self.assertEqual(new_seed.shape, [3, 2])
+    self.assertDTypeEqual(new_seed.dtype, dtype)
+    self.assertNoEqualPair([seed] + array_ops.unstack(new_seed))
+
+  @parameterized.parameters(['int32', 'int64'])
+  @test_util.run_v2_only
+  def testFoldIn(self, dtype):
+    """Test for `fold_in`."""
+    orig_seed = constant_op.constant([1, 2], dtype='int32')
+    seed = stateless.fold_in(orig_seed, constant_op.constant(3, dtype=dtype))
+    new_seeds = []
+    new_seeds.append(seed)
+    seed = stateless.fold_in(seed, constant_op.constant(4, dtype=dtype))
+    new_seeds.append(seed)
+    for s in new_seeds:
+      self.assertEqual(s.shape, [2])
+      self.assertDTypeEqual(s.dtype, dtype)
+    self.assertNoEqualPair([math_ops.cast(orig_seed, dtype)] + new_seeds)
+
+  @test_util.run_v2_only
+  def testErrors(self):
+    """Tests that proper errors are raised.
+    """
+    shape = [2, 3]
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        'minval must be a scalar; got a tensor of shape '):
+      @def_function.function
+      def f():
+        stateless.stateless_random_uniform(
+            shape=shape, seed=[1, 2], minval=array_ops.zeros(shape, 'int32'),
+            maxval=100, dtype='int32')
+      f()
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        'maxval must be a scalar; got a tensor of shape '):
+      @def_function.function
+      def f2():
+        stateless.stateless_random_uniform(
+            shape=shape, seed=[1, 2], minval=0,
+            maxval=array_ops.ones(shape, 'int32') * 100,
+            dtype='int32')
+      f2()
 
 
 if __name__ == '__main__':

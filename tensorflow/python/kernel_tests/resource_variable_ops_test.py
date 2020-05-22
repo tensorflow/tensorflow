@@ -30,6 +30,7 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -56,6 +57,8 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
+@test_util.disable_tfrt(
+    "Trying to assign variable with wrong dtype. b/156200342")
 @test_util.with_control_flow_v2
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
@@ -207,6 +210,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
+  def testRepr(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+      text = "%r" % v
+      self.assertEqual(
+          "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>", text)
+
+  def testReprUnavailable(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+
+      # Monkey-patch this variable to not have an available value
+      def broken_read():
+        raise ValueError("This doesn't work")
+
+      v.read_value = broken_read
+      text = "%r" % v
+      self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
+                       " numpy=<unavailable>>", text)
+
   def testUnprintableHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -311,6 +334,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     g = gradients_impl.gradients(c, [b], unconnected_gradients="zero")[0]
     self.assertAllEqual(g.shape.as_list(), [1, 2])
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.run_deprecated_v1
   def testGradientCondInWhileLoop(self):
     v = resource_variable_ops.ResourceVariable(initial_value=1.0)
@@ -944,6 +968,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.disable_xla("XLA doesn't allow changing shape at assignment, as "
                          "dictated by tf2xla/xla_resource.cc:SetTypeAndShape")
   @test_util.run_in_graph_and_eager_modes
@@ -1306,6 +1331,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
   # TODO(ebrevdo): Add run_in_graph_and_eager_modes once we can create
   # EagerTensor constants with TensorProto inputs.
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.run_in_graph_and_eager_modes()
   def testVariantInitializer(self):
     variant_shape_and_type_data = self.create_variant_shape_and_type_data()
@@ -1486,6 +1512,42 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       result = resource_variable_ops.resource_gather(
           var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
+
+
+class PerReplicaResourceHandleTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(PerReplicaResourceHandleTest, self).setUp()
+    cpus = config.list_physical_devices("CPU")
+    # Set 2 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+    ])
+
+  @test_util.disable_tfrt("Multiple device support. b/154956430")
+  def testAllowedDevices(self):
+    device0 = "/job:localhost/replica:0/task:0/device:CPU:0"
+    device1 = "/job:localhost/replica:0/task:0/device:CPU:1"
+    value0 = 1
+    value1 = 2
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[], allowed_devices=[device0, device1])
+      with ops.device(device0):
+        assign0 = resource_variable_ops.assign_variable_op(handle, value0)
+      with ops.device(device1):
+        assign1 = resource_variable_ops.assign_variable_op(handle, value1)
+      with ops.control_dependencies([assign0, assign1]):
+        with ops.device(device0):
+          read0 = resource_variable_ops.read_variable_op(
+              handle, dtype=dtypes.int32)
+        with ops.device(device1):
+          read1 = resource_variable_ops.read_variable_op(
+              handle, dtype=dtypes.int32)
+
+      self.assertAllEqual(value0, read0)
+      self.assertAllEqual(value1, read1)
 
 
 if __name__ == "__main__":

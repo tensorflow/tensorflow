@@ -39,9 +39,9 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
     TF_LITE_MICRO_EXPECT_EQ(g_yes_power_spectrum_data[i],
                             yes_calculated_data[i]);
     if (g_yes_power_spectrum_data[i] != yes_calculated_data[i]) {
-      error_reporter->Report("Expected value %d but found %d",
-                             g_yes_power_spectrum_data[i],
-                             yes_calculated_data[i]);
+      TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
+                           g_yes_power_spectrum_data[i],
+                           yes_calculated_data[i]);
     }
   }
 
@@ -54,9 +54,8 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   for (int i = 0; i < g_no_power_spectrum_data_size; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(g_no_power_spectrum_data[i], no_calculated_data[i]);
     if (g_no_power_spectrum_data[i] != no_calculated_data[i]) {
-      error_reporter->Report("Expected value %d but found %d",
-                             g_no_power_spectrum_data[i],
-                             no_calculated_data[i]);
+      TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
+                           g_no_power_spectrum_data[i], no_calculated_data[i]);
     }
   }
 }

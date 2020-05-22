@@ -196,8 +196,8 @@ class Dimension(object):
       except AttributeError:
         six.raise_from(
             TypeError("Dimension value must be integer or None or have "
-                      "an __index__ method, got {!r}".format(value)),
-            None)
+                      "an __index__ method, got value '{0!r}' with type '{1!r}'"
+                      .format(value, type(value))), None)
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -556,7 +556,7 @@ class Dimension(object):
   def __mod__(self, other):
     """Returns `self` modulo `other`.
 
-    Dimension moduli are computed as follows:
+    Dimension modulo are computed as follows:
 
     ```python
     tf.compat.v1.Dimension(m)    % tf.compat.v1.Dimension(n)     ==
@@ -768,7 +768,18 @@ class TensorShape(object):
         # Treat as a singleton dimension
         self._dims = [as_dimension(dims)]
       else:
-        self._dims = [as_dimension(d) for d in dims_iter]
+        self._dims = []
+        for d in dims_iter:
+          try:
+            self._dims.append(as_dimension(d))
+          except TypeError as e:
+            six.raise_from(
+                TypeError(
+                    "Failed to convert '{0!r}' to a shape: '{1!r}'"
+                    "could not be converted to a dimension. A shape should "
+                    "either be single dimension (e.g. 10), or an iterable of "
+                    "dimensions (e.g. [1, 10, None])."
+                    .format(dims, d)), e)
 
   @property
   def _v2_behavior(self):

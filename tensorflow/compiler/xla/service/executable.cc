@@ -44,15 +44,13 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   return result;
 }
 
-static ShapeTree<MaybeOwningDeviceMemory> MakeMaybeOwningDeviceMemoryTree(
+static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
     const ShapedBuffer& shaped_buffer) {
-  ShapeTree<MaybeOwningDeviceMemory> result(shaped_buffer.on_device_shape());
-  auto in_it = shaped_buffer.buffers().begin();
-  auto out_it = result.begin();
-  for (; in_it != shaped_buffer.buffers().end(); ++in_it, ++out_it) {
-    DCHECK(out_it != result.end());
-    out_it->second = MaybeOwningDeviceMemory(in_it->second);
-  }
+  ExecutionInput result(shaped_buffer.on_device_shape());
+  shaped_buffer.buffers().ForEachElement(
+      [&](const ShapeIndex& index, const se::DeviceMemoryBase& mem) {
+        result.SetBuffer(index, MaybeOwningDeviceMemory(mem));
+      });
   return result;
 }
 
@@ -60,7 +58,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  std::vector<ShapeTree<MaybeOwningDeviceMemory>> args(arguments.size());
+  std::vector<ExecutionInput> args(arguments.size());
   auto out_it = args.begin();
   for (const ShapedBuffer* arg : arguments) {
     *out_it++ = MakeMaybeOwningDeviceMemoryTree(*arg);
@@ -73,7 +71,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
 
 StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
       run_options, std::move(arguments), hlo_execution_profile);
@@ -238,7 +236,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
 
 StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments) {
+    std::vector<ExecutionInput> arguments) {
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
   StatusOr<ExecutionOutput> return_value = ExecuteAsyncOnStream(
       run_options, std::move(arguments), state.profile_ptr.get());

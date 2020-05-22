@@ -23,16 +23,12 @@ namespace ops {
 namespace micro {
 namespace split {
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T>
 TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteTensor* input, int axis_value) {
   const int output_count = NumOutputs(node);
   const TfLiteIntArray* input_dims = input->dims;
-  const TfLiteTensor* output0 = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* output0 = GetOutput(context, node, 0);
   const TfLiteIntArray* output_dims = output0->dims;
 
   const int split_dimensions = input_dims->size;
@@ -57,7 +53,7 @@ TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
   const T* input_ptr = GetTensorData<T>(input);
   for (int k = 0; k < outer_size; ++k) {
     for (int i = 0; i < output_count; ++i) {
-      TfLiteTensor* t = &context->tensors[node->outputs->data[i]];
+      TfLiteTensor* t = GetOutput(context, node, i);
       T* output_data = GetTensorData<T>(t);
       const int copy_size = output_dims->data[axis] * base_inner_size;
       T* output_ptr = output_data + k * copy_size;
@@ -74,7 +70,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 1);
 
   // Dynamic output tensors are needed if axis tensor is not constant.
-  // But Micro doesn't support dynamic memeory allocation, so we only support
+  // But Micro doesn't support dynamic memory allocation, so we only support
   // constant axis tensor for now.
   TF_LITE_ENSURE_MSG(context, IsConstantTensor(axis),
                      "Non constant axis tensor not supported");
@@ -104,8 +100,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return SplitImpl<int32_t>(context, node, input, axis_value);
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT
@@ -116,9 +112,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace split
 
 TfLiteRegistration* Register_SPLIT() {
-  static TfLiteRegistration r = {};
-  r.prepare = split::Prepare;
-  r.invoke = split::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/split::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

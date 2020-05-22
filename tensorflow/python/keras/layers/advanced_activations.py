@@ -246,8 +246,8 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs):
-    return inputs * math_ops.cast(
-        math_ops.greater(inputs, self.theta), K.floatx())
+    theta = math_ops.cast(self.theta, inputs.dtype)
+    return inputs * math_ops.cast(math_ops.greater(inputs, theta), inputs.dtype)
 
   def get_config(self):
     config = {'theta': float(self.theta)}
@@ -349,6 +349,9 @@ class ReLU(Layer):
     if negative_slope < 0.:
       raise ValueError('negative_slope of Relu layer '
                        'cannot be negative value: ' + str(negative_slope))
+    if threshold is None:
+      raise ValueError('threshold of Relu layer '
+                       'cannot be None. Required a float')
 
     self.support_masking = True
     if max_value is not None:

@@ -19,6 +19,7 @@ limitations under the License.
     (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
 
 #include <asm/unistd.h>
+#include <inttypes.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,8 +115,8 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   if (fp == nullptr) {
     return INVALID_CPU_FREQUENCY;
   }
-  int64 freq_in_khz = INVALID_CPU_FREQUENCY;
-  const int retval = fscanf(fp, "%lld", &freq_in_khz);
+  int64_t freq_in_khz = INVALID_CPU_FREQUENCY;
+  const int retval = fscanf(fp, "%" SCNd64, &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
     fclose(fp);

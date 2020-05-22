@@ -1,10 +1,3 @@
-diff --git a/src/collectives.h b/src/collectives.h
-new file mode 100644
-index 0000000..7d04b16
---- /dev/null
-+++ b/src/collectives.h
-@@ -0,0 +1 @@
-+#include "collectives/collectives.h"
 diff --git a/src/collectives/device/all_gather.cu b/src/collectives/device/all_gather.cu.cc
 similarity index 100%
 rename from src/collectives/device/all_gather.cu
@@ -17,19 +10,6 @@ diff --git a/src/collectives/device/broadcast.cu b/src/collectives/device/broadc
 similarity index 100%
 rename from src/collectives/device/broadcast.cu
 rename to src/collectives/device/broadcast.cu.cc
-diff --git a/src/collectives/device/common.h b/src/collectives/device/common.h
-index 8c336bf..2eef3ae 100644
---- a/src/collectives/device/common.h
-+++ b/src/collectives/device/common.h
-@@ -7,7 +7,7 @@
- #ifndef NCCL_DEVICE_COMMON_H_
- #define NCCL_DEVICE_COMMON_H_
- 
--#include "../collectives.h"
-+#include "collectives.h"
- #include "devcomm.h"
- #include "nccl.h"
- 
 diff --git a/src/collectives/device/functions.cu b/src/collectives/device/functions.cu.cc
 similarity index 100%
 rename from src/collectives/device/functions.cu
@@ -58,12 +38,12 @@ index 985274e..7ebb1e1 100644
 -#define NCCL_PATCH ${nccl:Patch}
 -#define NCCL_SUFFIX "${nccl:Suffix}"
 +#define NCCL_MAJOR 2
-+#define NCCL_MINOR 4
++#define NCCL_MINOR 5
 +#define NCCL_PATCH 7
 +#define NCCL_SUFFIX ""
  
 -#define NCCL_VERSION_CODE ${nccl:Version}
-+#define NCCL_VERSION_CODE 2407
++#define NCCL_VERSION_CODE 2507
  #define NCCL_VERSION(X,Y,Z) ((X) * 1000 + (Y) * 100 + (Z))
  
  #ifdef __cplusplus

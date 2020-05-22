@@ -3773,7 +3773,7 @@ class MeanIOUTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMultipleUpdatesWithMissingClass(self):
-    # Test the case where there are no predicions and labels for
+    # Test the case where there are no predictions and labels for
     # one class, and thus there is one row and one column with
     # zero entries in the confusion matrix.
     num_classes = 3
@@ -4094,7 +4094,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMultipleUpdatesWithMissingClass(self):
-    # Test the case where there are no predicions and labels for
+    # Test the case where there are no predictions and labels for
     # one class, and thus there is one row and one column with
     # zero entries in the confusion matrix.
     num_classes = 3

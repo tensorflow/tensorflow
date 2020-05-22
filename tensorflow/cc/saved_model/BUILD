@@ -4,7 +4,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
-    "if_ios",
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
@@ -68,6 +67,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -84,7 +84,7 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ]) + if_android([
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ]),
 )
 
@@ -215,6 +215,18 @@ py_binary(
 filegroup(
     name = "saved_model_half_plus_two",
     srcs = glob([
+        "testdata/half_plus_two_pbtxt/**",
+        "testdata/half_plus_two_main_op/**",
+        "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
+        "testdata/x_plus_y_v2_debuginfo/**",
+        "testdata/CyclicModule/**",
+        "testdata/VarsAndArithmeticObjectGraph/**",
+    ]),
+)
+
+exports_files(
+    glob([
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",

@@ -51,7 +51,8 @@ namespace tflite {
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
-      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16}};
+      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
+      {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
 
   auto it = tensor_type_map.find(type);
   if (it != tensor_type_map.end()) {
@@ -63,7 +64,7 @@ namespace tflite {
 ::tflite::OpSignature GetVersioningOpSig(
     const ::tflite::BuiltinOperator op, const OperatorSignature& op_signature) {
   std::vector<::tflite::TensorType> input_types, output_types;
-  for (auto input_name : op_signature.op->inputs) {
+  for (const auto& input_name : op_signature.op->inputs) {
     ::tflite::TensorType input_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(input_name)) {
       const Array& input_array = op_signature.model->GetArray(input_name);
@@ -71,7 +72,7 @@ namespace tflite {
     }
     input_types.push_back(input_type);
   }
-  for (auto output_name : op_signature.op->outputs) {
+  for (const auto& output_name : op_signature.op->outputs) {
     ::tflite::TensorType output_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(output_name)) {
       const Array& output_array = op_signature.model->GetArray(output_name);
@@ -235,6 +236,16 @@ class SpaceToBatchND
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.single_input_op.num_dims =
+        input_array.shape().dimensions_count();
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
+  }
 };
 
 class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
@@ -254,6 +265,23 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
                    TocoOperator* op) const override {
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input1_name = op_signature.op->inputs[0];
+    const string& input2_name = op_signature.op->inputs[1];
+    const Array& input1_array = op_signature.model->GetArray(input1_name);
+    const Array& input2_array = op_signature.model->GetArray(input2_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    if (input1_array.has_shape() && input2_array.has_shape()) {
+      op_sig.options.broadcast.num_dims =
+          std::max(input1_array.shape().dimensions_count(),
+                   input2_array.shape().dimensions_count());
+      op_sig.options.broadcast.need_broadcast =
+          (input1_array.shape() != input2_array.shape());
+    }
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -275,6 +303,23 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input1_name = op_signature.op->inputs[0];
+    const string& input2_name = op_signature.op->inputs[1];
+    const Array& input1_array = op_signature.model->GetArray(input1_name);
+    const Array& input2_array = op_signature.model->GetArray(input2_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    if (input1_array.has_shape() && input2_array.has_shape()) {
+      op_sig.options.broadcast.num_dims =
+          std::max(input1_array.shape().dimensions_count(),
+                   input2_array.shape().dimensions_count());
+      op_sig.options.broadcast.need_broadcast =
+          (input1_array.shape() != input2_array.shape());
+    }
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
+  }
 };
 
 class BatchToSpaceND
@@ -292,6 +337,16 @@ class BatchToSpaceND
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.single_input_op.num_dims =
+        input_array.shape().dimensions_count();
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
+  }
 };
 
 class Cast : public BuiltinOperator<CastOperator, ::tflite::CastOptions,
@@ -432,6 +487,7 @@ class FullyConnected
     op_sig.options.fully_connected.keep_num_dims = fc_op.keep_num_dims;
     op_sig.options.fully_connected.weights_format =
         GetWeightFormat(fc_op.weights_format);
+    op_sig.options.fully_connected.sparse_weight = false;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1046,12 +1102,25 @@ class ResizeBilinear
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners);
+    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners,
+                                                 op.half_pixel_centers);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->align_corners = options.align_corners();
+    op->half_pixel_centers = options.half_pixel_centers();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& resize_bilinear_op =
+        static_cast<const ResizeBilinearOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.resize.half_pixel_centers =
+        resize_bilinear_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_bilinear_op.align_corners;
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -1064,13 +1133,24 @@ class ResizeNearestNeighbor
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateResizeNearestNeighborOptions(*builder,
-                                                        op.align_corners);
+    return ::tflite::CreateResizeNearestNeighborOptions(
+        *builder, op.align_corners, op.half_pixel_centers);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->align_corners = options.align_corners();
+    op->half_pixel_centers = options.half_pixel_centers();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& resize_nn_op =
+        static_cast<const ResizeNearestNeighborOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.resize.half_pixel_centers = resize_nn_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_nn_op.align_corners;
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -1152,6 +1232,15 @@ class StridedSlice
     op->ellipsis_mask = options.ellipsis_mask();
     op->new_axis_mask = options.new_axis_mask();
     op->shrink_axis_mask = options.shrink_axis_mask();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& ss_op =
+        static_cast<const StridedSliceOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.single_input_op.num_dims = ss_op.start_indices.size();
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -1635,21 +1724,17 @@ class TensorFlowUnsupported : public BaseOperator {
     for (size_t i = 0; i < keys.size(); ++i) {
       const auto key = keys[i].AsKey();
       const auto& value = m[key];
-      // TODO(wvo): hack to make this code compile with 2 different API
-      // versions.
-      // Please remove once OS/internal versions are in sync.
-      // See hardcoded values in the switch below.
       switch (value.GetType()) {
-        case 5:  // flexbuffers::FBT_STRING:
+        case flexbuffers::FBT_STRING:
           (*attr)[key].set_s(value.AsString().c_str());
           break;
-        case 1:  // flexbuffers::FBT_INT:
+        case flexbuffers::FBT_INT:
           (*attr)[key].set_i(value.AsInt64());
           break;
-        case 3:  // flexbuffers::FBT_FLOAT:
+        case flexbuffers::FBT_FLOAT:
           (*attr)[key].set_f(value.AsFloat());
           break;
-        case 26:  // flexbuffers::FBT_BOOL:
+        case flexbuffers::FBT_BOOL:
           (*attr)[key].set_b(value.AsBool());
           if (string(key) == "_output_quantized") {
             op->quantized = value.AsBool();
@@ -1658,7 +1743,7 @@ class TensorFlowUnsupported : public BaseOperator {
             op->support_output_type_float_in_quantized_op = value.AsBool();
           }
           break;
-        case 11: {  // flexbuffers::FBT_VECTOR_INT: {
+        case flexbuffers::FBT_VECTOR_INT: {
           auto* list = (*attr)[key].mutable_list();
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
@@ -1666,7 +1751,7 @@ class TensorFlowUnsupported : public BaseOperator {
           }
           break;
         }
-        case 13: {  // flexbuffers::FBT_VECTOR_FLOAT: {
+        case flexbuffers::FBT_VECTOR_FLOAT: {
           auto* list = (*attr)[key].mutable_list();
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
@@ -1674,7 +1759,7 @@ class TensorFlowUnsupported : public BaseOperator {
           }
           break;
         }
-        case 15: {  // flexbuffers::FBT_VECTOR_STRING: {
+        case 15 /* TO_DO(wvo): flexbuffers::FBT_VECTOR_STRING_DEPRECATED*/: {
           auto* list = (*attr)[key].mutable_list();
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
@@ -1989,6 +2074,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       ::tflite::BuiltinOperator_RANK, OperatorType::kRank));
   ops.emplace_back(new SimpleOperator<SegmentSumOperator>(
       ::tflite::BuiltinOperator_SEGMENT_SUM, OperatorType::kSegmentSum));
+  ops.emplace_back(MakeUnique<SimpleOperator<ScatterNdOperator>>(
+      ::tflite::BuiltinOperator_SCATTER_ND, OperatorType::kScatterNd));
   return ops;
 }
 }  // namespace

@@ -74,9 +74,10 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
-                      const TfLitePoolParams* params, const OpData* data,
-                      const TfLiteTensor* input, TfLiteTensor* output) {
+void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
+                          const TfLitePoolParams* params, const OpData* data,
+                          const TfLiteTensor* input, TfLiteTensor* output) {
+  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
                                           &activation_min, &activation_max);
@@ -90,30 +91,16 @@ void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
   op_params.padding_values.width = data->padding.width;
   op_params.quantized_activation_min = activation_min;
   op_params.quantized_activation_max = activation_max;
-  reference_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-      GetTensorShape(output), GetTensorData<uint8_t>(output));
-}
 
-void AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
-                     const TfLitePoolParams* params, const OpData* data,
-                     const TfLiteTensor* input, TfLiteTensor* output) {
-  int32_t activation_min, activation_max;
-  (void)CalculateActivationRangeQuantized(context, params->activation, output,
-                                          &activation_min, &activation_max);
-
-  PoolParams op_params;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.filter_height = params->filter_height;
-  op_params.filter_width = params->filter_width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = activation_min;
-  op_params.quantized_activation_max = activation_max;
-  reference_integer_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
+  if (input->type == kTfLiteUInt8) {
+    reference_ops::AveragePool(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+    reference_integer_ops::AveragePool(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
+  }
 }
 
 void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
@@ -137,9 +124,11 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
                          GetTensorData<float>(output));
 }
 
-void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
-                           TfLitePoolParams* params, OpData* data,
-                           const TfLiteTensor* input, TfLiteTensor* output) {
+void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                      TfLitePoolParams* params, OpData* data,
+                      const TfLiteTensor* input, TfLiteTensor* output) {
+  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
+
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
                                           &activation_min, &activation_max);
@@ -153,22 +142,19 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.width = data->padding.width;
   op_params.quantized_activation_min = activation_min;
   op_params.quantized_activation_max = activation_max;
-  reference_ops::MaxPool(op_params, GetTensorShape(input),
-                         GetTensorData<uint8_t>(input), GetTensorShape(output),
-                         GetTensorData<uint8_t>(output));
-}
 
+  if (input->type == kTfLiteUInt8) {
+    reference_ops::MaxPool(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+    reference_integer_ops::MaxPool(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
+  }
+}
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
 
 TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
@@ -179,20 +165,18 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
 
-  // Inputs and outputs share the same type, guarenteed by the converter.
+  // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, &data, input, output);
       break;
     case kTfLiteUInt8:
-      AverageEvalUint8(context, node, params, &data, input, output);
-      break;
     case kTfLiteInt8:
-      AverageEvalInt8(context, node, params, &data, input, output);
+      AverageEvalQuantized(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Input type %s is not currently supported",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -212,11 +196,12 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalFloat(context, node, params, &data, input, output);
       break;
     case kTfLiteUInt8:
-      MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
+    case kTfLiteInt8:
+      MaxEvalQuantized(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -225,20 +210,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {};
-  r.init = pooling::Init;
-  r.free = pooling::Free;
-  r.prepare = pooling::Prepare;
-  r.invoke = pooling::AverageEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/pooling::AverageEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {};
-  r.init = pooling::Init;
-  r.free = pooling::Free;
-  r.prepare = pooling::Prepare;
-  r.invoke = pooling::MaxEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/pooling::MaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

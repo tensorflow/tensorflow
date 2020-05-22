@@ -122,7 +122,7 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+    inputs = nest.map_structure(ops.convert_to_tensor_v2, inputs)
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -132,7 +132,7 @@ def _model_loss(model,
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
     sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor_v2(val))
         if val is not None else None for val in sample_weights
     ]
 
@@ -146,6 +146,16 @@ def _model_loss(model,
     loss_fns = [
         loss_fn for loss_fn in model.loss_functions if loss_fn is not None
     ]
+    custom_losses = model.losses  # Regularization losses
+
+    if not loss_fns and not custom_losses:
+      if training:
+        raise ValueError('The model cannot be trained '
+                         'because it has no loss to optimize.')
+      else:
+        raise ValueError('The model cannot be evaluated '
+                         'because it has no loss to compute.')
+
     for i, loss_fn in enumerate(loss_fns):
       weights = sample_weights[i] if sample_weights else None
       mask = masks[i]
@@ -203,11 +213,9 @@ def _model_loss(model,
       total_loss += model._loss_weights_list[i] * output_loss
 
     # Add regularization losses
-    custom_losses = model.losses
     if custom_losses:
       total_loss += losses_utils.scale_loss_for_distribution(
           math_ops.add_n(custom_losses))
-
   return outs, total_loss, output_losses, masks
 
 
@@ -250,9 +258,6 @@ def _process_single_batch(model,
               output_loss_metrics=output_loss_metrics,
               sample_weights=sample_weights,
               training=training))
-      if total_loss is None:
-        raise ValueError('The model cannot be run '
-                         'because it has no loss to optimize.')
       if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
         scaled_total_loss = model.optimizer.get_scaled_loss(total_loss)
       else:
@@ -269,6 +274,7 @@ def _process_single_batch(model,
           if isinstance(model.optimizer,
                         loss_scale_optimizer.LossScaleOptimizer):
             grads = model.optimizer.get_unscaled_gradients(grads)
+          grads = model.optimizer._clip_gradients(grads)
           model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'

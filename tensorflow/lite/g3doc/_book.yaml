@@ -12,6 +12,48 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
+    - name: "Tutorials"
+      contents:
+      - title: "TensorFlow Lite Tutorials"
+        path: /lite/tutorials
+
+      - heading: "Vision"
+      - title: "Recognize handwritten digits"
+        path: https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/
+        status: external
+      - title: "Recognize flowers on Android"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
+        status: external
+      - title: "Recognize flowers on iOS"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/
+        status: external
+      - title: "Transfer learning for image classification"
+        path: /lite/tutorials/model_maker_image_classification
+      - title: "Image classification on Raspberry Pi"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
+        status: external
+      - title: "Object Detection on Raspberry Pi"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+        status: external
+      - title: "Train a mobile object detector"
+        path: https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html
+        status: external
+
+      - heading: "Text"
+      - title: "Text classification"
+        path: /lite/tutorials/model_maker_text_classification
+
+      - heading: "Microcontrollers"
+      - title: "Gesture recognition"
+        path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
+        status: external
+      - title: "Hotword detection"
+        path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
+        status: external
+      - title: "Person detection"
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
+        status: external
+
     - name: "Guide"
       contents:
       - title: "TensorFlow Lite guide"
@@ -42,6 +84,11 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
+      - title: "1.x compatibility"
+        path: /lite/convert/1x_compatibility
+      - title: "Add metadata"
+        path: /lite/convert/metadata
+        status: experimental
 
       - heading: "Inference"
       - title: "Overview"
@@ -54,26 +101,21 @@ upper_tabs:
         path: /lite/guide/ops_compatibility
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
+        status: experimental
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
+      - title: "Generate code from metadata"
+        path: /lite/guide/codegen
+        status: experimental
 
       - heading: "Performance"
       - title: "Best practices"
         path: /lite/performance/best_practices
       - title: "Benchmarks"
         path: /lite/performance/benchmarks
-      - title: "Model optimization"
-        path: /lite/performance/model_optimization
-      - title: "Post-training quantization"
-        path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
-        path: /lite/performance/post_training_quant
-      - title: "Post-training integer quantization"
-        path: /lite/performance/post_training_integer_quant
-      - title: "Post-training float16 quantization"
-        path: /lite/performance/post_training_float16_quant
       - title: "Delegates"
         path: /lite/performance/delegates
+        status: experimental
       - title: "GPU delegate"
         path: /lite/performance/gpu
       - title: "Advanced GPU"
@@ -83,6 +125,21 @@ upper_tabs:
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
         status: experimental
+      - title: "Core ML delegate"
+        path: /lite/performance/coreml_delegate
+        status: experimental
+
+      - heading: "Optimize a model"
+      - title: "Overview"
+        path: /lite/performance/model_optimization
+      - title: "Post-training quantization"
+        path: /lite/performance/post_training_quantization
+      - title: "Post-training dynamic range quantization"
+        path: /lite/performance/post_training_quant
+      - title: "Post-training integer quantization"
+        path: /lite/performance/post_training_integer_quant
+      - title: "Post-training float16 quantization"
+        path: /lite/performance/post_training_float16_quant
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 
@@ -103,7 +160,6 @@ upper_tabs:
         path: /lite/microcontrollers/library
       - title: "Build and convert models"
         path: /lite/microcontrollers/build_convert
-
 
     - name: "Examples"
       contents:
@@ -133,15 +189,17 @@ upper_tabs:
       - title: "Text classification"
         path: /lite/models/text_classification/overview
 
-    - name: "Python API"
+    - name: "API"
       skip_translation: true
       contents:
-      - title: "Python API"
+      - title: API Reference
+        path: /lite/api_docs/
+      - heading: "Python"
+      - title: "Overview"
+        status: external
         path: /api_docs/python/tf/lite
-    - name: "C++ API"
-      skip_translation: true
-      contents:
-      - title: "C++ API"
+      - heading: "C++"
+      - title: Overview
         path: /lite/api_docs/cc/
       - include: /lite/api_docs/cc/_doxygen.yaml
 

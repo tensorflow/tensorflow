@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include <memory>
+
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -348,6 +350,53 @@ TEST(ResourceHandleTest, DeleteUsingResourceHandle) {
 
   TF_EXPECT_OK(DeleteResource(&ctx, p));
   EXPECT_NE(LookupResource<StubResource>(&ctx, p, &lookup_r).ok(), true);
+}
+
+TEST(ResourceHandleTest, AllowedDevices) {
+  const std::vector<string> device_names = {
+      "/job:worker/replica:0/task:0/device:CPU:0",
+      "/job:worker/replica:0/task:0/device:CPU:2",
+      "/job:worker/replica:1/task:3/device:CPU:5"};
+  std::vector<StubDevice> devices;
+  for (const string& name : device_names) {
+    devices.emplace_back(name);
+  }
+
+  std::vector<OpKernelContext::Params> params(device_names.size());
+  std::vector<std::unique_ptr<ResourceMgr>> resource_mgrs;
+  std::vector<std::unique_ptr<OpKernelContext>> ctxs;
+  for (int i = 0; i < device_names.size(); ++i) {
+    resource_mgrs.emplace_back(
+        absl::make_unique<ResourceMgr>(/* default_container= */ ""));
+    params[i].resource_manager = resource_mgrs[i].get();
+    params[i].device = &(devices[i]);
+    ctxs.emplace_back(
+        absl::make_unique<OpKernelContext>(&(params[i]), /* num_outputs= */ 0));
+  }
+
+  const string partially_specified_name =
+      "/job:worker/replica:0/task:0/device:CPU:*";
+  const string& fully_specified_name = device_names.at(2);
+  const std::vector<string> allowed_devices = {partially_specified_name,
+                                               fully_specified_name};
+  // Create a ResourceHandle on device 0.
+  ResourceHandle p = MakeResourceHandle<StubResource>(
+      ctxs[0].get(), "container", "name",
+      /* dtypes_and_shapes= */ {}, allowed_devices);
+
+  std::vector<StubResource*> resources;
+  for (const auto& ctx : ctxs) {
+    StubResource* r = new StubResource;
+    TF_EXPECT_OK(CreateResource(ctx.get(), p, r));
+    resources.push_back(r);
+  }
+
+  for (int i = 0; i < ctxs.size(); ++i) {
+    core::RefCountPtr<StubResource> lookup_r;
+    TF_EXPECT_OK(LookupResource<StubResource>(ctxs[i].get(), p, &lookup_r));
+    EXPECT_EQ(lookup_r.get(), resources[i]);
+    TF_EXPECT_OK(DeleteResource(ctxs[i].get(), p));
+  }
 }
 
 }  // end namespace tensorflow

@@ -21,6 +21,55 @@ py_library(
 )
 
 py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":profiler_client",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "profiler_v2",
+    srcs = ["profiler_v2.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_v2_test",
+    srcs = ["profiler_v2_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
+    deps = [
+        ":profiler_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/profiler:traceme",
+    ],
+)
+
+py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
     srcs_version = "PY2AND3",
@@ -170,21 +219,21 @@ py_test(
 )
 
 py_library(
-    name = "traceme",
-    srcs = ["traceme.py"],
+    name = "trace",
+    srcs = ["trace.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:tf_export",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "@six_archive//:six",
     ],
 )
 
 py_library(
-    name = "scoped_annotation",
-    srcs = ["scoped_annotation.py"],
+    name = "traceme",
+    srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
-        "@six_archive//:six",
+        ":trace",
     ],
 )

@@ -304,11 +304,11 @@ class RandomUniformTest(RandomOpTestCommon):
   def testUniformIntsWithInvalidShape(self):
     for dtype in dtypes.int32, dtypes.int64:
       with self.assertRaisesRegexp(
-          ValueError, "Shape must be rank 0 but is rank 1"):
+          ValueError, "minval must be a scalar; got a tensor of shape"):
         random_ops.random_uniform(
             [1000], minval=[1, 2], maxval=3, dtype=dtype)
       with self.assertRaisesRegexp(
-          ValueError, "Shape must be rank 0 but is rank 1"):
+          ValueError, "maxval must be a scalar; got a tensor of shape"):
         random_ops.random_uniform(
             [1000], minval=1, maxval=[2, 3], dtype=dtype)
 
@@ -336,6 +336,8 @@ class RandomUniformTest(RandomOpTestCommon):
       self.assertLess(error.max(), 5 * std)
 
   # Check that minval = maxval is fine iff we're producing no numbers
+  @test_util.disable_tfrt(
+      "TFE_TensorHandleToNumpy not implemented yet. b/156191611")
   def testUniformIntsDegenerate(self):
     for dt in dtypes.int32, dtypes.int64:
       def sample(n):

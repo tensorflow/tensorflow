@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
+#include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -325,7 +326,7 @@ namespace {
 template <typename Device, typename T, typename U>
 class RandomBinomialOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static const int32 kDesiredBatchSize = 100;
+  static constexpr int32 kDesiredBatchSize = 100;
 
  public:
   explicit RandomBinomialOp(OpKernelConstruction* context)
@@ -434,19 +435,114 @@ class RandomBinomialOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomBinomialOp);
 };
 
+// Samples from a binomial distribution, using the given parameters.
+template <typename Device, typename T, typename U>
+class StatelessRandomBinomialOp : public OpKernel {
+  // Reshape batches so each batch is this size if possible.
+  static constexpr int32 kDesiredBatchSize = 100;
+
+ public:
+  explicit StatelessRandomBinomialOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& shape_tensor = ctx->input(0);
+    const Tensor& seed_tensor = ctx->input(1);
+    const Tensor& counts_tensor = ctx->input(2);
+    const Tensor& probs_tensor = ctx->input(3);
+
+    OP_REQUIRES(ctx, seed_tensor.dims() == 1 && seed_tensor.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_tensor.shape().DebugString()));
+
+    tensorflow::BCast bcast(counts_tensor.shape().dim_sizes(),
+                            probs_tensor.shape().dim_sizes(),
+                            /*fewer_dims_optimization=*/false,
+                            /*return_flattened_batch_indices=*/true);
+    OP_REQUIRES(ctx, bcast.IsValid(),
+                errors::InvalidArgument(
+                    "counts and probs must have compatible batch dimensions: ",
+                    counts_tensor.shape().DebugString(), " vs. ",
+                    probs_tensor.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+        errors::InvalidArgument("Input shape should be a vector, got shape: ",
+                                shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                (shape_tensor.dtype() == DataType::DT_INT32 ||
+                 shape_tensor.dtype() == DataType::DT_INT64),
+                errors::InvalidArgument(
+                    "Input shape should have dtype {int32, int64}."));
+
+    // Let's check that the shape tensor dominates the broadcasted tensor.
+    TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
+    TensorShape output_shape;
+    if (shape_tensor.dtype() == DataType::DT_INT32) {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
+                                                      &output_shape));
+    } else {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
+                                                      &output_shape));
+    }
+    OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
+                errors::InvalidArgument(
+                    "Shape passed in must end with broadcasted shape."));
+    // Now that we have a guarantee, we can get the additional dimensions added
+    // by sampling.
+    int64 samples_per_batch = 1;
+    const int64 num_sample_dims =
+        (shape_tensor.dim_size(0) - bcast.output_shape().size());
+    for (int64 i = 0; i < num_sample_dims; ++i) {
+      samples_per_batch *= shape_tensor.flat<int32>()(i);
+    }
+    int64 num_batches = 1;
+    for (int64 i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
+      num_batches *= shape_tensor.flat<int32>()(i);
+    }
+    const int64 num_elements = num_batches * samples_per_batch;
+
+    Tensor* samples_tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));
+    if (output_shape.num_elements() == 0) return;
+
+    random::PhiloxRandom::Key key;
+    random::PhiloxRandom::ResultType counter;
+    OP_REQUIRES_OK(ctx, GenerateKey(seed_tensor, &key, &counter));
+
+    auto philox = random::PhiloxRandom(counter, key);
+    auto binomial_functor = functor::RandomBinomialFunctor<Device, T, U>();
+    binomial_functor(ctx, ctx->eigen_device<Device>(), num_batches,
+                     samples_per_batch, num_elements, bcast,
+                     counts_tensor.flat<T>(), probs_tensor.flat<T>(), philox,
+                     samples_tensor->flat<U>());
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomBinomialOp);
+};
+
 }  // namespace
 
-#define REGISTER(RTYPE, TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(Name("StatefulRandomBinomial")      \
-                              .Device(DEVICE_CPU)             \
-                              .HostMemory("resource")         \
-                              .HostMemory("algorithm")        \
-                              .HostMemory("shape")            \
-                              .HostMemory("counts")           \
-                              .HostMemory("probs")            \
-                              .TypeConstraint<RTYPE>("dtype") \
-                              .TypeConstraint<TYPE>("T"),     \
-                          RandomBinomialOp<CPUDevice, TYPE, RTYPE>)
+#define REGISTER(RTYPE, TYPE)                                        \
+  REGISTER_KERNEL_BUILDER(Name("StatefulRandomBinomial")             \
+                              .Device(DEVICE_CPU)                    \
+                              .HostMemory("resource")                \
+                              .HostMemory("algorithm")               \
+                              .HostMemory("shape")                   \
+                              .HostMemory("counts")                  \
+                              .HostMemory("probs")                   \
+                              .TypeConstraint<RTYPE>("dtype")        \
+                              .TypeConstraint<TYPE>("T"),            \
+                          RandomBinomialOp<CPUDevice, TYPE, RTYPE>); \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomBinomial")            \
+                              .Device(DEVICE_CPU)                    \
+                              .HostMemory("shape")                   \
+                              .HostMemory("seed")                    \
+                              .HostMemory("counts")                  \
+                              .HostMemory("probs")                   \
+                              .TypeConstraint<RTYPE>("dtype")        \
+                              .TypeConstraint<TYPE>("T"),            \
+                          StatelessRandomBinomialOp<CPUDevice, TYPE, RTYPE>)
 
 #define REGISTER_ALL(RTYPE)     \
   REGISTER(RTYPE, Eigen::half); \

@@ -143,3 +143,7 @@ pip3 install tb-nightly --no-deps
 # Argparse
 pip2 install --upgrade argparse
 pip3 install --upgrade argparse
+
+# tree
+pip2 install dm-tree
+pip3 install dm-tree

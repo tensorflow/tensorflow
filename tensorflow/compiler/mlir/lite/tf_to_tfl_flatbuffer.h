@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
+#include <unordered_set>
+
+#include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -39,6 +42,12 @@ LoadFromGraphdefOrMlirSource(
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, bool prune_unused_nodes,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
+
+// Load Saved model (either v1 or v2) into MLIR.
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+    const std::string& input_filename, const int saved_model_version,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and

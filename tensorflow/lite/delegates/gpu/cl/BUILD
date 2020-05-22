@@ -244,6 +244,7 @@ cc_library(
     srcs = ["gl_interop.cc"],
     hdrs = ["gl_interop.h"],
     deps = [
+        ":cl_command_queue",
         ":cl_context",
         ":cl_device",
         ":cl_errors",
@@ -252,6 +253,7 @@ cc_library(
         ":egl_sync",
         ":environment",
         ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
@@ -301,6 +303,7 @@ cc_library(
         ":model_hints",
         ":opencl_wrapper",
         ":precision",
+        ":storage_type_util",
         ":tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/selectors:operation_selector",
@@ -384,6 +387,19 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "storage_type_util",
+    srcs = ["storage_type_util.cc"],
+    hdrs = ["storage_type_util.h"],
+    deps = [
+        ":cl_context",
+        ":cl_device",
+        ":tensor_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:shape",
     ],
 )
 

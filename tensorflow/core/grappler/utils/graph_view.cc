@@ -982,7 +982,7 @@ void MutableGraphView::FixRenamedFanouts(
   // leftover fanouts, mark their respective fanin fanout_index_ to
   // internal::kMissingIndex as an indicator so when it comes to updating or
   // removing fanins inplace, nodes with the same index don't get affected and
-  // other fanouts are accidently removed.
+  // other fanouts are accidentally removed.
   for (auto& renamed_fanout : renamed_fanouts) {
     for (auto& regular_fanouts :
          renamed_fanout.second.regular_fanouts_by_port_) {

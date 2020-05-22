@@ -78,7 +78,7 @@ REGISTER_OP_GRADIENT("Reciprocal", InvGrad);
 Status SquareGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      FDH::Const("c", 2LL),
+      FDH::Const("c", int64{2}),
       {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
       {{"x2"}, "Mul", {"x", "two"}, {}, {"dy"}},  // x * 2
       {{"dx"}, "Mul", {"dy", "x2"}},              // dy * (x * 2)
@@ -619,7 +619,7 @@ REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
 Status SquaredDifferenceGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
-      FDH::Const("c", 2LL),
+      FDH::Const("c", int64{2}),
       {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
       {{"x_sub_y"}, "Sub", {"x", "y"}},
       {{"two_x_sub_y"}, "Mul", {"two", "x_sub_y"}},  // 2 * (x - y)

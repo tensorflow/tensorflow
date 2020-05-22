@@ -65,16 +65,16 @@ namespace tflite {
 class Flag {
  public:
   enum FlagType {
-    POSITIONAL = 0,
-    REQUIRED,
-    OPTIONAL,
+    kPositional = 0,
+    kRequired,
+    kOptional,
   };
 
   // The order of the positional flags is the same as they are added.
   // Positional flags are supposed to be required.
   template <typename T>
   static Flag CreateFlag(const char* name, T* val, const char* usage,
-                         FlagType flag_type = OPTIONAL) {
+                         FlagType flag_type = kOptional) {
     return Flag(
         name, [val](const T& v) { *val = v; }, *val, usage, flag_type);
   }
@@ -125,6 +125,14 @@ class Flags {
   // with matching flags, and remove the matching arguments from (*argc, argv).
   // Return true iff all recognized flag values were parsed correctly, and the
   // first remaining argument is not "--help".
+  // Note:
+  // 1. when there are duplicate args in argv for the same flag, the flag value
+  // and the parse result will be based on the 1st arg.
+  // 2. when there are duplicate flags in flag_list (i.e. two flags having the
+  // same name), all of them will be checked against the arg list and the parse
+  // result will be false if any of the parsing fails.
+  // See *Duplicate* unit tests in command_line_flags_test.cc for the
+  // illustration of such behaviors.
   static bool Parse(int* argc, const char** argv,
                     const std::vector<Flag>& flag_list);
 

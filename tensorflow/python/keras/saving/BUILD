@@ -4,7 +4,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python/distribute:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -19,8 +23,10 @@ py_library(
         "save.py",
         "saved_model/base_serialization.py",
         "saved_model/constants.py",
+        "saved_model/json_utils.py",
         "saved_model/layer_serialization.py",
         "saved_model/load.py",
+        "saved_model/metric_serialization.py",
         "saved_model/model_serialization.py",
         "saved_model/network_serialization.py",
         "saved_model/save.py",
@@ -38,9 +44,9 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:input_spec",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
@@ -90,6 +96,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -102,8 +109,8 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -134,12 +141,14 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -154,6 +163,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -164,9 +174,22 @@ tf_py_test(
     size = "medium",
     srcs = ["saved_model/revive_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "json_utils_test",
+    size = "small",
+    srcs = ["saved_model/json_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

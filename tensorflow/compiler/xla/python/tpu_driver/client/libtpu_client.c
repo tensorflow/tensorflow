@@ -36,7 +36,7 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 
   PrototypeTpuDriver_Initialize* initialize_fn;
   *(void**)(&initialize_fn) = dlsym(handle, "TpuDriver_Initialize");
-  initialize_fn(driver_fn);
+  initialize_fn(driver_fn, true);
 
   return handle;
 }

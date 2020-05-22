@@ -241,6 +241,12 @@ REGISTER_OP("StatelessWhile")
     .Attr("parallel_iterations: int = 10")
     .SetShapeFn(WhileShapeInferenceFn);
 
+REGISTER_OP("ToBool")
+    .Input("input: T")
+    .Output("output: bool")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("For")
     .Input("start: int32")
     .Input("limit: int32")

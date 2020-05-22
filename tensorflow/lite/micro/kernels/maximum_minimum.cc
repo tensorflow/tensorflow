@@ -68,7 +68,7 @@ struct MinimumOp {
 template <typename data_type, typename op_type>
 void TFLiteOperation(TfLiteContext* context, TfLiteNode* node,
                      const OpContext& op_context) {
-  reference_ops::MaximumMinimumBroadcast4DSlow(
+  reference_ops::MaximumMinimumBroadcastSlow(
       GetTensorShape(op_context.input1),
       GetTensorData<data_type>(op_context.input1),
       GetTensorShape(op_context.input2),
@@ -100,15 +100,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TFLiteOperation<int64_t, OpType>(context, node, op_context);
         break;
       default:
-        context->ReportError(
-            context, "Type %s (%d) is not supported by Maximum/Minimum.",
-            TfLiteTypeGetName(op_context.output->type),
-            op_context.output->type);
+        TF_LITE_KERNEL_LOG(context,
+                           "Type %s (%d) is not supported by Maximum/Minimum.",
+                           TfLiteTypeGetName(op_context.output->type),
+                           op_context.output->type);
         return kTfLiteError;
     }
   } else {
-    context->ReportError(context,
-                         "Kernel type not supported by Maximum/Minimum.");
+    TF_LITE_KERNEL_LOG(context,
+                       "Kernel type not supported by Maximum/Minimum.");
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -117,16 +117,32 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace maximum_minimum
 
 TfLiteRegistration* Register_MAXIMUM() {
-  static TfLiteRegistration r = {};
-  r.invoke = maximum_minimum::Eval<maximum_minimum::kReference,
-                                   maximum_minimum::MaximumOp>;
+  static TfLiteRegistration r = {
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/nullptr,
+      /*invoke=*/
+      maximum_minimum::Eval<maximum_minimum::kReference,
+                            maximum_minimum::MaximumOp>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_MINIMUM() {
-  static TfLiteRegistration r = {};
-  r.invoke = maximum_minimum::Eval<maximum_minimum::kReference,
-                                   maximum_minimum::MinimumOp>;
+  static TfLiteRegistration r = {
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/nullptr,
+      /*invoke=*/
+      maximum_minimum::Eval<maximum_minimum::kReference,
+                            maximum_minimum::MinimumOp>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 

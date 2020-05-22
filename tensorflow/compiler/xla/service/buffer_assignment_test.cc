@@ -729,7 +729,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto preset_assignments = absl::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
   preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
-  preset_assignments->add_size(/*memory_space=*/1, /*size=*/950);
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 950;
 
   auto buffers = RunBufferAssignmentWithPresetAssignments(
       module.get(), std::move(preset_assignments));
@@ -834,14 +835,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // Set only one preset assignment for while data and its aliases.
   auto preset_assignments = absl::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
-  preset_assignments->add_chunk({while_op, {1}}, {/*offset=*/100, /*size=*/40});
-  preset_assignments->add_chunk({cond_param, {1}},
-                                {/*offset=*/100, /*size=*/40});
-  preset_assignments->add_chunk({body_param, {1}},
-                                {/*offset=*/100, /*size=*/40});
-  preset_assignments->add_chunk({body_data_next, {}},
-                                {/*offset=*/100, /*size=*/40});
-  preset_assignments->add_size(/*memory_space=*/1, /*size=*/140);
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 140;
 
   auto buffers = RunBufferAssignmentWithPresetAssignments(
       module.get(), std::move(preset_assignments));

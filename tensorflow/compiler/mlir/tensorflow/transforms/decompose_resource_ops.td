@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Here, the element type can be any integer or float type. But, note that only
@@ -21,6 +21,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+// Creates a tf.ReadVariable op that reads a resource `$2` that has the same
+// element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp: NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
@@ -69,6 +71,56 @@ def DecomposeResourceApplyGradientDescentOp :
 
 // This decomposition is only correct inside XLA as it ignores use_locking
 // attribute.
+// accum = accum * momentum + grad;
+// var -= accum * lr
+def DecomposeResourceApplyMomentumOpNonNesterov :
+  Pattern<
+    (TF_ResourceApplyMomentumOp:$src_op
+       $var_resource, $accum_resource, $lr, $grad, $momentum,
+       BoolAttr:$_, ConstBoolAttrFalse:$use_nesterov
+    ),
+    [(TF_AddOp:$accum_new
+      (TF_MulOp
+        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+        $momentum
+      ),
+      $grad
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignSubVariableOp $var_resource, (TF_MulOp $accum_new, $lr))
+    ]
+  >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+// accum = accum * momentum + grad;
+// var -= grad * lr + accum * momentum * lr
+def DecomposeResourceApplyMomentumOpNesterov :
+  Pattern<
+    (TF_ResourceApplyMomentumOp:$src_op
+       $var_resource, $accum_resource, $lr, $grad, $momentum,
+       BoolAttr:$_, ConstBoolAttrTrue:$use_nesterov
+    ),
+    [(TF_AddOp:$accum_new
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       $grad
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignSubVariableOp
+       $var_resource,
+       (TF_AddOp
+         (TF_MulOp $grad, $lr),
+         (TF_MulOp $accum_new, (TF_MulOp $momentum, $lr))
+       )
+     )
+    ]
+  >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
 // accum = accum * momentum - lr * grad
 // var += accum
 def DecomposeResourceApplyKerasMomentumOpNonNesterov :
@@ -78,13 +130,14 @@ def DecomposeResourceApplyKerasMomentumOpNonNesterov :
        BoolAttr:$_, ConstBoolAttrFalse:$use_nesterov
     ),
     [(TF_SubOp:$accum_new
-      (TF_MulOp
-        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
-        $momentum
-      ),
-      (TF_MulOp $grad, $lr)),
-      (TF_AssignVariableOp $accum_resource, $accum_new),
-      (TF_AssignAddVariableOp $var_resource, $accum_new)
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       (TF_MulOp $grad, $lr)
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignAddVariableOp $var_resource, $accum_new)
     ]
   >;
 
@@ -99,11 +152,11 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
       BoolAttr:$_, ConstBoolAttrTrue:$use_nesterov
     ),
     [(TF_SubOp:$accum_new
-      (TF_MulOp
-        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
-        $momentum
-      ),
-      (TF_MulOp:$grad_lr $grad, $lr)
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       (TF_MulOp:$grad_lr $grad, $lr)
      ),
      (TF_AssignVariableOp $accum_resource, $accum_new),
      (TF_AssignAddVariableOp
@@ -113,6 +166,32 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
          $grad_lr
        )
      )
+    ]
+  >;
+
+// Pattern to Decompose ResourceApplyAdagrad.
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+// accum <- accum + grad * grad
+// variable <- variable - lr * grad / (sqrt(accum) + epsilon)
+def DecomposeResourceApplyAdagradV2 :
+  Pattern<
+    (TF_ResourceApplyAdagradV2Op:$src_op
+      $var_resource, $accum_resource, $lr, $epsilon, $grad, BoolAttr:$_,
+      ConstBoolAttrTrue:$update_slots),
+    [
+      (TF_AddV2Op:$new_accum
+        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+        (TF_MulOp $grad, $grad)
+      ),
+      (TF_AssignSubVariableOp
+        $var_resource,
+        (TF_DivOp
+          (TF_MulOp $lr, $grad),
+          (TF_AddV2Op (TF_SqrtOp $new_accum), $epsilon)
+        )
+      ),
+      (TF_AssignVariableOp $accum_resource, $new_accum),
     ]
   >;
 
@@ -212,3 +291,27 @@ def DecomposeResourceApplyAdamNesterov :
       (TF_AssignVariableOp $v_resource, $new_v)
     ]
   >;
+
+// Pattern to decompose tf.ResourceGather into tf.ReadVariable and tf.GatherV2.
+def DecomposeResourceGather : Pat<
+  (TF_ResourceGatherOp:$old_result
+    $resource, $indices, $batch_dims, $validate_indices),
+  (TF_GatherV2Op
+    (CreateTFReadVariableOp $old_result, $old_result, $resource),
+    $indices,
+    (TF_ConstOp $batch_dims), // axis
+    $batch_dims
+  )>;
+
+// Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
+// tf.TensorScatterUpdate, and tf.AssignVariable.
+def DecomposeResourceScatterUpdate : Pat<
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_AssignVariableOp
+    $resource,
+    (TF_TensorScatterUpdateOp
+      (CreateTFReadVariableOp $src_op, $updates, $resource),
+      $indices,
+      $updates
+    )
+  )>;

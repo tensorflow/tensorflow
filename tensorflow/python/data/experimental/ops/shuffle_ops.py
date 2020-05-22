@@ -96,7 +96,7 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       is `None` or `-1`) is for the dataset be repeated indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
       seed that will be used to create the distribution. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

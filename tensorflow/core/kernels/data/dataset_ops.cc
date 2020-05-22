@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_ops.h"
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
@@ -39,6 +39,10 @@ namespace data {
 /* static */ constexpr const char* const DatasetToGraphOp::kDatasetToGraph;
 /* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
 /* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
+
+namespace {
+constexpr char kPyFunc[] = "PyFunc";
+}  // namespace
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -89,7 +93,9 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
     auto library = graph_def.mutable_library();
     for (auto& function : (*library->mutable_function())) {
       for (auto& node : (*function.mutable_node_def())) {
-        if (!node.device().empty()) {
+        // We do not strip the device assignment from `PyFunc` ops because they
+        // need to be pinned to a host that is known to have Python interpreter.
+        if (!node.device().empty() && node.op() != kPyFunc) {
           *node.mutable_device() = DeviceNameUtils::LocalName(node.device());
         }
       }

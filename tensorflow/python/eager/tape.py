@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Gradient tape utilites."""
+"""Gradient tape utilities."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -58,6 +58,36 @@ def watch(tape, tensor):
   pywrap_tfe.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
 
 
+class VariableWatcher(object):
+  """A scope that tracks all trainable variable accesses within it.
+
+  This explicitly ignores variables that are not marked as trainable.
+
+  Sample usage:
+
+  var = tf.Variable(0.0)
+  with VariableWatcher() as variable_watcher:
+    var.assign_add(1.0)
+
+  assert variable_watcher.watched_variables == [var]
+  """
+
+  def __init__(self):
+    self._variable_watcher = None
+
+  def __enter__(self):
+    self._variable_watcher = pywrap_tfe.TFE_Py_VariableWatcherNew()
+    return self
+
+  def __exit__(self, typ, value, traceback):
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(self._variable_watcher)
+
+  def watched_variables(self):
+    """Returns a tuple of variables accessed under this scope."""
+    return pywrap_tfe.TFE_Py_VariableWatcherWatchedVariables(
+        self._variable_watcher)
+
+
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
   strategy, context = (
@@ -68,6 +98,7 @@ def watch_variable(tape, variable):
     variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tfe.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
+    pywrap_tfe.TFE_Py_VariableWatcherVariableAccessed(var)
 
 
 def variable_accessed(variable):
@@ -84,6 +115,7 @@ def variable_accessed(variable):
     variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tfe.TFE_Py_TapeVariableAccessed(var)
+    pywrap_tfe.TFE_Py_VariableWatcherVariableAccessed(var)
 
 
 def variables_accessed(variables):
@@ -107,6 +139,7 @@ def variables_accessed(variables):
 
   for var in accessed:
     pywrap_tfe.TFE_Py_TapeVariableAccessed(var)
+    pywrap_tfe.TFE_Py_VariableWatcherVariableAccessed(var)
 
 
 def pop_tape(tape):

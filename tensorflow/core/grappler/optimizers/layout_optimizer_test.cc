@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
@@ -82,8 +84,9 @@ class LayoutOptimizerTest : public GrapplerTest {
         ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
 
     ops::Conv2D::Attrs attrs;
+    const int kExplicitPaddings[] = {0, 0, 1, 2, 3, 4, 0, 0};
     if (padding == "EXPLICIT") {
-      attrs = attrs.ExplicitPaddings({0, 0, 1, 2, 3, 4, 0, 0});
+      attrs = attrs.ExplicitPaddings(kExplicitPaddings);
     }
 
     Output conv = ops::Conv2D(s->WithOpName("Conv2D").WithDevice(device), input,

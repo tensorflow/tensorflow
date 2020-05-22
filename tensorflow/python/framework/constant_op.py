@@ -28,6 +28,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -224,6 +225,10 @@ def constant(value, dtype=None, shape=None, name="Const"):
   ...
   NotImplementedError: ...
 
+  `tf.constant` will _always_ create CPU (host) tensors. In order to create
+  tensors on other devices, use `tf.identity`. (If the `value` is an eager
+  Tensor, however, the tensor will be returned unmodified as mentioned above.)
+
   Related Ops:
 
   * `tf.convert_to_tensor` is similar but:
@@ -295,11 +300,17 @@ def _constant_impl(
           value, dtype=dtype, shape=shape, verify_shape=verify_shape,
           allow_broadcast=allow_broadcast))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
+  attrs = {"value": tensor_value, "dtype": dtype_value}
   const_tensor = g._create_op_internal(  # pylint: disable=protected-access
-      "Const", [], [dtype_value.type],
-      attrs={"value": tensor_value,
-             "dtype": dtype_value},
-      name=name).outputs[0]
+      "Const", [], [dtype_value.type], attrs=attrs, name=name).outputs[0]
+
+  if op_callbacks.should_invoke_op_callbacks():
+    # TODO(b/147670703): Once the special-op creation code paths
+    # are unified. Remove this `if` block.
+    callback_outputs = op_callbacks.invoke_op_callbacks(
+        "Const", tuple(), attrs, (const_tensor,), op_name=name, graph=g)
+    if callback_outputs is not None:
+      const_tensor, = callback_outputs
   return const_tensor
 
 

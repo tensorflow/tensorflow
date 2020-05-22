@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -60,14 +61,16 @@ int main(int argc, char** argv) {
     LOG(FATAL) << "local_client_aot_test_helper TARGET_CPU";
   }
 
-  string triple_string;
-  string target_cpu = argv[1];
+  std::string triple_string;
+  std::string target_cpu = argv[1];
   if (target_cpu == "k8") {
     triple_string = "x86_64-none-linux-gnu";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
   } else if (target_cpu == "arm") {
     triple_string = "aarch64-none-linux-gnu";
+  } else if (target_cpu == "x64_windows") {
+    triple_string = "x86_64-pc-windows-msvc19";
   } else if (target_cpu == "local") {
     triple_string = llvm::sys::getDefaultTargetTriple();
   } else {

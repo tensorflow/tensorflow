@@ -91,7 +91,7 @@ TEST(MatrixDiagTest, Int32TestTwoDimDiag) {
   EXPECT_THAT(model.GetOutputType(), TfLiteType::kTfLiteInt32);
 }
 
-TEST(MatrixDiagTest, DegenenerateCase) {
+TEST(MatrixDiagTest, DegenerateCase) {
   MatrixDiagOpModel<uint8_t> model({TensorType_UINT8, {1}});
   model.PopulateTensor<uint8_t>(model.input(), {1});
   model.Invoke();

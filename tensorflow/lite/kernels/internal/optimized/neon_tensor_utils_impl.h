@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 
 #if defined(_MSC_VER)
@@ -33,21 +34,33 @@ namespace tensor_utils {
 // vector.
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
-                                             int n_batch, float* result,
-                                             int result_stride);
+                                             int n_batch, float* result);
 
 // Matrix multiplication for quantized values using symmetric quantization.
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
+                                             const int m_rows, const int m_cols,
+                                             const int8_t* __restrict__ vectors,
+                                             const float* scaling_factors,
+                                             int n_batch,
+                                             float* __restrict__ result);
+
+// Same as above but with a scratch buffer and CpuBackendContext for the
+// int8 x int8 -> int32 accumulation computation
+void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
+                                             const int m_rows, const int m_cols,
+                                             const int8_t* __restrict__ vectors,
+                                             const float* scaling_factors,
+                                             int n_batch, int32_t* scratch,
+                                             float* __restrict__ result,
+                                             CpuBackendContext* context);
 
 // Matrix multiplication for quantized values using asymmetric quantization.
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    int n_batch, float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                         const int32_t* bias, int32_t layer_norm_scale_a,
@@ -92,20 +105,24 @@ void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                         int32_t n_row, int32_t n_col,
                                         int32_t* output);
 
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector. Sparse version.
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Matrix multiplication for quantized values using symmetric quantization.
 // Sparse version.
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const float* scaling_factors, int n_batch, float* __restrict__ result);
 
 // Dot product of two vectors.
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -145,9 +162,6 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
                                   float* scaling_factor, int32_t* offset);
 
-// Shift left a vector in place with v_size size.
-void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.
@@ -155,6 +169,9 @@ void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
 // reduction_size: number of consecutive elements from input vector which are
 // added to get one element of output.
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
+                            int output_size, int reduction_size);
+
+void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             int output_size, int reduction_size);
 
 #endif  // USE_NEON

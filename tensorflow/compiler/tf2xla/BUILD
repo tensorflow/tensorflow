@@ -1,16 +1,18 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test", "tf_openmp_copts")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_tensor_coding_deps",
     "tf_proto_library",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
 package(
     default_visibility = [":internal"],
@@ -36,6 +38,7 @@ package_group(
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
+        "//third_party/mlperf/submissions/training/v0_7/models/...",
     ],
 )
 
@@ -78,7 +81,7 @@ tf_portable_proto_library(
     name = "portable_tf2xla_proto",
     config_string = "allow_all:true",
     header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    portable_deps = ["//tensorflow/core:portable_proto_lib"],
     proto_deps = [
         ":tf2xla_proto",
         "//tensorflow/core:protos_all",
@@ -162,7 +165,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
+        ":tf2xla_util",
         ":xla_compiler",
+        "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
@@ -174,12 +179,84 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
     ],
+)
+
+# The filegroups below are explicitly used by
+# tensorflow/tools/pip_package:build_pip_package to ensure we include the proper
+# sources for the XLA AOT CPU runtime; as these are necessary outside of bazel
+# when linking tfcompile objects using saved_model_cli (e.g. using the
+# tensorflow pip package). The associated .cc files are included in tensorflow
+# pip package's xla_aot_runtime_srcs/ subdirectory. All necessary headers are
+# also included in the pip package's include/tensorflow/ and include/external/
+# subdirectories. Note however that sometimes additional object files may need
+# to be linked when linking aot xla objects, e.g. abseil libraries. See the deps
+# attribute of the "xla_compiled_cpu_runtime_standalone" target below for an
+# exhaustive list.
+filegroup(
+    name = "xla_compiled_cpu_runtime_hdrs",
+    srcs = [
+        "xla_compiled_cpu_function.h",
+        "//tensorflow/compiler/xla:cpu_runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_hdrs",
+        "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
+        "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+    ],
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+)
+
+filegroup(
+    name = "xla_compiled_cpu_runtime_srcs",
+    srcs = [
+        "xla_compiled_cpu_function.cc",
+        "//tensorflow/compiler/xla:cpu_runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_srcs",
+        "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
+        "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+    ],
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+)
+
+# This stand-alone target is used to ensure that we can build tf_library type
+# targets against the subset of sources declared in
+# xla_compiled_cpu_runtime_{srcs,hdrs}.
+#
+# The macros in tensorflow/python/tools/tools.bzl produce AOT compiled binaries
+# that rely on this target, as do unit tests in tensorflow/python/tools.
+#
+# See above for the significance of the source filegroups.
+cc_library(
+    name = "xla_compiled_cpu_runtime_standalone",
+    srcs = [
+        ":xla_compiled_cpu_runtime_srcs",
+    ],
+    hdrs = [
+        ":xla_compiled_cpu_runtime_hdrs",
+    ],
+    copts = runtime_copts() + tf_openmp_copts(),
+    features = ["fully_static_link"],
+    linkstatic = 1,
+    visibility = [":friends"],
+    # Note, we specifically removed MKL and multithreaded dependencies so the
+    # standalone does not require the MKL binary blob or threading libraries.
+    #
+    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of
+    # absl/strings:cord when we update absl to a newer version.
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "//third_party/eigen3",
+        "//tensorflow/core/framework:numeric_types",
+    ] + tf_additional_tensor_coding_deps(),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -192,7 +269,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -537,10 +614,12 @@ tf_cc_test(
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -623,12 +702,10 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
-        "//tensorflow/compiler/mlir/tensorflow:device_util",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:session_options",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
@@ -641,6 +718,8 @@ cc_library(
     ],
     deps = [
         ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
+        "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,
 )
@@ -831,6 +910,8 @@ tf_cuda_cc_test(
     srcs = ["fused_batchnorm_reserve_space_test.cc"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -841,9 +922,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

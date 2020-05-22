@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 
 import numpy as np
 import six
@@ -82,7 +83,11 @@ class TypeSpec(object):
 
   @abc.abstractproperty
   def value_type(self):
-    """The Python type for values that are compatible with this TypeSpec."""
+    """The Python type for values that are compatible with this TypeSpec.
+
+    In particular, all values that are compatible with this TypeSpec must be an
+    instance of this type.
+    """
     raise NotImplementedError("%s.value_type" % type(self).__name__)
 
   def is_compatible_with(self, spec_or_value):
@@ -126,6 +131,31 @@ class TypeSpec(object):
         self._serialize(), other._serialize())  # pylint: disable=protected-access
     return self._deserialize(merged)
 
+  def _with_tensor_ranks_only(self):
+    """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
+
+    Returns:
+      A `TypeSpec` that is compatible with `self`, where any `TensorShape`
+      information has been relaxed to include only tensor rank (and not
+      the dimension sizes for individual axes).
+    """
+
+    # === Subclassing ===
+    # If not overridden by a subclass, the default behavior is to serialize
+    # this TypeSpec, relax any TensorSpec or TensorShape values, and
+    # deserialize the result.
+
+    def relax(value):
+      if isinstance(value, TypeSpec):
+        return value._with_tensor_ranks_only()  # pylint: disable=protected-access
+      elif (isinstance(value, tensor_shape.TensorShape) and
+            value.rank is not None):
+        return tensor_shape.TensorShape([None] * value.rank)
+      else:
+        return value
+
+    return self._deserialize(nest.map_structure(relax, self._serialize()))
+
   # === Component encoding for values ===
 
   @abc.abstractmethod
@@ -150,7 +180,7 @@ class TypeSpec(object):
 
     Args:
       components: A nested structure of `tf.Tensor` or `tf.CompositeTensor`,
-        compatible with `self._component_specs`.  (Caller is repsonsible for
+        compatible with `self._component_specs`.  (Caller is responsible for
         ensuring compatibility.)
 
     Returns:
@@ -373,7 +403,7 @@ class TypeSpec(object):
     * If they are both dicts with the same keys, then recursively combine
       the respective dict elements.
     * If they are both TypeSpecs, then combine using
-      TypeSpec.most_specific_comptible_type.
+      TypeSpec.most_specific_compatible_type.
     * If they are both TensorShapes, then combine using
       TensorShape.most_specific_compatible_shape.
     * If they are both TensorSpecs with the same dtype, then combine using
@@ -398,6 +428,15 @@ class TypeSpec(object):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
+    if isinstance(a, collections.OrderedDict):
+      a_keys, b_keys = a.keys(), b.keys()
+      if len(a) != len(b) or a_keys != b_keys:
+        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+      return collections.OrderedDict([
+          (k,
+           TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k]))
+          for k in a_keys
+      ])
     if isinstance(a, dict):
       a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
       if len(a) != len(b) or a_keys != b_keys:

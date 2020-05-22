@@ -47,6 +47,7 @@ from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import core
 
 
 def default_variable_creator(_, **kwds):
@@ -264,6 +265,7 @@ class VariableMetaclass(type):
 
 
 @tf_export("Variable", v1=[])
+# TODO(mdan): This should subclass core.Tensor, and not all its subclasses?
 class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   """See the [variable guide](https://tensorflow.org/guide/variable).
 
@@ -1076,8 +1078,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable if Tensor equality is enabled. "
-                      "Instead, use tensor.experimental_ref() as the key.")
+      raise TypeError("Variable is unhashable. "
+                      "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
 
@@ -1209,56 +1211,48 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def _get_save_slice_info(self):
     return self._save_slice_info
 
+  @deprecated(None, "Use ref() instead.")
   def experimental_ref(self):
-    # tf.Tensor also has the same experimental_ref() API.  If you update the
-    # documenation here, please update tf.Tensor.experimental_ref() as well.
+    return self.ref()
+
+  def ref(self):
+    # tf.Tensor also has the same ref() API.  If you update the
+    # documentation here, please update tf.Tensor.ref() as well.
     """Returns a hashable reference object to this Variable.
 
-    Warning: Experimental API that could be changed or removed.
-
-    The primary usecase for this API is to put variables in a set/dictionary.
+    The primary use case for this API is to put variables in a set/dictionary.
     We can't put variables in a set/dictionary as `variable.__hash__()` is no
     longer available starting Tensorflow 2.0.
 
-    ```python
-    import tensorflow as tf
+    The following will raise an exception starting 2.0
 
-    x = tf.Variable(5)
-    y = tf.Variable(10)
-    z = tf.Variable(10)
+    >>> x = tf.Variable(5)
+    >>> y = tf.Variable(10)
+    >>> z = tf.Variable(10)
+    >>> variable_set = {x, y, z}
+    Traceback (most recent call last):
+      ...
+    TypeError: Variable is unhashable. Instead, use tensor.ref() as the key.
+    >>> variable_dict = {x: 'five', y: 'ten'}
+    Traceback (most recent call last):
+      ...
+    TypeError: Variable is unhashable. Instead, use tensor.ref() as the key.
 
-    # The followings will raise an exception starting 2.0
-    # TypeError: Variable is unhashable if Variable equality is enabled.
-    variable_set = {x, y, z}
-    variable_dict = {x: 'five', y: 'ten'}
-    ```
+    Instead, we can use `variable.ref()`.
 
-    Instead, we can use `variable.experimental_ref()`.
-
-    ```python
-    variable_set = {x.experimental_ref(),
-                    y.experimental_ref(),
-                    z.experimental_ref()}
-
-    print(x.experimental_ref() in variable_set)
-    ==> True
-
-    variable_dict = {x.experimental_ref(): 'five',
-                     y.experimental_ref(): 'ten',
-                     z.experimental_ref(): 'ten'}
-
-    print(variable_dict[y.experimental_ref()])
-    ==> ten
-    ```
+    >>> variable_set = {x.ref(), y.ref(), z.ref()}
+    >>> x.ref() in variable_set
+    True
+    >>> variable_dict = {x.ref(): 'five', y.ref(): 'ten', z.ref(): 'ten'}
+    >>> variable_dict[y.ref()]
+    'ten'
 
     Also, the reference object provides `.deref()` function that returns the
     original Variable.
 
-    ```python
-    x = tf.Variable(5)
-    print(x.experimental_ref().deref())
-    ==> <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
-    ```
+    >>> x = tf.Variable(5)
+    >>> x.ref().deref()
+    <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
     """
     return object_identity.Reference(self)
 
@@ -1559,7 +1553,7 @@ class VariableV1(Variable):
 
 
 # TODO(apassos): do not repeat all comments here
-class RefVariable(VariableV1):
+class RefVariable(VariableV1, core.Tensor):
   """Ref-based implementation of variables."""
 
   def __init__(
@@ -3040,7 +3034,6 @@ class PartitionedVariable(object):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(RefVariable,
                                         RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
-ops.register_dense_tensor_like_type(RefVariable)
 
 
 @tf_export(v1=["global_variables"])

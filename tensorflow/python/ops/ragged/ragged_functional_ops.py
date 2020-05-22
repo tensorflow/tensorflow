@@ -24,10 +24,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("ragged.map_flat_values")
+@dispatch.add_dispatch_support
 def map_flat_values(op, *args, **kwargs):
   """Applies `op` to the values of one or more RaggedTensors.
 

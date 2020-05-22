@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -23,6 +31,7 @@ namespace profiler {
 XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
     : stat_(stat),
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
+      plane_(plane),
       type_(plane->GetStatType(stat->metadata_id())) {}
 
 std::string XStatVisitor::ToString() const {
@@ -35,8 +44,27 @@ std::string XStatVisitor::ToString() const {
       return absl::StrCat(stat_->double_value());
     case XStat::kStrValue:
       return stat_->str_value();
+    case XStat::kBytesValue:
+      return "<opaque bytes>";
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
     case XStat::VALUE_NOT_SET:
       return "";
+  }
+}
+
+absl::string_view XStatVisitor::StrOrRefValue() const {
+  switch (stat_->value_case()) {
+    case XStat::kStrValue:
+      return stat_->str_value();
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
   }
 }
 
@@ -46,41 +74,83 @@ XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
       plane_(plane),
       line_(line),
       event_(event),
-      metadata_(plane->GetEventMetadata(event_->metadata_id())) {}
+      metadata_(plane->GetEventMetadata(event_->metadata_id())),
+      type_(plane->GetEventType(event_->metadata_id())) {}
 
-XPlaneVisitor::XPlaneVisitor(const XPlane* plane)
+XPlaneVisitor::XPlaneVisitor(const XPlane* plane,
+                             const TypeGetterList& event_type_getter_list,
+                             const TypeGetterList& stat_type_getter_list)
     : XStatsOwner<XPlane>(this, plane), plane_(plane) {
+  for (const auto& event_type_getter : event_type_getter_list) {
+    BuildEventTypeMap(plane, event_type_getter);
+  }
+  for (const auto& stat_type_getter : stat_type_getter_list) {
+    BuildStatTypeMap(plane, stat_type_getter);
+  }
+}
+
+void XPlaneVisitor::BuildEventTypeMap(const XPlane* plane,
+                                      const TypeGetter& event_type_getter) {
+  for (const auto& event_metadata : plane->event_metadata()) {
+    uint64 metadata_id = event_metadata.first;
+    const auto& metadata = event_metadata.second;
+    absl::optional<int64> event_type = event_type_getter(metadata.name());
+    if (event_type.has_value()) {
+      auto result = event_metadata_id_map_.emplace(metadata_id, *event_type);
+      DCHECK(result.second);  // inserted
+      event_type_map_.emplace(*event_type, &metadata);
+    }
+  }
+}
+
+void XPlaneVisitor::BuildStatTypeMap(const XPlane* plane,
+                                     const TypeGetter& stat_type_getter) {
   for (const auto& stat_metadata : plane->stat_metadata()) {
-    StatType type =
-        tensorflow::profiler::GetStatType(stat_metadata.second.name());
-    stat_metadata_id_map_.emplace(stat_metadata.first,
-                                  std::make_pair(&stat_metadata.second, type));
-    stat_type_map_.emplace(type, &stat_metadata.second);
+    uint64 metadata_id = stat_metadata.first;
+    const auto& metadata = stat_metadata.second;
+    absl::optional<int64> stat_type = stat_type_getter(metadata.name());
+    if (stat_type.has_value()) {
+      auto result = stat_metadata_id_map_.emplace(metadata_id, *stat_type);
+      DCHECK(result.second);  // inserted
+      stat_type_map_.emplace(*stat_type, &metadata);
+    }
   }
 }
 
 const XStatMetadata* XPlaneVisitor::GetStatMetadata(
     int64 stat_metadata_id) const {
-  const auto* it = gtl::FindOrNull(stat_metadata_id_map_, stat_metadata_id);
-  return it ? it->first : &XStatMetadata::default_instance();
+  const auto& stat_metadata_map = plane_->stat_metadata();
+  const auto it = stat_metadata_map.find(stat_metadata_id);
+  if (it != stat_metadata_map.end()) return &it->second;
+  return &XStatMetadata::default_instance();
 }
 
-StatType XPlaneVisitor::GetStatType(int64 stat_metadata_id) const {
-  const auto* it = gtl::FindOrNull(stat_metadata_id_map_, stat_metadata_id);
-  return it ? it->second : kUnknownStatType;
+absl::optional<int64> XPlaneVisitor::GetStatType(int64 stat_metadata_id) const {
+  const auto it = stat_metadata_id_map_.find(stat_metadata_id);
+  if (it != stat_metadata_id_map_.end()) return it->second;
+  return absl::nullopt;
 }
 
-absl::optional<int64> XPlaneVisitor::GetStatMetadataId(
-    StatType stat_type) const {
-  const auto* it = gtl::FindOrNull(stat_type_map_, stat_type);
-  if (!it) return absl::nullopt;
-  return (*it)->id();
+absl::optional<int64> XPlaneVisitor::GetStatMetadataId(int64 stat_type) const {
+  const auto it = stat_type_map_.find(stat_type);
+  if (it != stat_type_map_.end()) return it->second->id();
+  return absl::nullopt;
 }
 
 const XEventMetadata* XPlaneVisitor::GetEventMetadata(
     int64 event_metadata_id) const {
-  return &gtl::FindWithDefault(plane_->event_metadata(), event_metadata_id,
-                               XEventMetadata::default_instance());
+  const auto& event_metadata_map = plane_->event_metadata();
+  const auto it = event_metadata_map.find(event_metadata_id);
+  if (it != event_metadata_map.end()) return &it->second;
+  return &XEventMetadata::default_instance();
 }
+
+absl::optional<int64> XPlaneVisitor::GetEventType(
+    int64 event_metadata_id) const {
+  const auto it = event_metadata_id_map_.find(event_metadata_id);
+  if (it != event_metadata_id_map_.end()) return it->second;
+  return absl::nullopt;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

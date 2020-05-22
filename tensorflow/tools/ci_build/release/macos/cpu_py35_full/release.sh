@@ -16,10 +16,7 @@
 set -e
 
 source tensorflow/tools/ci_build/release/common.sh
-
-# Install latest bazel
-update_bazel_macos
-install_macos_pip_deps
+install_bazelisk
 
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin

@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -43,7 +44,6 @@ class _Merge(Layer):
     """
     super(_Merge, self).__init__(**kwargs)
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
   def _merge_function(self, inputs):
     raise NotImplementedError
@@ -89,13 +89,13 @@ class _Merge(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape, list):
+    if not isinstance(input_shape[0], tuple):
       raise ValueError('A merge layer should be called on a list of inputs.')
     if len(input_shape) < 2:
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
-    batch_sizes = {s[0] for s in input_shape if s is not None} - {None}
+    batch_sizes = {s[0] for s in input_shape if s} - {None}
     if len(batch_sizes) > 1:
       raise ValueError(
           'Can not merge tensors with different '
@@ -118,7 +118,7 @@ class _Merge(Layer):
       self._reshape_required = True
 
   def call(self, inputs):
-    if not isinstance(inputs, list):
+    if not isinstance(inputs, (list, tuple)):
       raise ValueError('A merge layer should be called on a list of inputs.')
     if self._reshape_required:
       reshaped_inputs = []
@@ -204,9 +204,9 @@ class _Merge(Layer):
   def compute_mask(self, inputs, mask=None):
     if mask is None:
       return None
-    if not isinstance(mask, list):
+    if not isinstance(mask, (tuple, list)):
       raise ValueError('`mask` should be a list.')
-    if not isinstance(inputs, list):
+    if not isinstance(inputs, (tuple, list)):
       raise ValueError('`inputs` should be a list.')
     if len(mask) != len(inputs):
       raise ValueError('The lists `inputs` and `mask` '
@@ -489,7 +489,7 @@ class Concatenate(_Merge):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape, list) or len(input_shape) < 2:
+    if not isinstance(input_shape[0], tuple) or len(input_shape) < 2:
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of at least 2 inputs')
     if all(shape is None for shape in input_shape):
@@ -523,7 +523,7 @@ class Concatenate(_Merge):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    if not isinstance(input_shape, list):
+    if not isinstance(input_shape, (tuple, list)):
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of inputs.')
     input_shapes = input_shape
@@ -538,9 +538,9 @@ class Concatenate(_Merge):
   def compute_mask(self, inputs, mask=None):
     if mask is None:
       return None
-    if not isinstance(mask, list):
+    if not isinstance(mask, (tuple, list)):
       raise ValueError('`mask` should be a list.')
-    if not isinstance(inputs, list):
+    if not isinstance(inputs, (tuple, list)):
       raise ValueError('`inputs` should be a list.')
     if len(mask) != len(inputs):
       raise ValueError('The lists `inputs` and `mask` '
@@ -651,12 +651,11 @@ class Dot(_Merge):
     self.normalize = normalize
     self.supports_masking = True
     self._reshape_required = False
-    self._supports_ragged_inputs = False
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape, list) or len(input_shape) != 2:
+    if not isinstance(input_shape[0], tuple) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '
                        'on a list of 2 inputs.')
     shape1 = input_shape[0]
@@ -677,6 +676,7 @@ class Dot(_Merge):
                        'Chosen axes: %s, %s' % (axes[0], axes[1]))
 
   def _merge_function(self, inputs):
+    base_layer_utils.no_ragged_support(inputs, self.name)
     if len(inputs) != 2:
       raise ValueError('A `Dot` layer should be called on exactly 2 inputs')
     x1 = inputs[0]
@@ -701,7 +701,7 @@ class Dot(_Merge):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    if not isinstance(input_shape, list) or len(input_shape) != 2:
+    if not isinstance(input_shape, (tuple, list)) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '
                        'on a list of 2 inputs.')
     shape1 = list(input_shape[0])

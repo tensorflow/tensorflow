@@ -22,23 +22,7 @@ ENTRY %tfcompile.1 {
   // CHECK-NEXT: %cst_4 = constant  {name = "constant.5"} dense<1> : tensor<i64>
   %constant.5 = s64[] constant(1)
 
-  // TODO(b/130356985): Update once MLIR supports unsigned integers.
-  // CHECK-NEXT: %cst_5 = constant  {name = "constant.6"} dense<1> : tensor<i8>
-  %constant.6 = u8[] constant(1)
-
-  // TODO(b/130356985): Update once MLIR supports unsigned integers.
-  // CHECK-NEXT: %cst_6 = constant  {name = "constant.7"} dense<1> : tensor<i16>
-  %constant.7 = u16[] constant(1)
-
-  // TODO(b/130356985): Update once MLIR supports unsigned integers.
-  // CHECK-NEXT: %cst_7 = constant  {name = "constant.8"} dense<1> : tensor<i32>
-  %constant.8 = u32[] constant(1)
-
-  // TODO(b/130356985): Update once MLIR supports unsigned integers.
-  // CHECK-NEXT: %cst_8 = constant  {name = "constant.9"} dense<1> : tensor<i64>
-  %constant.9 = u64[] constant(1)
-
-  // CHECK-NEXT: %cst_9 = constant  {name = "constant.10"} dense<true> : tensor<i1>
-  // CHECK-NEXT: return %cst_9 : tensor<i1>
-  ROOT %constant.10 = pred[] constant(1)
+  // CHECK-NEXT: %cst_5 = constant  {name = "constant.6"} dense<true> : tensor<i1>
+  // CHECK-NEXT: return %cst_5 : tensor<i1>
+  ROOT %constant.6 = pred[] constant(1)
 }

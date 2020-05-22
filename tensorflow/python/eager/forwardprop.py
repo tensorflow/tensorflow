@@ -23,9 +23,9 @@ import threading
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import function
 
 from tensorflow.python.framework import ops
 
@@ -145,9 +145,15 @@ def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
 # trace-time Python logic).
-_jvp_relaxed_shapes = def_function.function(
+#
+# Using function.defun rather than def_function.function avoids
+# tf.config.run_functions_eagerly(True). `_jvp_helper` doesn't successfully run
+# eagerly (infinite recursion), and even if it did it would use extra memory and
+# run unnecessary computation. The function does not create variables, so the
+# two symbols are otherwise equivalent.
+_jvp_relaxed_shapes = function.defun(
     _jvp_helper, experimental_relax_shapes=True)
-_jvp_exact_shapes = def_function.function(
+_jvp_exact_shapes = function.defun(
     _jvp_helper, experimental_relax_shapes=False)
 
 # The maximum number of exact-shape traces to perform for a single op before
@@ -186,7 +192,7 @@ class ForwardAccumulator(object):
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
   >>> dense = tf.keras.layers.Dense(1)
-  >>> dense.build([2])
+  >>> dense.build([None, 2])
   >>> with tf.autodiff.ForwardAccumulator(
   ...    primals=dense.kernel,
   ...    tangents=tf.constant([[1.], [0.]])) as acc:
@@ -210,7 +216,7 @@ class ForwardAccumulator(object):
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
   >>> dense = tf.keras.layers.Dense(1)
-  >>> dense.build([2])
+  >>> dense.build([None, 2])
   >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
   >>> kernel_fprop = []
   >>> with tf.autodiff.ForwardAccumulator(

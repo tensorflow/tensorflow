@@ -31,6 +31,7 @@ namespace nnapi {
 constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
+constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
@@ -121,6 +122,7 @@ class NNFreeModel {
   }
 
  private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
 // RAII NN API Compilation Destructor for use with std::unique_ptr
@@ -132,6 +134,19 @@ class NNFreeCompilation {
   }
 
  private:
+  // NnApi instance to use. Not owned by this object.
+  const NnApi* nnapi_;
+};
+// RAII NN API Execution Destructor for use with std::unique_ptr
+class NNFreeExecution {
+ public:
+  explicit NNFreeExecution(const NnApi* nnapi) : nnapi_(nnapi) {}
+  void operator()(ANeuralNetworksExecution* execution) {
+    nnapi_->ANeuralNetworksExecution_free(execution);
+  }
+
+ private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
 
@@ -146,6 +161,7 @@ class NNMemory {
   uint8_t* get_data_ptr() { return data_ptr_; }
 
  private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
   int fd_ = 0;
   size_t byte_size_ = 0;
@@ -224,7 +240,8 @@ struct NNAPIValidationFailure {
 class NNAPIDelegateKernel {
  public:
   explicit NNAPIDelegateKernel(const NnApi* nnapi)
-      : nnapi_(nnapi),
+      : initialised_(false),
+        nnapi_(nnapi),
         nn_model_(nullptr, NNFreeModel(nnapi_)),
         nn_compilation_(nullptr, NNFreeCompilation(nnapi_)) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
@@ -255,23 +272,41 @@ class NNAPIDelegateKernel {
       // the given node
       std::vector<NNAPIValidationFailure>* map_failures = nullptr);
 
-  // Initialize the kernel (a NN model).
+  // Initialize the kernel (a NN model) and builds the NN Model.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params,
                     int* nnapi_errno);
 
+  // Creates the NNAPI Compilation for the NN model. It assumes that Init has
+  // been called and completed successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        int* nnapi_errno);
 
+  // Invoke the NN Model. Expects Init and Prepare to have been completed
+  // successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node,
                       int* nnapi_errno);
 
+  // Returns the list of operations supported by the current NNAPI model as
+  // built in Prepare. Every operation is identified by the index as provided
+  // in the delegate parameters given to the delegate during the Init call.
+  // It expects the Init method has been called and completed successfully and
+  // returns kTfLiteError if not. Returns an error if any of the NNAPI
+  // operations fails or if the
+  // ANeuralNetworksModel_getSupportedOperationsForDevices function is not
+  // available in the NnApi object.
+  TfLiteStatus GetOperationsSupportedByTargetNnApiDevices(
+      TfLiteContext* context, std::vector<int>* supported_nodes,
+      int* nnapi_errno);
+
  private:
+  // True if initialization has been completed successfully
+  bool initialised_;
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
@@ -302,6 +337,10 @@ class NNAPIDelegateKernel {
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;
 
+  std::vector<uint8_t> nn_compilation_cache_token_;
+
+  std::vector<int> nnapi_to_tflite_op_mapping_;
+
   void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
                                          int builtin_code,
                                          const TfLiteNode* node,
@@ -311,6 +350,7 @@ class NNAPIDelegateKernel {
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
+                          const StatefulNnApiDelegate::Options& options,
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);

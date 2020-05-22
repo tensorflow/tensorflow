@@ -14,6 +14,9 @@
 # ==============================================================================
 """TensorFlow is an open source machine learning framework for everyone.
 
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
+[![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
+
 TensorFlow is an open source software library for high performance numerical
 computation. Its flexible architecture allows easy deployment of computation
 across a variety of platforms (CPUs, GPUs, TPUs), and from desktops to clusters
@@ -40,43 +43,31 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-DOCLINES = __doc__.split('\n')
-
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.1.0'
+_VERSION = '2.2.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astunparse == 1.6.3',
-    'backports.weakref >= 1.0rc1;python_version<"3.4"',
-    'enum34 >= 1.1.6;python_version<"3.4"',
     'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
-    'keras_preprocessing >= 1.1.0',
+    'keras_preprocessing >= 1.1.1, < 1.2',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'protobuf >= 3.8.0',
-    'tensorboard >= 2.1.0, < 2.2.0',
-    'tensorflow_estimator >= 2.1.0, < 2.2.0',
+    'protobuf >= 3.9.2',
+    'tensorboard >= 2.2.0, < 2.3.0',
+    'tensorflow_estimator >= 2.2.0, < 2.3.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
-    # python3 requires wheel 0.26
-    'wheel >= 0.26;python_version>="3"',
-    'wheel;python_version<"3"',
-    # mock comes with unittest.mock for python3, need to install for python2
-    'mock >= 2.0.0;python_version<"3"',
-    # functools comes with python3, need to install the backport for python2
-    'functools32 >= 3.2.3;python_version<"3"',
+    'wheel >= 0.26',
     'six >= 1.12.0',
     # scipy < 1.4.1 causes segfaults due to pybind11
-    # Latest scipy pip for py2 is scipy==1.2.2
-    'scipy == 1.4.1;python_version>="3"',
-    'scipy == 1.2.2;python_version<"3"',
+    'scipy == 1.4.1',
 ]
 
 if sys.byteorder == 'little':
@@ -96,11 +87,19 @@ if '--project_name' in sys.argv:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.2.0a0, < 2.3.0a0'
-    elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
-      REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
+
+DOCLINES = __doc__.split('\n')
+if project_name.endswith('-gpu'):
+  project_name_no_gpu = project_name[:-len('-gpu')]
+  _GPU_PACKAGE_NOTE = 'Note that %s package by default supports both CPU and '\
+      'GPU. %s has the same content and exists solely for backward '\
+      'compatiblity. Please migrate to %s for GPU support.'\
+      % (project_name_no_gpu, project_name, project_name_no_gpu)
+  DOCLINES.append(_GPU_PACKAGE_NOTE)
+
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
@@ -117,11 +116,6 @@ CONSOLE_SCRIPTS = [
     'estimator_ckpt_converter = tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
 # pylint: enable=line-too-long
-
-# Only keep freeze_graph console script in 1.X.
-if _VERSION.startswith('1.') and '_2.0' not in project_name:
-  CONSOLE_SCRIPTS.append(
-      'freeze_graph = tensorflow.python.tools.freeze_graph:run_main')
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
@@ -143,7 +137,7 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
+    self.install_headers = os.path.join(self.install_platlib, 'tensorflow',
                                         'include')
     self.install_lib = self.install_platlib
     return ret
@@ -181,17 +175,15 @@ class InstallHeaders(Command):
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
-    install_dir = re.sub('/include/tensorflow_core/', '/include/tensorflow/',
-                         install_dir)
 
-    # Copy external code headers into tensorflow_core/include.
+    # Copy external code headers into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
     external_header_locations = [
-        'tensorflow_core/include/external/eigen_archive/',
-        'tensorflow_core/include/external/com_google_absl/',
+        'tensorflow/include/external/eigen_archive/',
+        'tensorflow/include/external/com_google_absl/',
     ]
     for location in external_header_locations:
       if location in install_dir:
@@ -245,16 +237,23 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.h', 'tensorflow_core/compiler')) +
-    list(find_files('*.h', 'tensorflow_core/core')) +
-    list(find_files('*.h', 'tensorflow_core/stream_executor')) +
+    list(find_files('*.proto', 'tensorflow/compiler')) +
+    list(find_files('*.proto', 'tensorflow/core')) +
+    list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/c')) +
+    list(find_files('*.h', 'tensorflow/cc')) +
+    list(find_files('*.h', 'tensorflow/compiler')) +
+    list(find_files('*.h.inc', 'tensorflow/compiler')) +
+    list(find_files('*.h', 'tensorflow/core')) +
+    list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) + list(
-        find_files('*.h', 'tensorflow_core/include/external/com_google_absl')) +
+        find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(
-        find_files('*.inc', 'tensorflow_core/include/external/com_google_absl'))
-    + list(find_files('*', 'tensorflow_core/include/external/eigen_archive')))
+        find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
@@ -293,13 +292,12 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',

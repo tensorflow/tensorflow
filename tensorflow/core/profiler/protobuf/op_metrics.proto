@@ -26,7 +26,7 @@ message LayoutAnalysis {
 }
 
 // Metrics for an operation (accumulated over all occurrences).
-// Next ID: 18
+// Next ID: 20
 message OpMetrics {
   // HLO module id. 0 for TF ops.
   uint64 hlo_module_id = 13;
@@ -36,6 +36,8 @@ message OpMetrics {
   string category = 11;
   // Provenance of this op (e.g., if HLO op, original TF op).
   string provenance = 12;
+  // Whether it is executed eagerly.
+  bool is_eager = 18;
   // Number of executions.
   uint32 occurrences = 3;
   // Total time (self + children) in picoseconds.
@@ -48,6 +50,19 @@ message OpMetrics {
   uint64 flops = 2;
   // Total bytes accessed.
   uint64 bytes_accessed = 5;
+  // Breakdown of memory accessed by operation type and memory space.
+  message MemoryAccessed {
+    enum OperationType {
+      UNKNOWN = 0;
+      READ = 1;
+      WRITE = 2;
+    }
+    OperationType operation_type = 1;
+    // Device-specific id of memory space.
+    uint64 memory_space = 2;
+    uint64 bytes_accessed = 3;
+  }
+  repeated MemoryAccessed memory_accessed_breakdown = 19;
   // Total dma stall time in picoseconds.
   uint64 dma_stall_ps = 10;
   // The data layout for this op. Only set for convolution ops for now.
@@ -56,12 +71,19 @@ message OpMetrics {
   string deduplicated_name = 15;
   // Children of the op. e.g. fused ops if this op is fusion.
   OpMetricsDb children = 16;
-
   reserved 4, 8, 9;
 }
 
+// Statistics about the various precision used in computation.
+message PrecisionStats {
+  // Amount of time spent on 16-bit computation (in ps).
+  uint64 compute_16bit_ps = 1;
+  // Amount of time spent on 32-bit computation (in ps).
+  uint64 compute_32bit_ps = 2;
+}
+
 // A database for OpMetrics.
-// Next ID: 13
+// Next ID: 14
 message OpMetricsDb {
   // A bunch of OpMetrics.
   repeated OpMetrics metrics_db = 10;
@@ -74,5 +96,7 @@ message OpMetricsDb {
   uint64 total_time_ps = 11;
   // The total time incurred by OPs in picoseconds.
   uint64 total_op_time_ps = 12;
+  // Precision-related stats.
+  PrecisionStats precision_stats = 13;
   reserved 1, 4, 5, 6, 7, 8, 9;
 }

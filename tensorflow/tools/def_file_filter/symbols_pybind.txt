@@ -5,6 +5,7 @@ tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
 tensorflow::swig::IsMapping
+tensorflow::swig::IsMutableMapping
 tensorflow::swig::IsMappingView
 tensorflow::swig::IsAttrs
 tensorflow::swig::IsTensor
@@ -75,12 +76,29 @@ tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[core_cpu_impl]  # device_lib tfe
+[device]  # device_lib, tfe, tf_session
 tensorflow::Device::attributes
+
+[device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
-tensorflow::SessionOptions::SessionOptions
-tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+
+[session_options]  # device_lib, tfe, tf_session
+tensorflow::SessionOptions::SessionOptions
+
+[quantize_training]  # quantize_training
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[session_state]  # tf_session
+tensorflow::SessionState::kTensorHandleResourceTypeName
+
+[server_lib] # server_lib
+tensorflow::data::GrpcDataServerBase::Start
+tensorflow::data::GrpcDataServerBase::Stop
+tensorflow::data::GrpcDataServerBase::BoundPort
+tensorflow::data::MasterGrpcDataServer::NumTasks
+tensorflow::data::NewMasterServer
+tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes
 tensorflow::DataType_IsValid
@@ -98,6 +116,8 @@ tensorflow::swig::TryFindKernelClass
 [toco_python_api] # toco_python_api
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
+toco::MlirQuantizeModel
+toco::MlirSparsifyModel
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -163,6 +183,10 @@ TFE_Py_TapeGradient
 TFE_Py_FastPathExecute_C
 TFE_Py_RecordGradient
 TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
 TFE_Py_ForwardAccumulatorNew
 TFE_Py_ForwardAccumulatorSetAdd
 TFE_Py_ForwardAccumulatorSetRemove
@@ -181,11 +205,163 @@ TFE_Py_SetEagerContext
 tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
-[profiler_session] # tfe
-tensorflow::ProfilerSession::~ProfilerSession
-
 [tf_status_helper] # tfe
 tensorflow::Set_TF_Status_from_Status
 
 [context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+
+[mlir] # mlir
+tensorflow::ExperimentalRunPassPipeline
+tensorflow::ExperimentalConvertSavedModelV1ToMlir
+tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ImportGraphDef
+
+[op_gen_lib] # tf_session
+tensorflow::ApiDefMap::~ApiDefMap
+
+[graph_constructor] # tf_session
+tensorflow::ShapeRefiner::~ShapeRefiner
+
+[python_api] # tf_session
+tensorflow::AddControlInput
+tensorflow::SetAttr
+tensorflow::ClearAttr
+tensorflow::SetRequestedDevice
+tensorflow::UpdateEdge
+tensorflow::RemoveAllControlInputs
+tensorflow::SetRequireShapeInferenceFns
+tensorflow::ExtendSession
+tensorflow::GetHandleShapeAndType
+tensorflow::SetHandleShapeAndType
+tensorflow::AddWhileInputHack
+
+[numpy_lib] # tf_session
+tensorflow::ImportNumpy
+_tensorflow_numpy_api
+
+[tf_session_helper] # tf_session
+tensorflow::TF_NewSessionRef
+tensorflow::TF_SessionMakeCallable
+tensorflow::TF_SessionRunCallable
+tensorflow::TF_SessionReleaseCallable
+tensorflow::TF_Reset_wrapper
+tensorflow::EqualGraphDefWrapper
+tensorflow::EqualAttrValueWrapper
+tensorflow::TF_GraphGetTensorShapeHelper
+tensorflow::TF_SessionRun_wrapper
+tensorflow::TF_SessionPRunSetup_wrapper
+tensorflow::TF_SessionPRun_wrapper
+tensorflow::GetOperationInputs
+tensorflow::TF_OperationGetControlInputs_wrapper
+tensorflow::TF_OperationGetControlOutputs_wrapper
+tensorflow::TF_OperationOutputConsumers_wrapper
+tensorflow::TF_GraphToFunction_wrapper
+tensorflow::TF_GraphSetOutputHandleShapesAndTypes_wrapper
+tensorflow::TF_CreatePlaceholders
+tensorflow::TF_GraphSetTensorShape_wrapper
+tensorflow::TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper
+tensorflow::TF_TryEvaluateConstant_wrapper
+
+[grappler_item] # tf_item
+tensorflow::grappler::GrapplerItem::MainOpsFanin
+tensorflow::grappler::GrapplerItem::EnqueueOpsFanin
+
+[graph_properties] # tf_item
+tensorflow::grappler::GraphProperties::InferStatically
+tensorflow::grappler::GraphProperties::GetOutputProperties
+
+[grappler_item_builder] # tf_item
+tensorflow::grappler::GrapplerItemFromMetaGraphDef
+
+[topological_sort] # tf_item
+tensorflow::grappler::TopologicalSort
+
+[clusters/utils] # tf_cluster tf_optimizer
+tensorflow::grappler::GetDeviceInfo
+
+[costs/utils] # tf_optimizer tf_cluster
+tensorflow::grappler::CostGraphToOpPerformanceData
+tensorflow::grappler::GetDeviceInfo
+
+[meta_optimizer] # tf_optimizer
+tensorflow::grappler::MetaOptimizer::MetaOptimizer
+tensorflow::grappler::MetaOptimizer::Optimize
+tensorflow::grappler::MetaOptimizer::PrintResult
+
+[clusters/cluster] # tf_cluster
+tensorflow::grappler::Cluster::AllowSoftPlacement
+tensorflow::grappler::Cluster::SetNumWarmupSteps
+tensorflow::grappler::Cluster::DisableDetailedStats
+tensorflow::grappler::Cluster::DetailedStatsEnabled
+
+[single_machine] # tf_cluster
+tensorflow::grappler::SingleMachine::SingleMachine
+
+[op_level_cost_estimator] # tf_cluster
+tensorflow::grappler::OpLevelCostEstimator::OpLevelCostEstimator
+tensorflow::grappler::OpLevelCostEstimator::PredictCosts
+tensorflow::grappler::OpLevelCostEstimator::GetDeviceInfo
+
+[virtual_cluster] # tf_cluster
+tensorflow::grappler::VirtualCluster::VirtualCluster
+
+[graph_memory] # tf_cluster
+tensorflow::grappler::GraphMemory::InferStatically
+tensorflow::grappler::GraphMemory::InferDynamically
+
+[measuring_cost_estimator] # tf_cluster
+tensorflow::grappler::MeasuringCostEstimator::MeasuringCostEstimator
+tensorflow::grappler::MeasuringCostEstimator::Initialize
+tensorflow::grappler::MeasuringCostEstimator::PredictCosts
+
+[devices] # tf_cluster
+tensorflow::grappler::GetNumAvailableGPUs
+tensorflow::grappler::GetNumAvailableLogicalCPUCores
+
+[traceme_recorder_impl] # profiler
+tensorflow::profiler::TraceMeRecorder::Record
+
+[annotation_stack_impl] # profiler
+tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
+
+[profiler_session_impl] # profiler
+tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::CollectData
+tensorflow::ProfilerSession::SerializeToString
+tensorflow::ProfilerSession::Status
+tensorflow::ProfilerSession::~ProfilerSession
+
+[status_macros] # tfcompile
+xla::status_macros::MakeErrorStream::Impl::Impl
+xla::status_macros::MakeErrorStream::Impl::~Impl
+xla::status_macros::MakeErrorStream::Impl::GetStatus
+xla::status_macros::MakeErrorStream::CheckNotDone
+
+[hlo] # tfcompile
+xla::DfsHloVisitorBase::SetVisited
+xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
+xla::HloComputation::Accept
+xla::HloComputation::AcceptOrdered
+xla::HloComputation::CollectUnreachableRoots
+xla::HloInstruction::ToString
+xla::HloInstruction::Accept
+xla::HloInstruction::Visit
+
+[tfcompile_lib] # tfcompile
+tensorflow::tfcompile::Main
+
+[model_analyzer_lib] # model_analyzer
+tensorflow::grappler::ModelAnalyzer::GenerateReport
+tensorflow::grappler::ModelAnalyzer::ModelAnalyzer
+
+[analytical_cost_estimator] # cost_analyzer
+tensorflow::grappler::AnalyticalCostEstimator::Initialize
+tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
+
+[cost_analyzer_lib] # cost_analyzer
+tensorflow::grappler::CostAnalyzer::CostAnalyzer
+tensorflow::grappler::CostAnalyzer::GenerateReport
+
+[flags] # tfe
+tensorflow::IsXlaEnabled

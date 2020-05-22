@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import platform
 import lit.formats
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst
@@ -43,7 +44,23 @@ config.test_source_root = config.mlir_test_dir
 # test_exec_root: The root path where tests should be run.
 config.test_exec_root = os.environ['RUNFILES_DIR']
 
-llvm_config.use_default_substitutions()
+if platform.system() == 'Windows':
+  tool_patterns = [
+      ToolSubst('FileCheck.exe', unresolved='fatal'),
+      #  Handle these specially as they are strings searched for during testing.
+      ToolSubst('count.exe', unresolved='fatal'),
+      ToolSubst('not.exe', unresolved='fatal')]
+
+  llvm_config.config.substitutions.append(
+      ('%python', '"%s"' % (sys.executable)))
+
+  llvm_config.add_tool_substitutions(
+      tool_patterns, [llvm_config.config.llvm_tools_dir])
+else:
+  llvm_config.use_default_substitutions()
+
+llvm_config.config.substitutions.append(
+    ('%tfrt_bindir', 'tensorflow/compiler/aot'))
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
@@ -53,7 +70,9 @@ tool_dirs = config.mlir_tf_tools_dirs + [
 ]
 tool_names = [
     'mlir-opt', 'mlir-translate', 'tf-opt', 'tf_tfl_translate',
-    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate'
+    'tf_tfjs_translate', 'flatbuffer_to_string', 'flatbuffer_translate',
+    'tf-mlir-translate', 'mlir-tflite-runner', 'tfcompile',
+    'json_to_flatbuffer', 'xla-gpu-opt', 'xla-opt'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

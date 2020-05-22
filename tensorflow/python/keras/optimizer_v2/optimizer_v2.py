@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Version 2 of class Optimizer."""
 # pylint: disable=g-bad-name
 
@@ -21,12 +20,15 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import contextlib
 import functools
 
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -77,11 +79,10 @@ def _deduplicate_indexed_slices(values, indices):
 @six.add_metaclass(abc.ABCMeta)
 @keras_export("keras.optimizers.Optimizer")
 class OptimizerV2(trackable.Trackable):
-  """Updated base class for optimizers.
+  """Base class for Keras optimizers.
 
-  This class defines the API to add Ops to train a model.  You never use this
-  class directly, but instead instantiate one of its subclasses such as
-  `tf.keras.optimizers.SGD`, `tf.keras.optimizers.Adam`.
+  You should not use this class directly, but instead instantiate one of its
+  subclasses such as `tf.keras.optimizers.SGD`, `tf.keras.optimizers.Adam`, etc.
 
   ### Usage
 
@@ -99,7 +100,7 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
-  ### Custom training loop with Keras models
+  ### Usage in custom training loops
 
   In Keras models, sometimes variables are created when the model is first
   called, instead of construction time. Examples include 1) sequential models
@@ -107,6 +108,7 @@ class OptimizerV2(trackable.Trackable):
   callable in these cases.
 
   Example:
+
   ```python
   opt = tf.keras.optimizers.SGD(learning_rate=0.1)
   model = tf.keras.Sequential()
@@ -118,7 +120,7 @@ class OptimizerV2(trackable.Trackable):
     opt.minimize(loss_fn, var_list_fn)
   ```
 
-  ### Processing gradients before applying them.
+  ### Processing gradients before applying them
 
   Calling `minimize()` takes care of both computing the gradients and
   applying them to the variables.  If you want to process the gradients
@@ -148,7 +150,7 @@ class OptimizerV2(trackable.Trackable):
   opt.apply_gradients(zip(processed_grads, var_list))
   ```
 
-  ### Use with `tf.distribute.Strategy`.
+  ### Use with `tf.distribute.Strategy`
 
   This optimizer class is `tf.distribute.Strategy` aware, which means it
   automatically sums gradients across all replicas. To average gradients,
@@ -158,6 +160,10 @@ class OptimizerV2(trackable.Trackable):
   `tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
   `tf.keras.losses.Reduction.SUM` for not.
 
+  To aggregate gradients yourself, call `apply_gradients` with
+  `experimental_aggregate_gradients` set to False. This is useful if you need to
+  process aggregated gradients.
+
   If you are not using these and you want to average gradients, you should use
   `tf.math.reduce_sum` to add up your per-example losses and then divide by the
   global batch size. Note that when using `tf.distribute.Strategy`, the first
@@ -166,7 +172,7 @@ class OptimizerV2(trackable.Trackable):
   step. As a result, using `tf.math.reduce_mean` will give the wrong answer,
   resulting in gradients that can be many times too big.
 
-  ### Variable Constraint
+  ### Variable Constraints
 
   All Keras optimizers respect variable constraints. If constraint function is
   passed to any variable, the constraint will be applied to the variable after
@@ -189,7 +195,7 @@ class OptimizerV2(trackable.Trackable):
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
 
-  ### Hyper parameters
+  ### Hyperparameters
 
   These are arguments passed to the optimizer subclass constructor
   (the `__init__` method), and then passed to `self._set_hyper()`.
@@ -197,7 +203,7 @@ class OptimizerV2(trackable.Trackable):
   callables. If they are callable, the callable will be called during
   `apply_gradients()` to get the value for the hyper parameter.
 
-  Hyper parameters can be overwritten through user code:
+  Hyperparameters can be overwritten through user code:
 
   Example:
 
@@ -214,15 +220,58 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
-  ### Write a customized optimizer.
+  ### Callable learning rate
+
+  Optimizer accepts a callable learning rate in two ways. The first way is
+  through built-in or customized
+  `tf.keras.optimizers.schedules.LearningRateSchedule`. The schedule will be
+  called on each iteration with `schedule(iteration)`, a `tf.Variable`
+  owned by the optimizer.
+
+  Example:
+
+  >>> var = tf.Variable(np.random.random(size=(1,)))
+  >>> learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
+  ... initial_learning_rate=.01, decay_steps=20, decay_rate=.1)
+  >>> opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+  >>> loss = lambda: 3 * var
+  >>> opt.minimize(loss, var_list=[var])
+  <tf.Variable...
+
+  The second way is through a callable function that
+  does not accept any arguments.
+
+  Example:
+
+  >>> var = tf.Variable(np.random.random(size=(1,)))
+  >>> def lr_callable():
+  ...   return .1
+  >>> opt = tf.keras.optimizers.SGD(learning_rate=lr_callable)
+  >>> loss = lambda: 3 * var
+  >>> opt.minimize(loss, var_list=[var])
+  <tf.Variable...
+
+  ### Creating a custom optimizer
+
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - resource_apply_dense (update variable given gradient tensor is dense)
-    - resource_apply_sparse (update variable given gradient tensor is sparse)
-    - create_slots (if your optimizer algorithm requires additional variables)
-    - get_config (serialization of the optimizer, include all hyper parameters)
+    - `_resource_apply_dense` (update variable given gradient tensor is dense)
+    - `_resource_apply_sparse` (update variable given gradient tensor is sparse)
+    - `_create_slots`
+      (if your optimizer algorithm requires additional variables)
+    - `get_config`
+      (serialization of the optimizer, include all hyper parameters)
   """
+
+  # Subclasses should set this to True unless they override `apply_gradients`
+  # with a version that does not have the `experimental_aggregate_gradients`
+  # argument.  Older versions of Keras did not have this argument so custom
+  # optimizers may have overridden `apply_gradients` without the
+  # `experimental_aggregate_gradients` argument. Keras only passes
+  # `experimental_aggregate_gradients` if this attribute is True.
+  # Note: This attribute will likely be removed in an upcoming release.
+  _HAS_AGGREGATE_GRAD = False
 
   def __init__(self, name, **kwargs):
     """Create a new Optimizer.
@@ -246,8 +295,6 @@ class OptimizerV2(trackable.Trackable):
 
     Raises:
       ValueError: If name is malformed.
-      RuntimeError: If _create_slots has been overridden instead of
-          _create_vars.
     """
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
     for k in kwargs:
@@ -255,7 +302,7 @@ class OptimizerV2(trackable.Trackable):
         raise TypeError("Unexpected keyword argument "
                         "passed to optimizer: " + str(k))
       # checks that all keyword arguments are non-negative.
-      if kwargs[k] < 0:
+      if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
 
     self._use_locking = True
@@ -279,12 +326,24 @@ class OptimizerV2(trackable.Trackable):
     if decay < 0.:
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
-    if "clipnorm" in kwargs:
-      self.clipnorm = kwargs.pop("clipnorm")
-    if "clipvalue" in kwargs:
-      self.clipvalue = kwargs.pop("clipvalue")
+
+    # Set the gradient clipping properties
+    self.clipnorm = kwargs.pop("clipnorm", None)
+    self.clipvalue = kwargs.pop("clipvalue", None)
+    if ((self.clipnorm is not None or self.clipvalue is not None)
+        and distribute_ctx.has_strategy()):
+      raise ValueError("Gradient clipping in the optimizer "
+                       "(by setting clipnorm or clipvalue) is currently "
+                       "unsupported when using a distribution strategy.")
 
     self._hypers_created = False
+
+    # Store the distribution strategy object if the optimizer is created inside
+    # strategy scope, so it could be used to create variables later.
+    if distribute_ctx.has_strategy():
+      self._distribution_strategy = distribute_ctx.get_strategy()
+    else:
+      self._distribution_strategy = None
 
   def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Minimize `loss` by updating `var_list`.
@@ -316,6 +375,26 @@ class OptimizerV2(trackable.Trackable):
         loss, var_list=var_list, grad_loss=grad_loss)
 
     return self.apply_gradients(grads_and_vars, name=name)
+
+  def _clip_gradients(self, grads):
+    """Clip gradients according to the clipnorm and clipvalue attributes."""
+    if self.clipnorm is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      grads = [None if g is None else clip_ops.clip_by_norm(g, self.clipnorm)
+               for g in grads]
+    if self.clipvalue is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      v = self.clipvalue
+      grads = [
+          None if g is None else clip_ops.clip_by_value(g, -v, v) for g in grads
+      ]
+    return grads
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
@@ -353,14 +432,7 @@ class OptimizerV2(trackable.Trackable):
     var_list = nest.flatten(var_list)
     with backend.name_scope(self._name + "/gradients"):
       grads = tape.gradient(loss_value, var_list, grad_loss)
-
-      if hasattr(self, "clipnorm"):
-        grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
-      if hasattr(self, "clipvalue"):
-        grads = [
-            clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-            for g in grads
-        ]
+      grads = self._clip_gradients(grads)
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes([
@@ -395,25 +467,40 @@ class OptimizerV2(trackable.Trackable):
                            "gradient defined (i.e. are differentiable). "
                            "Common ops without gradient: "
                            "K.argmax, K.round, K.eval.".format(param))
-      if hasattr(self, "clipnorm"):
-        grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
-      if hasattr(self, "clipvalue"):
-        grads = [
-            clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-            for g in grads
-        ]
+      grads = self._clip_gradients(grads)
     return grads
 
-  def apply_gradients(self, grads_and_vars, name=None):
+  def apply_gradients(self,
+                      grads_and_vars,
+                      name=None,
+                      experimental_aggregate_gradients=True):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
     applies gradients.
 
+    The method sums gradients from all replicas in the presence of
+    `tf.distribute.Strategy` by default. You can aggregate gradients yourself by
+    passing `experimental_aggregate_gradients=False`.
+
+    Example:
+
+    ```python
+    grads = tape.gradient(loss, vars)
+    grads = tf.distribute.get_replica_context().all_reduce('sum', grads)
+    # Processing aggregated gradients.
+    optimizer.apply_gradients(zip(grads, vars),
+        experimental_aggregate_gradients=False)
+
+    ```
+
     Args:
       grads_and_vars: List of (gradient, variable) pairs.
-      name: Optional name for the returned operation.  Default to the name
-        passed to the `Optimizer` constructor.
+      name: Optional name for the returned operation. Default to the name passed
+        to the `Optimizer` constructor.
+      experimental_aggregate_gradients: Whether to sum gradients from different
+        replicas in the presense of `tf.distribute.Strategy`. If False, it's
+        user responsibility to aggregate the gradients. Default to True.
 
     Returns:
       An `Operation` that applies the specified gradients. The `iterations`
@@ -429,26 +516,77 @@ class OptimizerV2(trackable.Trackable):
     with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
-        _ = self.iterations
-        self._create_hypers()
-        self._create_slots(var_list)
+        self._create_all_weights(var_list)
 
       if not grads_and_vars:
         # Distribution strategy does not support reducing an empty list of
         # gradients
         return control_flow_ops.no_op()
+
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `tf.distribute.Strategy.run` to enter replica "
+            "context.")
+
+      strategy = distribute_ctx.get_strategy()
+      if (not experimental_aggregate_gradients and strategy and isinstance(
+          strategy.extended,
+          parameter_server_strategy.ParameterServerStrategyExtended)):
+        raise NotImplementedError(
+            "`experimental_aggregate_gradients=False is not supported for "
+            "ParameterServerStrategy and CentralStorageStrategy")
+
       apply_state = self._prepare(var_list)
+      if experimental_aggregate_gradients:
+        reduced_grads = self._aggregate_gradients(grads_and_vars)
+        var_list = [v for _, v in grads_and_vars]
+        grads_and_vars = list(zip(reduced_grads, var_list))
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
-          kwargs={"name": name})
+          kwargs={
+              "name": name,
+          })
+
+  def _aggregate_gradients(self, grads_and_vars):
+    """Returns all-reduced gradients.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+
+    Returns:
+      A list of all-reduced gradients.
+    """
+    grads_and_vars = list(grads_and_vars)
+    filtered_grads_and_vars = _filter_grads(grads_and_vars)
+    def all_reduce_fn(distribution, grads_and_vars):
+      return distribution.extended.batch_reduce_to(
+          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    # We switch to a cross-replica context since there is a bug which causes
+    # IndexedSlices to be converted to dense tensors when all-reduced in a
+    # replica context.
+    # TODO(b/150507409): Do not switch to a cross-replica context once the bug
+    # is fixed.
+    if filtered_grads_and_vars:
+      reduced = distribute_ctx.get_replica_context().merge_call(
+          all_reduce_fn, args=(filtered_grads_and_vars,))
+    else:
+      reduced = []
+    # Copy 'reduced' but add None gradients back in
+    reduced_with_nones = []
+    reduced_pos = 0
+    for g, _ in grads_and_vars:
+      if g is None:
+        reduced_with_nones.append(None)
+      else:
+        reduced_with_nones.append(reduced[reduced_pos])
+        reduced_pos += 1
+    assert reduced_pos == len(reduced), "Failed to add all gradients"
+    return reduced_with_nones
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
-    reduced_grads = distribution.extended.batch_reduce_to(
-        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
-    var_list = [v for _, v in grads_and_vars]
-    grads_and_vars = zip(reduced_grads, var_list)
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
@@ -478,6 +616,14 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with ops.name_scope(name or self._name, skip_on_eager=True):
       for grad, var in grads_and_vars:
+        # TODO(crccw): It's not allowed to assign PerReplica value to
+        # MirroredVariable.  Remove this after we relax this restriction.
+        def _assume_mirrored(grad):
+          if isinstance(grad, ds_values.PerReplica):
+            return ds_values.Mirrored(grad.values)
+          return grad
+
+        grad = nest.map_structure(_assume_mirrored, grad)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
         with distribution.extended.colocate_vars_with(var):
@@ -494,7 +640,7 @@ class OptimizerV2(trackable.Trackable):
         # context. (eager updates execute immediately)
         with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
           with ops.control_dependencies(update_ops):
-            return self._iterations.assign_add(1).op
+            return self._iterations.assign_add(1, read_value=False)
 
       return self._iterations.assign_add(1)
 
@@ -536,6 +682,26 @@ class OptimizerV2(trackable.Trackable):
       return math_ops.cast(value, dtype)
     else:
       return value
+
+  def _create_slots(self, var_list):
+    pass
+
+  def _create_all_weights(self, var_list):
+    """Creates all weights, including iterations, hyperparameters and slot vars.
+
+    This will add newly created variables to `optimizer.weights`.
+
+    New variables are only created when this method is called the first time, or
+    when called with different variables in the var_list.
+
+    Args:
+      var_list: list or tuple of `Variable` objects that will be minimized
+        using this optimizer.
+    """
+
+    _ = self.iterations
+    self._create_hypers()
+    self._create_slots(var_list)
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -612,8 +778,10 @@ class OptimizerV2(trackable.Trackable):
   def _prepare(self, var_list):
     keys = set()
     for var in var_list:
-      var_devices = (getattr(var, "devices", None) or  # Distributed
-                     [var.device])                     # Regular
+      if isinstance(var, ds_values.DistributedValues):
+        var_devices = var._devices   # pylint: disable=protected-access
+      else:
+        var_devices = [var.device]
       var_dtype = var.dtype.base_dtype
       for var_device in var_devices:
         keys.add((var_device, var_dtype))
@@ -640,30 +808,32 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    # Iterate hyper values deterministically.
-    for name, value in sorted(self._hyper.items()):
-      if isinstance(
-          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
-        continue
-      else:
-        self._hyper[name] = self.add_weight(
-            name,
-            shape=[],
-            trainable=False,
-            initializer=value,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    with self._distribution_strategy_scope():
+      # Iterate hyper values deterministically.
+      for name, value in sorted(self._hyper.items()):
+        if isinstance(value,
+                      (ops.Tensor, tf_variables.Variable)) or callable(value):
+          continue
+        else:
+          self._hyper[name] = self.add_weight(
+              name,
+              shape=[],
+              trainable=False,
+              initializer=value,
+              aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
     self._hypers_created = True
 
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
     if self._iterations is None:
-      self._iterations = self.add_weight(
-          "iter",
-          shape=[],
-          dtype=dtypes.int64,
-          trainable=False,
-          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      with self._distribution_strategy_scope():
+        self._iterations = self.add_weight(
+            "iter",
+            shape=[],
+            dtype=dtypes.int64,
+            trainable=False,
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._iterations)
     return self._iterations
 
@@ -689,7 +859,7 @@ class OptimizerV2(trackable.Trackable):
 
   @abc.abstractmethod
   def get_config(self):
-    """Returns the config of the optimimizer.
+    """Returns the config of the optimizer.
 
     An optimizer config is a Python dictionary (serializable)
     containing the configuration of an optimizer.
@@ -700,9 +870,9 @@ class OptimizerV2(trackable.Trackable):
         Python dictionary.
     """
     config = {"name": self._name}
-    if hasattr(self, "clipnorm"):
+    if self.clipnorm is not None:
       config["clipnorm"] = self.clipnorm
-    if hasattr(self, "clipvalue"):
+    if self.clipvalue is not None:
       config["clipvalue"] = self.clipvalue
     return config
 
@@ -925,7 +1095,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
                                                **kwargs):
@@ -974,7 +1144,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(
@@ -1073,6 +1243,15 @@ class OptimizerV2(trackable.Trackable):
           slot_name, {}).setdefault(variable_key, []).append(
               slot_variable_position)
 
+  @contextlib.contextmanager
+  def _distribution_strategy_scope(self):
+    """Returns the `tf.distribute.Strategy` this optimizer was created under."""
+    if self._distribution_strategy and not distribute_ctx.has_strategy():
+      with self._distribution_strategy.scope():
+        yield self._distribution_strategy.scope()
+    else:
+      yield
+
 
 def _filter_grads(grads_and_vars):
   """Filter out iterable with grad equal to None."""
@@ -1114,7 +1293,7 @@ def _var_key(var):
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
   if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+    var = var._distributed_container
   if var._in_graph_mode:
     return var._shared_name
   return var._unique_id
@@ -1145,7 +1324,7 @@ class RestoredOptimizer(OptimizerV2):
   def get_config(self):
     # TODO(allenl): Save and restore the Optimizer's config
     raise NotImplementedError(
-        "Restoring functional Optimzers from SavedModels is not currently "
+        "Restoring functional Optimizers from SavedModels is not currently "
         "supported. Please file a feature request if this limitation bothers "
         "you.")
 

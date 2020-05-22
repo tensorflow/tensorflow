@@ -18,9 +18,11 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
@@ -56,7 +58,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  private:
-  static const int64 kTableSize = (1 << 10);
+  static constexpr int64 kTableSize = (1 << 10);
 
   const float* InitCoeffsTable() {
     // Allocate and initialize coefficients table using Bicubic

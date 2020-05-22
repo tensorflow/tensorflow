@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -34,6 +35,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Op to construct a constant RaggedTensor from a nested Python list.
 #===============================================================================
 @tf_export("ragged.constant")
+@dispatch.add_dispatch_support
 def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
              name=None, row_splits_dtype=dtypes.int64):
   """Constructs a constant RaggedTensor from a nested Python list.
@@ -86,6 +88,7 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
 
 @tf_export(v1=["ragged.constant_value"])
+@dispatch.add_dispatch_support
 def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
                    row_splits_dtype="int64"):
   """Constructs a RaggedTensorValue from a nested Python list.
@@ -311,6 +314,7 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
 
 
 @tf_export(v1=["ragged.placeholder"])
+@dispatch.add_dispatch_support
 def placeholder(dtype, ragged_rank, value_shape=None, name=None):
   """Creates a placeholder for a `tf.RaggedTensor` that will always be fed.
 
@@ -342,5 +346,5 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
     for i in reversed(range(ragged_rank)):
       row_splits = array_ops.placeholder(dtypes.int64, [None],
                                          "row_splits_%d" % i)
-      result = ragged_tensor.RaggedTensor(result, row_splits, internal=True)
+      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits)
     return result

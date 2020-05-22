@@ -10,7 +10,7 @@ py_library(
     srcs = ["mlir.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python:util",
     ],
 )

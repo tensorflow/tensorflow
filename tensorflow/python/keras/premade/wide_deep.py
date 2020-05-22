@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.util import nest
@@ -40,14 +42,14 @@ class WideDeepModel(keras_training.Model):
   linear_model = LinearModel()
   dnn_model = keras.Sequential([keras.layers.Dense(units=64),
                                keras.layers.Dense(units=1)])
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
   # define dnn_inputs and linear_inputs as separate numpy arrays or
   # a single numpy array if dnn_inputs is same as linear_inputs.
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   # or define a single `tf.data.Dataset` that contains a single tensor or
   # separate tensors for dnn_inputs and linear_inputs.
-  dataset = tf.data.Dataset.from_tensors(([dnn_inputs, linear_inputs], y))
+  dataset = tf.data.Dataset.from_tensors(([linear_inputs, dnn_inputs], y))
   combined_model.fit(dataset, epochs)
   ```
 
@@ -62,9 +64,9 @@ class WideDeepModel(keras_training.Model):
   dnn_model = keras.Sequential([keras.layers.Dense(units=1)])
   dnn_model.compile('rmsprop', 'mse')
   dnn_model.fit(dnn_inputs, y, epochs)
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   ```
 
   """
@@ -106,30 +108,40 @@ class WideDeepModel(keras_training.Model):
       return nest.map_structure(self.activation, output)
     return output
 
-  def _get_optimizers(self):
-    if isinstance(self.optimizer, (tuple, list)):
-      return (self.optimizer[0], self.optimizer[1])
-    else:
-      return (self.optimizer, self.optimizer)
-
   # This does not support gradient scaling and LossScaleOptimizer.
-  def _backwards(self, tape, loss):
-    linear_vars = self.linear_model.trainable_weights  # pylint: disable=protected-access
-    dnn_vars = self.dnn_model.trainable_weights  # pylint: disable=protected-access
-    linear_grads, dnn_grads = tape.gradient(loss, (linear_vars, dnn_vars))
-    linear_optimizer, dnn_optimizer = self._get_optimizers()
-    linear_optimizer.apply_gradients(zip(linear_grads, linear_vars))
-    dnn_optimizer.apply_gradients(zip(dnn_grads, dnn_vars))
-    return
+  def train_step(self, data):
+    x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+    x, y, sample_weight = data_adapter.expand_1d((x, y, sample_weight))
+
+    with backprop.GradientTape() as tape:
+      y_pred = self(x, training=True)
+      loss = self.compiled_loss(
+          y, y_pred, sample_weight, regularization_losses=self.losses)
+    self.compiled_metrics.update_state(y, y_pred, sample_weight)
+
+    if isinstance(self.optimizer, (list, tuple)):
+      linear_vars = self.linear_model.trainable_variables
+      dnn_vars = self.dnn_model.trainable_variables
+      linear_grads, dnn_grads = tape.gradient(loss, (linear_vars, dnn_vars))
+
+      linear_optimizer = self.optimizer[0]
+      dnn_optimizer = self.optimizer[1]
+      linear_optimizer.apply_gradients(zip(linear_grads, linear_vars))
+      dnn_optimizer.apply_gradients(zip(dnn_grads, dnn_vars))
+    else:
+      trainable_variables = self.trainable_variables
+      grads = tape.gradient(loss, trainable_variables)
+      self.optimizer.apply_gradients(zip(grads, trainable_variables))
+
+    return {m.name: m.result() for m in self.metrics}
 
   def _make_train_function(self):
-    # TODO(tanzheny): This is a direct copy from super to make it work
-    # refactor it so that common logic can be shared.
+    # Only needed for graph mode and model_to_estimator.
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     self._check_trainable_weights_consistency()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
@@ -140,7 +152,13 @@ class WideDeepModel(keras_training.Model):
       if not isinstance(K.symbolic_learning_phase(), int):
         inputs += [K.symbolic_learning_phase()]
 
-      linear_optimizer, dnn_optimizer = self._get_optimizers()
+      if isinstance(self.optimizer, (list, tuple)):
+        linear_optimizer = self.optimizer[0]
+        dnn_optimizer = self.optimizer[1]
+      else:
+        linear_optimizer = self.optimizer
+        dnn_optimizer = self.optimizer
+
       with K.get_graph().as_default():
         with K.name_scope('training'):
           # Training updates

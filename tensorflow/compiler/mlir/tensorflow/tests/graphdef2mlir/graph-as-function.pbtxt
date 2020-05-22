@@ -1,10 +1,10 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
 
 # Verify main graph was converted to a function, args/rets are mapped correctly,
 # and ops in the main graph are retained. In addition, check if subsequent
 # functions are converted.
 
-# CHECK:      func @main(%arg0: tensor<*x!tf.resource>, %arg1: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
+# CHECK:      func @main(%arg0: tensor<*x!tf.resource>, %arg1: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<*xf32>, tensor<*xf32>)
 # CHECK-SAME: control_outputs = ""
 # CHECK-SAME: inputs = "args_0,args_1,args_2,args_3"
 # CHECK-SAME: outputs = "rets_0,rets_1"
@@ -12,7 +12,7 @@
 # CHECK:          %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island wraps "tf.Identity"(%[[ISLAND_0]])
 # CHECK:          %[[ISLAND_2:.*]], %[[ISLAND_2_control:.*]] = tf_executor.island wraps "tf.StatefulPartitionedCall"
 # CHECK-SAME:       f = @[[FUNC:[a-z0-9]*]]
-# CHECK:          tf_executor.fetch %[[ISLAND_1]], %[[ISLAND_2]] : tensor<f32>, tensor<f32>
+# CHECK:          tf_executor.fetch %[[ISLAND_1]], %[[ISLAND_2]] : tensor<*xf32>, tensor<*xf32>
 # CHECK:      func @[[FUNC]](%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>) -> tensor<*xf32>
 
 node {

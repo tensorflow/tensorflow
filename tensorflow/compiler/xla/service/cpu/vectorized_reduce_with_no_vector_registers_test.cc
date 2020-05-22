@@ -37,10 +37,10 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   }
 
   llvm::LLVMContext context;
-  std::unique_ptr<llvm::Function> function =
-      absl::WrapUnique(llvm::Function::Create(
-          llvm::FunctionType::get(llvm::Type::getVoidTy(context), {}),
-          llvm::GlobalValue::ExternalLinkage, "test"));
+  llvm::Module module("test", context);
+  llvm::Function* function = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context), {}),
+      llvm::GlobalValue::ExternalLinkage, "test", &module);
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(

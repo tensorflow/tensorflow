@@ -34,6 +34,7 @@ static const int8_t kAsymmetricInt8Min = INT8_MIN;
 static const int8_t kAsymmetricInt8Max = INT8_MAX;
 static const int kSymmetricInt8Scale = kAsymmetricInt8Max;
 
+static const int16_t kAsymmetricInt16Min = INT16_MIN;
 static const int16_t kAsymmetricInt16Max = INT16_MAX;
 static const int kSymmetricInt16Scale = kAsymmetricInt16Max;
 
@@ -76,9 +77,26 @@ uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale) {
 
 int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
                                       const int zero_point) {
-  return FloatToAsymmetricQuantizedUInt8(value, scale,
-                                         zero_point - kAsymmetricInt8Min) +
-         kAsymmetricInt8Min;
+  int32_t result = round(value / scale) + zero_point;
+  if (result < kAsymmetricInt8Min) {
+    result = kAsymmetricInt8Min;
+  }
+  if (result > kAsymmetricInt8Max) {
+    result = kAsymmetricInt8Max;
+  }
+  return result;
+}
+
+int16_t FloatToAsymmetricQuantizedInt16(const float value, const float scale,
+                                        const int zero_point) {
+  int32_t result = round(value / scale) + zero_point;
+  if (result < kAsymmetricInt16Min) {
+    result = kAsymmetricInt16Min;
+  }
+  if (result > kAsymmetricInt16Max) {
+    result = kAsymmetricInt16Max;
+  }
+  return result;
 }
 
 int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale) {
@@ -87,10 +105,10 @@ int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale) {
 
 int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale) {
   float quantized = round(value / scale);
-  if (quantized > INT_MAX) {
-    quantized = INT_MAX;
+  if (static_cast<int>(quantized) > INT_MAX) {
+    quantized = static_cast<float>(INT_MAX);
   } else if (quantized < INT_MIN) {
-    quantized = INT_MIN;
+    quantized = static_cast<float> INT_MIN;
   }
 
   return static_cast<int>(quantized);
@@ -107,6 +125,13 @@ void AsymmetricQuantize(const float* input, uint8_t* output, int num_elements,
                         float scale, int zero_point) {
   for (int i = 0; i < num_elements; i++) {
     output[i] = FloatToAsymmetricQuantizedUInt8(input[i], scale, zero_point);
+  }
+}
+
+void AsymmetricQuantize(const float* input, int16_t* output, int num_elements,
+                        float scale, int zero_point) {
+  for (int i = 0; i < num_elements; i++) {
+    output[i] = FloatToAsymmetricQuantizedInt16(input[i], scale, zero_point);
   }
 }
 
@@ -224,13 +249,15 @@ void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
     max = fmaxf(max, values[i]);
   }
 
-  *scaling_factor = fmaxf(fabs(min), fabs(max)) / kSymmetricInt32Scale;
+  *scaling_factor =
+      fmaxf(fabs(min), fabs(max)) / static_cast<float>(kSymmetricInt32Scale);
   for (int i = 0; i < input_size; i++) {
     const int32_t quantized_value =
         static_cast<int32_t>(roundf(values[i] / *scaling_factor));
     // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = fminf(kSymmetricInt32Scale,
-                                fmaxf(-kSymmetricInt32Scale, quantized_value));
+    quantized_values[i] = fminf(
+        static_cast<float>(kSymmetricInt32Scale),
+        fmaxf(static_cast<float>(-kSymmetricInt32Scale), quantized_value));
   }
 }
 

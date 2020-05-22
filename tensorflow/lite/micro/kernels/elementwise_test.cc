@@ -45,7 +45,7 @@ void TestElementwiseFloat(tflite::BuiltinOperator op,
   }
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(op, /* version= */ 1);
@@ -111,7 +111,7 @@ void TestElementwiseBool(tflite::BuiltinOperator op,
   }
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(op, /* version= */ 1);
@@ -158,11 +158,11 @@ TF_LITE_MICRO_TEST(Abs) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      tflite::BuiltinOperator_ABS,  // ABS operator
-      {2, 2, 2},                    // Input shape
-      {0.01, -0.01, 10, -10},       // Input values
-      {2, 2, 2},                    // Output shape
-      {0.01, 0.01, 10, 10},         // Output values
+      tflite::BuiltinOperator_ABS,     // ABS operator
+      {2, 2, 2},                       // Input shape
+      {0.01f, -0.01f, 10.0f, -10.0f},  // Input values
+      {2, 2, 2},                       // Output shape
+      {0.01f, 0.01f, 10.0f, 10.0f},    // Output values
       output_data);
 }
 
@@ -170,11 +170,11 @@ TF_LITE_MICRO_TEST(Sin) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      tflite::BuiltinOperator_SIN,    // SIN operator
-      {2, 2, 2},                      // Input shape
-      {0, 3.1415926, -3.1415926, 1},  // Input values
-      {2, 2, 2},                      // Output shape
-      {0, 0, 0, 0.84147},             // Output values
+      tflite::BuiltinOperator_SIN,            // SIN operator
+      {2, 2, 2},                              // Input shape
+      {0.0f, 3.1415926f, -3.1415926f, 1.0f},  // Input values
+      {2, 2, 2},                              // Output shape
+      {0.0f, 0.0f, 0.0f, 0.84147f},           // Output values
       output_data);
 }
 
@@ -182,11 +182,11 @@ TF_LITE_MICRO_TEST(Cos) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      tflite::BuiltinOperator_COS,    // COS operator
-      {2, 2, 2},                      // Input shape
-      {0, 3.1415926, -3.1415926, 1},  // Input values
-      {2, 2, 2},                      // Output shape
-      {1, -1, -1, 0.54030},           // Output values
+      tflite::BuiltinOperator_COS,            // COS operator
+      {2, 2, 2},                              // Input shape
+      {0.0f, 3.1415926f, -3.1415926f, 1.0f},  // Input values
+      {2, 2, 2},                              // Output shape
+      {1.0f, -1.0f, -1.0f, 0.54030f},         // Output values
       output_data);
 }
 
@@ -194,11 +194,11 @@ TF_LITE_MICRO_TEST(Log) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      tflite::BuiltinOperator_LOG,    // LOG operator
-      {2, 2, 2},                      // Input shape
-      {1, 2.7182818, 0.5, 2},         // Input values
-      {2, 2, 2},                      // Output shape
-      {0, 1, -0.6931472, 0.6931472},  // Output values
+      tflite::BuiltinOperator_LOG,            // LOG operator
+      {2, 2, 2},                              // Input shape
+      {1.0f, 2.7182818f, 0.5f, 2.0f},         // Input values
+      {2, 2, 2},                              // Output shape
+      {0.0f, 1.0f, -0.6931472f, 0.6931472f},  // Output values
       output_data);
 }
 
@@ -208,9 +208,9 @@ TF_LITE_MICRO_TEST(Sqrt) {
   tflite::testing::TestElementwiseFloat(
       tflite::BuiltinOperator_SQRT,  // SQRT operator
       {2, 2, 2},                     // Input shape
-      {0, 1, 2, 4},                  // Input values
+      {0.0f, 1.0f, 2.0f, 4.0f},      // Input values
       {2, 2, 2},                     // Output shape
-      {0, 1, 1.41421, 2},            // Output values
+      {0.0f, 1.0f, 1.41421f, 2.0f},  // Output values
       output_data);
 }
 
@@ -218,11 +218,11 @@ TF_LITE_MICRO_TEST(Rsqrt) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      tflite::BuiltinOperator_RSQRT,  // RSQRT operator
-      {2, 2, 2},                      // Input shape
-      {1, 2, 4, 9},                   // Input values
-      {2, 2, 2},                      // Output shape
-      {1, 0.7071, 0.5, 0.33333},      // Output values
+      tflite::BuiltinOperator_RSQRT,    // RSQRT operator
+      {2, 2, 2},                        // Input shape
+      {1.0f, 2.0f, 4.0f, 9.0f},         // Input values
+      {2, 2, 2},                        // Output shape
+      {1.0f, 0.7071f, 0.5f, 0.33333f},  // Output values
       output_data);
 }
 
@@ -232,9 +232,9 @@ TF_LITE_MICRO_TEST(Square) {
   tflite::testing::TestElementwiseFloat(
       tflite::BuiltinOperator_SQUARE,  // SQARE operator
       {2, 2, 2},                       // Input shape
-      {1, 2, 0.5, -3.0},               // Input values
+      {1.0f, 2.0f, 0.5f, -3.0f},       // Input values
       {2, 2, 2},                       // Output shape
-      {1, 4.0, 0.25, 9.0},             // Output values
+      {1.0f, 4.0f, 0.25f, 9.0f},       // Output values
       output_data);
 }
 
@@ -247,6 +247,18 @@ TF_LITE_MICRO_TEST(LogicalNot) {
       {true, false, false, true},           // Input values
       {2, 2, 2},                            // Output shape
       {false, true, true, false},           // Output values
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(TANH) {
+  constexpr int output_dims_count = 4;
+  float output_data[output_dims_count];
+  tflite::testing::TestElementwiseFloat(
+      tflite::BuiltinOperator_TANH,    // TANH operator
+      {2, 2, 2},                       // Input shape
+      {0.0f, 50.0f, 0.5f, -50.0f},     // Input values
+      {2, 2, 2},                       // Output shape
+      {0.0f, 1.0f, 0.462117f, -1.0f},  // Output values
       output_data);
 }
 

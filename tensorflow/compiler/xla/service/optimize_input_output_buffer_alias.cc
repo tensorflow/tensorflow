@@ -38,33 +38,28 @@ bool IsNonNestedTuple(const Shape& shape) {
 }  // namespace
 
 StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
-    absl::Span<const Shape* const> input_shapes, const Shape& output_shape,
+    const Shape& input_shape, const Shape& output_shape,
     HloInputOutputAliasConfig* alias_config) {
   bool changed = false;
-  for (const Shape* input_shape : input_shapes) {
-    TF_RET_CHECK(LayoutUtil::HasLayout(*input_shape));
-    VLOG(1) << "input_shape:" << input_shape->ToString();
-  }
+  TF_RET_CHECK(LayoutUtil::HasLayout(input_shape));
   TF_RET_CHECK(LayoutUtil::HasLayout(output_shape));
+  VLOG(1) << "input_shape:" << input_shape.ToString();
   VLOG(1) << "output_shape:" << output_shape.ToString();
 
   // Tracks all buffers defined by the parameter in a flatten list.
   struct Entry {
-    int param_number;
     Shape shape;
     ShapeIndex index;
     bool used;
   };
   std::vector<Entry> parameter_entries;
-  for (int i = 0; i < input_shapes.size(); ++i) {
-    ShapeUtil::ForEachSubshape(
-        *input_shapes[i], [&](const Shape& subshape, const ShapeIndex& index) {
-          if (subshape.IsTuple()) {
-            return;
-          }
-          parameter_entries.emplace_back(Entry{i, subshape, index, false});
-        });
-  }
+  ShapeUtil::ForEachSubshape(
+      input_shape, [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        parameter_entries.emplace_back(Entry{subshape, index, false});
+      });
 
   // For each result buffer shape index, take the first unused parameter
   // buffer that matches the shape.
@@ -81,7 +76,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
             if (!alias_config->ParameterHasAlias(0, input_index) &&
                 !alias_config->OutputHasAlias(output_index)) {
               TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
-                  output_index, entry.param_number, input_index,
+                  output_index, 0, input_index,
                   HloInputOutputAliasConfig::AliasKind::kSystemAlias));
             }
             entry.used = true;
@@ -94,16 +89,15 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
 }
 
 StatusOr<bool> OptimizeInputOutputBufferAlias::Run(HloModule* module) {
+  // User buffer alias only work for modules with 1 parameter.
+  if (module->entry_computation()->num_parameters() != 1) {
+    return false;
+  }
+
   HloInputOutputAliasConfig* alias_config =
       &module->input_output_alias_config();
 
-  std::vector<const Shape*> input_shapes;
-  input_shapes.reserve(module->entry_computation()->num_parameters());
-  for (HloInstruction* i :
-       module->entry_computation()->parameter_instructions()) {
-    input_shapes.push_back(&i->shape());
-  }
-  return Build(input_shapes,
+  return Build(module->entry_computation()->parameter_instruction(0)->shape(),
                module->entry_computation()->root_instruction()->shape(),
                alias_config);
 }

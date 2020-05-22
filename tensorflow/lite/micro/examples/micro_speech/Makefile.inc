@@ -28,12 +28,12 @@ third_party/kissfft/tools/kiss_fftr.h
 
 MICRO_SPEECH_TEST_SRCS := \
 tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc
 
 MICRO_SPEECH_TEST_HDRS := \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
 
@@ -190,7 +190,7 @@ tensorflow/lite/micro/examples/micro_speech/audio_provider.cc \
 tensorflow/lite/micro/examples/micro_speech/feature_provider.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.cc \
 tensorflow/lite/micro/examples/micro_speech/recognize_commands.cc \
 tensorflow/lite/micro/examples/micro_speech/command_responder.cc \
 $(MICRO_FEATURES_GENERATOR_SRCS)
@@ -200,7 +200,7 @@ tensorflow/lite/micro/examples/micro_speech/audio_provider.h \
 tensorflow/lite/micro/examples/micro_speech/feature_provider.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.h \
 tensorflow/lite/micro/examples/micro_speech/recognize_commands.h \
 tensorflow/lite/micro/examples/micro_speech/command_responder.h \
 tensorflow/lite/micro/examples/micro_speech/main_functions.h \
@@ -215,7 +215,7 @@ tensorflow/lite/micro/examples/micro_speech/yes_1000ms_sample_data.cc \
 tensorflow/lite/micro/examples/micro_speech/feature_provider.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.cc \
 tensorflow/lite/micro/examples/micro_speech/recognize_commands.cc \
 tensorflow/lite/micro/examples/micro_speech/command_responder.cc \
 $(MICRO_FEATURES_GENERATOR_SRCS)
@@ -228,7 +228,7 @@ tensorflow/lite/micro/examples/micro_speech/feature_provider.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/micro_features_generator.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h \
 tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
-tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
+tensorflow/lite/micro/examples/micro_speech/micro_features/model.h \
 tensorflow/lite/micro/examples/micro_speech/recognize_commands.h \
 tensorflow/lite/micro/examples/micro_speech/command_responder.h \
 tensorflow/lite/micro/examples/micro_speech/main_functions.h \

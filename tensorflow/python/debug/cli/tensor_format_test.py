@@ -78,7 +78,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
   def _checkTensorElementLocations(self, out, a):
     """Check the results of locate_tensor_element on an ndarray representation.
 
-    that represents a numpy.ndaray.
+    that represents a numpy.ndarray.
 
     Args:
       out: An instance of RichTextLines representing a numpy.ndarray.

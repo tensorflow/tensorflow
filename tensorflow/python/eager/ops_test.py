@@ -426,8 +426,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     strong_x = constant_op.constant([[1.]])
     strong_y = constant_op.constant([[2.]])
-    strong_x_ref = strong_x.experimental_ref()
-    strong_y_ref = strong_y.experimental_ref()
+    strong_x_ref = strong_x.ref()
+    strong_y_ref = strong_y.ref()
     weak_key_dict[strong_x_ref] = constant_op.constant([[3.]])
     weak_key_dict[strong_y_ref] = constant_op.constant([[4.]])
     strong_y.a = constant_op.constant([[5.]])

@@ -74,6 +74,9 @@ string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
+string DebugString(const std::vector<TensorShape>& shapes);
+string DebugString(const std::vector<PartialTensorShape>& shapes);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
@@ -95,14 +98,34 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-// Return a string that includes compile time
-// TensorRT library version information {Maj, Min, Patch}.
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
+
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);
+
+// Returns a string that includes compile time TensorRT library version
+// information {Maj, Min, Patch}.
 string GetLinkedTensorRTVersion();
 
-// Return a string that includes runtime time
-// TensorRT library version information {Maj, Min, Patch}.
+// Returns a string that includes runtime time TensorRT library version
+// information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
 
+// Returns true if an engine built for cached_shapes can also run actual_shapes.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes);
+
+// Returns the number of inputs for the engine, which also correspends to the
+// number of input tensors for the network. This can differ from the number of
+// input bindings, because the number of total input bindings equals the number
+// of profiles times the number of engine inputs.
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine);
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

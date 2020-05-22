@@ -714,7 +714,6 @@ class GlobalPooling1D(Layer):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -794,7 +793,26 @@ class GlobalAveragePooling1D(GlobalPooling1D):
 
 @keras_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
 class GlobalMaxPooling1D(GlobalPooling1D):
-  """Global max pooling operation for temporal data.
+  """Global max pooling operation for 1D temporal data.
+
+  Downsamples the input representation by taking the maximum value over
+  the time dimension.
+
+  For example:
+
+  >>> x = tf.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]])
+  >>> x = tf.reshape(x, [3, 3, 1])
+  >>> x
+  <tf.Tensor: shape=(3, 3, 1), dtype=float32, numpy=
+  array([[[1.], [2.], [3.]],
+         [[4.], [5.], [6.]],
+         [[7.], [8.], [9.]]], dtype=float32)>
+  >>> max_pool_1d = tf.keras.layers.GlobalMaxPooling1D()
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[3.],
+         [6.],
+         [9.], dtype=float32)>
 
   Arguments:
     data_format: A string,
@@ -830,7 +848,6 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -938,7 +955,6 @@ class GlobalPooling3D(Layer):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

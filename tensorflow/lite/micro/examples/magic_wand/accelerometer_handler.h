@@ -24,6 +24,6 @@ limitations under the License.
 extern int begin_index;
 extern TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter);
 extern bool ReadAccelerometer(tflite::ErrorReporter* error_reporter,
-                              float* input, int length, bool reset_buffer);
+                              float* input, int length);
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MAGIC_WAND_ACCELEROMETER_HANDLER_H_

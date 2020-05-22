@@ -396,7 +396,7 @@ ConvolutionTransposed3D& ConvolutionTransposed3D::operator=(
   return *this;
 }
 
-Status ConvolutionTransposed3D::Compile(
+absl::Status ConvolutionTransposed3D::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposed3DCode(
       definition_, biases_, *creation_context.device, weights_are_buffer_,
@@ -417,7 +417,7 @@ Status ConvolutionTransposed3D::Compile(
       *creation_context.device, &kernel_);
 }
 
-Status ConvolutionTransposed3D::BindArguments() {
+absl::Status ConvolutionTransposed3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (weights_are_buffer_) {
@@ -440,37 +440,36 @@ Status ConvolutionTransposed3D::BindArguments() {
   if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(
-      IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.w)));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(DivideRoundUp(dst_[0]->Slices(), block_size_.w)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDS()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvolutionTransposed3D::GetGridSize() const {
   const int aligned_w = AlignByN(dst_[0]->Width(), stride_.x * block_size_.x);
   const int aligned_h = AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
   const int aligned_d = AlignByN(dst_[0]->Depth(), stride_.z * block_size_.z);
-  const int grid_x =
-      IntegralDivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(aligned_h, block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.w) *
-                     IntegralDivideRoundUp(aligned_d, block_size_.z);
+  const int grid_x = DivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(aligned_h, block_size_.y);
+  const int grid_z = DivideRoundUp(dst_[0]->Slices(), block_size_.w) *
+                     DivideRoundUp(aligned_d, block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvolutionTransposed3D::Tune(const TuningParameters& params) {
+absl::Status ConvolutionTransposed3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &work_group_size_);
 }
 
-Status ConvolutionTransposed3D::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvolutionTransposed3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status CreateConvolutionTransposed3D(
+absl::Status CreateConvolutionTransposed3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr,
     ConvolutionTransposed3D* result) {
@@ -485,8 +484,7 @@ Status CreateConvolutionTransposed3D(
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

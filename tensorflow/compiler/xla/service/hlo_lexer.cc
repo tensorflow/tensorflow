@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
@@ -368,6 +369,11 @@ TokKind HloLexer::LexNumberOrPattern() {
     auto slice =
         StringPieceFromPointers(token_state_.token_start, current_ptr_);
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      return TokKind::kInt;
+    }
+    uint64 uint64_val;
+    if (absl::SimpleAtoi(slice, &uint64_val)) {
+      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;

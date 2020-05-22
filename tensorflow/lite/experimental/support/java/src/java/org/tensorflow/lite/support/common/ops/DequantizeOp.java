@@ -24,6 +24,12 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
  * <p>Note: The data type of output tensor is always {@code FLOAT32} except when the DequantizeOp is
  * created effectively as an identity Op such as setting {@code zeroPoint} to 0 and {@code scale} to
  * 1 (in this case, the output tensor is the same instance as input).
+ *
+ * <p>If both {@code zeroPoint} and {@code scale} are 0, the {@link DequantizeOp} will be bypassed,
+ * which is equivalent to setting {@code zeroPoint} to 0 and {@code scale} to 1. This can be useful
+ * when passing in the quantization parameters that are extracted directly from the TFLite model
+ * flatbuffer. If the tensor is not quantized, both {@code zeroPoint} and {@code scale} will be read
+ * as 0.
  */
 public class DequantizeOp extends NormalizeOp implements TensorOperator {
 

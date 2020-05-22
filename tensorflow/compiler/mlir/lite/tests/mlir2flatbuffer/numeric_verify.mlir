@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
 
 // CHECK:      {
 // CHECK-NEXT:    version: 3,
@@ -40,6 +40,12 @@
 // CHECK-EMPTY:
 // CHECK-NEXT:  }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:  }, {
+// CHECK-NEXT:    data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:  } ],
+// CHECK-NEXT:  metadata: [ {
+// CHECK-NEXT:  name: "min_runtime_version",
+// CHECK-NEXT:  buffer: 3
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 

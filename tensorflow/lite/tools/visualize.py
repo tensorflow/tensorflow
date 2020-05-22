@@ -26,26 +26,10 @@ from __future__ import print_function
 
 import json
 import os
-import shlex
-import subprocess
+import re
 import sys
 
-from tensorflow.python.platform import resource_loader
-
-# Schema to use for flatbuffers
-_SCHEMA = "third_party/tensorflow/lite/schema/schema.fbs"
-
-_SCHEMA = resource_loader.get_path_to_datafile("../schema/schema.fbs")
-_BINARY = resource_loader.get_path_to_datafile("../../../flatbuffers/flatc")
-# Account for different package positioning internal vs. external.
-if not os.path.exists(_BINARY):
-  _BINARY = resource_loader.get_path_to_datafile(
-      "../../../../flatbuffers/flatc")
-
-if not os.path.exists(_SCHEMA):
-  raise RuntimeError("Sorry, schema file cannot be found at %r" % _SCHEMA)
-if not os.path.exists(_BINARY):
-  raise RuntimeError("Sorry, flatc is not available at %r" % _BINARY)
+from tensorflow.lite.python import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -214,13 +198,40 @@ _D3_HTML_TEMPLATE = """
 """
 
 
+def TensorTypeToName(tensor_type):
+  """Converts a numerical enum to a readable tensor type."""
+  for name, value in schema_fb.TensorType.__dict__.items():
+    if value == tensor_type:
+      return name
+  return None
+
+
+def BuiltinCodeToName(code):
+  """Converts a builtin op code enum to a readable name."""
+  for name, value in schema_fb.BuiltinOperator.__dict__.items():
+    if value == code:
+      return name
+  return None
+
+
+def NameListToString(name_list):
+  """Converts a list of integers to the equivalent ASCII string."""
+  if isinstance(name_list, str):
+    return name_list
+  else:
+    result = ""
+    for val in name_list:
+      result = result + chr(int(val))
+    return result
+
+
 class OpCodeMapper(object):
   """Maps an opcode index to an op name."""
 
   def __init__(self, data):
     self.code_to_name = {}
     for idx, d in enumerate(data["operator_codes"]):
-      self.code_to_name[idx] = d["builtin_code"]
+      self.code_to_name[idx] = BuiltinCodeToName(d["builtin_code"])
 
   def __call__(self, x):
     if x not in self.code_to_name:
@@ -252,9 +263,11 @@ class TensorMapper(object):
     for i in x:
       tensor = self.data["tensors"][i]
       html += str(i) + " "
-      html += tensor["name"] + " "
-      html += str(tensor["type"]) + " "
-      html += (repr(tensor["shape"]) if "shape" in tensor else "[]") + "<br>"
+      html += NameListToString(tensor["name"]) + " "
+      html += TensorTypeToName(tensor["type"]) + " "
+      html += (repr(tensor["shape"]) if "shape" in tensor else "[]")
+      html += (repr(tensor["shape_signature"])
+               if "shape_signature" in tensor else "[]") + "<br>"
     html += "</span>"
     html += repr(x)
     html += "</span>"
@@ -358,6 +371,39 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
   return html
 
 
+def CamelCaseToSnakeCase(camel_case_input):
+  """Converts an identifier in CamelCase to snake_case."""
+  s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", camel_case_input)
+  return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
+def FlatbufferToDict(fb):
+  """Converts a hierarchy of FB objects into a nested dict."""
+  if hasattr(fb, "__dict__"):
+    result = {}
+    for attribute_name in dir(fb):
+      attribute = fb.__getattribute__(attribute_name)
+      if not callable(attribute) and attribute_name[0] != "_":
+        snake_name = CamelCaseToSnakeCase(attribute_name)
+        result[snake_name] = FlatbufferToDict(attribute)
+    return result
+  elif isinstance(fb, str):
+    return fb
+  elif hasattr(fb, "__len__"):
+    result = []
+    for entry in fb:
+      result.append(FlatbufferToDict(entry))
+    return result
+  else:
+    return fb
+
+
+def CreateDictFromFlatbuffer(buffer_data):
+  model_obj = schema_fb.Model.GetRootAsModel(buffer_data, 0)
+  model = schema_fb.ModelT.InitFromObj(model_obj)
+  return FlatbufferToDict(model)
+
+
 def CreateHtmlFile(tflite_input, html_output):
   """Given a tflite model in `tflite_input` file, produce html description."""
 
@@ -366,19 +412,9 @@ def CreateHtmlFile(tflite_input, html_output):
   if not os.path.exists(tflite_input):
     raise RuntimeError("Invalid filename %r" % tflite_input)
   if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
-
-    # Run convert
-    cmd = (
-        _BINARY + " -t "
-        "--strict-json --defaults-json -o /tmp {schema} -- {input}".format(
-            input=tflite_input, schema=_SCHEMA))
-    print(cmd)
-    subprocess.check_call(shlex.split(cmd))
-    real_output = ("/tmp/" +
-                   os.path.splitext(os.path.split(tflite_input)[-1])[0] +
-                   ".json")
-
-    data = json.load(open(real_output))
+    with open(tflite_input, "rb") as file_handle:
+      file_data = bytearray(file_handle.read())
+    data = CreateDictFromFlatbuffer(file_data)
   elif tflite_input.endswith(".json"):
     data = json.load(open(tflite_input))
   else:
@@ -400,7 +436,8 @@ def CreateHtmlFile(tflite_input, html_output):
 
   # Spec on what keys to display
   buffer_keys_to_display = [("data", DataSizeMapper())]
-  operator_keys_to_display = [("builtin_code", None), ("custom_code", None),
+  operator_keys_to_display = [("builtin_code", BuiltinCodeToName),
+                              ("custom_code", None),
                               ("version", None)]
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
@@ -411,8 +448,10 @@ def CreateHtmlFile(tflite_input, html_output):
     op_keys_to_display = [("inputs", tensor_mapper), ("outputs", tensor_mapper),
                           ("builtin_options", None),
                           ("opcode_index", opcode_mapper)]
-    tensor_keys_to_display = [("name", None), ("type", None), ("shape", None),
-                              ("buffer", None), ("quantization", None)]
+    tensor_keys_to_display = [("name", NameListToString),
+                              ("type", TensorTypeToName), ("shape", None),
+                              ("shape_signature", None), ("buffer", None),
+                              ("quantization", None)]
 
     html += "<h2>Subgraph %d</h2>\n" % subgraph_idx
 
@@ -448,7 +487,8 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  open(html_output, "w").write(html)
+  with open(html_output, "w") as output_file:
+    output_file.write(html)
 
 
 def main(argv):

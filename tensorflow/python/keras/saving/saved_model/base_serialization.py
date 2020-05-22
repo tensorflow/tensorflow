@@ -19,12 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import json
-
 import six
 
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import serialization
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -53,9 +51,7 @@ class SavedModelSaver(object):
     """
     # TODO(kathywu): check that serialized JSON can be loaded (e.g., if an
     # object is in the python property)
-    return json.dumps(
-        self.python_properties,
-        default=serialization.get_json_type)
+    return json_utils.Encoder().encode(self.python_properties)
 
   def list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize to SavedModel.

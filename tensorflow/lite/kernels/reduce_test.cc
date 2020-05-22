@@ -329,6 +329,16 @@ TEST(ConstFloatMeanOpTest, Scalar) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.27})));
 }
 
+TEST(ConstFloatMeanOpTest, ScalarAxis) {
+  std::vector<float> data = {4., 2.};
+  MeanOpConstModel m({TensorType_FLOAT32, {2}}, {TensorType_FLOAT32, {1}}, {},
+                     {0}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.})));
+}
+
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -342,6 +352,24 @@ TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({12, 13})));
+}
+
+TEST(DynamicFloatMeanOpTest, ReduceOnLastDimNotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                       {TensorType_FLOAT32, {2}}, {TensorType_INT32, {1}},
+                       false);
+  std::vector<int> axis = {2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5,
+                                       15.5, 17.5, 19.5, 21.5, 23.5})));
 }
 
 TEST(DynamicFloatMeanOpTest, KeepDims) {
@@ -371,7 +399,6 @@ TEST(DynamicFloatMeanOpTest, Scale) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
 }
-
 
 TEST(ConstUint8MeanOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
@@ -589,6 +616,16 @@ TEST(ConstFloatSumOpTest, Scalar) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({17.})));
+}
+
+TEST(ConstFloatSumOpTest, ScalarAxis) {
+  std::vector<float> data = {17., 21., 4.};
+  SumOpConstModel m({TensorType_FLOAT32, {3}}, {TensorType_FLOAT32, {1}}, {},
+                    {0}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({42.})));
 }
 
 TEST(DynamicFloatSumOpTest, KeepDims) {

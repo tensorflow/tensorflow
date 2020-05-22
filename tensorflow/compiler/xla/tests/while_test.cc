@@ -863,7 +863,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Starts = iteration * 2;
     auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {starts});
 
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();
@@ -1314,9 +1314,10 @@ void BM_WhileLoop(int num_iters) {
   While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, {}, ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      client->Compile(computation, {}, ExecutableBuildOptions()));
+  auto executable = std::move(executables[0]);
 
   // Run some warm-up executions.
   ExecutableRunOptions options;
