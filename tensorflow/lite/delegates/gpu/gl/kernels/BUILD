@@ -1,5 +1,8 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite_combined")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -29,6 +32,10 @@ cc_test(
     name = "converter_test",
     size = "small",
     srcs = ["converter_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
     tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",
@@ -37,15 +44,15 @@ cc_test(
     ],
     deps = [
         ":converter",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:portable",
-    ] + tflite_extra_gles_deps(),
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -648,9 +655,11 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
     deps = [
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -664,7 +673,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
-    ] + tflite_extra_gles_deps(),
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
