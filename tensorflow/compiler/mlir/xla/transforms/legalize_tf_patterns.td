@@ -135,19 +135,19 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
 // NOTE: This should be optimized for unsigned integers.
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
-def : Pat<(TF_FloorDivOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
+def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLO_SelectOp
          (HLOClient_BroadcastCompareOp
-          (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (ConstantSplat<"0"> $l)),
+          (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (GetScalarOfType<0> $l)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
-          (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (ConstantSplat<"0"> $r)),
+          (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
           (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
         (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
           (HLOClient_BroadcastDivOp
            (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
                        (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
-                        (HLO_ConstOp (ConstantSplat<"1"> $r)),
+                        (HLO_ConstOp (GetScalarOfType<1> $r)),
                         (NullDenseIntElementsAttr)),
                      (BinBroadcastDimensions $l, $r))),
            (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
@@ -160,16 +160,16 @@ def : Pat<(TF_FloorDivOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
-def : Pat<(TF_FloorModOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
+def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
       (HLO_SelectOp
        (HLOClient_BroadcastAndOp
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
-         (HLO_ConstOp:$l_zeros (ConstantSplat<"0"> $l)),
+         (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
          (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE),
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastCompareOp:$r_cmp $r,
-          (HLO_ConstOp:$r_zeros (ConstantSplat<"0"> $r)),
+          (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
          (HLOClient_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
           (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
