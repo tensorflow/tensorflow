@@ -1110,21 +1110,26 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+      try:
         return func(x, y, name=name)
-      elif not isinstance(y, sparse_tensor.SparseTensor):
-        try:
-          y = ops.convert_to_tensor_v2(
-              y, dtype_hint=x.dtype.base_dtype, name="y")
-        except TypeError:
-          # If the RHS is not a tensor, it might be a tensor aware object
-          # that can implement the operator with knowledge of itself
-          # and the tensor.
-          if hasattr(type(y), "__r%s__" % op_name):
-            return NotImplemented
-          else:
-            raise
-      return func(x, y, name=name)
+      except (TypeError, ValueError) as e:
+        # Even if dispatching the op failed, the RHS may be a tensor aware
+        # object that can implement the operator with knowledge of itself
+        # and the tensor.
+        # If the RHS is not tensor aware we still want to raise the
+        # original error from the LHS, because it may be more
+        # informative.
+        if hasattr(type(y), "__r%s__" % op_name):
+          try:
+            r_op = getattr(y, "__r%s__" % op_name)
+            out = r_op(x)
+            if out == NotImplemented:
+              raise
+            return out
+          except (TypeError, ValueError):
+            raise e
+        else:
+          raise
 
   def binary_op_wrapper_sparse(sp_x, y):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
@@ -1204,7 +1209,7 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
 def _truediv_python3(x, y, name=None):
   with ops.name_scope(name, "truediv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
@@ -1402,6 +1407,9 @@ floormod = gen_math_ops.floor_mod
 
 def _add_dispatch(x, y, name=None):
   """Dispatches to add for strings and add_v2 for all other types."""
+  if not isinstance(y, ops.Tensor) and not isinstance(
+      y, sparse_tensor.SparseTensor):
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
@@ -1410,14 +1418,12 @@ def _add_dispatch(x, y, name=None):
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(y, ops.Tensor)
-  if is_tensor_y:
-    return gen_math_ops.mul(x, y, name=name)
-  else:
-    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+  if isinstance(y, sparse_tensor.SparseTensor):  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
+  else:
+    return multiply(x, y, name=name)
 
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
@@ -1431,10 +1437,10 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(subtract, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(_div_python2, "div")
-_OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
+_OverrideBinaryOperatorHelper(div, "div")
+_OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
@@ -1531,7 +1537,7 @@ def logical_and(x, y, name=None):
   return gen_math_ops.logical_and(x, y, name)
 
 
-_OverrideBinaryOperatorHelper(gen_math_ops.logical_and, "and")
+_OverrideBinaryOperatorHelper(logical_and, "and")
 _OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
 _OverrideBinaryOperatorHelper(logical_xor, "xor")
 
@@ -3088,10 +3094,10 @@ def matmul(a,
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
         a = ops.convert_to_tensor(a, name="a")
       if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
-        b = ops.convert_to_tensor(b, name="b")
+        b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
-      b = ops.convert_to_tensor(b, name="b")
+      b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
 
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
