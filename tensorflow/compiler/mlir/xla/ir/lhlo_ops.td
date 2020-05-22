@@ -444,6 +444,10 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
+  let builders = [OpBuilder<
+    "OpBuilder &b, OperationState &result, ValueRange operands",
+    [{ build(b, result, llvm::None, operands, llvm::None); }]
+  >];
 }
 
 #endif // LHLO_OPS
