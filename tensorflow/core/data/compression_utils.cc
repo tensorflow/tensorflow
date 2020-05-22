@@ -17,16 +17,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 
 Status CompressElement(const std::vector<Tensor>& element,
                        CompressedElement* out) {
-  tensorflow::profiler::TraceMe activity(
-      "CompressElement", tensorflow::profiler::TraceMeLevel::kInfo);
-
   // Step 1: Determine the total uncompressed size. This requires serializing
   // non-memcopyable tensors, which we save to use again later.
   std::vector<TensorProto> non_memcpy_components;
@@ -79,8 +75,6 @@ Status CompressElement(const std::vector<Tensor>& element,
 
 Status UncompressElement(const CompressedElement& compressed,
                          std::vector<Tensor>* out) {
-  tensorflow::profiler::TraceMe activity(
-      "UncompressElement", tensorflow::profiler::TraceMeLevel::kInfo);
   int num_components = compressed.component_metadata_size();
   out->clear();
   out->reserve(num_components);
