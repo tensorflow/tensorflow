@@ -721,6 +721,22 @@ def enable_dump_debug_info(dump_root,
   # Code to build, train and run your TensorFlow model...
   ```
 
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.experimental.enable_dump_debug_info()` as this API uses
+  automatic outside compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.experimental.enable_dump_debug_info(
+      logdir, tensor_debug_mode="FULL_HEALTH")
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
+
   Args:
     dump_root: The directory path where the dumping information will be written.
     tensor_debug_mode: Debug mode for tensor values, as a string.

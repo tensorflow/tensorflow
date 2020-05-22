@@ -410,6 +410,21 @@ def enable_check_numerics(stack_height_limit=30,
      z = tf.matmul(y, y)
      ```
 
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.enable_check_numerics()` as this API uses automatic outside
+  compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.enable_check_numerics()
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
+
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.
       Applicable only to ops in `tf.function`s (graphs).
