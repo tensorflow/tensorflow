@@ -897,7 +897,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           if tensor_util.is_tensor(input_tensor):
             rank = input_tensor.get_shape().rank
           else:
-            rank = np.rank(input_tensor)
+            rank = np.ndim(input_tensor)
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
