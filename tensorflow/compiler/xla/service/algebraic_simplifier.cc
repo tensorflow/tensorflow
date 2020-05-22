@@ -874,28 +874,21 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
     int64 constant;
   };
 
-  auto get_compare_info_helper =
-      [&](HloInstruction* lhs,
-          HloInstruction* rhs) -> absl::optional<LessThanCompareInfo> {
-    if (!Match(rhs, m::Constant().WithShape(
-                        m::Shape().IsEffectiveScalar().WithElementType(
-                            PrimitiveType::S32)))) {
-      return absl::nullopt;
-    }
-    return {LessThanCompareInfo{lhs, *rhs->literal().GetFirstInteger()}};
-  };
-
   auto get_compare_info =
       [&](HloInstruction* cmp) -> absl::optional<LessThanCompareInfo> {
     HloInstruction *lhs, *rhs;
-    if (!Match(cmp, m::Compare(m::Op(&lhs), m::Op(&rhs))
-                        .WithComparisonDirection(ComparisonDirection::kLt))) {
-      return absl::nullopt;
-    }
-    if (auto match1 = get_compare_info_helper(lhs, rhs)) {
-      return match1;
-    } else if (auto match2 = get_compare_info_helper(rhs, lhs)) {
-      return match2;
+    auto scalar_shape_matcher =
+        m::Shape().IsEffectiveScalar().WithElementType(PrimitiveType::S32);
+    if (Match(cmp, m::Compare(m::Op(&lhs),
+                              m::Constant(&rhs).WithShape(scalar_shape_matcher))
+                       .WithComparisonDirection(ComparisonDirection::kLt))) {
+      return {LessThanCompareInfo{lhs, *rhs->literal().GetFirstInteger()}};
+    } else if (Match(
+                   cmp,
+                   m::Compare(m::Constant(&lhs).WithShape(scalar_shape_matcher),
+                              m::Op(&rhs))
+                       .WithComparisonDirection(ComparisonDirection::kGt))) {
+      return {LessThanCompareInfo{rhs, *lhs->literal().GetFirstInteger()}};
     }
     return absl::nullopt;
   };
