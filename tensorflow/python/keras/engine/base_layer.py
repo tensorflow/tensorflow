@@ -912,7 +912,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
-          cast_inputs = self._maybe_cast_inputs(inputs)
+          cast_inputs = self._maybe_cast_inputs(inputs, input_list)
 
           if not self.dynamic:
             # Wrapping `call` function in autograph to allow for dynamic control
@@ -982,7 +982,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          cast_inputs = self._maybe_cast_inputs(inputs)
+          cast_inputs = self._maybe_cast_inputs(inputs, input_list)
           with base_layer_utils.autocast_context_manager(
               self._compute_dtype):
             outputs = self.call(cast_inputs, *args, **kwargs)
@@ -2117,7 +2117,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     return self._dtype_policy.compute_dtype
 
-  def _maybe_cast_inputs(self, inputs):
+  def _maybe_cast_inputs(self, inputs, input_list):
     """Maybe casts the inputs to the compute dtype.
 
     If self._compute_dtype is floating-point, and self_autocast is True,
@@ -2125,31 +2125,37 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Args:
       inputs: Input tensor, or structure of input tensors.
+      input_list: Flat list of input tensors.
 
     Returns:
       `inputs`, but tensors may have been casted to self._compute_dtype
     """
     compute_dtype = self._compute_dtype
-    if (self._autocast and compute_dtype and
-        dtypes.as_dtype(compute_dtype).is_floating):
-      def f(x):
-        """Cast a single Tensor or TensorSpec to the compute dtype."""
-        cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
-                      ragged_tensor.RaggedTensor)
-        if (isinstance(x, cast_types) and x.dtype.is_floating and
-            x.dtype.base_dtype.name != compute_dtype):
-          if self._dtype_defaulted_to_floatx:
-            self._warn_about_input_casting(x.dtype.base_dtype)
-          return math_ops.cast(x, compute_dtype)
-        elif isinstance(x, tensor_spec.TensorSpec) and x.dtype.is_floating:
-          # Inputs may be TensorSpecs when this function is called from
-          # model._set_inputs.
-          return tensor_spec.TensorSpec(x.shape, compute_dtype, x.name)
-        else:
-          return x
-      return nest.map_structure(f, inputs)
+    should_autocast = (
+        self._autocast and compute_dtype and
+        dtypes.as_dtype(compute_dtype).is_floating)
+
+    if (should_autocast and
+        any(self._should_cast_single_input(x) for x in input_list)):
+      # Only perform expensive `nest` operation when needed.
+      return nest.map_structure(self._cast_single_input, inputs)
     else:
       return inputs
+
+  def _should_cast_single_input(self, x):
+    cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
+                  ragged_tensor.RaggedTensor)
+    return (isinstance(x, cast_types) and x.dtype.is_floating and
+            x.dtype.base_dtype.name != self._compute_dtype)
+
+  def _cast_single_input(self, x):
+    """Cast a single Tensor or TensorSpec to the compute dtype."""
+    if self._should_cast_single_input(x):
+      if self._dtype_defaulted_to_floatx:
+        self._warn_about_input_casting(x.dtype.base_dtype)
+      return math_ops.cast(x, self._compute_dtype)
+    else:
+      return x
 
   def _warn_about_input_casting(self, input_dtype):
     # self._already_warned_about_input_casting is only retrieved or set in this
