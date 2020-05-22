@@ -381,3 +381,9 @@ cc_binary(
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
+
+sh_test(
+    name = "micro_speech_binary_mock_test",
+    srcs = ["micro_speech_binary_mock_test.sh"],
+    data = [":micro_speech_mock"],
+)
