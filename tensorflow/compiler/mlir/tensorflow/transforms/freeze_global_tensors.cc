@@ -48,6 +48,9 @@ struct FreezeGlobalTensorsPass
 
 void FreezeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
   SymbolTable symbol_table(module);
   DenseSet<Operation*> frozen_global_tensors;
 
