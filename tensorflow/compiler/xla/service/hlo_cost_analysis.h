@@ -80,6 +80,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
   Status HandleReplicaId(const HloInstruction* hlo) override;
   Status HandlePartitionId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;

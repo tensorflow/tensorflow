@@ -463,7 +463,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
   explicit HloCollectivePermuteInstruction(
-      const Shape& shape, HloInstruction* operand,
+      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs,
       const absl::optional<int64>& channel_id);
 
