@@ -218,7 +218,7 @@ class Conv2DTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes
 class Conv3DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, expected_output_shape):
+  def _run_test(self, kwargs, expected_output_shape, validate_training=True):
     num_samples = 2
     stack_size = 3
     num_row = 7
@@ -230,7 +230,8 @@ class Conv3DTest(keras_parameterized.TestCase):
           keras.layers.Conv3D,
           kwargs=kwargs,
           input_shape=(num_samples, depth, num_row, num_col, stack_size),
-          expected_output_shape=expected_output_shape)
+          expected_output_shape=expected_output_shape,
+          validate_training=validate_training)
 
   @parameterized.named_parameters(
       ('padding_valid', {'padding': 'valid'}, (None, 3, 5, 4, 2)),
@@ -247,8 +248,10 @@ class Conv3DTest(keras_parameterized.TestCase):
   def test_conv3d(self, kwargs, expected_output_shape=None, requires_gpu=False):
     kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3, 3)
+    # train_on_batch currently fails with XLA enabled on GPUs
+    test_training = 'groups' not in kwargs or not test_util.is_xla_enabled()
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, expected_output_shape)
+      self._run_test(kwargs, expected_output_shape, test_training)
 
   def test_conv3d_regularizers(self):
     kwargs = {
