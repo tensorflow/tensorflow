@@ -136,11 +136,8 @@ class TensorListReserveOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_elements));
     OP_REQUIRES(
         ctx, num_elements >= 0,
-        errors::InvalidArgument(
-            "XLA compilation requires a fixed tensor list size. Set the number "
-            "of elements. This could also happen if you're using a TensorArray "
-            "in a while loop that does not have its maximum_iteration set, you "
-            "can fix this by setting maximum_iteration to a suitable value."));
+        errors::InvalidArgument("XLA compilation requires a fixed tensor list "
+                                "size. Set the number of elements."));
 
     // If element shape is compile time constant and it's not "unknown rank"
     // shape (-1), create an initialized TensorList. Otherwise create an
@@ -200,13 +197,10 @@ class EmptyTensorListOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     int64 max_num_elements;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &max_num_elements));
-    OP_REQUIRES(ctx, max_num_elements >= 0,
-                errors::InvalidArgument(
-                    "XLA compilation requires a fixed tensor list size. Set "
-                    "the max number of elements. This could also happen if "
-                    "you're using a TensorArray in a while loop that does not "
-                    "have its maximum_iteration set, you can fix this by "
-                    "setting maximum_iteration to a suitable value."));
+    OP_REQUIRES(
+        ctx, max_num_elements >= 0,
+        errors::InvalidArgument("XLA compilation requires a fixed tensor list "
+                                "size. Set the max number of elements."));
 
     if (dtype_ != DT_VARIANT) {
       // We are creating a non-nested TensorList.
