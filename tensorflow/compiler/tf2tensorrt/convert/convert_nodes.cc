@@ -1922,37 +1922,56 @@ Status Converter::GetInputs(const NodeDef& node_def,
   return Status::OK();
 }
 
+enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
+
 // Checks that the number of inputs match, and enforces that the inputs marked
-// as true are constant weights. true means that the input must be a weight,
-// while false means the input must be a tensor. In the future, false will mean
-// the input can be a tensor or weight.
+// as weights are constant. Inputs are allowed to be both weight and tensor.
 Status CheckInputsWeights(
     const OpConverterParams& params,
-    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+    const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != inputs_is_weight.size()) {
+  if (inputs.size() != expected_inputs.size()) {
     return errors::InvalidArgument(
         node_def.op(), " got ", inputs.size(), " inputs but expected ",
-        inputs_is_weight.size(), ", at ", node_def.name());
+        expected_inputs.size(), ", at ", node_def.name());
   }
   for (int i = 0; i < inputs.size(); i++) {
-    if (inputs_is_weight[i].second && inputs.at(i).is_tensor()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kWeight &&
+        inputs.at(i).is_tensor()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a constant, at ", node_def.name());
     }
-    // TODO(tmorris): Remove this check and provide a method to automatically
+    // TODO(tfeher): Remove this check and provide a method to automatically
     // retrieve an input as a tensor, converting via CreateConstantLayer if it
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
-    if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kTensor &&
+        inputs.at(i).is_weights()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a tensor, at ", node_def.name());
     }
   }
   return Status::OK();
+}
+
+// Checks that the number of inputs match, and enforces that the inputs marked
+// as true are constant weights. true means that the input must be a weight,
+// while false means the input must be a tensor.
+Status CheckInputsWeights(
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+  std::vector<std::pair<string, TrtInputArg>> expected_inputs;
+  expected_inputs.reserve(inputs_is_weight.size());
+  std::transform(
+      inputs_is_weight.begin(), inputs_is_weight.end(),
+      std::back_inserter(expected_inputs), [](std::pair<string, bool> x) {
+        return std::make_pair(
+            x.first, x.second ? TrtInputArg::kWeight : TrtInputArg::kTensor);
+      });
+  return CheckInputsWeights(params, expected_inputs);
 }
 
 Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
@@ -4986,24 +5005,14 @@ Status ConvertGather(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // TODO(tmorris): Use CheckInputsWeights by changing bool to enum with an
   // option for an input to be either tensor or weight.
-  if (inputs.size() != 3) {
-    return errors::InvalidArgument("GatherV2 got ", inputs.size(),
-                                   " inputs but expected 3, at ",
-                                   node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"params", TrtInputArg::kBoth},
+                                   {"indices", TrtInputArg::kTensor},
+                                   {"axis", TrtInputArg::kWeight}}));
+
   const auto& params_input = inputs.at(0);
   const auto& indices_input = inputs.at(1);
   const auto& axis_input = inputs.at(2);
-  if (!axis_input.is_weights()) {
-    return errors::Unimplemented(
-        "The input \"axis\" for GatherV2 must be a constant, at ",
-        node_def.name());
-  }
-  if (!indices_input.is_tensor()) {
-    return errors::Unimplemented(
-        "The input \"indices\" for GatherV2 must be a tensor, at ",
-        node_def.name());
-  }
 
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32},
