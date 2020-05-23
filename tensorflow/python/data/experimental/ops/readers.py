@@ -612,7 +612,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
                field_delim=",",
                use_quote_delim=True,
                na_value="",
-               select_cols=None):
+               select_cols=None,
+               exclude_cols=None):
     """Creates a `CsvDataset` by reading and decoding CSV files.
 
     The elements of this dataset correspond to records from the file(s).
@@ -679,6 +680,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
       select_cols: (Optional.) A sorted list of column indices to select from
         the input data. If specified, only this subset of columns will be
         parsed. Defaults to parsing all columns.
+      exclude_cols:(Optional.) A sorted list of column indices to exclude from
+        the input data. If specified, only the complement of this set of column
+        will be parsed. Defaults to parsing all columns.
     """
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
@@ -710,6 +714,12 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
+    self._exclude_cols = convert.optional_param_to_tensor(
+        "exclude_cols",
+        exclude_cols,
+        argument_default=[],
+        argument_dtype=dtypes.int64,
+    )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
     variant_tensor = gen_experimental_dataset_ops.csv_dataset(
@@ -722,6 +732,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
+        exclude_cols=self._exclude_cols,
         compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 

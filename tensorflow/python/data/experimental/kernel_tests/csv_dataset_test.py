@@ -415,6 +415,16 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         select_cols=[0])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testCsvDataset_withExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_output=[['1'], ['5']],
+        record_defaults=record_defaults,
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
     # TextLineDataset->map(decode_csv) since that flow has bugs

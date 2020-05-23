@@ -154,6 +154,7 @@ REGISTER_OP("CSVDataset")
     .Input("use_quote_delim: bool")
     .Input("na_value: string")
     .Input("select_cols: int64")
+    .Input("exclude_cols: int64")
     .Input("record_defaults: output_types")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
@@ -174,8 +175,10 @@ REGISTER_OP("CSVDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       // `select_cols` must be a vector
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 1, &unused));
+      //`exclude_cols` must be a vecotr
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 1, &unused));
       // `record_defaults` must be lists of scalars
-      for (size_t i = 8; i < c->num_inputs(); ++i) {
+      for (size_t i = 9; i < c->num_inputs(); ++i) {
         shape_inference::ShapeHandle v;
         TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(i), 1, &v));
         if (c->Rank(c->input(i)) == 1 && c->Value(c->Dim(v, 0)) > 1) {
@@ -196,6 +199,7 @@ REGISTER_OP("ExperimentalCSVDataset")
     .Input("use_quote_delim: bool")
     .Input("na_value: string")
     .Input("select_cols: int64")
+    .Input("exclude_cols: int64")
     .Input("record_defaults: output_types")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
@@ -216,8 +220,10 @@ REGISTER_OP("ExperimentalCSVDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       // `select_cols` must be a vector
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 1, &unused));
+      // `exclude_cols` must be a vector
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 1, &unused));
       // `record_defaults` must be lists of scalars
-      for (size_t i = 8; i < c->num_inputs(); ++i) {
+      for (size_t i = 9; i < c->num_inputs(); ++i) {
         shape_inference::ShapeHandle v;
         TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(i), 1, &v));
         if (c->Rank(c->input(i)) == 1 && c->Value(c->Dim(v, 0)) > 1) {
