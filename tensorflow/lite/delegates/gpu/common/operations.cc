@@ -499,6 +499,14 @@ BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr) {
+  return BHWDC(StridedSize(attr.ends.b - attr.starts.b, attr.strides.b),
+               StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
+               StridedSize(attr.ends.w - attr.starts.w, attr.strides.w),
+               StridedSize(attr.ends.d - attr.starts.d, attr.strides.d),
+               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
+}
+
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
   return BHWC(attr.appended.b + attr.prepended.b + input.b,
               attr.appended.h + attr.prepended.h + input.h,
@@ -732,6 +740,13 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr) {
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
   return BHWC(input.get(attr.perm.b), input.get(attr.perm.h),
               input.get(attr.perm.w), input.get(attr.perm.c));
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Transpose3DAttributes& attr) {
+  return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
+               input.get(attr.perm.w), input.get(attr.perm.d),
+               input.get(attr.perm.c));
 }
 
 }  // namespace gpu
