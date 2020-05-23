@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -2905,6 +2906,46 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
 }
 
 Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
+  auto dot_dnums = dot_as_convolution_util::ParseDotGeneralFromConvolution(hlo);
+  if (dot_dnums) {
+    // Use HandleDotHelper() for convs that are actually einsums.
+    spmd::DotGeneralDimsMapping mapping;
+    for (const auto& dims : dot_dnums->batch_dims) {
+      mapping.batch_dims.emplace_back();
+      mapping.batch_dims.back().lhs = dims.lhs;
+      mapping.batch_dims.back().rhs = dims.rhs;
+      mapping.batch_dims.back().output = dims.output;
+    }
+    for (const auto& dims : dot_dnums->contracting_dims) {
+      mapping.contracting_dims.emplace_back();
+      mapping.contracting_dims.back().lhs = dims.lhs;
+      mapping.contracting_dims.back().rhs = dims.rhs;
+      mapping.contracting_dims.back().output = dims.output;
+    }
+    for (const auto& dims : dot_dnums->lhs_non_contracting_dims) {
+      mapping.lhs_non_contracting_dims.emplace_back();
+      mapping.lhs_non_contracting_dims.back().lhs = dims.lhs;
+      mapping.lhs_non_contracting_dims.back().rhs = dims.rhs;
+      mapping.lhs_non_contracting_dims.back().output = dims.output;
+    }
+    for (const auto& dims : dot_dnums->rhs_non_contracting_dims) {
+      mapping.rhs_non_contracting_dims.emplace_back();
+      mapping.rhs_non_contracting_dims.back().lhs = dims.lhs;
+      mapping.rhs_non_contracting_dims.back().rhs = dims.rhs;
+      mapping.rhs_non_contracting_dims.back().output = dims.output;
+    }
+    auto create_sharded_conv =
+        [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,
+            spmd::SpmdBuilder* b) -> StatusOr<HloInstruction*> {
+      TF_ASSIGN_OR_RETURN(
+          auto sharded_conv,
+          dot_as_convolution_util::CreateShardedConvForDotGeneralConvolution(
+              *hlo, *dot_dnums, lhs_hlo, rhs_hlo));
+      return b->AddInstruction(std::move(sharded_conv));
+    };
+    return HandleDotHelper(hlo, mapping, create_sharded_conv);
+  }
+
   auto lhs = GetPartitionedHlo(hlo->operand(0));
   auto rhs = GetPartitionedHlo(hlo->operand(1));
   const HloSharding& sharding = hlo->sharding();
