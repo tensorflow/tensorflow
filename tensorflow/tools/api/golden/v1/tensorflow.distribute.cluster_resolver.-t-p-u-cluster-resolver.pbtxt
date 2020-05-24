@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.cluster_resolver.TPUClusterResolver"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver.TPUClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver.TPUClusterResolver\'>"
   is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -21,6 +21,10 @@ tf_class {
   }
   member_method {
     name: "get_master"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tpu_system_metadata"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -547,6 +547,15 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
     self.assertListEqual(actual, records)
 
+  def testFlushAndRead(self):
+    records = list(map(self._Record, range(self._num_records)))
+    for record in records:
+      self._writer.write(record)
+    self._writer.flush()
+
+    actual = list(tf_record.tf_record_iterator(self._fn, self._options))
+    self.assertListEqual(actual, records)
+
   def testDoubleClose(self):
     self._writer.write(self._Record(0))
     self._writer.close()

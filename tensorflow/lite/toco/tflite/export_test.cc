@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -74,6 +74,9 @@ class ExportTest : public ::testing::Test {
         input1_array.data_type = ArrayDataType::kFloat;
         input2_array.data_type = ArrayDataType::kFloat;
         output_array.data_type = ArrayDataType::kFloat;
+        input1_array.copy_shape({1, 2, 2, 2});
+        input2_array.copy_shape({1, 2, 2, 2});
+        output_array.copy_shape({1, 2, 2, 2});
         input_model_.operators.emplace_back(op);
       } else if (name == "Assert") {
         auto* op = new TensorFlowAssertOperator;

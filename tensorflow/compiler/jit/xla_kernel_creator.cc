@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
+#include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
 #include "tensorflow/core/common_runtime/function.h"

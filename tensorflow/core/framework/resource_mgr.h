@@ -95,7 +95,6 @@ class ScopedStepContainer {
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup)
       : container_(strings::StrCat("__per_step_", step_id)),
-        step_id_(step_id),
         cleanup_(cleanup),
         dirty_(false) {}
 
@@ -103,7 +102,6 @@ class ScopedStepContainer {
                       std::function<void(const string&)> cleanup,
                       const string& prefix)
       : container_(strings::StrCat("__", prefix, "_per_step_", step_id)),
-        step_id_(step_id),
         cleanup_(cleanup),
         dirty_(false) {}
 
@@ -144,11 +142,8 @@ class ScopedStepContainer {
   Status LookupOrCreate(ResourceMgr* rm, const string& name, T** resource,
                         std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
 
-  const int64 step_id() const { return step_id_; }
-
  private:
   const string container_;
-  const int64 step_id_;
   const std::function<void(const string&)> cleanup_;
   mutex mu_;
   mutable std::atomic<bool> dirty_ TF_GUARDED_BY(mu_);

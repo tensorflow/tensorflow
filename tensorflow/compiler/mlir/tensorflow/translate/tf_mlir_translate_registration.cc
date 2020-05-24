@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Translation.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -45,7 +45,8 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
   return tensorflow::GraphdefToMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
+      enable_shape_inference, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -56,7 +57,8 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
+      enable_shape_inference, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
@@ -68,7 +70,6 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
-  confs.graph_as_function = graph_as_function;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {

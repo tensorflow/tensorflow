@@ -22,12 +22,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
@@ -58,6 +61,18 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
+
+  def testShape(self):
+
+    @def_function.function
+    def test_fn(tensor):
+      tensor = sparse_ops.sparse_transpose(tensor)
+      self.assertEqual(tensor.shape.rank, 2)
+      return tensor
+
+    tensor = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1., 2], dense_shape=[3, 4])
+    test_fn(tensor)
 
   def testIsSparse(self):
     self.assertFalse(sparse_tensor.is_sparse(3))
@@ -109,6 +124,84 @@ class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sparse_tensor_value.values, convertee.values)
         self.assertAllEqual(
             sparse_tensor_value.dense_shape, convertee.dense_shape)
+
+
+class SparseTensorShapeTest(test_util.TensorFlowTestCase):
+
+  def test_simple(self):
+    indices = [[0, 2]]
+    values = [1]
+    dense_shape = [5, 5]
+    sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+
+    self.assertIsInstance(sp.shape, tensor_shape.TensorShape)
+    self.assertIsInstance(sp.dense_shape, ops.Tensor)
+    self.assertEqual(sp.shape.as_list(), [5, 5])
+
+  def test_unknown_shape(self):
+
+    @def_function.function
+    def my_func(dense_shape):
+      indices = [[0, 2]]
+      values = [1]
+      sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      self.assertEqual(sp.shape.as_list(), [None, None])
+      return sp
+
+    my_func.get_concrete_function(
+        dense_shape=tensor_spec.TensorSpec(
+            dtype=dtypes.int64, shape=[2,]))
+
+  def test_partial_shape(self):
+
+    @def_function.function
+    def my_func(x):
+      indices = [[0, 2]]
+      values = [1]
+      y = ops.convert_to_tensor(3, dtype=dtypes.int64)
+      dense_shape = [x, y]
+      sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      self.assertEqual(sp.shape.as_list(), [None, 3])
+      return sp
+
+    my_func.get_concrete_function(
+        x=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[]))
+
+  def test_neg_shape(self):
+    indices = [[0, 2]]
+    values = [1]
+    dense_shape = [-1, 5]
+    sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+    self.assertEqual(sp.shape.as_list(), [None, 5])
+
+  def test_unknown_tensor_shape(self):
+
+    @def_function.function
+    def my_func(x):
+      indices = [[0, 0]]
+      values = [1]
+      dense_shape = array_ops.shape(x)
+      dense_shape = math_ops.cast(dense_shape, dtypes.int64)
+
+      sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      self.assertEqual(sp.shape.as_list(), [None, None])
+      return sp
+
+    my_func.get_concrete_function(
+        x=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[None, None]))
+
+  def test_unknown_rank(self):
+
+    @def_function.function
+    def my_func(dense_shape):
+      indices = [[0, 0]]
+      values = [1]
+      sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      self.assertEqual(sp.shape.rank, None)
+      return sp
+
+    my_func.get_concrete_function(
+        dense_shape=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[None]))
 
 
 @test_util.run_all_in_graph_and_eager_modes

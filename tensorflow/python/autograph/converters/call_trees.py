@@ -29,6 +29,7 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.utils import ag_logging
 
@@ -96,47 +97,31 @@ class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
   def visit_Lambda(self, node):
-    if anno.hasanno(node, 'function_context_name'):
+    if not anno.hasanno(node, 'function_context_name'):
       # Lambda functions created during the conversion process have no
       # context manager.
-      self.state[_Function].enter()
-      self.state[_Function].context_name = anno.getanno(
-          node, 'function_context_name')
-      node = self.generic_visit(node)
-      self.state[_Function].exit()
-    else:
-      node = self.generic_visit(node)
-    return node
+      return self.generic_visit(node)
+    with self.state[_Function] as fn_scope:
+      fn_scope.context_name = anno.getanno(node, 'function_context_name')
+      return self.generic_visit(node)
 
   def visit_FunctionDef(self, node):
-    self.state[_Function].enter()
-    # Note: if the conversion process ever creates helper functions, this
-    # assumption will no longer hold.
-    assert anno.hasanno(node, 'function_context_name'), (
-        'The function_scopes converter always creates a scope for functions.')
-    self.state[_Function].context_name = anno.getanno(
-        node, 'function_context_name')
-    node.args = self.visit(node.args)
-    node.body = self.visit_block(node.body)
-
-    if self.state[_Function].level < 2:
-      # Top-level functions lose their decorator because the conversion is
-      # always just-in-time and by the time it happens the decorators are
-      # already set to be applied.
-      node.decorator_list = []
-    else:
-      # TODO(mdan): Fix the tests so that we can always add this decorator.
-      # Inner functions are converted already, so we insert a decorator to
-      # prevent double conversion. Double conversion would work too, but this
-      # saves the overhead.
-      node.decorator_list.append(
-          parser.parse_expression('ag__.autograph_artifact'))
-
-    if node.returns:
-      node.returns = self.visit(node.returns)
-
-    self.state[_Function].exit()
-    return node
+    # Decorators and arg defaults are part of the outer scope.
+    node.decorator_list = self.visit_block(node.decorator_list)
+    node.args.defaults = self.visit_block(node.args.defaults)
+    for i, d in enumerate(node.args.kw_defaults):
+      if d is not None:
+        node.args.kw_defaults[i] = self.visit(d)
+    with self.state[_Function] as fn_scope:
+      # Note: if the conversion process ever creates helper functions, this
+      # assumption will no longer hold.
+      assert anno.hasanno(node, 'function_context_name'), (
+          'The function_scopes converter always creates a scope for functions.')
+      fn_scope.context_name = anno.getanno(node, 'function_context_name')
+      node.body = self.visit_block(node.body)
+      if node.returns:
+        node.returns = self.visit(node.returns)
+      return node
 
   def visit_With(self, node):
     # Context manager calls (in node.items) are not converted.
@@ -207,7 +192,7 @@ class CallTreeTransformer(converter.Base):
       return node
 
     if (full_name == 'print' and
-        not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
+        not self.ctx.user.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return node
 
     template = """
@@ -234,4 +219,7 @@ def transform(node, ctx):
         node: The transformed AST
         new_names: set(string), containing any newly-generated names
   """
-  return CallTreeTransformer(ctx).visit(node)
+  node = qual_names.resolve(node)
+
+  node = CallTreeTransformer(ctx).visit(node)
+  return node

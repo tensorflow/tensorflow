@@ -1054,6 +1054,12 @@ class TestValidationSplit(keras_parameterized.TestCase):
       data_adapter.train_validation_split(
           lambda: np.ones((10, 1)), validation_split=0.2)
 
+  def test_validation_split_examples_too_few(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'not sufficient to split it'):
+      data_adapter.train_validation_split(
+          np.ones((1, 10)), validation_split=0.2)
+
   def test_validation_split_none(self):
     train_sw, val_sw = data_adapter.train_validation_split(
         None, validation_split=0.2)

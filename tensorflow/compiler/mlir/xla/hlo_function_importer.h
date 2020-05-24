@@ -19,12 +19,12 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -89,9 +89,6 @@ class HloFunctionImporter {
   // Returns the Mlir Value for the corresponding HloInstruction.
   StatusOr<mlir::Value> GetMlirValue(xla::HloInstruction* instruction);
 
-  // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
-  mlir::NamedAttribute ConvertPrecisionConfig(xla::HloInstruction* instruction);
-
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
       xla::HloInstruction* instruction);
@@ -101,27 +98,11 @@ class HloFunctionImporter {
       llvm::ArrayRef<tensorflow::int64> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
-  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
 
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
-
-  // Converts the dot dimensions to attribute.
-  mlir::NamedAttribute ConvertDotDimensionNumbers(
-      const DotDimensionNumbers& dnums);
-
-  // Converts the conv dimensions to attributes.
-  mlir::NamedAttribute ConvertConvDimensionNumbers(
-      const xla::ConvolutionDimensionNumbers& dnums);
-
-  // Converts the gather dimensions to attributes.
-  mlir::NamedAttribute ConvertGatherDimensionNumbers(
-      const xla::GatherDimensionNumbers& dnums);
-
-  // Converts the scatter dimensions to attributes.
-  mlir::NamedAttribute ConvertScatterDimensionNumbers(
-      const xla::ScatterDimensionNumbers& dnums);
 
   // Converts replica groups to attribute
   mlir::NamedAttribute ConvertReplicaGroups(

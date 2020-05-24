@@ -67,6 +67,7 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
               {{BuiltinOperator_SUB, 1}, "1.6.0"},
               {{BuiltinOperator_SUB, 2}, "1.14.0"},
               {{BuiltinOperator_DIV, 1}, "1.6.0"},
+              {{BuiltinOperator_DIV, 2}, kPendingReleaseOpVersion},
               {{BuiltinOperator_BATCH_TO_SPACE_ND, 1}, "1.6.0"},
               {{BuiltinOperator_BATCH_TO_SPACE_ND, 2}, "1.14.0"},
               {{BuiltinOperator_CAST, 1}, "1.5.0"},

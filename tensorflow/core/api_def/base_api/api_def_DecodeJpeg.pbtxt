@@ -75,6 +75,6 @@ downscaling the image later.
 
 
 This op also supports decoding PNGs and non-animated GIFs since the interface is
-the same, though it is cleaner to use `tf.image.decode_image`.
+the same, though it is cleaner to use `tf.io.decode_image`.
 END
 }

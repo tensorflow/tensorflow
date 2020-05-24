@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -24,6 +25,7 @@ namespace {
 TEST(TfOpUtilsTest, TfOpTest) {
   const absl::string_view kName = "OpName:OpType";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
   EXPECT_EQ(tf_op.name, "OpName");
   EXPECT_EQ(tf_op.type, "OpType");
   EXPECT_EQ(TfOpEventName(kName), "OpType");  // type only
@@ -32,6 +34,7 @@ TEST(TfOpUtilsTest, TfOpTest) {
 TEST(TfOpUtilsTest, InternalTfOpTest) {
   const absl::string_view kName = "OpName:_InternalOpType";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
   EXPECT_EQ(tf_op.name, "OpName");
   EXPECT_EQ(tf_op.type, "_InternalOpType");
   EXPECT_EQ(TfOpEventName(kName), "_InternalOpType");  // type only
@@ -40,6 +43,7 @@ TEST(TfOpUtilsTest, InternalTfOpTest) {
 TEST(TfOpUtilsTest, TfOpWithPathTest) {
   const absl::string_view kName = "path/to/name:OpType";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
   EXPECT_EQ(tf_op.name, "path/to/name");
   EXPECT_EQ(tf_op.type, "OpType");
   EXPECT_EQ(TfOpEventName(kName), "OpType");  // type only
@@ -48,24 +52,27 @@ TEST(TfOpUtilsTest, TfOpWithPathTest) {
 TEST(TfOpUtilsTest, ShortDatasetOpTest) {
   const absl::string_view kName = "Iterator::Batch";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTfData);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsDatasetOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kDatasetOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
 }
 
 TEST(TfOpUtilsTest, LongDatasetOpTest) {
   const absl::string_view kName = "Iterator::Batch::Map::TfRecord";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTfData);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsDatasetOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kDatasetOp);
   EXPECT_EQ(TfOpEventName(kName), "Iterator::TfRecord");  // shorter name
 }
 
 TEST(TfOpUtilsTest, TraceMeTest) {
   const absl::string_view kName = "MyTraceMe";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsUnknownOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kUnknownOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
 }
 
@@ -73,16 +80,18 @@ TEST(TfOpUtilsTest, TraceMeWithColonTest) {
   // "12345" is not a valid op type.
   const absl::string_view kName = "RunStep/Server:54635";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsUnknownOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kUnknownOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
 }
 
 TEST(TfOpUtilsTest, TraceMeWithDoubleColonTest) {
   const absl::string_view kName = "XLA::StartProgram";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsUnknownOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kUnknownOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
 }
 
@@ -90,9 +99,37 @@ TEST(TfOpUtilsTest, TraceMeWithTrailingWhitespaceTest) {
   const absl::string_view kName = "SessionRun ";
   const absl::string_view kNameTrimmed = "SessionRun";
   TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
   EXPECT_EQ(tf_op.name, kName);
-  EXPECT_TRUE(IsUnknownOp(tf_op.type));
+  EXPECT_EQ(tf_op.type, kUnknownOp);
   EXPECT_EQ(TfOpEventName(kName), kNameTrimmed);
+}
+
+TEST(TfOpUtilsTest, MemcpyHToDTest) {
+  const absl::string_view kName = "MemcpyHToD";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kMemcpyHToD);
+  EXPECT_EQ(tf_op.name, kName);
+  EXPECT_EQ(tf_op.type, kMemcpyHToDOp);
+  EXPECT_EQ(TfOpEventName(kName), kName);
+}
+
+TEST(TfOpUtilsTest, MemcpyDToHTest) {
+  const absl::string_view kName = "MemcpyDToH";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kMemcpyDToH);
+  EXPECT_EQ(tf_op.name, kName);
+  EXPECT_EQ(tf_op.type, kMemcpyDToHOp);
+  EXPECT_EQ(TfOpEventName(kName), kName);
+}
+
+TEST(TfOpUtilsTest, JaxOpTest) {
+  const absl::string_view kName = "op_name:op_type";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "op_name");
+  EXPECT_EQ(tf_op.type, "op_type");
+  EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
 }  // namespace

@@ -50,6 +50,8 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     q = q + 3.0
     a = gen_math_ops.reciprocal(q)
 
+    # this chain of operations has a batch size of 5, which is different from
+    # the batch size for the other operations.
     x = constant_op.constant(np.random.randn(5, 8, 12), dtype=x.dtype)
     q = math_ops.abs(x)
     q = q + 2.0
@@ -95,7 +97,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
 if __name__ == "__main__":

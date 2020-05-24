@@ -30,13 +30,18 @@ absl::optional<ReductionKind> MatchReductionComputation(
                   .WithShape(m::Shape().IsEffectiveScalar()));
   };
 
+  // Match the operation to a reduction kind. We can represent and/or of pred as
+  // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+  PrimitiveType type = computation->root_instruction()->shape().element_type();
   if (match_opcode(HloOpcode::kAdd)) {
     return ReductionKind::SUM;
   } else if (match_opcode(HloOpcode::kMultiply)) {
     return ReductionKind::PRODUCT;
-  } else if (match_opcode(HloOpcode::kMinimum)) {
+  } else if (match_opcode(HloOpcode::kMinimum) ||
+             (type == PRED && match_opcode(HloOpcode::kAnd))) {
     return ReductionKind::MIN;
-  } else if (match_opcode(HloOpcode::kMaximum)) {
+  } else if (match_opcode(HloOpcode::kMaximum) ||
+             (type == PRED && match_opcode(HloOpcode::kOr))) {
     return ReductionKind::MAX;
   } else {
     return absl::nullopt;

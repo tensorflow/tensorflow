@@ -127,7 +127,7 @@ class CreatedContexts {
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats CUresult to output prettified values into a log stream.
-string ToString(CUresult result) {
+std::string ToString(CUresult result) {
   const char* error_name;
   if (cuGetErrorName(result, &error_name)) {
     return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
@@ -167,7 +167,7 @@ port::ThreadPool* GetDriverExecutor() {
 
 }  // namespace
 
-string MemorySpaceString(MemorySpace memory_space) {
+std::string MemorySpaceString(MemorySpace memory_space) {
   switch (memory_space) {
     case MemorySpace::kHost:
       return "host";
@@ -252,7 +252,7 @@ namespace {
 // Returns a stringified device number associated with pointer, primarily for
 // logging purposes. Returns "?" if the device could not be successfully
 // queried.
-string CUDAPointerToDeviceString(CUdeviceptr pointer) {
+std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerDevice(pointer);
   if (value.ok()) {
     return absl::StrCat(value.ValueOrDie());
@@ -264,7 +264,7 @@ string CUDAPointerToDeviceString(CUdeviceptr pointer) {
 // Returns a stringified memory space associated with pointer, primarily for
 // logging purposes. Returns "?" if the memory space could not be successfully
 // queried.
-string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
+std::string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
     return MemorySpaceString(value.ValueOrDie());
@@ -277,7 +277,7 @@ string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
 // permitted between the "from" and "to" pointers' associated contexts,
 // primarily for logging purposes. Returns "error" if an error is encountered
 // in the process of querying.
-string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
+std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
   auto from_context = GpuDriver::GetPointerContext(from);
   if (!from_context.ok()) {
     LOG(ERROR) << "could not retrieve source pointer's context: "
@@ -335,7 +335,7 @@ static port::Status InternalInit() {
 }
 
 /* static */ port::Status GpuDriver::GetDeviceName(CUdevice device,
-                                                   string* device_name) {
+                                                   std::string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   RETURN_IF_CUDA_RES_ERROR(
@@ -434,7 +434,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return port::Status::OK();
   }
 
-  string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
+  std::string message =
+      "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -1391,8 +1392,8 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
-/* static */ string GpuDriver::GetPCIBusID(CUdevice device) {
-  string pci_bus_id;
+/* static */ std::string GpuDriver::GetPCIBusID(CUdevice device) {
+  std::string pci_bus_id;
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';

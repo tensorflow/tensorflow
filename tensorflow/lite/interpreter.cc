@@ -51,6 +51,8 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
+namespace impl {
+
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
@@ -136,7 +138,7 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   // If it's overwritten here, we will release the resource of the internally
   // owned external context.
   // Note: the 'max thread count' info associated with the overwritten context
-  // will be lost here, and such info is now detemined by the new context, thus
+  // will be lost here, and such info is now determined by the new context, thus
   // affecting how much parallelism a TFLite op would have.
   if (kTfLiteCpuBackendContext == type &&
       external_contexts_[kTfLiteCpuBackendContext] ==
@@ -193,6 +195,11 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                                             const std::vector<int>& dims) {
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
+}
+
+TfLiteStatus Interpreter::ResizeInputTensorStrict(
+    int tensor_index, const std::vector<int>& dims) {
+  return primary_subgraph().ResizeInputTensorStrict(tensor_index, dims);
 }
 
 TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
@@ -254,10 +261,12 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
+    const size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
-      tensor_index, type, name, rank, dims, new_quantization, is_variable);
+      tensor_index, type, name, rank, dims, new_quantization, is_variable,
+      rank_dims_signature, dims_signature);
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
@@ -302,10 +311,19 @@ void Interpreter::SetCancellationFunction(void* data,
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
+    status = subgraph->ModifyGraphWithDelegate(delegate);
+    if (status != kTfLiteOk) {
+      break;
+    }
   }
-  return kTfLiteOk;
+  // Delegate-specific errors can be recovered from by restoring Interpreter to
+  // its original state.
+  if (status == kTfLiteDelegateError) {
+    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+  }
+  return status;
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
@@ -313,6 +331,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
   // fails, as delegate use will be in an indeterminate state at that point.
   owned_delegates_.push_back(std::move(delegate));
   return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
@@ -370,5 +395,7 @@ void Interpreter::SetSubgraphProfiler(Profiler* profiler) {
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
+
+}  // namespace impl
 
 }  // namespace tflite

@@ -78,7 +78,9 @@ class XlaCompilationCache : public ResourceBase {
                  xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
-  // XlaCompiler::CompileFunction.
+  // XlaCompiler::CompileFunction. If MLIR bridge is enabled through ConfigProto
+  // in OpKernelContext, then uses MLIR bridge for compilation instead of
+  // XlaCompiler, if possible.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
       absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,

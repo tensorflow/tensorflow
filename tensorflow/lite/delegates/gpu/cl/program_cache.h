@@ -41,20 +41,21 @@ class ProgramCache {
   ProgramCache(const ProgramCache&) = delete;
   ProgramCache& operator=(const ProgramCache&) = delete;
 
-  Status GetOrCreateCLKernel(
+  absl::Status GetOrCreateCLKernel(
       const std::string& code, const std::string& function_name,
       const std::vector<CompilerOptions>& compiler_options,
       const CLContext& context, const CLDevice& device, CLKernel* result);
 
-  Status GetOrCreateCLKernel(const std::string& code,
-                             const std::string& function_name,
-                             const CLContext& context, const CLDevice& device,
-                             CLKernel* result);
+  absl::Status GetOrCreateCLKernel(const std::string& code,
+                                   const std::string& function_name,
+                                   const CLContext& context,
+                                   const CLDevice& device, CLKernel* result);
 
-  Status AddSerializedCache(const CLContext& context, const CLDevice& device,
-                            absl::Span<const uint8_t> serialized_cache);
-  Status GetSerializedCache(const CLDevice& device,
-                            std::vector<uint8_t>* serialized_cache) const;
+  absl::Status AddSerializedCache(const CLContext& context,
+                                  const CLDevice& device,
+                                  absl::Span<const uint8_t> serialized_cache);
+  absl::Status GetSerializedCache(const CLDevice& device,
+                                  std::vector<uint8_t>* serialized_cache) const;
 
  private:
   struct ProgramDescriptor {

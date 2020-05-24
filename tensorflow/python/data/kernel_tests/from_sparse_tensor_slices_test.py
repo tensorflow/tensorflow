@@ -37,7 +37,7 @@ class FromSparseTensorSlicesTest(test_base.DatasetTestBase,
   @combinations.generate(
       combinations.combine(tf_api_version=1, mode=["graph"]))
   def testFromSparseTensorSlices(self):
-    """Test a dataset based on slices of a `tf.SparseTensor`."""
+    """Test a dataset based on slices of a `tf.sparse.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)
     iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_sparse_tensor_slices(st))

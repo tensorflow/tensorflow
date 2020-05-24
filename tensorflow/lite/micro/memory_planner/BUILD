@@ -5,6 +5,7 @@ load(
 load(
     "//tensorflow/lite/micro:build_def.bzl",
     "cc_library",
+    "micro_copts",
 )
 
 package(
@@ -18,11 +19,7 @@ cc_library(
         "memory_planner.h",
     ],
     build_for_embedded = True,
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -37,11 +34,7 @@ cc_library(
     hdrs = [
         "linear_memory_planner.h",
     ],
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         ":memory_planner",
         "//tensorflow/lite/c:common",
@@ -58,11 +51,7 @@ cc_library(
         "greedy_memory_planner.h",
     ],
     build_for_embedded = True,
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         ":memory_planner",
         "//tensorflow/lite/c:common",

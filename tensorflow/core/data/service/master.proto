@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/service/common.proto";
+
+message RegisterWorkerRequest {
+  // The address of the registering worker.
+  string worker_address = 1;
+}
+
+message RegisterWorkerResponse {
+  // An id for the worker.
+  int64 worker_id = 1;
+  // Tasks to begin processing.
+  repeated TaskDef tasks = 2;
+}
+
+message TaskProgress {
+  // The task that this message is about.
+  int64 task_id = 1;
+  // Whether the task has completed.
+  bool completed = 2;
+}
+
+message WorkerUpdateRequest {
+  // The worker id that the update is for.
+  int64 worker_id = 1;
+  repeated TaskProgress updates = 2;
+}
+
+message WorkerUpdateResponse {}
+
+message GetOrRegisterDatasetRequest {
+  // The dataset to register.
+  DatasetDef dataset = 1;
+}
+
+message GetOrRegisterDatasetResponse {
+  // The id for the registered dataset.
+  int64 dataset_id = 1;
+}
+
+enum ProcessingModeDef {
+  // Each tf.data worker processes an entire epoch.
+  PARALLEL_EPOCHS = 0;
+  // Processing of an epoch is distributed across all tf.data workers.
+  ONE_EPOCH = 1;
+}
+
+message CreateJobRequest {
+  // The id of the dataset to create a job for.
+  int64 dataset_id = 1;
+  // A mode controlling how the tf.data service produces data for the job.
+  ProcessingModeDef processing_mode = 2;
+}
+
+message CreateJobResponse {
+  // An id for the created job.
+  int64 job_id = 1;
+}
+
+message GetOrCreateJobRequest {
+  // The id of the dataset to create a job for.
+  int64 dataset_id = 1;
+  // A mode controlling how the tf.data service produces data for the job.
+  ProcessingModeDef processing_mode = 2;
+  // A name for the job.
+  string job_name = 3;
+  // An index for the job. Multiple jobs can be created for the same name, if
+  // they have different indices.
+  int64 job_name_index = 4;
+}
+
+message GetOrCreateJobResponse {
+  // The id of the (potentially newly created) job.
+  int64 job_id = 1;
+}
+
+message GetTasksRequest {
+  // The job to look up tasks for.
+  int64 job_id = 1;
+}
+
+message TaskInfo {
+  // The address of the worker processing the task.
+  string worker_address = 1;
+  // The task id.
+  int64 id = 2;
+}
+
+message GetTasksResponse {
+  // A list of all tasks for a job.
+  repeated TaskInfo task_info = 1;
+  // Whether the job has finished. An empty `task_info` list could either mean
+  // that no tasks have been started yet, or that all tasks have finished. This
+  // field gives us a way to tell the difference.
+  bool job_finished = 2;
+}
+
+service MasterService {
+  // Registers a worker with the master.
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+  // Updates the master with information about the worker's state.
+  rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
+
+  // Registers a dataset with the server, or returns its id if it is already
+  // registered.
+  //
+  // The dataset is constructed in a new graph, so it must not refer to
+  // external resources or variables.
+  rpc GetOrRegisterDataset(GetOrRegisterDatasetRequest)
+      returns (GetOrRegisterDatasetResponse);
+
+  // Gets a job if it already exists, otherwise creates it.
+  rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
+
+  // Creates a job for reading from the tf.data service.
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+
+  // Reports a list of all tasks for a job.
+  rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+}

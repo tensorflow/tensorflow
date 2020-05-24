@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.profiler.internal import _pywrap_profiler
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated('2020-07-01', 'use `tf.profiler.experimental.client.trace`.')
 def start_tracing(service_addr,
                   logdir,
                   duration_ms,
@@ -45,9 +47,10 @@ def start_tracing(service_addr,
     UnavailableError: If no trace event is collected.
   """
   _pywrap_profiler.trace(service_addr, logdir, worker_list, include_dataset_ops,
-                         duration_ms, num_tracing_attempts)
+                         duration_ms, num_tracing_attempts, {})
 
 
+@deprecated('2020-07-01', 'use `tf.profiler.experimental.client.monitor`.')
 def monitor(service_addr,
             duration_ms,
             monitoring_level=1,

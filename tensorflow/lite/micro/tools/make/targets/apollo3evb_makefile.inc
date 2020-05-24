@@ -40,7 +40,6 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \
@@ -60,9 +59,12 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wmissing-field-initializers \
     -Wno-unused-parameter \
     -Wno-write-strings \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
+    -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -ggdb \
     -O3

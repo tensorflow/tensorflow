@@ -203,14 +203,14 @@ std::string ElementwiseTwoInput::GetArgsDeclaration() const {
   return args;
 }
 
-Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
+absl::Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
   if (use_scalar_para_) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(scalar_para_));
   } else {
     RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
     RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ElementwiseTwoInput CreateElementwiseTwoInput(

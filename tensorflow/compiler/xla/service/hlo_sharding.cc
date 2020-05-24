@@ -199,10 +199,12 @@ std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
 }
 
 int64 HloSharding::RequiredLeaves(const Shape& shape) {
-  // Empty tuples have no leaf nodes as far as ShapeUtil and ShapeTree are
-  // concerned, but they do have a single tuple_elements_ entry since we want
-  // to allow empty tuple results to have sharding.
-  return ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
+  // Empty tuples (with arbitrary nesting) have no leaf nodes as far as
+  // ShapeUtil and ShapeTree are concerned, but they do have a single
+  // tuple_elements_ entry since we want to allow empty tuple results to
+  // have sharding.
+  const int64 leaf_count = ShapeUtil::GetLeafCount(shape);
+  return (leaf_count == 0) ? 1 : leaf_count;
 }
 
 Status HloSharding::CheckLeafCount(const Shape& shape) const {
@@ -439,6 +441,25 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   for (int64 i = 0; i < shape.dimensions_size(); ++i) {
     result_shape.set_dimensions(
         i, CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i)));
+  }
+  return result_shape;
+}
+
+Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
+  if (IsTileMaximal()) {
+    return shape;
+  }
+
+  std::vector<int64> index = TileIndexForDevice(device);
+  Shape result_shape = shape;
+  for (int64 i = 0; i < index.size(); ++i) {
+    const int64 shape_dim = shape.dimensions(i);
+    int64 offset = std::min(
+        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    int64 limit = std::min(
+        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
+        shape_dim);
+    result_shape.set_dimensions(i, limit - offset);
   }
   return result_shape;
 }

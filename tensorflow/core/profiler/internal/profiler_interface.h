@@ -15,30 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
-
-enum class DeviceType {
-  kUnspecified,
-  kCpu,
-  kGpu,
-  kTpu,
-};
-
-struct ProfilerOptions {
-  // DeviceType::kUnspecified: All registered device profiler will be enabled.
-  // DeviceType::kCpu: only CPU will be profiled.
-  // DeviceType::kGpu: only CPU/GPU will be profiled.
-  // DeviceType::kTpu: only CPU/TPU will be profiled.
-  DeviceType device_type = DeviceType::kUnspecified;
-
-  // Inexpensive ops are not traced by default.
-  int host_tracer_level = 2;
-};
 
 // Interface for tensorflow profiler plugins.
 //
@@ -67,9 +49,6 @@ class ProfilerInterface {
   // After this or the overload above are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(XSpace* space) = 0;
-
-  // Which device this ProfilerInterface is used for.
-  virtual DeviceType GetDeviceType() = 0;
 };
 
 }  // namespace profiler

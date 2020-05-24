@@ -109,9 +109,11 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_EXPECT_EQ(x, y)                                          \
   do {                                                                         \
-    if ((x) != (y)) {                                                          \
+    auto vx = x;                                                               \
+    auto vy = y;                                                               \
+    if ((vx) != (vy)) {                                                        \
       micro_test::reporter->Report(#x " == " #y " failed at %s:%d (%d vs %d)", \
-                                   __FILE__, __LINE__, (x), (y));              \
+                                   __FILE__, __LINE__, (vx), (vy));            \
       micro_test::did_test_fail = true;                                        \
     }                                                                          \
   } while (false)
@@ -142,15 +144,17 @@ extern tflite::ErrorReporter* reporter;
     }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
-  do {                                                                        \
-    auto delta = ((x) > (y)) ? ((x) - (y)) : ((y) - (x));                     \
-    if (delta > epsilon) {                                                    \
-      micro_test::reporter->Report(                                           \
-          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(x), \
-          static_cast<float>(y), __FILE__, __LINE__);                         \
-      micro_test::did_test_fail = true;                                       \
-    }                                                                         \
+#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                               \
+  do {                                                                         \
+    auto vx = (x);                                                             \
+    auto vy = (y);                                                             \
+    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));                \
+    if (delta > epsilon) {                                                     \
+      micro_test::reporter->Report(                                            \
+          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(vx), \
+          static_cast<float>(vy), __FILE__, __LINE__);                         \
+      micro_test::did_test_fail = true;                                        \
+    }                                                                          \
   } while (false)
 
 #define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \

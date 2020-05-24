@@ -48,6 +48,13 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+#ifdef PLATFORM_WINDOWS
+// On Windows, `Aws::FileSystem::CreateTempFilePath()` return
+// `C:\Users\username\AppData\Local\Temp\`. Adding template will cause an error.
+static const char* kS3TempFileTemplate = nullptr;
+#else
+static const char* kS3TempFileTemplate = "/tmp/s3_filesystem_XXXXXX";
+#endif
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int64 kS3TimeoutMsec = 300000;                       // 5 min
@@ -271,7 +278,7 @@ class S3WritableFile : public WritableFile {
         transfer_manager_(transfer_manager),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
-            kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
+            kS3FileSystemAllocationTag, kS3TempFileTemplate,
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 

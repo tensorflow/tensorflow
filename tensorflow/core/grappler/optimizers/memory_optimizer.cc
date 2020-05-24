@@ -466,7 +466,8 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
         // meaning it either begins with or contains the name scope.
         // Defaults to "gradients/" which will match any node names that begins
         // with "gradients/" or contains "/gradients/".
-        return node.name().find(recomputation_targets_name_scope) == 0 ||
+        return absl::StartsWith(node.name(),
+                                recomputation_targets_name_scope) ||
                node.name().find("/" + recomputation_targets_name_scope) != -1;
       };
 

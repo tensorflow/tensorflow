@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -138,41 +140,43 @@ class ExpandDimsOp : public OpKernel {
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->input(0).dtype() != DT_VARIANT,
+    const Tensor& input_t = ctx->input(0);
+    OP_REQUIRES(ctx, input_t.dtype() != DT_VARIANT,
                 errors::InvalidArgument("ExpandDims on Variant not supported"));
 
+    const Tensor& dim_t = ctx->input(1);
     OP_REQUIRES(
-        ctx, (ctx->input(1).NumElements() == 1),
+        ctx, (dim_t.NumElements() == 1),
         errors::InvalidArgument("'dim' must be a tensor with a single value"));
-    Tdim dim = ctx->input(1).flat<Tdim>()(0);
-    OP_REQUIRES(
-        ctx, (dim >= -1 - ctx->input(0).dims() && dim <= ctx->input(0).dims()),
-        errors::InvalidArgument("Tried to expand dim index ", dim,
-                                " for tensor with ", ctx->input(0).dims(),
-                                " dimensions."));
-
-    auto existing_dims = ctx->input(0).shape().dim_sizes();
-    // Safe - # elements in tensor dims bounded.
-    const int existing_dims_size = static_cast<int>(existing_dims.size());
-    std::vector<int64> new_shape(existing_dims_size);
-    for (size_t i = 0; i < new_shape.size(); ++i) {
-      new_shape[i] = existing_dims[i];
-    }
+    DCHECK_EQ(dim_t.dtype(), DataTypeToEnum<Tdim>::v());
+    Tdim dim = *static_cast<const Tdim*>(DMAHelper::base(&dim_t));
+    const TensorShape& input_shape = input_t.shape();
+    int input_dims = input_shape.dims();
+    OP_REQUIRES(ctx, dim >= -1 - input_dims && dim <= input_dims,
+                errors::InvalidArgument("Tried to expand dim index ", dim,
+                                        " for tensor with ", input_dims,
+                                        " dimensions."));
 
     // We emulate numpy's interpretation of the dim axis when
     // -input.dims() >= dim <= input.dims().
     if (dim < 0) {
-      dim += existing_dims.size() + 1;
+      // Clamp to the end if needed.
+      dim = std::min<Tdim>(dim + input_dims + 1, input_dims);
     }
 
-    // Clamp to the end if needed.
-    dim = std::min<Tdim>(dim, existing_dims_size);
-    new_shape.emplace(new_shape.begin() + dim, 1);
-    const TensorShape output_shape(new_shape);
+    // Compute new shape with an additional dimension.
+    absl::InlinedVector<int64, 8> output_shape_vec(input_dims + 1);
+    for (int64 i = 0; i < dim; ++i) {
+      output_shape_vec[i] = input_shape.dim_size(i);
+    }
+    output_shape_vec[dim] = 1;
+    for (int64 i = dim + 1; i < input_dims + 1; ++i) {
+      output_shape_vec[i] = input_shape.dim_size(i - 1);
+    }
+    TensorShape output_shape(output_shape_vec);
 
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {0}, &output));
-    if (!output->CopyFrom(ctx->input(0), output_shape)) {
+    Tensor output_t;
+    if (!output_t.CopyFrom(input_t, output_shape)) {
       // This should never happen, since the sizes of the input and output
       // should always be the same (we only expand the dimension with 1).
       ctx->SetStatus(
@@ -180,6 +184,7 @@ class ExpandDimsOp : public OpKernel {
                            ctx->input(0).shape().DebugString(),
                            " and output shape ", output_shape.DebugString()));
     }
+    ctx->set_output(0, std::move(output_t));
   }
 
   bool IsExpensive() override { return false; }

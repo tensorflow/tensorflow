@@ -22,11 +22,11 @@ limitations under the License.
 #include "numpy/arrayobject.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "include/pybind11/numpy.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,16 +38,16 @@ namespace xla {
 
 // Custom holder types.
 //
-// We must keep the PyLocalClient object alive as long as any of the runtime
+// We must keep the PjRtClient object alive as long as any of the runtime
 // objects are alive. Since we don't have a lot of control over Python
-// destructor ordering, we keep the PyLocalClient object as a std::shared_ptr<>,
+// destructor ordering, we keep the PjRtClient object as a std::shared_ptr<>,
 // and ensure that each Python runtime object holds a reference to the
-// PyLocalClient. An alternative design would be to keep a single global
-// singleton PyLocalClient, although this seems less flexible, especially for
+// PjRtClient. An alternative design would be to keep a single global
+// singleton PjRtClient, although this seems less flexible, especially for
 // writing tests.
 //
-// To maintain PyLocalClient references, we define pybind11 holder classes that
-// are custom smart pointers that also keep a reference to a PyLocalClient.
+// To maintain PjRtClient references, we define pybind11 holder classes that
+// are custom smart pointers that also keep a reference to a PjRtClient.
 // pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
 // seem sufficiently flexible to describe ownership relationships in cases where
 // the ownership doesn't pertain to a direct argument or return value of a
@@ -55,7 +55,7 @@ namespace xla {
 // objects that contain both a reference and a runtime class; holder classes
 // seem less tedious to define.
 
-// A pair of a PyLocalClient reference and an unowned pointer to T.
+// A pair of a PjRtClient reference and an unowned pointer to T.
 template <typename T>
 struct ClientAndPtr {
   ClientAndPtr() = default;
@@ -70,7 +70,7 @@ struct ClientAndPtr {
   ClientAndPtr& operator=(const ClientAndPtr&) = default;
   ClientAndPtr& operator=(ClientAndPtr&&) = default;
 
-  std::shared_ptr<PyLocalClient> client;
+  std::shared_ptr<PjRtClient> client;
   T* contents;
 
   T* get() const { return contents; }
@@ -81,7 +81,7 @@ struct ClientAndPtr {
 // By defining a templated helper function, we can use return type deduction
 // and avoid specifying types at the caller.
 template <typename T>
-ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+ClientAndPtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
                                T* contents) {
   ClientAndPtr<T> result;
   result.client = std::move(client);
@@ -89,7 +89,7 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
   return result;
 }
 
-// A pair of a PyLocalClient reference and an owned pointer to T.
+// A pair of a PjRtClient reference and an owned pointer to T.
 template <typename T>
 struct ClientAndUniquePtr {
   ClientAndUniquePtr() = default;
@@ -103,7 +103,7 @@ struct ClientAndUniquePtr {
   ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
   ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
 
-  std::shared_ptr<PyLocalClient> client;
+  std::shared_ptr<PjRtClient> client;
   std::unique_ptr<T> contents;
 
   T* get() const { return contents.get(); }
@@ -112,7 +112,7 @@ struct ClientAndUniquePtr {
 };
 
 template <typename T>
-ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
                                      std::unique_ptr<T> contents) {
   ClientAndUniquePtr<T> result;
   result.client = std::move(client);
@@ -233,7 +233,7 @@ struct type_caster<absl::Span<const T>> {
     auto seq = reinterpret_borrow<sequence>(src);
     storage_.clear();
     storage_.reserve(seq.size());
-    for (auto it : seq) {
+    for (const auto& it : seq) {
       value_conv conv;
       if (!conv.load(it, convert)) {
         return false;
@@ -506,7 +506,7 @@ struct type_caster<xla::PaddingConfig> {
     sequence dimensions =
         reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
 
-    for (auto dimension : dimensions) {
+    for (const auto& dimension : dimensions) {
       xla::PaddingConfig::PaddingConfigDimension* config_dim =
           value.add_dimensions();
       config_dim->set_edge_padding_low(
@@ -561,7 +561,7 @@ struct type_caster<xla::PrecisionConfig> {
     sequence operand_precisions =
         reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
 
-    for (auto operand_precision : operand_precisions) {
+    for (const auto& operand_precision : operand_precisions) {
       value.add_operand_precision(
           operand_precision.cast<xla::PrecisionConfig::Precision>());
     }
@@ -606,7 +606,7 @@ struct type_caster<xla::OpSharding> {
     sequence tuple_shardings =
         reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
 
-    for (auto tuple_sharding : tuple_shardings) {
+    for (const auto& tuple_sharding : tuple_shardings) {
       xla::OpSharding* sharding = value.add_tuple_shardings();
 
       handle sharding_type = getattr(tuple_sharding, "type");

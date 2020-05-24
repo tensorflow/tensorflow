@@ -232,14 +232,14 @@ std::string GetXStrideCorrected(const std::string& src_x,
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
-  const int dst_slices = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int dst_groups = IntegralDivideRoundUp(dst_slices, out_group_size);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {
@@ -268,19 +268,6 @@ void RearrangeWeightsToOHWIOGroupI4O4(
     }
   }
 }
-
-// Matrices for Winograd trasformations received with method described here
-// https://openreview.net/pdf?id=H1ZaRZVKg
-
-// returns A transposed matrix(6 * 4) as array (24 values) for Winograd4x4To6x6
-std::vector<float> AtMatrixForWinograd4x4To6x6();
-
-// returns B transposed matrix(6 * 6) as array (36 values) for Winograd4x4To6x6
-std::vector<float> BtMatrixForWinograd4x4To6x6();
-
-void RearrangeWeightsToWinograd4x4To6x6Weights(
-    const ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& src_weights,
-    ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>* dst_weights);
 
 // Returns fastest TextureAddressMode that return ZERO for out-of-range image
 // coordinates.

@@ -44,7 +44,6 @@ load(
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
-    "tf_portable_full_lite_protos",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -56,9 +55,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -88,6 +85,7 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
         "snappy.h",
@@ -384,6 +382,16 @@ cc_library(
     ],
 )
 
+py_test(
+    name = "ram_file_system_test",
+    srcs = ["ram_file_system_test.py"],
+    python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/156428279): reenable this test once the image is updated.
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 cc_library(
     name = "numbers",
     srcs = ["numbers.cc"],
@@ -464,10 +472,6 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
-    defines = tf_portable_full_lite_protos(
-        full = [],
-        lite = ["TENSORFLOW_LITE_PROTOS"],
-    ),
     deps = [
         ":platform",
         ":types",
@@ -601,6 +605,7 @@ cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -617,7 +622,7 @@ cc_library(
         ":stringpiece",
         ":stringprintf",
         ":types",
-        "//tensorflow/core:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
     ],
 )
@@ -1264,8 +1269,11 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "abi.h",
+        "base64.h",
         "casts.h",
+        "coding.h",
         "context.h",
+        "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
         "dynamic_annotations.h",
@@ -1291,6 +1299,8 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "ram_file_system.h",
+        "random.h",
         "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",
@@ -1463,6 +1473,7 @@ filegroup(
         "abi.h",
         "blocking_counter.h",
         "byte_order.h",
+        "casts.h",
         "coding.cc",
         "coding.h",
         "context.h",
@@ -1504,6 +1515,7 @@ filegroup(
         "protobuf.cc",
         "protobuf.h",
         "protobuf_util.cc",
+        "ram_file_system.h",
         "raw_coding.h",
         "refcount.h",
         "resource.h",
@@ -1547,7 +1559,6 @@ filegroup(
     srcs = [
         "base64.cc",
         "base64.h",
-        "casts.h",
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
         "fingerprint.h",

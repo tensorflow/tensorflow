@@ -27,12 +27,12 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,7 +57,7 @@ struct IslandResult {
 };
 
 struct ExecutorIslandCoarsening
-    : public FunctionPass<ExecutorIslandCoarsening> {
+    : public PassWrapper<ExecutorIslandCoarsening, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -303,7 +303,8 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
       /*control=*/ControlType::get(fetch.getContext()),
       /*controlInputs=*/control_fetches);
   island.body().push_back(new Block);
-  OpBuilder(&island.GetBody()).create<YieldOp>(fetch.getLoc(), data_fetches);
+  OpBuilder::atBlockEnd(&island.GetBody())
+      .create<YieldOp>(fetch.getLoc(), data_fetches);
   const int fetch_control_idx = data_fetches.size();
   for (int i = 0, e = fetch.getNumOperands(); i < e; i++) {
     // The fetch could have multiple control operands (all at the end of its
@@ -345,7 +346,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarsening>();
 }
 

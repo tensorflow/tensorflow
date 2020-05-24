@@ -26,8 +26,9 @@ class MulOpModel : public SingleOpModelWithHexagon {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_MUL, BuiltinOptions_MulOptions,
-                 CreateMulOptions(builder_, activation_type).Union());
+    SetBuiltinOp(
+        BuiltinOperator_MUL, BuiltinOptions_MulOptions,
+        CreateMulOptions(builder_, ActivationFunctionType_NONE).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
 
@@ -50,47 +51,63 @@ class MulOpModel : public SingleOpModelWithHexagon {
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
-  BuiltinOperator op_code_;
-
   int input1_;
   int input2_;
   int output_;
 };
 
-TEST(MulOpModel, MulOutput) {
+template <TensorType tensor_type, typename integer_dtype>
+void TestMulOutputImpl() {
   MulOpModel model(
-      /*input1=*/{TensorType_UINT8, {2, 3}, -0.44f, 8.0f},
-      /*input2=*/{TensorType_UINT8, {1, 3}, 0, 0.999f},
-      /*output=*/{TensorType_UINT8, {2, 3}, -0.44f, 4.996f});
-  model.SetInput1<uint8_t>({1, 2, 3, 4, 5, 6});
-  model.SetInput2<uint8_t>({0.1f, 0.2f, 0.3f});
+      /*input1=*/{tensor_type, {2, 3}, -0.44f, 8.0f},
+      /*input2=*/{tensor_type, {1, 3}, 0, 0.999f},
+      /*output=*/{tensor_type, {2, 3}, -0.44f, 4.996f});
+  model.SetInput1<integer_dtype>({1, 2, 3, 4, 5, 6});
+  model.SetInput2<integer_dtype>({0.1f, 0.2f, 0.3f});
 
   // Reference output.
   model.Invoke();
-  auto reference_out = model.GetDequantizedOutput<uint8_t>();
+  auto reference_out = model.GetDequantizedOutput<integer_dtype>();
 
   model.ApplyDelegateAndInvoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(model.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear(reference_out, 0.03)));
 }
 
-TEST(MulOpModel, MulOutput_LargeInputRange) {
+template <TensorType tensor_type, typename integer_dtype>
+void TestLargeInputRangeImpl() {
   MulOpModel model(
-      /*input1=*/{TensorType_UINT8, {1, 2, 2, 3}, -0.44f, 55.7f},
-      /*input2=*/{TensorType_UINT8, {1, 1, 2, 3}, 0, 0.999f},
-      /*output=*/{TensorType_UINT8, {1, 2, 2, 3}, -0.44f, 4.996f});
-  model.SetInput1<uint8_t>({1, 2, 3, 4, 5, 6, 20, 30, 40, 50, 52, 55});
-  model.SetInput2<uint8_t>({0.8f, 0.9f, 0.99f, 0.8f, 0.9f, 0.99f});
+      /*input1=*/{tensor_type, {1, 2, 2, 3}, -0.44f, 55.7f},
+      /*input2=*/{tensor_type, {1, 1, 2, 3}, 0, 0.999f},
+      /*output=*/{tensor_type, {1, 2, 2, 3}, -0.44f, 4.996f});
+  model.SetInput1<integer_dtype>({1, 2, 3, 4, 5, 6, 20, 30, 40, 50, 52, 55});
+  model.SetInput2<integer_dtype>({0.8f, 0.9f, 0.99f, 0.8f, 0.9f, 0.99f});
 
   // Reference output.
   model.Invoke();
-  auto reference_out = model.GetDequantizedOutput<uint8_t>();
+  auto reference_out = model.GetDequantizedOutput<integer_dtype>();
 
   model.ApplyDelegateAndInvoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(model.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear(reference_out, 0.03)));
+}
+
+TEST(MulOpModel, MulOutput_UInt8) {
+  TestMulOutputImpl<TensorType_UINT8, uint8_t>();
+}
+
+TEST(MulOpModel, MulOutput_Int8) {
+  TestMulOutputImpl<TensorType_INT8, int8_t>();
+}
+
+TEST(MulOpModel, LargeInputRange_UInt8) {
+  TestLargeInputRangeImpl<TensorType_UINT8, uint8_t>();
+}
+
+TEST(MulOpModel, LargeInputRange_Int8) {
+  TestLargeInputRangeImpl<TensorType_INT8, int8_t>();
 }
 
 }  // namespace tflite

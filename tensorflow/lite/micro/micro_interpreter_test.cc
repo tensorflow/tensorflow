@@ -134,11 +134,11 @@ class MockCustom {
   }
 
   static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+    const TfLiteTensor* input = GetInput(context, node, 0);
     const int32_t* input_data = input->data.i32;
-    const TfLiteTensor* weight = &context->tensors[node->inputs->data[1]];
+    const TfLiteTensor* weight = GetInput(context, node, 1);
     const uint8_t* weight_data = weight->data.uint8;
-    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    TfLiteTensor* output = GetOutput(context, node, 0);
     int32_t* output_data = output->data.i32;
     output_data[0] =
         0;  // Catch output tensor sharing memory with an input tensor
@@ -174,7 +174,9 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
   tflite::MockOpResolver mock_resolver;
-  constexpr size_t allocator_buffer_size = 1024;
+  constexpr size_t allocator_buffer_size =
+      928 /* optimal arena size at the time of writting. */ +
+      16 /* alignment */ + 100 /* some headroom */;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   // Create a new scope so that we can test the destructor.
@@ -183,6 +185,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
                                          allocator_buffer_size,
                                          micro_test::reporter);
     TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+    TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 928 + 100);
     TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
     TF_LITE_MICRO_EXPECT_EQ(2, interpreter.outputs_size());
 
@@ -266,12 +269,15 @@ TF_LITE_MICRO_TEST(TestVariableTensorReset) {
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
 
   tflite::MockOpResolver mock_resolver;
-  constexpr size_t allocator_buffer_size = 2048;
+  constexpr size_t allocator_buffer_size =
+      2096 /* optimal arena size at the time of writting. */ +
+      16 /* alignment */ + 100 /* some headroom */;
   uint8_t allocator_buffer[allocator_buffer_size];
   tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
                                        allocator_buffer_size,
                                        micro_test::reporter);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 2096 + 100);
   TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
   TF_LITE_MICRO_EXPECT_EQ(1, interpreter.outputs_size());
 

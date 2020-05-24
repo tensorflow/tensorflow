@@ -26,6 +26,7 @@ def tf_xla_py_test(
         enabled_backends = None,
         disabled_backends = None,
         use_xla_device = True,
+        enable_mlir_bridge = False,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -55,6 +56,8 @@ def tf_xla_py_test(
       use_xla_device: If true then the --test_device argument is set to XLA_CPU
         and XLA_GPU for the CPU and GPU tests.  Otherwise it is set to CPU and
         GPU.
+      enable_mlir_bridge: If true, then runs the test with and without mlir
+        bridge enabled.
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
     if enabled_backends == None:
@@ -104,19 +107,33 @@ def tf_xla_py_test(
             fail("Unknown backend {}".format(backend))
 
         test_tags = tags + backend_tags
-        native.py_test(
-            name = test_name,
-            srcs = srcs,
-            srcs_version = "PY2AND3",
-            args = backend_args,
-            main = "{}.py".format(name) if main == None else main,
-            data = data + backend_data,
-            deps = deps + backend_deps,
-            tags = test_tags,
-            exec_properties = tf_exec_properties({"tags": test_tags}),
-            **kwargs
-        )
-        test_names.append(test_name)
+
+        enable_mlir_bridge_options = [False]
+        if enable_mlir_bridge:
+            enable_mlir_bridge_options.append(True)
+
+        for mlir_option in enable_mlir_bridge_options:
+            extra_dep = []
+            updated_name = test_name
+            if mlir_option:
+                extra_dep = ["//tensorflow/python:is_mlir_bridge_test_true"]
+                if updated_name.endswith("_test"):
+                    updated_name = updated_name[:-5]
+                updated_name += "_mlir_bridge_test"
+
+            native.py_test(
+                name = updated_name,
+                srcs = srcs,
+                srcs_version = "PY2AND3",
+                args = backend_args,
+                main = "{}.py".format(name) if main == None else main,
+                data = data + backend_data,
+                deps = deps + backend_deps + extra_dep,
+                tags = test_tags,
+                exec_properties = tf_exec_properties({"tags": test_tags}),
+                **kwargs
+            )
+            test_names.append(updated_name)
     native.test_suite(name = name, tests = test_names)
 
 def generate_backend_suites(backends = []):

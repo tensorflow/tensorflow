@@ -129,8 +129,43 @@ class RendezvousInterface {
 // threads with no clear owner.
 class Rendezvous : public RendezvousInterface, public core::RefCounted {
  public:
-  using Factory =
-      std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>;
+  class Factory {
+   public:
+    // Default to a factory that evaluates to false.
+    Factory() : valid_(false) {}
+
+    Factory(std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+                create_fn,
+            std::function<Status(const int64)> cleanup_fn)
+        : valid_(true),
+          create_fn_(std::move(create_fn)),
+          cleanup_fn_(std::move(cleanup_fn)) {}
+
+    // If no clean up fn is provided, just put in a dummy.
+    // For backwards compatibility.
+    explicit Factory(
+        std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+            create_fn)
+        : valid_(true),
+          create_fn_(std::move(create_fn)),
+          cleanup_fn_([](const int64 step_id) { return Status::OK(); }) {}
+
+    explicit operator bool() const { return valid_; }
+
+    Status operator()(const int64 step_id, const DeviceMgr* device_mgr,
+                      Rendezvous** rendez) const {
+      return create_fn_(step_id, device_mgr, rendez);
+    }
+
+    Status CleanUp(const int64 step_id) const { return cleanup_fn_(step_id); }
+
+   private:
+    bool valid_;
+    std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+        create_fn_;
+    std::function<Status(const int64)> cleanup_fn_;
+  };
+
   // Constructs a rendezvous key for the tensor of "name" sent from
   // "src_device" to "dst_device". The tensor is generated in the frame
   // and iteration specified by "frame_iter".

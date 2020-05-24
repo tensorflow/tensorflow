@@ -96,14 +96,14 @@ SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
   return *this;
 }
 
-Status SpaceToDepth::Compile(const CreationContext& creation_context) {
+absl::Status SpaceToDepth::Compile(const CreationContext& creation_context) {
   const auto code = GetSpaceToDepthCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status SpaceToDepth::BindArguments() {
+absl::Status SpaceToDepth::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -121,12 +121,12 @@ int3 SpaceToDepth::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status SpaceToDepth::Tune(const TuningParameters& params) {
+absl::Status SpaceToDepth::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status SpaceToDepth::AddToQueue(CLCommandQueue* queue) {
+absl::Status SpaceToDepth::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

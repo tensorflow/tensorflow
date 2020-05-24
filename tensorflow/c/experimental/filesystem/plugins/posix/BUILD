@@ -19,11 +19,26 @@ tf_cc_shared_object(
 cc_library(
     name = "posix_filesystem_impl",
     srcs = ["posix_filesystem.cc"],
+    hdrs = ["posix_filesystem.h"],
     deps = [
         ":posix_filesystem_helper",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
     ],
+)
+
+# Since building pip package and API tests require a filesystem, we provide a
+# static registration target that they should link against.
+cc_library(
+    name = "posix_filesystem_static",
+    srcs = ["posix_filesystem_static.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":posix_filesystem_impl",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/filesystem:modular_filesystem",
+    ],
+    alwayslink = 1,
 )
 
 # Library implementing helper functionality, so that the above only contains

@@ -270,6 +270,7 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
   algo->set_algorithm({selected_result->conv().algorithm(),
                        selected_result->conv().tensor_ops_enabled()});
+  algo->set_scratch_size(selected_result->scratch_bytes());
   if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
     algo->set_algorithm_no_scratch(
         {selected_result_no_scratch->conv().algorithm(),

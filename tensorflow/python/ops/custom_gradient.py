@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -315,7 +316,7 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
   ])
-  with backprop.GradientTape() as tape:
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
@@ -332,8 +333,9 @@ def _graph_mode_decorator(f, args, kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   inputs = args
-  variables_in_tape = frozenset([v.ref() for v in tape.watched_variables()
-                                ]) - frozenset(v.ref() for v in inputs)
+  variables_in_tape = frozenset([
+      v.ref() for v in variable_watcher.watched_variables()
+  ]) - frozenset(v.ref() for v in inputs)
   variables_in_subgraph = frozenset([
       v.ref()
       for v in get_dependent_variables(input_ops=inputs, output_ops=result)
@@ -350,13 +352,8 @@ def _graph_mode_decorator(f, args, kwargs):
                     "argument 'variables'.")
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    if not variable_scope.get_variable_scope().use_resource:
-      raise TypeError("If using @custom_gradient with a function that "
-                      "uses variables, the enclosing variable scope must "
-                      "have use_resource=True.")
-    else:
-      logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
-                   "no ResourceVariables were used on the forward pass.")
+    logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
+                 "no ResourceVariables were used on the forward pass.")
   flat_result = nest.flatten(result)
   flat_result_len = len(flat_result)
 
@@ -405,14 +402,14 @@ def _graph_mode_decorator(f, args, kwargs):
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with backprop.GradientTape() as tape:
+  with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.ref() for v in tape.watched_variables())
+      for v in set(v.ref() for v in variable_watcher.watched_variables())
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
@@ -481,28 +478,47 @@ def recompute_grad(f):
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
+    with tape_lib.stop_recording():
+      result = f(*args, **kwargs)
 
-    result = f(*args, **kwargs)
+    def grad_wrapper(*wrapper_args, **grad_kwargs):
+      """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
 
-    def grad(*dresult, **grad_kwargs):
-      """Gradient function calculation for inner function."""
-      variables = grad_kwargs.get("variables")
-      with backprop.GradientTape() as t:
-        id_args = [gen_array_ops.identity(x) for x in args]
-        t.watch(id_args)
+      @custom_gradient
+      def inner_recompute_grad(*dresult):
+        """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
+        # Gradient calculation for reverse mode autodiff.
+        variables = grad_kwargs.get("variables")
+        with backprop.GradientTape() as t:
+          id_args = [gen_array_ops.identity(x) for x in args]
+          t.watch(id_args)
+          if variables is not None:
+            t.watch(variables)
+          with ops.control_dependencies(dresult):
+            with variable_scope.variable_scope(current_var_scope):
+              result = f(*id_args, **kwargs)
+        kw_vars = []
         if variables is not None:
-          t.watch(variables)
-        with ops.control_dependencies(dresult):
-          with variable_scope.variable_scope(current_var_scope):
-            result = f(*id_args, **kwargs)
-      kw_vars = []
-      if variables is not None:
-        kw_vars = list(variables)
-      grads = t.gradient(
-          result, list(id_args) + kw_vars, output_gradients=dresult)
-      return grads[:len(id_args)], grads[len(id_args):]
+          kw_vars = list(variables)
+        grads = t.gradient(
+            result,
+            list(id_args) + kw_vars,
+            output_gradients=dresult,
+            unconnected_gradients=UnconnectedGradients.ZERO)
 
-    return result, grad
+        def transpose(*t_args, **t_kwargs):
+          """Gradient function calculation for forward mode autodiff."""
+          # Just throw an error since gradients / activations are not stored on tape for recompute.
+          raise NotImplementedError(
+              "recompute_grad tried to transpose grad of {}. "
+              "Consider not using recompute_grad in forward mode"
+              "autodiff".format(f.__name__))
+
+        return (grads[:len(id_args)], grads[len(id_args):]), transpose
+
+      return inner_recompute_grad(*wrapper_args)
+
+    return result, grad_wrapper
 
   return inner
 

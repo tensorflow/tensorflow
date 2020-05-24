@@ -25,6 +25,6 @@ constexpr int kMlirGraphOptimizationPriority = 0;
 static mlir_pass_registration::MlirOptimizationPassRegistration
     register_mlir_graph_optimization_pass(
         kMlirGraphOptimizationPriority,
-        std::make_unique<MlirGraphOptimizationPass>());
+        std::make_unique<mlir::TF::MlirGraphOptimizationPass>());
 
 }  // namespace tensorflow

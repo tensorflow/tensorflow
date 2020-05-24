@@ -58,69 +58,6 @@ namespace tensorflow {
 // saving a checkpoint, the model must Retrieve the parameters back into the
 // host CPU memory.
 
-namespace {
-
-void RegisterPerTableLoadAndRetrieveOps();
-
-class RegisterPerTableLoadAndRetrieveOpsOnConstruction {
- public:
-  RegisterPerTableLoadAndRetrieveOpsOnConstruction() {
-    RegisterPerTableLoadAndRetrieveOps();
-  }
-};
-
-// Object whose constructor does registrations.
-RegisterPerTableLoadAndRetrieveOpsOnConstruction
-    register_per_table_load_and_retrieve_ops_var;
-
-void RegisterPerTableLoadAndRetrieveOps() {
-  // Load ops
-  for (tpu::OptimizationAlgorithm alg : tpu::GetOptimizationAlgorithms()) {
-    bool internal;
-    TF_CHECK_OK(tpu::IsOptimizationAlgorithmInternal(alg, &internal));
-    if (!internal) {
-      OpRegistry::Global()->Register(
-          [alg](OpRegistrationData* op_reg_data) -> Status {
-            return tpu::RegisterPerTableLoadOpsForAlgorithmBody(alg, false,
-                                                                op_reg_data);
-          });
-      tpu::GradientAccumulationSupport grad_accum_support;
-      TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
-      if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-        OpRegistry::Global()->Register(
-            [alg](OpRegistrationData* op_reg_data) -> Status {
-              return tpu::RegisterPerTableLoadOpsForAlgorithmBody(alg, true,
-                                                                  op_reg_data);
-            });
-      }
-    }
-  }
-
-  // Retrieve ops
-  for (tpu::OptimizationAlgorithm alg : tpu::GetOptimizationAlgorithms()) {
-    bool internal;
-    TF_CHECK_OK(tpu::IsOptimizationAlgorithmInternal(alg, &internal));
-    if (!internal) {
-      OpRegistry::Global()->Register(
-          [alg](OpRegistrationData* op_reg_data) -> Status {
-            return tpu::RegisterPerTableRetrieveOpsForAlgorithmBody(
-                alg, false, op_reg_data);
-          });
-      tpu::GradientAccumulationSupport grad_accum_support;
-      TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
-      if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-        OpRegistry::Global()->Register(
-            [alg](OpRegistrationData* op_reg_data) -> Status {
-              return tpu::RegisterPerTableRetrieveOpsForAlgorithmBody(
-                  alg, true, op_reg_data);
-            });
-      }
-    }
-  }
-}
-
-}  // namespace
-
 REGISTER_OP("RecvTPUEmbeddingActivations")
     .Output("outputs: num_outputs * float32")
     .Attr("num_outputs: int >= 1")
@@ -217,6 +154,22 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
 
 REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Input("sample_indices: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("device_ordinal: int = -1")
+    .Attr("combiners: list(string) = []")
+    .Attr("table_ids: list(int)")
+    .Attr("max_sequence_lengths: list(int) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
+    .Input("sample_splits: N * T1")
     .Input("embedding_indices: N * T2")
     .Input("aggregation_weights: N * T3")
     .Input("mode_override: string")

@@ -22,17 +22,24 @@ package_group(
 )
 
 tf_proto_library(
-    name = "op_profile_proto",
-    srcs = ["op_profile.proto"],
-    cc_api_version = 2,
-    visibility = [":internal"],
-)
-
-tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "profiler_options_proto",
+    srcs = ["profiler_options.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
+)
+
+# This is needed because of how tf_android_core_proto_sources parses proto paths.
+exports_files(
+    srcs = ["profiler_options.proto"],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 tf_proto_library(
@@ -42,6 +49,7 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [
+        ":profiler_options_proto",
         ":profiler_service_monitor_result_proto",
     ],
     use_grpc_namespace = True,

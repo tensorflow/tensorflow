@@ -26,14 +26,10 @@ namespace {
 
 constexpr int kInputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T>
 TfLiteStatus UnpackImpl(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* input, int output_count, int axis) {
-  const TfLiteTensor* output0 = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* output0 = GetOutput(context, node, 0);
   const TfLiteIntArray* input_dims = input->dims;
   const TfLiteIntArray* output_dims = output0->dims;
   const int dimensions = input_dims->size;
@@ -61,7 +57,7 @@ TfLiteStatus UnpackImpl(TfLiteContext* context, TfLiteNode* node,
   const T* input_data = GetTensorData<T>(input);
 
   for (int i = 0; i < output_count; ++i) {
-    TfLiteTensor* t = &context->tensors[node->outputs->data[i]];
+    TfLiteTensor* t = GetOutput(context, node, i);
     T* output_data = GetTensorData<T>(t);
     for (int k = 0; k < outer_size; ++k) {
       T* output_ptr = output_data + copy_size * k;
@@ -106,9 +102,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace unpack
 
 TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {};
-  r.prepare = unpack::Prepare;
-  r.invoke = unpack::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/unpack::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -335,6 +335,14 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
           while_op.outputs[:num_original_outputs])
   ] + [None] * num_intermediates
 
+  # Skip gradients with respect to the captures whenever possible.
+  if "skip_input_indices" in op.__dict__ and op.skip_input_indices is not None:
+    captures_start_index = (
+        len(body_graph.inputs) - len(body_graph.internal_captures))
+    for i in op.skip_input_indices:
+      if i >= captures_start_index:
+        grads[i] = None
+
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.

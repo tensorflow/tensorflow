@@ -169,7 +169,7 @@ Padding& Padding::operator=(Padding&& kernel) {
   return *this;
 }
 
-Status Padding::Compile(const CreationContext& creation_context) {
+absl::Status Padding::Compile(const CreationContext& creation_context) {
   const auto code =
       GetPaddingCode(definition_, linked_operations_, attributes_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -177,7 +177,7 @@ Status Padding::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Padding::BindArguments() {
+absl::Status Padding::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -187,7 +187,7 @@ Status Padding::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   const auto& prep = attributes_.prepended;
   RETURN_IF_ERROR(kernel_.SetBytesAuto(int4(prep.w, prep.h, prep.c, prep.b)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Padding::GetGridSize() const {
@@ -197,12 +197,12 @@ int3 Padding::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Padding::Tune(const TuningParameters& params) {
+absl::Status Padding::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Padding::AddToQueue(CLCommandQueue* queue) {
+absl::Status Padding::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

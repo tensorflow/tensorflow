@@ -85,7 +85,13 @@ def model_from_yaml(yaml_string, custom_objects=None):
   """
   if yaml is None:
     raise ImportError('Requires yaml module installed (`pip install pyyaml`).')
-  config = yaml.load(yaml_string)
+  # The method unsafe_load only exists in PyYAML 5.x+, so which branch of the
+  # try block is covered by tests depends on the installed version of PyYAML.
+  try:
+    # PyYAML 5.x+
+    config = yaml.unsafe_load(yaml_string)
+  except AttributeError:
+    config = yaml.load(yaml_string)
   from tensorflow.python.keras.layers import deserialize  # pylint: disable=g-import-not-at-top
   return deserialize(config, custom_objects=custom_objects)
 

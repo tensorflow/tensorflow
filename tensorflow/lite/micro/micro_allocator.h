@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -64,9 +68,10 @@ typedef struct {
 // This information could change in the future version.
 // ************** .memory_allocator->GetBuffer()
 // Tensors/Scratch buffers (head)
-// **************
+// ************** .head_watermark
 // unused memory
-// ************** .memory_allocator->GetBuffer() + ->GetDataSize()
+// ************** .memory_allocator->GetBuffer() + ->GetMaxBufferSize()
+//                                               - ->GetDataSize()
 // persistent area (tail)
 // ************** .memory_allocator->GetBuffer() + ->GetMaxBufferSize()
 class MicroAllocator {
@@ -87,6 +92,10 @@ class MicroAllocator {
   // corrupting tensor data so this method should be the last non-const method
   // called in this class.
   TfLiteStatus FinishTensorAllocation();
+
+  // Returns the arena usage in bytes, only available after
+  // `FinishTensorAllocation`. Otherwise, it will return 0.
+  size_t used_bytes() const;
 
   // Run through the model to allocate nodes and registrations. We need to keep
   // them for the entire life time of the model to allow persistent tensors.
@@ -115,6 +124,7 @@ class MicroAllocator {
   TfLiteStatus Init();
 
   const Model* model_;
+  // A simple memory allocator that always allocate from the arena tail.
   SimpleMemoryAllocator* memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;
@@ -129,8 +139,6 @@ class MicroAllocator {
   size_t scratch_buffer_count_ = 0;
 
   const SubGraph* subgraph_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
 };
 
 }  // namespace tflite

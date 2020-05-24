@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -42,6 +43,14 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+
+def string_test(actual, expected):
+  np.testing.assert_array_equal(actual, expected)
+
+
+def numeric_test(actual, expected):
+  np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-6)
 
 
 def get_test_data(train_samples,
@@ -74,10 +83,17 @@ def get_test_data(train_samples,
 
 
 @test_util.disable_cudnn_autotune
-def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
-               input_data=None, expected_output=None,
-               expected_output_dtype=None, expected_output_shape=None,
-               validate_training=True, adapt_data=None):
+def layer_test(layer_cls,
+               kwargs=None,
+               input_shape=None,
+               input_dtype=None,
+               input_data=None,
+               expected_output=None,
+               expected_output_dtype=None,
+               expected_output_shape=None,
+               validate_training=True,
+               adapt_data=None,
+               custom_objects=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -95,6 +111,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       string or integer values.
     adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
       be tested for this layer. This is only relevant for PreprocessingLayers.
+    custom_objects: Optional dictionary mapping name strings to custom objects
+      in the layer class. This is helpful for testing custom layers.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -122,6 +140,11 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     input_dtype = input_data.dtype
   if expected_output_dtype is None:
     expected_output_dtype = input_dtype
+
+  if dtypes.as_dtype(expected_output_dtype) == dtypes.string:
+    assert_equal = string_test
+  else:
+    assert_equal = numeric_test
 
   # instantiation
   kwargs = kwargs or {}
@@ -190,17 +213,16 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
         (layer_cls.__name__, x, actual_output.dtype,
          computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = models.Model.from_config(model_config)
+  recovered_model = models.Model.from_config(model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
@@ -245,17 +267,16 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
              computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = models.Sequential.from_config(model_config)
+  recovered_model = models.Sequential.from_config(model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # for further checks in the caller function
   return actual_output

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/ascii.h"
-#include "unicode/unistr.h"  // TF:icu
+#include "unicode/unistr.h"  // from @icu
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"

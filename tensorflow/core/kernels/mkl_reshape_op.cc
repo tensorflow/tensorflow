@@ -172,7 +172,8 @@ class MklReshapeOp : public OpKernel {
           // shape_from != shape_to), then we just copy input tensor to
           // output tensor with target shape (we cannot forward Mkl layout
           // in such case because shape has changed.)
-          if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor)) {
+          if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor,
+                                                 context)) {
           } else {
             OP_REQUIRES(context,
                         output_tensor->CopyFrom(input_tensor, shape_to),

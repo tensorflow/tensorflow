@@ -172,8 +172,12 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // Create memory descriptor.
   context_.diff_src_md.reset(new memory::desc(
       {bwdParams.src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
+#ifndef ENABLE_MKLDNN_V1
   context_.diff_dst_md.reset(new memory::desc(
       {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
+#else
+  context_.diff_dst_md.reset(new memory::desc(bwdParams.diff_dst_md.data));
+#endif  // !ENABLE_MKLDNN_V1
 
 #ifndef ENABLE_MKLDNN_V1
   context_.bwd_desc.reset(new pooling_backward::desc(

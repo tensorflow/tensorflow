@@ -22,19 +22,18 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -69,18 +68,8 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         kwargs={'scale': False,
                 'center': False},
         input_shape=(3, 3))
-    testing_utils.layer_test(
-        keras.layers.BatchNormalization,
-        kwargs={
-            'momentum': 0.9,
-            'epsilon': 0.1,
-            'gamma_regularizer': keras.regularizers.l2(0.01),
-            'beta_regularizer': keras.regularizers.l2(0.01),
-            'dtype': 'float64'
-        },
-        input_shape=(3, 2, 2, 2), input_dtype='float64')
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_batchnorm_weights(self):
     layer = keras.layers.BatchNormalization(scale=False, center=False)
     layer.build((None, 3, 4))
@@ -92,7 +81,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.trainable_weights), 2)
     self.assertEqual(len(layer.weights), 4)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_batchnorm_regularization(self):
     layer = keras.layers.BatchNormalization(
         gamma_regularizer='l1', beta_regularizer='l1')
@@ -163,7 +152,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     _run_batchnorm_correctness_test(
         normalization_v2.BatchNormalization, dtype='float16')
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   @testing_utils.enable_v2_dtype_behavior
   def test_batchnorm_policy(self):
     norm = keras.layers.BatchNormalization(
@@ -179,6 +168,13 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_batchnorm_non_trainable_with_fit(self):
+    # We use the same data shape for all the data we use in this test.
+    # This will prevent any used tf.functions from retracing.
+    # This helps us verify that changing trainable and recompiling really
+    # does update the training loop, rather than a different data shape
+    # triggering a retrace.
+    data_shape = (100, 3)
+
     inputs = keras.Input((3,))
     bn = normalization_v2.BatchNormalization()
     outputs = bn(inputs)
@@ -187,10 +183,10 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         'rmsprop',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
-    model.fit(np.random.random((100, 3)), np.random.random((100, 3)))
+    model.fit(np.random.random(data_shape), np.random.random(data_shape))
 
-    test_data = np.random.random((10, 3))
-    test_targets = np.random.random((10, 3))
+    test_data = np.random.random(data_shape)
+    test_targets = np.random.random(data_shape)
     test_loss = model.evaluate(test_data, test_targets)
 
     bn.trainable = False
@@ -200,41 +196,6 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     train_loss = model.train_on_batch(test_data, test_targets)
     self.assertAlmostEqual(test_loss, train_loss)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_batchnorm_non_trainable_with_tf_function(self):
-    inputs = keras.Input((3,))
-    bn = normalization_v2.BatchNormalization()
-    outputs = bn(inputs)
-    model = keras.Model(inputs, outputs)
-    loss_fn = keras.losses.MeanSquaredError()
-    optimizer = rmsprop_v2.RMSprop()
-
-    @def_function.function()
-    def train_step(x, y):
-      with backprop.GradientTape() as tape:
-        y_pred = model(x, training=True)
-        loss = loss_fn(y, y_pred)
-      grads = tape.gradient(loss, model.trainable_weights)
-      optimizer.apply_gradients(zip(grads, model.trainable_weights))
-      return loss
-
-    @def_function.function()
-    def test_step(x, y):
-      y_pred = model(x, training=False)
-      loss = loss_fn(y, y_pred)
-      return loss
-
-    train_step(np.random.random((100, 3)), np.random.random((100, 3)))
-
-    test_data = np.random.random((10, 3))
-    test_targets = np.random.random((10, 3))
-    test_loss = test_step(test_data, test_targets)
-
-    bn.trainable = False
-    train_loss = train_step(test_data, test_targets)
-    if context.executing_eagerly():
-      self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
 
   def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
 
@@ -260,9 +221,9 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
       self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
 
 
-class BatchNormalizationV1Test(test.TestCase):
+class BatchNormalizationV1Test(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_v1_fused_attribute(self):
     norm = normalization.BatchNormalization()
     inp = keras.layers.Input((4, 4, 4))
@@ -295,7 +256,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
         kwargs={'fused': None},
         input_shape=(3, 3, 3))
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_v2_fused_attribute(self):
     norm = normalization_v2.BatchNormalization()
     self.assertEqual(norm.fused, None)
@@ -363,6 +324,13 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
       # Updates should be tracked in a `wrap_function`.
       self.assertLen(layer.updates, 2)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):
+    # Test case for GitHub issue for 32380
+    norm = normalization_v2.BatchNormalization(virtual_batch_size=8)
+    inp = keras.layers.Input(shape=(None, None, 3))
+    _ = norm(inp)
+
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()
@@ -412,8 +380,6 @@ class NormalizationLayersGraphModeOnlyTest(
       model.train_on_batch(x, x)
 
       self.assertLen(bn.updates, 4)
-      self.assertLen(bn.get_updates_for(x1), 2)
-      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
@@ -422,7 +388,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       self.assertLen(new_model.updates, 6)
       self.assertLen(model.updates, 6)
-      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
@@ -567,7 +532,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
         kwargs={'axis': (-3, -1)},
         input_shape=(2, 8, 8, 3))
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layernorm_weights(self):
     layer = keras.layers.LayerNormalization(scale=False, center=False)
     layer.build((None, 3, 4))
@@ -579,7 +544,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.trainable_weights), 2)
     self.assertEqual(len(layer.weights), 2)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layernorm_regularization(self):
     layer = keras.layers.LayerNormalization(
         gamma_regularizer='l1', beta_regularizer='l1')
@@ -622,25 +587,25 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     _run_layernorm_correctness_test(
         normalization.LayerNormalization, dtype='float16')
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIncorrectAxisType(self):
     with self.assertRaisesRegexp(
         TypeError, r'Expected an int or a list/tuple of ints'):
       _ = normalization.LayerNormalization(axis={'axis': -1})
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidAxis(self):
     with self.assertRaisesRegexp(ValueError, r'Invalid axis: 3'):
       layer_norm = normalization.LayerNormalization(axis=3)
       layer_norm.build(input_shape=(2, 2, 2))
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDuplicateAxis(self):
     with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
       layer_norm = normalization.LayerNormalization(axis=[-1, -1])
       layer_norm.build(input_shape=(2, 2, 2))
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testFusedAttr(self):
     layer_norm = normalization.LayerNormalization(axis=[-2, -1])
     layer_norm.build(input_shape=(2, 2, 2))
@@ -706,7 +671,7 @@ class LayerNormalizationNumericsTest(keras_parameterized.TestCase):
         # some of the values are very close to zero.
         self.assertAllClose(expected, actual, rtol=tol, atol=tol)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_forward(self):
     # For numeric stability, we ensure the axis's dimension(s) have at least 4
     # elements.

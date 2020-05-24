@@ -32,6 +32,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+TF_CALL_bool(DEFINE_GPU_SPEC);
 
 }  // end namespace tensorflow
 

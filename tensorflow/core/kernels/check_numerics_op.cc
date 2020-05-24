@@ -15,15 +15,18 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+// clang-format off
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
-#include <math.h>
-#include <algorithm>
-#include <numeric>
+#include <math.h>  // NOLINT
+#include <algorithm>  // NOLINT
+#include <numeric>  // NOLINT
+// clang-format on
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -350,7 +353,7 @@ class CheckNumericsV2Op<GPUDevice, T> : public CheckNumericsOp<GPUDevice, T> {
     }
   }
 
-  static const int abnormal_detected_size = 3;
+  static constexpr int abnormal_detected_size = 3;
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

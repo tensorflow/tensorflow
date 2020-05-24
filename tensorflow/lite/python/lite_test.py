@@ -269,9 +269,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                                   [out_tensor])
     converter.inference_input_type = lite_constants.QUANTIZED_UINT8
     converter.inference_type = lite_constants.FLOAT
-    converter.quantized_input_stats = {
-        'Placeholder': (0., 1.)
-    }  # mean, std_dev
+    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -450,8 +448,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
+    # Resize tensor with strict checking.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
     # Resize tensor and invoke.
-    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
     interpreter.allocate_tensors()
     interpreter.invoke()
 
@@ -462,8 +467,36 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
 
     output_details = interpreter.get_output_details()
-    self.assertTrue(([1, 16, 16,
+    self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
+
+  def testResizeTensorInputStrict(self):
+    # Ensures that resize_tensor_input(strict=True) works as expected.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+
+    # Resize incorrect value.
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.resize_tensor_input(0, [3, 16, 16, 3], strict=True)
+    self.assertIn(
+        'ResizeInputTensorStrict only allows mutating unknown dimensions '
+        'identified by -1.', str(error.exception))
+
+    # Resize correct value.
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3], strict=True)
+    interpreter.allocate_tensors()
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():
@@ -529,7 +562,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
           shape=[1, 16, 16, 3], dtype=dtypes.float32)
       var = variable_scope.get_variable(
           'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + var
+      # Get the second output to ensure freezing properly processes tensor names
+      # like 'X:1'.
+      out_tensor = nn_ops.top_k(in_tensor + var, name='top_k')[1]
       sess = session.Session()
       sess.run(_global_variables_initializer())
 
@@ -552,9 +587,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual('top_k:1', output_details[0]['name'])
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testGraphviz(self):
@@ -1290,6 +1325,41 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def testResizeWithShape(self):
+    with ops.Graph().as_default():
+      # Construct a graph with a dynamically shapped input and an internal node
+      # that relies on the output of that input's shape.
+      in_tensor = array_ops.placeholder(
+          shape=[None, None], dtype=dtypes.float32)
+      in_tensor2 = [[1, 2], [3, 4]]
+      out_tensor = array_ops.reshape(in_tensor2, array_ops.shape(in_tensor))
+      sess = session.Session()
+
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertTrue(([1, 1] == input_details[0]['shape']).all())
+    self.assertTrue(([-1, -1] == input_details[0]['shape_signature']).all())
+
+    # Resize tensor and invoke.
+    interpreter.resize_tensor_input(0, [4])
+    interpreter.allocate_tensors()
+    interpreter.invoke()
+
+    # The output should be reshaped properly according to the resized input.
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([4] == output_details[0]['shape']).all())
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue(([1, 2, 3, 4] == output_data).all())
+
   def testResizingIntermediateDynamicTensor(self):
     # This is a regression test for the case where shape of dynamic output
     # tensors changes between invocations.
@@ -1632,19 +1702,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1694,19 +1764,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1726,19 +1796,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1858,7 +1928,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
@@ -1953,7 +2023,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertTrue(([2, 3] == input_details[0]['shape']).all())
 
   def testSequentialModelOutputArray(self):
@@ -2072,12 +2142,12 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    self.assertEqual('input_a', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'input_a')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('input_b', input_details[1]['name'])
+    self.assertEndsWith(input_details[1]['name'], 'input_b')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
@@ -2128,7 +2198,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEndsWith(input_details[0]['name'], 'dense_input')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
@@ -2171,6 +2241,14 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
+
+  def testExperimentalSparsifyModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
+    converter._experimental_sparsify_model = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 class GrapplerTest(TestModels, parameterized.TestCase):
@@ -2236,10 +2314,78 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual('Const', input_details[1]['name'])
 
+  def testGrapplerConstFolding(self):
+    # Constant folding converts the following add operation to tf.broadcast_to
+    # operation which was not supported by the TFLite at the time this test was
+    # added.
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = plus_placeholder(
+          array_ops.zeros([2, 2, 2]),
+          array_ops.reshape(in_tensor, shape=[2, 2]))
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    # Only disable this path in MLIR conversion for toco compatibility.
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+
+
 class ImportOpsUtilTest(LiteTest):
 
   def testGetPotentiallySupportedOps(self):
     self.assertIsNotNone(lite.get_potentially_supported_ops())
+
+
+class DefaultConverterAttrsTest(LiteTest):
+
+  def testAttrs(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+
+    # Assert output format.
+    self.assertEqual(converter.output_format, lite_constants.TFLITE)
+
+    # Assert the default inference type is float.
+    self.assertEqual(converter.inference_type, lite_constants.FLOAT)
+
+    # Assert the default inference type overrides are None.
+    self.assertIsNone(converter.inference_input_type)
+    self.assertIsNone(converter.inference_output_type)
+
+    # Assert the default quantization options are not set.
+    self.assertEqual(converter.quantized_input_stats, {})
+    self.assertIsNone(converter.default_ranges_stats)
+    self.assertFalse(converter.reorder_across_fake_quant)
+    self.assertFalse(converter.change_concat_input_ranges)
+
+    # Assert dropping control dependency is enabled by default.
+    self.assertTrue(converter.drop_control_dependency)
+
+    # Assert dumping extra information is disabled by default.
+    self.assertIsNone(converter.dump_graphviz_dir)
+    self.assertFalse(converter.dump_graphviz_video)
+    self.assertIsNone(converter.conversion_summary_dir)
 
 
 if __name__ == '__main__':

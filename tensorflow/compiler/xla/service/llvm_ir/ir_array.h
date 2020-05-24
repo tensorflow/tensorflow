@@ -135,9 +135,9 @@ class IrArray {
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        absl::Span<const int64> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -153,6 +153,10 @@ class IrArray {
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
     llvm::Value* Linearize(absl::Span<const int64> dimensions,
+                           llvm::IRBuilder<>* builder) const;
+
+    // Linearizes the index into the given dynamic dimensions.
+    llvm::Value* Linearize(const std::vector<llvm::Value*>& dynamic_dims,
                            llvm::IRBuilder<>* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }

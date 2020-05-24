@@ -862,12 +862,14 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // No valid shape provided.
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "?;[?]", "?");
   INFER_OK(op, "[?];[?]", "?");
   INFER_OK(op, "[4];[?]", "?");
 
   // All dimensions provided.
   Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
+  INFER_OK(op, "?;[3]", "[1,2,3]");
   INFER_OK(op, "[?];[3]", "[1,2,3]");
   INFER_OK(op, "[6];[3]", "[1,2,3]");
   // The number of elements should match for the reshape to succeed.
@@ -878,6 +880,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "?;[1]", "[?]");
   INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
@@ -890,6 +893,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
+  INFER_OK(op, "?;[3]", "[?,?,2]");
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32>({-1, 2, 3});
@@ -1434,6 +1438,16 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
     Tensor paddings = test::AsTensor<int32>({0, 0, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &paddings;
     INFER_ERROR("divisible", op, "[1,2,3,1];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({});
+    op.input_tensors[2] = &paddings;
+    INFER_OK(op, "?;[0];[0,2]", "?");
     op.input_tensors[1] = nullptr;
     op.input_tensors[2] = nullptr;
   }

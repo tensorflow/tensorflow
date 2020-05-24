@@ -15,172 +15,104 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_OPERATION_INTERFACE_H_
 #define TENSORFLOW_C_EAGER_OPERATION_INTERFACE_H_
 
-#include <memory>
-
-#include "absl/container/fixed_array.h"
-#include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+
+struct TFE_Op;
+
+namespace tensorflow {
 
 // Abstract interface to an operation.
 class AbstractOperationInterface {
  public:
-  virtual ~AbstractOperationInterface() {}
+  // Release any underlying resources, including the interface object.
+  //
+  // WARNING: The destructor of this class is marked as protected to disallow
+  // clients from directly destroying this object since it may manage it's own
+  // lifetime through ref counting. Thus this must be allocated on the heap and
+  // clients MUST call Release() in order to destroy an instance of this class.
+  virtual void Release() = 0;
 
   virtual void Clear() = 0;
-  virtual tensorflow::Status Reset(const char* op,
-                                   const char* raw_device_name) = 0;
+  virtual Status Reset(const char* op, const char* raw_device_name) = 0;
 
-  virtual const tensorflow::string& Name() const = 0;
-  virtual const tensorflow::string& DeviceName() const = 0;
-  virtual tensorflow::Status SetDeviceName(const char* name) = 0;
+  virtual const string& Name() const = 0;
 
-  virtual tensorflow::Status AddInput(
-      const std::unique_ptr<AbstractTensorHandleInterface>& input) = 0;
-  virtual tensorflow::Status AddInputList(
-      const absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>&
-          inputs) = 0;
-  virtual tensorflow::Status Execute(
-      absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>* retvals,
-      int* num_retvals) = 0;
+  // Returns the operation's device name.
+  //
+  // The value returned may be different from the one set by SetDeviceName, but
+  // it will be compatible with it: the name will be updated by device placement
+  // logic to refer to the specific device chosen.
+  //
+  // Example: If one calls `op->SetDeviceName("/device:GPU")`, the value
+  // returned by DeviceName should be "/device:GPU:*" until a particular GPU is
+  // chosen for the operation by the device placement logic in the
+  // executor. After that, the value returned by DeviceName will be a full
+  // device name such as "/job:localhost/replica:0/task:0/device:GPU:1".
+  virtual const string& DeviceName() const = 0;
+
+  // Sets the operation device name.
+  //
+  // The given `name` must be parseable by DeviceNameUtils::ParseFullName, and
+  // the result will be used as a constraint for device placement. See the
+  // documentation for DeviceName for more details.
+  //
+  // The value will override the previous value - that is, no "merging" of
+  // existing and given constraints will be performed.
+  virtual Status SetDeviceName(const char* name) = 0;
+
+  virtual Status AddInput(AbstractTensorHandleInterface* input) = 0;
+  virtual Status AddInputList(
+      absl::Span<AbstractTensorHandleInterface*> inputs) = 0;
+  virtual Status Execute(absl::Span<AbstractTensorHandleInterface*> retvals,
+                         int* num_retvals) = 0;
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
-  virtual tensorflow::Status SetAttrString(const char* attr_name,
-                                           const char* data, size_t length) = 0;
-  virtual tensorflow::Status SetAttrInt(const char* attr_name,
-                                        int64_t value) = 0;
-  virtual tensorflow::Status SetAttrFloat(const char* attr_name,
-                                          float value) = 0;
-  virtual tensorflow::Status SetAttrBool(const char* attr_name, bool value) = 0;
-  virtual tensorflow::Status SetAttrType(const char* attr_name,
-                                         TF_DataType value) = 0;
-  virtual tensorflow::Status SetAttrShape(const char* attr_name,
-                                          const int64_t* dims,
-                                          const int num_dims) = 0;
-  virtual tensorflow::Status SetAttrFunction(
+  virtual Status SetAttrString(const char* attr_name, const char* data,
+                               size_t length) = 0;
+  virtual Status SetAttrInt(const char* attr_name, int64_t value) = 0;
+  virtual Status SetAttrFloat(const char* attr_name, float value) = 0;
+  virtual Status SetAttrBool(const char* attr_name, bool value) = 0;
+  virtual Status SetAttrType(const char* attr_name, DataType value) = 0;
+  virtual Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                              const int num_dims) = 0;
+  virtual Status SetAttrFunction(const char* attr_name,
+                                 const AbstractOperationInterface* value) = 0;
+  virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
+                                     size_t length) = 0;
+  virtual Status SetAttrTensor(const char* attr_name,
+                               AbstractTensorInterface* tensor) = 0;
+  virtual Status SetAttrStringList(const char* attr_name,
+                                   const void* const* values,
+                                   const size_t* lengths, int num_values) = 0;
+  virtual Status SetAttrFloatList(const char* attr_name, const float* values,
+                                  int num_values) = 0;
+  virtual Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                                int num_values) = 0;
+  virtual Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                                 int num_values) = 0;
+  virtual Status SetAttrBoolList(const char* attr_name,
+                                 const unsigned char* values,
+                                 int num_values) = 0;
+  virtual Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                                  const int* num_dims, int num_values) = 0;
+  virtual Status SetAttrFunctionList(
       const char* attr_name,
-      const std::unique_ptr<AbstractOperationInterface>& value) = 0;
-  virtual tensorflow::Status SetAttrFunctionName(const char* attr_name,
-                                                 const char* value,
-                                                 size_t length) = 0;
-  virtual tensorflow::Status SetAttrTensor(const char* attr_name,
-                                           TF_Tensor* tensor) = 0;
-  virtual tensorflow::Status SetAttrStringList(const char* attr_name,
-                                               const void* const* values,
-                                               const size_t* lengths,
-                                               int num_values) = 0;
-  virtual tensorflow::Status SetAttrFloatList(const char* attr_name,
-                                              const float* values,
-                                              int num_values) = 0;
-  virtual tensorflow::Status SetAttrIntList(const char* attr_name,
-                                            const int64_t* values,
-                                            int num_values) = 0;
-  virtual tensorflow::Status SetAttrTypeList(const char* attr_name,
-                                             const TF_DataType* values,
-                                             int num_values) = 0;
-  virtual tensorflow::Status SetAttrBoolList(const char* attr_name,
-                                             const unsigned char* values,
-                                             int num_values) = 0;
-  virtual tensorflow::Status SetAttrShapeList(const char* attr_name,
-                                              const int64_t** dims,
-                                              const int* num_dims,
-                                              int num_values) = 0;
-  virtual tensorflow::Status SetAttrFunctionList(const char* attr_name,
-                                                 const TFE_Op** value,
-                                                 int num_values) = 0;
+      absl::Span<const AbstractOperationInterface*> values) = 0;
 
-  virtual tensorflow::Status InputLength(const char* input_name,
-                                         int* length) = 0;
-  virtual tensorflow::Status OutputLength(const char* output_name,
-                                          int* length) = 0;
+  virtual Status InputLength(const char* input_name, int* length) = 0;
+  virtual Status OutputLength(const char* output_name, int* length) = 0;
 
   // Experimental
-  virtual tensorflow::Status SetUseXla(bool enable) {
-    return tensorflow::errors::Unimplemented("SetUseXla not implemented");
-  }
-  virtual tensorflow::Status SetCancellationManager(
-      TFE_CancellationManager* cancellation_manager) {
-    return tensorflow::errors::Unimplemented(
-        "SetCancellationManager not implemented");
-  }
-};
+  virtual Status SetUseXla(bool enable) = 0;
 
-namespace tensorflow {
-
-class OpDef;
-
-class OperationInterface : public AbstractOperationInterface {
- public:
-  explicit OperationInterface(TFE_Context* ctx);
-  ~OperationInterface() override{};
-
-  void Clear() override { operation_.Clear(); }
-  Status Reset(const char* op, const char* raw_device_name) override {
-    return operation_.Reset(op, raw_device_name, false, nullptr);
-  }
-
-  const string& Name() const override { return operation_.Name(); }
-  const string& DeviceName() const override;
-  Status SetDeviceName(const char* name) override;
-
-  Status AddInput(
-      const std::unique_ptr<AbstractTensorHandleInterface>& input) override;
-  Status AddInputList(
-      const absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>&
-          inputs) override;
-  Status Execute(
-      absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>* retvals,
-      int* num_retvals) override;
-  const tensorflow::OpDef* OpDef() const override {
-    return operation_.OpDef();
-  };
-
-  Status SetAttrString(const char* attr_name, const char* data,
-                       size_t length) override;
-  Status SetAttrInt(const char* attr_name, int64_t value) override;
-  Status SetAttrFloat(const char* attr_name, float value) override;
-  Status SetAttrBool(const char* attr_name, bool value) override;
-  Status SetAttrType(const char* attr_name, TF_DataType value) override;
-  Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override;
-  Status SetAttrFunction(
-      const char* attr_name,
-      const std::unique_ptr<AbstractOperationInterface>& value) override;
-  Status SetAttrFunctionName(const char* attr_name, const char* data,
-                             size_t length) override;
-  Status SetAttrTensor(const char* attr_name, TF_Tensor* tensor) override;
-  Status SetAttrStringList(const char* attr_name, const void* const* values,
-                           const size_t* lengths, int num_values) override;
-  Status SetAttrFloatList(const char* attr_name, const float* values,
-                          int num_values) override;
-  Status SetAttrIntList(const char* attr_name, const int64_t* values,
-                        int num_values) override;
-  Status SetAttrTypeList(const char* attr_name, const TF_DataType* values,
-                         int num_values) override;
-  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
-                         int num_values) override;
-  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
-                          const int* num_dims, int num_values) override;
-  Status SetAttrFunctionList(const char* attr_name, const TFE_Op** value,
-                             int num_values) override;
-
-  Status InputLength(const char* input_name, int* length) override;
-  Status OutputLength(const char* output_name, int* length) override;
-
-  Status SetUseXla(bool enable) override;
-  Status SetCancellationManager(
-      TFE_CancellationManager* cancellation_manager) override;
-
-  // TODO(gjn): Remove once TFE_InferShapes is removed
-  const tensorflow::AttrBuilder& Attrs() const { return operation_.Attrs(); }
-  tensorflow::AttrBuilder* MutableAttrs() { return operation_.MutableAttrs(); }
-
-  const TensorHandle* GetInput(int i) const { return operation_.Inputs()[i]; }
-
- private:
-  const tensorflow::OpDef* GetOpDef(Status* status);
-  EagerOperation operation_;
+ protected:
+  virtual ~AbstractOperationInterface() {}
 };
 
 }  // namespace tensorflow

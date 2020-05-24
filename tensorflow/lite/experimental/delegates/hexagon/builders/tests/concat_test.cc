@@ -71,24 +71,29 @@ class QuantizedConcatenationOpModel : public SingleOpModelWithHexagon {
                          GetZeroPoint(output_));
   }
 
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
  private:
   int output_;
 };
 
-TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange) {
-  QuantizedConcatenationOpModel m0(
-      {{TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8}},
-      /*axis=*/3, {TensorType_UINT8, {}, -12.7, 12.8});
+template <typename integer_type, TensorType tensor_dtype>
+void FourInputsQuantizedSameRangeImpl() {
+  QuantizedConcatenationOpModel m0({{tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8}},
+                                   /*axis=*/3, {tensor_dtype, {}, -12.7, 12.8});
 
-  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.SetInput<integer_type>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<integer_type>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<integer_type>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<integer_type>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
@@ -96,6 +101,49 @@ TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange) {
                   },
                   /*max_abs_error=*/0.2)));
 }
+
+TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange_UInt8) {
+  FourInputsQuantizedSameRangeImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange_Int8) {
+  FourInputsQuantizedSameRangeImpl<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void TwoInputsNegativeAxisImpl() {
+  auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  QuantizedConcatenationOpModel m0({{tensor_dtype,
+                                     {2, 3},
+                                     std::numeric_limits<integer_type>::min(),
+                                     std::numeric_limits<integer_type>::max()},
+                                    {tensor_dtype,
+                                     {2, 3},
+                                     std::numeric_limits<integer_type>::min(),
+                                     std::numeric_limits<integer_type>::max()}},
+                                   /*axis=*/-2,
+                                   {tensor_dtype,
+                                    {},
+                                    std::numeric_limits<integer_type>::min(),
+                                    std::numeric_limits<integer_type>::max()});
+
+  m0.SetInput<integer_type>(0, tensor0);
+  m0.SetInput<integer_type>(1, tensor1);
+  m0.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m0.GetOutput<integer_type>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TEST(QuantizedConcatenationOpModel, TwoInputsNegativeAxis_UInt8) {
+  TwoInputsNegativeAxisImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(QuantizedConcatenationOpModel, TwoInputsNegativeAxis_Int8) {
+  TwoInputsNegativeAxisImpl<int8_t, TensorType_INT8>();
+}
+
+// NOTE: Int8 Concat does not have mixed-range support.
 
 TEST(QuantizedConcatenationOpModel, FourInputsQuantizedMixedRange) {
   QuantizedConcatenationOpModel m0(
@@ -115,6 +163,28 @@ TEST(QuantizedConcatenationOpModel, FourInputsQuantizedMixedRange) {
                   {
                       1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
                       4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
+                  },
+                  /*max_abs_error=*/0.2)));
+}
+
+TEST(QuantizedConcatenationOpModel, FourInputsAxis2_UInt8) {
+  QuantizedConcatenationOpModel m0({{TensorType_UINT8, {2, 1, 2}, -10.7, 10.8},
+                                    {TensorType_UINT8, {2, 1, 2}, 0, 12.8},
+                                    {TensorType_UINT8, {2, 1, 2}, -11, 11.8},
+                                    {TensorType_UINT8, {2, 1, 2}, 0, 7.4}},
+                                   /*axis=*/2,
+                                   {TensorType_UINT8, {2, 1, 2}, -1., 1.});
+
+  m0.SetInput<uint8_t>(0, {1.0f, -3.0f, -4.0f, -7.0f});
+  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<uint8_t>(2, {1.2f, -3.2f, -4.2f, 7.2f});
+  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.0f, -1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f,   //
+                      -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  //
                   },
                   /*max_abs_error=*/0.2)));
 }

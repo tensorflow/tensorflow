@@ -240,11 +240,15 @@ def _create_local_python_repository(repository_ctx):
         "numpy_include",
     )
 
+    platform_constraint = ""
+    if repository_ctx.attr.platform_constraint:
+        platform_constraint = "\"%s\"" % repository_ctx.attr.platform_constraint
     repository_ctx.template("BUILD", build_tpl, {
         "%{PYTHON_BIN_PATH}": python_bin,
         "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
         "%{PYTHON_IMPORT_LIB_GENRULE}": python_import_lib_genrule,
         "%{NUMPY_INCLUDE_GENRULE}": numpy_include_rule,
+        "%{PLATFORM_CONSTRAINT}": platform_constraint,
     })
 
 def _create_remote_python_repository(repository_ctx, remote_config_repo):
@@ -268,18 +272,31 @@ _ENVIRONS = [
     PYTHON_LIB_PATH,
 ]
 
+local_python_configure = repository_rule(
+    implementation = _create_local_python_repository,
+    environ = _ENVIRONS,
+    attrs = {
+        "environ": attr.string_dict(),
+        "platform_constraint": attr.string(),
+    },
+)
+
 remote_python_configure = repository_rule(
     implementation = _create_local_python_repository,
     environ = _ENVIRONS,
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "platform_constraint": attr.string(),
     },
 )
 
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
     environ = _ENVIRONS + [TF_PYTHON_CONFIG_REPO],
+    attrs = {
+        "platform_constraint": attr.string(),
+    },
 )
 """Detects and configures the local Python.
 

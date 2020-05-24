@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 
 namespace tflite {
 // Update minimum runtime version of the given TFL flatbuffer model.
 void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer);
 
 // Returns true if the first version string precedes the second.
-// For example, '1.14' should precede '1.9', also '1.14.1' should precede
-// '1.14'. If two version string is equal, then false will be returned.
+// For example, '1.9' should precede '1.14', also '1.14' should precede
+// '1.14.1'. If two version string is equal, then false will be returned.
 bool CompareRuntimeVersion(const std::string&, const std::string&);
 
 }  // namespace tflite

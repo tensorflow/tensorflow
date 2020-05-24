@@ -151,10 +151,6 @@ class GpuExecutable : public Executable {
   // memory for every output/temp buffers.
   const std::shared_ptr<const BufferAssignment> assignment_;
 
-  // Maps a thunk to a string describing the thunk.  This is useful when
-  // constructing ScopeAnnotation objects.
-  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
-
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
   tensorflow::mutex module_handle_mutex_;

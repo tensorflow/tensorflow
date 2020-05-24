@@ -50,13 +50,27 @@ class IteratorResource : public ResourceBase {
 
   ~IteratorResource() override { VLOG(2) << "destructor"; }
 
+  // Gets the next output from the iterator managed by this iterator resource.
+  //
+  // If at least one output remains, that output will be stored in
+  // `*out_tensors` and `false` will be stored in `*end_of_sequence`.
+  //
+  // If no more outputs remain, `true` will be stored in `*end_of_sequence`, and
+  // the content of `*out_tensors` will be undefined.
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
 
+  // Saves a checkpoint of the state of the iterator through the given `writer`.
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
 
+  // Restores the state of the iterator from a checkpoint created by `Save`.
   Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
 
+  // Creates an iterator for `dataset`, and associates the iterator with this
+  // iterator resource.
+  //
+  // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
+  // or `Restore`.
   Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
@@ -210,11 +224,13 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) override;
 };
 
-class DeleteIteratorOp : public OpKernel {
+class DeleteIteratorOp : public HybridAsyncOpKernel {
  public:
-  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {

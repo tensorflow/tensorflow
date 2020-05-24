@@ -87,7 +87,7 @@ TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
                "StridedSlice op only supports 1D-5D input arrays.");
 }
 
-TYPED_TEST(StridedSliceOpTest, UnssupportedArgs) {
+TYPED_TEST(StridedSliceOpTest, UnsupportedArgs) {
   EXPECT_DEATH(
       StridedSliceOpModel<TypeParam>({3, 2}, {2}, {2}, {2}, 0, 0, 1, 0, 0),
       "ellipsis_mask is not implemented yet.");
@@ -96,6 +96,15 @@ TYPED_TEST(StridedSliceOpTest, UnssupportedArgs) {
       "new_axis_mask is not implemented yet.");
 }
 #endif
+
+TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
+  StridedSliceOpModel<TypeParam> m({0}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetBegin({1});
+  m.SetEnd({3});
+  m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
 
 TYPED_TEST(StridedSliceOpTest, In1D) {
   StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);

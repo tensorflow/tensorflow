@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -95,7 +96,7 @@ class InstantiatedCapturedFunction {
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
-                const string& prefix) const;
+                const std::shared_ptr<model::Node>& node) const;
 
  private:
   InstantiatedCapturedFunction(
@@ -254,10 +255,6 @@ class CapturedFunction {
  private:
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
-
-  // Determines whether the captured function requires the use of the
-  // multi-device function backend.
-  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device);
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;

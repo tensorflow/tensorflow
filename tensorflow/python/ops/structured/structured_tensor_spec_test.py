@@ -81,6 +81,18 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertEqual(spec2._shape, (1, 2))
     self.assertEqual(spec2._field_specs, spec2_fields)
 
+  @parameterized.parameters([
+      (None, {}, r"StructuredTensor's shape must have known rank\."),
+      ([], None, r'field_specs must be a dictionary\.'),
+      ([], {1: tensor_spec.TensorSpec(None)},
+       r'field_specs must be a dictionary with string keys\.'),
+      ([], {'x': 0},
+       r'field_specs must be a dictionary with TypeSpec values\.'),
+  ])
+  def testConstructionErrors(self, shape, field_specs, error):
+    with self.assertRaisesRegexp(TypeError, error):
+      structured_tensor.StructuredTensorSpec(shape, field_specs)
+
   def testValueType(self):
     spec1 = StructuredTensorSpec([1, 2, 3], dict(a=T_1_2))
     self.assertEqual(spec1.value_type, StructuredTensor)
@@ -118,11 +130,13 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
           'fields': dict(x=[[1.0, 2.0]]),
           'field_specs': dict(x=T_1_2),
       },
-      {
-          'shape': [1, 2, 3],
-          'fields': {},
-          'field_specs': {},
-      },
+      # TODO(edloper): Enable this test once we update StructuredTensorSpec
+      # to contain the shared row partitions.
+      #{
+      #    'shape': [1, 2, 3],
+      #    'fields': {},
+      #    'field_specs': {},
+      #},
       {
           'shape': [2],
           'fields': dict(
@@ -133,7 +147,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
   ])  # pyformat: disable
   def testToFromComponents(self, shape, fields, field_specs):
     components = fields
-    struct = StructuredTensor(shape, fields)
+    struct = StructuredTensor.from_fields(fields, shape)
     spec = StructuredTensorSpec(shape, field_specs)
     actual_components = spec._to_components(struct)
     self.assertAllTensorsEqual(actual_components, components)
@@ -164,39 +178,40 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
   @parameterized.parameters([
       {
           'unbatched': lambda: [
-              StructuredTensor([], {'a': 1, 'b': [5, 6]}),
-              StructuredTensor([], {'a': 2, 'b': [7, 8]})],
+              StructuredTensor.from_fields({'a': 1, 'b': [5, 6]}),
+              StructuredTensor.from_fields({'a': 2, 'b': [7, 8]})],
           'batch_size': 2,
-          'batched': lambda: StructuredTensor([2], {
+          'batched': lambda: StructuredTensor.from_fields(shape=[2], fields={
               'a': [1, 2],
               'b': [[5, 6], [7, 8]]}),
       },
       {
           'unbatched': lambda: [
-              StructuredTensor([3], {
+              StructuredTensor.from_fields(shape=[3], fields={
                   'a': [1, 2, 3],
                   'b': [[5, 6], [6, 7], [7, 8]]}),
-              StructuredTensor([3], {
+              StructuredTensor.from_fields(shape=[3], fields={
                   'a': [2, 3, 4],
                   'b': [[2, 2], [3, 3], [4, 4]]})],
           'batch_size': 2,
-          'batched': lambda: StructuredTensor([2, 3], {
+          'batched': lambda: StructuredTensor.from_fields(shape=[2, 3], fields={
               'a': [[1, 2, 3], [2, 3, 4]],
               'b': [[[5, 6], [6, 7], [7, 8]],
                     [[2, 2], [3, 3], [4, 4]]]}),
       },
       {
           'unbatched': lambda: [
-              StructuredTensor([], {
+              StructuredTensor.from_fields(shape=[], fields={
                   'a': 1,
-                  'b': StructuredTensor([], {'x': [5]})}),
-              StructuredTensor([], {
+                  'b': StructuredTensor.from_fields({'x': [5]})}),
+              StructuredTensor.from_fields(shape=[], fields={
                   'a': 2,
-                  'b': StructuredTensor([], {'x': [6]})})],
+                  'b': StructuredTensor.from_fields({'x': [6]})})],
           'batch_size': 2,
-          'batched': lambda: StructuredTensor([2], {
+          'batched': lambda: StructuredTensor.from_fields(shape=[2], fields={
               'a': [1, 2],
-              'b': StructuredTensor([2], {'x': [[5], [6]]})}),
+              'b': StructuredTensor.from_fields(shape=[2], fields={
+                  'x': [[5], [6]]})}),
       },
   ])  # pyformat: disable
   def testBatchUnbatchValues(self, unbatched, batch_size, batched):
@@ -224,6 +239,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertLen(actual_unbatched, len(unbatched))
     for (actual, expected) in zip(actual_unbatched, unbatched):
       self.assertAllEqual(actual, expected)
+
 
 if __name__ == '__main__':
   googletest.main()

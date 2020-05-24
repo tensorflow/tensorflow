@@ -44,6 +44,36 @@ namespace tensorflow {
 
 namespace {
 
+// GetTensorListDynamicDims collects the dynamic dimensions that a tensorlist
+// may carry and returns them in a 2D vector: int64[ElementSize][DimSize]. If a
+// dimension is static, a constant dimension is returned.
+xla::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
+    XlaOpKernelContext* ctx, const xla::Shape& element_shape,
+    const xla::Shape& list_shape, int64 num_elements) {
+  std::vector<int64> dynamic_sizes;
+  ctx->set_dynamic_dimension_is_minus_one(true);
+  // The multiplier can be a dynamic value.
+  TF_RETURN_IF_ERROR(ctx->ConstantInputAsIntVector(0, &dynamic_sizes));
+  std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
+  // Set dynamic dimension size to 0 for initialization value.
+  std::vector<xla::XlaOp> dynamic_dims;
+  // Leading dim is a static dimension.
+  dynamic_dims.push_back(xla::ConstantR0<int32>(ctx->builder(), num_elements));
+  for (int64 dim = 0; dim < element_shape.dimensions_size(); ++dim) {
+    if (ctx->is_dynamic_dimension(dynamic_sizes[dim])) {
+      auto dynamic_dim_size = xla::Slice(ctx->Input(0), {dim}, {dim + 1}, {1});
+      dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+      dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+      dynamic_dims.push_back(dynamic_dim_size);
+    } else {
+      dynamic_dims.push_back(
+          xla::ConstantR0<int32>(ctx->builder(), dynamic_sizes[dim]));
+    }
+  }
+  list_dynamic_dims.push_back(dynamic_dims);
+  return list_dynamic_dims;
+}
+
 class TensorListLengthOp : public XlaOpKernel {
  public:
   explicit TensorListLengthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
@@ -124,10 +154,14 @@ class TensorListReserveOp : public XlaOpKernel {
       xla::Shape list_shape;
       OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
                               element_shape, num_elements, &list_shape));
-
+      // Set up dynamic dimension sizes to create the zero tensor.
+      auto list_dynamic_dims_or = GetTensorListDynamicDims(
+          ctx, element_shape, list_shape, num_elements);
+      OP_REQUIRES_OK(ctx, list_dynamic_dims_or.status());
       xla::XlaOp new_list;
       OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                              ctx->builder(), list_shape, &new_list));
+                              ctx->builder(), list_shape,
+                              list_dynamic_dims_or.ValueOrDie(), &new_list));
       xla::XlaOp result;
       OP_REQUIRES_OK(
           ctx,
@@ -185,10 +219,16 @@ class EmptyTensorListOp : public XlaOpKernel {
         xla::Shape list_shape;
         OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
                                 element_shape, max_num_elements, &list_shape));
+        // Set up dynamic dimension sizes to create the zero tensor.
+        auto list_dynamic_dims_or = GetTensorListDynamicDims(
+            ctx, element_shape, list_shape, max_num_elements);
+        OP_REQUIRES_OK(ctx, list_dynamic_dims_or.status());
 
         xla::XlaOp result;
         OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                                ctx->builder(), list_shape, &result));
+                                ctx->builder(), list_shape,
+                                list_dynamic_dims_or.ValueOrDie(), &result));
+
         ctx->SetTensorListOutput(0, result);
         return;
       }
@@ -390,6 +430,120 @@ class TensorListStackOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("TensorListStack"), TensorListStackOp);
+
+class TensorListConcatOp : public XlaOpKernel {
+ public:
+  explicit TensorListConcatOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp input = ctx->Input(0);
+
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx, (IsTensorListInitialized(input, &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
+
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(input, &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListConcat."));
+
+    xla::XlaOp buffer;
+    OP_REQUIRES_OK(ctx, GetTensorListBuffer(input, &buffer));
+
+    xla::XlaBuilder* b = input.builder();
+    auto shape_or = b->GetShape(buffer);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    std::vector<int64> element_dims =
+        xla::SpanToVector(element_shape.dimensions());
+    OP_REQUIRES(
+        ctx, element_dims.size() > 1,
+        errors::Unimplemented("TensorList of scalars is not supported"));
+    int64 num_elements = element_dims[0];
+    int64 tensor_lengths = element_dims[1];
+
+    std::vector<int64> new_dims = {num_elements * tensor_lengths};
+
+    for (int i = 2; i < element_dims.size(); i++) {
+      new_dims.push_back(element_dims[i]);
+    }
+
+    xla::XlaOp out = xla::Reshape(buffer, new_dims);
+    ctx->SetOutput(0, out);
+
+    // Second output is a tensor of lengths of returned tensors.
+    xla::XlaOp lengths = xla::ConstantR1(b, num_elements, tensor_lengths);
+    ctx->SetOutput(1, lengths);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorListConcatOp);
+};
+
+REGISTER_XLA_OP(Name("TensorListConcatV2"), TensorListConcatOp);
+
+class TensorListSplitOp : public XlaOpKernel {
+ public:
+  explicit TensorListSplitOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    // Only non-nested TensorList is supported for now.
+    OP_REQUIRES(
+        ctx, dtype_ != DT_VARIANT,
+        errors::Unimplemented(
+            "Only non-nested TensorList is supported for TensorListReserve."));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp input_tensor = ctx->Input(0);
+
+    xla::XlaBuilder* b = input_tensor.builder();
+    auto shape_or = b->GetShape(input_tensor);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    std::vector<int64> element_dims =
+        xla::SpanToVector(element_shape.dimensions());
+    OP_REQUIRES(
+        ctx, !element_dims.empty(),
+        errors::Unimplemented("Element dimensions have to be non-empty"));
+
+    std::vector<int64> lengths;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &lengths));
+    OP_REQUIRES(ctx, !lengths.empty(),
+                errors::Unimplemented("Length has to be non-empty"));
+    int64 length = lengths[0];
+    for (int64 len : lengths) {
+      OP_REQUIRES(ctx, len == length,
+                  errors::Unimplemented("All lengths have to be the same"));
+    }
+    OP_REQUIRES(
+        ctx, element_dims[0] % length == 0,
+        errors::Unimplemented("Buffer size has to be a multiple of length"));
+    std::vector<int64> new_dims = {element_dims[0] / length, length};
+    for (int i = 1; i < element_dims.size(); i++) {
+      new_dims.push_back(element_dims[i]);
+    }
+
+    xla::XlaOp reshaped = xla::Reshape(input_tensor, new_dims);
+
+    xla::XlaOp result;
+    OP_REQUIRES_OK(ctx, ExecuteTensorListFromTensor(length, reshaped, &result));
+    ctx->SetTensorListOutput(0, result);
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorListSplitOp);
+};
+
+REGISTER_XLA_OP(Name("TensorListSplit")
+                    .CompileTimeConstantInput("element_shape")
+                    .CompileTimeConstantInput("lengths"),
+                TensorListSplitOp);
 
 class TensorListFromTensorOp : public XlaOpKernel {
  public:

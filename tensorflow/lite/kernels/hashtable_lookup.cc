@@ -92,7 +92,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     status = context->ResizeTensor(context, output, outputSize);
   }
-  if (context->ResizeTensor(context, hits, hitSize) == kTfLiteError) {
+  if (context->ResizeTensor(context, hits, hitSize) != kTfLiteOk) {
     status = kTfLiteError;
   }
   return status;

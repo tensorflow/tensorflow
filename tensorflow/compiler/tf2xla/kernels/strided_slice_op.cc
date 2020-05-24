@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
@@ -115,6 +116,72 @@ class StridedSliceOp : public XlaOpKernel {
         slice = xla::Rev(slice, dimensions_to_reverse);
       }
       slice = xla::Slice(slice, slice_begin, slice_end, slice_strides);
+      auto operand_shape_or = ctx->builder()->GetShape(ctx->Input(0));
+      OP_REQUIRES_OK(ctx, operand_shape_or.status());
+      xla::Shape xla_shape = operand_shape_or.ValueOrDie();
+      if (xla_shape.is_static()) {
+        // Static output shape, return a static slice.
+        slice = xla::Reshape(slice, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+      auto input_dim_sizes = input_shape.dim_sizes();
+
+      for (int64 i = 0; i < xla_shape.rank(); ++i) {
+        if (xla_shape.is_dynamic_dimension(i)) {
+          input_dim_sizes[i] = -1;
+        }
+      }
+      PartialTensorShape input_partial_shape(input_dim_sizes);
+      partial_final_shape.Clear();
+      end.clear();
+      strides.clear();
+      begin.clear();
+      // Run shape inferenference again with partial shape.
+      OP_REQUIRES_OK(ctx, ValidateStridedSliceOp(
+                              &begin_tensor, &end_tensor, strides_tensor,
+                              input_partial_shape, begin_mask_, end_mask_,
+                              ellipsis_mask_, new_axis_mask_, shrink_axis_mask_,
+                              &dummy_processing_shape, &partial_final_shape,
+                              &dummy, &dummy, &dummy, &begin, &end, &strides));
+      if (partial_final_shape.AsTensorShape(&final_shape)) {
+        // Static output shape, return a static slice.
+        slice = xla::Reshape(slice, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+
+      // We consider slicing a dynamic tensor t with negative indices as a
+      // dynamic sized slice. E.g., t[: -n], the result length is shape(t) - n
+      for (int64 i = 0; i < partial_final_shape.dims(); ++i) {
+        bool dynamic_dim = partial_final_shape.dim_size(i) - 1;
+        bool backward_slice = end[i] < 0;
+        if (dynamic_dim && backward_slice) {
+          OP_REQUIRES(
+              ctx, strides[i] == 1,
+              errors::InvalidArgument("XLA has not implemented dynamic "
+                                      "sized slice with non-trival stride yet. "
+                                      "Please file a bug against XLA"));
+
+          OP_REQUIRES(ctx, begin[i] >= 0,
+                      errors::InvalidArgument(
+                          "XLA has not implemented dynamic "
+                          "sized slice with negative begin index %lld. "
+                          "Please file a bug against XLA",
+                          begin[i]));
+          // If there is a dynamic dimension, properly set dimension size of
+          // the result.
+          auto operand_size = xla::GetDimensionSize(ctx->Input(0), i);
+
+          operand_size = xla::Add(
+              operand_size, xla::ConstantR0<int32>(ctx->builder(), end[i]));
+          slice = xla::SetDimensionSize(
+              slice,
+              xla::Sub(operand_size,
+                       xla::ConstantR0<int32>(ctx->builder(), begin[i])),
+              i);
+        }
+      }
     } else {
       // When output shape is fully defined, it must be a size one slice:
       //
@@ -135,7 +202,7 @@ class StridedSliceOp : public XlaOpKernel {
           ctx, output_elements == input_elements_sliced,
           errors::InvalidArgument(
               "The number of output elements ", output_elements,
-              "  has to equal to number of input elements that are sliced ",
+              " has to equal to number of input elements that are sliced ",
               input_elements_sliced, " when input indices are not constant."));
 
       for (int64 i = 0; i < ctx->InputShape("begin").dims(); ++i) {

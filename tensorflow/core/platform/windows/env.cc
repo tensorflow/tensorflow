@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/ram_file_system.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -192,6 +193,7 @@ class WindowsEnv : public Env {
 
 REGISTER_FILE_SYSTEM("", WindowsFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
+REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
 Env* Env::Default() {
   static Env* default_env = new WindowsEnv;

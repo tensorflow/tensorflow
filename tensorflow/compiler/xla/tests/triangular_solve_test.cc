@@ -458,7 +458,7 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
   Array2D<float> avals(spec.m, spec.m);
   avals.FillRandom(1.0);
   for (int i = 0; i < spec.m; ++i) {
-    avals(i, i) += 10;
+    avals(i, i) += 30;
   }
 
   std::pair<int, int> bdims = spec.left_side ? std::make_pair(spec.m, spec.n)
@@ -481,13 +481,13 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
   }
 
   ComputeAndCompareR2<float>(&builder, bvals, {a_data.get(), b_data.get()},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(3e-2, 3e-2));
 }
 
 std::vector<TriangularSolveTestSpec> TriangularSolveTests() {
   std::vector<TriangularSolveTestSpec> specs;
-  for (int m : {5, 10}) {
-    for (int n : {5, 10}) {
+  for (int m : {5, 10, 150}) {
+    for (int n : {5, 10, 150}) {
       for (bool left_side : {false, true}) {
         for (bool lower : {false, true}) {
           for (TriangularSolveOptions::Transpose transpose_a :

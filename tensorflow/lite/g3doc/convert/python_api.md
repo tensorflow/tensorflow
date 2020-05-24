@@ -171,7 +171,7 @@ TensorFlow Lite metadata provides a standard for model descriptions. The
 metadata is an important source of knowledge about what the model does and its
 input / output information. This makes it easier for other developers to
 understand the best practices and for code generators to create platform
-specific wrapper code. For more infomation, please refer to the
+specific wrapper code. For more information, please refer to the
 [TensorFlow Lite Metadata](metadata.md) section.
 
 ## Installing TensorFlow <a name="versioning"></a>
@@ -192,7 +192,7 @@ either install the nightly build with
 [Docker](https://www.tensorflow.org/install/docker), or
 [build the pip package from source](https://www.tensorflow.org/install/source).
 
-### Custom ops in the experimenal new converter
+### Custom ops in the experimental new converter
 
 There is a behavior change in how models containing
 [custom ops](https://www.tensorflow.org/lite/guide/ops_custom) (those for which

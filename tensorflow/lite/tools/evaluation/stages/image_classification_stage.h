@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_preprocessing_stage.h"
@@ -36,7 +37,8 @@ class ImageClassificationStage : public EvaluationStage {
   explicit ImageClassificationStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  TfLiteStatus Init() override;
+  TfLiteStatus Init() override { return Init(nullptr); }
+  TfLiteStatus Init(const DelegateProviders* delegate_providers);
 
   TfLiteStatus Run() override;
 

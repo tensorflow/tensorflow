@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
+#include <string>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 
@@ -31,11 +31,20 @@ ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
 ABSL_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
 ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 
+enum class Category {
+  kTensorFlow,
+  kJax,
+  kTfData,
+  kMemcpyHToD,
+  kMemcpyDToH,
+  kUnknown,
+};
+
 // Breaks a TensorFlow op fullname into name and type.
 struct TfOp {
+  Category category;
   absl::string_view name;
   absl::string_view type;
-  bool is_tf_op;
 };
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
@@ -47,11 +56,6 @@ std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 // trace viewer.
 std::string TfOpEventName(const TfOp& tf_op);
 std::string TfOpEventName(absl::string_view tf_op_fullname);
-
-// Returns true if the given name is not a TensorFlow op.
-inline bool IsUnknownOp(absl::string_view tf_op_type) {
-  return tf_op_type == kUnknownOp;
-}
 
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {

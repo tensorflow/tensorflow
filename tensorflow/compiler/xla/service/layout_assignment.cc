@@ -432,10 +432,10 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
-bool IsLayoutConstrainedAllReduce(const HloInstruction* instruction) {
-  const HloAllReduceInstruction* all_reduce =
-      DynCast<HloAllReduceInstruction>(instruction);
-  return all_reduce != nullptr && all_reduce->constrain_layout();
+bool IsLayoutConstrainedCollective(const HloInstruction* instruction) {
+  const HloCollectiveInstruction* collective =
+      DynCast<HloCollectiveInstruction>(instruction);
+  return collective != nullptr && collective->constrain_layout();
 }
 
 }  // namespace
@@ -520,7 +520,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
-    } else if (IsLayoutConstrainedAllReduce(instruction)) {
+    } else if (IsLayoutConstrainedCollective(instruction)) {
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->IsCrossModuleAllReduce()) {
@@ -951,7 +951,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                 if (!Shape::Equal()
                          .IgnoreDynamicDimension()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
-                                                     buffer->shape())) {
+                                                     buffer->shape()) &&
+                    instruction->opcode() != HloOpcode::kBitcast) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -1798,17 +1799,10 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   // potential bugs in the layout assignment pass that may accidentally use the
   // existing layout.
   for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kBitcast) {
-      // bitcasts are inherently layout sensitive and so a bitcast instruction
-      // present in the IR before layout assignment is a bug.
-      return InternalError(
-          "Unexpected bitcast operation seen during layout assignment: %s.",
-          instruction->ToString());
-    }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
-        !IsLayoutConstrainedAllReduce(instruction)) {
+        !IsLayoutConstrainedCollective(instruction)) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -1970,7 +1964,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
 
 Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
-  for (auto buffer : alias_analysis->buffers()) {
+  for (const auto& buffer : alias_analysis->buffers()) {
     // First go through values to collect the memory spaces.
     int64 buffer_memory_space = Layout::kDefaultMemorySpace;
     for (auto value : buffer.values()) {
@@ -2179,6 +2173,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -2220,6 +2215,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kPopulationCount:
@@ -2238,6 +2234,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCall:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
@@ -2315,6 +2313,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     HloDCE dce;
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+    call_graph_ = CallGraph::Build(module);
   }
   return Status::OK();
 }

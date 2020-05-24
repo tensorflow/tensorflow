@@ -80,8 +80,8 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     expected = _ref_softmax(test_values[0])
     self.assertAllClose(result[0], expected, rtol=1e-05)
 
+    x = backend.placeholder(ndim=1)
     with self.assertRaises(ValueError):
-      x = backend.placeholder(ndim=1)
       activations.softmax(x)
 
   def test_temporal_softmax(self):

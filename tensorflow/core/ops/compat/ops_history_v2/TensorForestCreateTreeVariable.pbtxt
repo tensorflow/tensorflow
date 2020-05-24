@@ -1,0 +1,12 @@
+op {
+  name: "TensorForestCreateTreeVariable"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

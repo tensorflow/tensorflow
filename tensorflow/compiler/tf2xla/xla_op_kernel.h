@@ -99,6 +99,10 @@ class XlaOpKernelContext {
   // Returns input `name` as a XlaOp.
   xla::XlaOp Input(absl::string_view name);
 
+  // Returns the xla input shape for a given index.
+  xla::StatusOr<xla::Shape> InputXlaShape(int index);
+  xla::StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
+
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
@@ -212,6 +216,8 @@ class XlaOpKernelContext {
   bool dynamic_dimension_is_minus_one() const {
     return dynamic_dimension_is_minus_one_;
   }
+
+  bool is_dynamic_dimension(int64 dim_size) { return dim_size == -1; }
 
   // Reads the current value of the resource variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the

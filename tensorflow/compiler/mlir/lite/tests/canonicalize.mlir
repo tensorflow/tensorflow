@@ -11,9 +11,9 @@ func @reshape_removeAdjacent(tensor<4x4x4xf32>) -> tensor<64xf32> {
   return %1 : tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_removeAdjacent
-// CHECK:  %cst = constant dense<64> : tensor<1xi32>
-// CHECK:  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-// CHECK:  return
+// CHECK:  %[[CST:.*]] = constant dense<64> : tensor<1xi32>
+// CHECK:  %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
+// CHECK:  return %[[RESHAPE]]
 }
 
 // Checks that tfl.reshape should be removed if its output has more than one
@@ -29,11 +29,11 @@ func @reshape_removeAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> tensor<64xf32>
   return %3 : tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_removeAdjacentWithMultipleUse
-// CHECK:  %cst = constant dense<64> : tensor<1xi32>
-// CHECK:  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-// CHECK:  %1 = "tfl.reshape"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-// CHECK:  %2 = addf %0, %1
-// CHECK:  return %2
+// CHECK:  %[[CST:.*]] = constant dense<64> : tensor<1xi32>
+// CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
+// CHECK:  %[[RESHAPE_2:.*]]  = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
+// CHECK:  %[[RESULT:.*]] = addf %[[RESHAPE_1]], %[[RESHAPE_2]]
+// CHECK:  return %[[RESULT]]
 }
 
 // Checks that tfl.reshape should be kept if its output has more than one
@@ -47,11 +47,11 @@ func @reshape_keepAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> (tensor<16x4xf32
   return %0, %1 : tensor<16x4xf32>, tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_keepAdjacentWithMultipleUse
-// CHECK:  %cst = constant dense<[16, 4]> : tensor<2xi32>
-// CHECK:  %cst_0 = constant dense<64> : tensor<1xi32>
-// CHECK:  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
-// CHECK:  %1 = "tfl.reshape"(%arg0, %cst_0) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-// CHECK:  return %0, %1
+// CHECK:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
+// CHECK:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
+// CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
+// CHECK:  %[[RESHAPE_2:.*]] = "tfl.reshape"(%arg0, %[[CST_0]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
+// CHECK:  return  %[[RESHAPE_1]],  %[[RESHAPE_2]]
 }
 
 // Checks that tfl.reshape should be removed if its output type is the same
@@ -97,4 +97,17 @@ func @RemoveRedundantPack(%arg0: tensor<2x5xf32>) -> (tensor<2x5xf32>, tensor<5x
   // CHECK: %[[UNPACK:.*]]:2 = "tfl.unpack"
   // CHECK-NOT: pack
   // CHECK: return %arg0, %[[UNPACK]]#0 : tensor<2x5xf32>, tensor<5xf32>
+}
+
+// -----
+
+func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
+  %1 = "tfl.pseudo_const"() {value = dense<[1, 128, 32]> : tensor<3xi64>} : () -> tensor<3xi64>
+  %2 = "tfl.slice"(%arg0, %0, %1) : (tensor<4x128x32xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x128x32xf32>
+  return %2 : tensor<1x128x32xf32>
+
+// CHECK:  [[VAL_1:%.*]] = constant dense<0> : tensor<3xi32>
+// CHECK:  [[VAL_2:%.*]] = constant dense<[1, 128, 32]> : tensor<3xi32>
+// CHECK:  [[VAL_3:%.*]] = "tfl.slice"(%arg0, [[VAL_1]], [[VAL_2]]) : (tensor<4x128x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x128x32xf32>
 }

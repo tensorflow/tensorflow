@@ -1,0 +1,11 @@
+op {
+  name: "LogicalNot"
+  input_arg {
+    name: "x"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "y"
+    type: DT_BOOL
+  }
+}

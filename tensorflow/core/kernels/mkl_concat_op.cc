@@ -576,6 +576,12 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
+#ifdef ENABLE_MKLDNN_V1
+      // Temporally call Eigen if number of input dimensions is 2.
+      // That is due to an incorrect output results in DNNL 1.2 path.
+      if (expected_dims == 2) invoke_eigen = true;
+#endif  // ENABLE_MKLDNN_V1
+
       OpInputList input_mins, input_maxes;
       bool quantized_input =
           std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;

@@ -65,7 +65,8 @@ class QuantizedLSTMOpModel : public MultiOpModel {
     input_ = AddInput(input_tensor_data);
 
     prev_output_ =
-        AddInput({TensorType_UINT8, output_shape, 0.0f, 0.0f, 1. / 128., 128});
+        AddInput({TensorType_UINT8, output_shape, 0.0f, 0.0f, 1. / 128., 128},
+                 /*is_variable=*/true);
     // Biases and Weights have to be constant in order to allow NNAPI
     // delegation
     weights_ = AddConstInput<uint8_t>({TensorType_UINT8, weight_shape, 0.0f,
@@ -75,7 +76,8 @@ class QuantizedLSTMOpModel : public MultiOpModel {
         {TensorType_INT32, bias_shape, 0.0f, 0.0f, weightsScale / 128, 0},
         biases);
     prev_cell_state_ =
-        AddInput({TensorType_INT16, state_shape, 0.0f, 0.0f, 1. / 2048., 0});
+        AddInput({TensorType_INT16, state_shape, 0.0f, 0.0f, 1. / 2048., 0},
+                 /*is_variable=*/true);
 
     sum_out_ = AddOutput(input_tensor_data);
 

@@ -33,11 +33,12 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 # List of file paths containing BUILD files that should not be included for the
 # pip smoke test.
 BUILD_BLACKLIST = [
-    "tensorflow/lite/delegates/gpu",
-    "tensorflow/lite/delegates/gpu/metal",
-    "tensorflow/lite/delegates/gpu/metal/kernels",
-    "tensorflow/lite/experimental/objc",
-    "tensorflow/lite/experimental/swift",
+    "tensorflow/lite",
+    "tensorflow/compiler/mlir/lite",
+    "tensorflow/python/kernel_tests/signal",
+    "tensorflow/examples",
+    "tensorflow/tools/android",
+    "tensorflow/python/eager/benchmarks",
 ]
 
 def GetBuild(dir_base):
@@ -45,7 +46,7 @@ def GetBuild(dir_base):
   items = []
   for root, _, files in os.walk(dir_base):
     for name in files:
-      if (name == "BUILD" and root not in BUILD_BLACKLIST):
+      if (name == "BUILD" and not any(x in root for x in BUILD_BLACKLIST)):
         items.append("//" + root + ":all")
   return items
 

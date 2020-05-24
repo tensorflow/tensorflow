@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -806,6 +807,66 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     some_test(None)
     self.assertEqual(tested_codepaths, set(["present", "future"]))
+
+
+class SkipTestTest(test_util.TensorFlowTestCase):
+
+  def _verify_test_in_set_up_or_tear_down(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError,
+                                   ["foo bar", "test message"]):
+        raise ValueError("test message")
+    try:
+      with self.assertRaisesRegexp(ValueError, "foo bar"):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError("foo bar")
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
+
+  def setUp(self):
+    super(SkipTestTest, self).setUp()
+    self._verify_test_in_set_up_or_tear_down()
+
+  def tearDown(self):
+    super(SkipTestTest, self).tearDown()
+    self._verify_test_in_set_up_or_tear_down()
+
+  def test_skip_if_error_should_skip(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError, "test message"):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_with_list(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError,
+                                   ["foo bar", "test message"]):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_without_expected_message(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_without_error_message(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError):
+        raise ValueError()
+
+  def test_skip_if_error_should_raise_message_mismatch(self):
+    try:
+      with self.assertRaisesRegexp(ValueError, "foo bar"):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError("foo bar")
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
+
+  def test_skip_if_error_should_raise_no_message(self):
+    try:
+      with self.assertRaisesRegexp(ValueError, ""):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError()
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
 
 
 # Its own test case to reproduce variable sharing issues which only pop up when

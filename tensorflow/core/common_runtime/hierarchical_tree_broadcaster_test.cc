@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -442,13 +441,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       Device* dev = instances_[broadcast_dev_id]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
       CHECK(dev_info);
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          t, "" /*tensor_name*/, dev, &cpu_copy,
-          [this, &notification](Status s) {
-            TF_CHECK_OK(s);
-            notification.Notify();
-          });
-      notification.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          t, "" /*tensor_name*/, dev, &cpu_copy));
       t = &cpu_copy;
     }
     for (size_t i = 0; i < t->NumElements(); ++i) {
@@ -473,17 +467,11 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       if (device_type_ == DEVICE_CPU) {
         CHECK(actual.CopyFrom(*inst, inst->shape()));
       } else if (device_type_ == DEVICE_GPU) {
-        Notification notification;
         Device* dev = instances_[di]->device_;
         auto* dev_info = dev->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        dev_info->default_context->CopyDeviceTensorToCPU(
-            inst, "" /*tensor_name*/, dev, &actual,
-            [this, &notification](Status s) {
-              TF_CHECK_OK(s);
-              notification.Notify();
-            });
-        notification.WaitForNotification();
+        TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+            inst, "" /*tensor_name*/, dev, &actual));
       }
       for (int i = 0; i < tensor_len; ++i) {
         switch (dtype) {
@@ -623,12 +611,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
         Notification notification;
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [&notification](Status s) {
-              TF_CHECK_OK(s);
-              notification.Notify();
-            });
-        notification.WaitForNotification();
+        TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+            &cpu_tensor, device_, &tensor_));
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }

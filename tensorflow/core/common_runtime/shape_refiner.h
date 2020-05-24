@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -236,7 +237,8 @@ class ShapeRefiner {
   GraphRunner graph_runner_;
 
   // Stores a map from a node to its ExtendedInferenceContext.
-  std::unordered_map<const Node*, std::unique_ptr<ExtendedInferenceContext>>
+  absl::flat_hash_map<const Node*, std::unique_ptr<ExtendedInferenceContext>,
+                      hash<const Node*>>
       node_to_context_;
 
   // Holds a cache from 'tensor name' to the tensor that is
@@ -257,9 +259,10 @@ class ShapeRefiner {
   // shape inference.
   const tensorflow::FunctionLibraryDefinition* function_library_ = nullptr;
 
-  // Cache the graph corresponding to each functin definition for which shapes
+  // Cache the graph corresponding to each function definition for which shapes
   // are refined.
-  std::unordered_map<const FunctionDef*, std::unique_ptr<const Graph>>
+  absl::flat_hash_map<const FunctionDef*, std::unique_ptr<const Graph>,
+                      hash<const FunctionDef*>>
       functions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);

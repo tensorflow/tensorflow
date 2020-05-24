@@ -49,6 +49,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -330,7 +331,7 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-class BaseResourceVariable(variables.VariableV1):
+class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
@@ -441,9 +442,14 @@ class BaseResourceVariable(variables.VariableV1):
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
+      # If we cannot read the value for any reason, still produce a __repr__.
+      try:
+        value_text = ops.numpy_text(self.read_value(), is_repr=True)
+      except:  # pylint: disable=bare-except
+        value_text = "<unavailable>"
+
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
-          self.name, self.get_shape(), self.dtype.name,
-          ops.numpy_text(self.read_value(), is_repr=True))
+          self.name, self.get_shape(), self.dtype.name, value_text)
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
@@ -1350,7 +1356,7 @@ class ResourceVariable(BaseResourceVariable):
         which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
-         to a shape before being used here.)
+        to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
@@ -1825,7 +1831,6 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(BaseResourceVariable,
                                         _dense_var_to_tensor)
-ops.register_dense_tensor_like_type(BaseResourceVariable)
 
 
 class _UnreadVariable(BaseResourceVariable):
@@ -1948,9 +1953,6 @@ class _UnreadVariable(BaseResourceVariable):
   def op(self):
     """The op for this variable."""
     return self._parent_op
-
-
-ops.register_dense_tensor_like_type(_UnreadVariable)
 
 
 @ops.RegisterGradient("ReadVariableOp")

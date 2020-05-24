@@ -400,8 +400,8 @@ func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<
   // FOLD: return %[[fc]]
 }
 
-// CHECK-LABEL: @NotReorderReshapeAddIfNotBroadcastable
-func @NotReorderReshapeAddIfNotBroadcastable(%arg0: tensor<40x10x4xf32>) -> tensor<40x40xf32> {
+// CHECK-LABEL: @NotReorderReshapeAddIfNotBroadcastableAfter
+func @NotReorderReshapeAddIfNotBroadcastableAfter(%arg0: tensor<40x10x4xf32>) -> tensor<40x40xf32> {
   %cst = constant dense<2.0> : tensor<40xf32>
   %shape = constant dense<[40, 40]> : tensor<2xi32>
   %1 = "tfl.reshape"(%arg0, %shape) : (tensor<40x10x4xf32>, tensor<2xi32>) -> tensor<40x40xf32>
@@ -410,6 +410,19 @@ func @NotReorderReshapeAddIfNotBroadcastable(%arg0: tensor<40x10x4xf32>) -> tens
 
   // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
   // CHECK: %[[rs2:.*]] = "tfl.add"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @NotReorderReshapeAddIfNotTailingDimAfter
+func @NotReorderReshapeAddIfNotTailingDimAfter(%arg0: tensor<1x30x1x96xf32>) -> tensor<1x30x96xf32> {
+  %cst = constant dense<2.0> : tensor<1x30x96xf32>
+  %shape = constant dense<[1, 30, 96]> : tensor<3xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x30x1x96xf32>, tensor<3xi32>) -> tensor<1x30x96xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x30x96xf32>, tensor<1x30x96xf32>) -> tensor<1x30x96xf32>
+  return %2 : tensor<1x30x96xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
   // CHECK: return %[[rs2]]
 }
 
@@ -426,6 +439,44 @@ func @NotReorderReshapeAddIfNotTailingDim(%arg0: tensor<40x40x1xf32>) -> tensor<
   // CHECK: return %[[rs2]]
 }
 
+// CHECK-LABEL: @NotReorderReshapeAddIfHighDim
+func @NotReorderReshapeAddIfHighDim(%arg0: tensor<1x1x1x1x30x96xf32>) -> tensor<1x30x96xf32> {
+  %cst = constant dense<2.0> : tensor<f32>
+  %shape = constant dense<[1, 30, 96]> : tensor<3xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x30x96xf32>, tensor<3xi32>) -> tensor<1x30x96xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x30x96xf32>, tensor<f32>) -> tensor<1x30x96xf32>
+  return %2 : tensor<1x30x96xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.add"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @ReorderElementwiseValueOpAndMoveOp
+func @ReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> tensor<40x40xf32> {
+  %shape = constant dense<[40, 40]> : tensor<2xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<40x40x1xf32>, tensor<2xi32>) -> tensor<40x40xf32>
+  %2 = "tfl.relu"(%1) : (tensor<40x40xf32>) -> tensor<40x40xf32>
+  return %2 : tensor<40x40xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.relu"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.reshape"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @NotReorderElementwiseValueOpAndMoveOp
+func @NotReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> (tensor<40x40xf32>, tensor<40x40xf32>) {
+  %shape = constant dense<[40, 40]> : tensor<2xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<40x40x1xf32>, tensor<2xi32>) -> tensor<40x40xf32>
+  %2 = "tfl.relu"(%1) : (tensor<40x40xf32>) -> tensor<40x40xf32>
+  return %1, %2 : tensor<40x40xf32>, tensor<40x40xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.relu"(%[[rs1]]
+  // CHECK: return %[[rs1]], %[[rs2]]
+}
+
+
 // CHECK-LABEL: @FuseFullyConnectedRelu
 func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
   %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
@@ -434,6 +485,28 @@ func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32
 
   // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
   // CHECK-SAME: fused_activation_function = "RELU"
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @FuseFullyConnectedRelu6
+func @FuseFullyConnectedRelu6(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "tfl.relu6"(%0) : (tensor<1x128xf32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+  // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
+  // CHECK-SAME: fused_activation_function = "RELU6"
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @FuseFullyConnectedRelu1
+func @FuseFullyConnectedRelu1(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "tfl.relu_n1_to_1"(%0) : (tensor<1x128xf32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+  // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
+  // CHECK-SAME: fused_activation_function = "RELU_N1_TO_1"
   // CHECK: return %[[RES]]
 }
 
@@ -683,6 +756,18 @@ func @InvalidFuseTileWithBinaryOp(%arg0: tensor<2x3xf32>) -> tensor<2x6xf32> {
   // CHECK: %[[TILE:[0-9].*]] = "tfl.tile"
 }
 
+// CHECK-LABEL: InvalidFuseTileAlreadyBroadcastAlongTileDim
+func @InvalidFuseTileAlreadyBroadcastAlongTileDim(%arg0: tensor<1x1x1x1xf32>) -> tensor<1x6x8x1xf32> {
+  %cst_1 = constant dense<[1, 6, 8, 1]> : tensor<4xi32>
+  %cst_2 = constant dense<[1, 1, 1, 46]> : tensor<4xi32>
+  %cst_20 = constant dense<4.600000e+01> : tensor<f32>
+  %0 = "tfl.tile"(%arg0, %cst_1) : (tensor<1x1x1x1xf32>, tensor<4xi32>) -> tensor<1x6x8x1xf32>
+  %1 = "tfl.mul"(%0, %cst_20) {fused_activation_function = "NONE"} : (tensor<1x6x8x1xf32>, tensor<f32>) -> tensor<1x6x8x1xf32>
+  return %1 : tensor<1x6x8x1xf32>
+
+  // CHECK: %[[TILE:[0-9].*]] = "tfl.tile"
+}
+
 // CHECK-LABEL: FuseHardswish
 func @FuseHardswish(%arg0: tensor<1x112x112x16xf32>) -> tensor<1x56x56x16xf32> {
   %cst_0 = constant dense<3.0> : tensor<f32>
@@ -886,3 +971,16 @@ func @FusingdivRelu(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32>
 // Fusing:  %[[div2:[0-9].*]] = tfl.div %[[relu]], %[[div1]] {fused_activation_function = "RELU6"} : tensor<1xf32>
 // Fusing:  return
 }
+
+func @ReorderAddWithConstant(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %cst_1 = constant dense<2.0> : tensor<2x2xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %1 = "tfl.add"(%0, %cst_1) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+
+  // CHECK-LABEL: ReorderAddWithConstant
+  // CHECK: %[[CONST:.*]] = constant dense<3.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[RESULT:.*]] = tfl.add %arg0, %[[CONST]] {fused_activation_function = "NONE"} : tensor<2x2xf32>
+}
+

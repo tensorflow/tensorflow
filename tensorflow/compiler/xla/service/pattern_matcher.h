@@ -1187,15 +1187,19 @@ class HloInstructionIsImpl {
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst != inst_) {
-      EXPLAIN << "HloInstruction " << inst << " is not " << inst_ << " ("
-              << InstToString(inst_) << ")";
+      EXPLAIN << "HloInstruction " << std::hex << std::nouppercase
+              << std::showbase << reinterpret_cast<uint64>(inst) << " is not "
+              << reinterpret_cast<uint64>(inst_) << " (" << InstToString(inst_)
+              << ")";
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
-    *os << "which is " << inst_ << " (" << InstToString(inst_) << ")";
+    *os << "which is " << std::hex << std::nouppercase << std::showbase
+        << reinterpret_cast<uint64>(inst_) << " (" << InstToString(inst_)
+        << ")";
   }
 
  private:

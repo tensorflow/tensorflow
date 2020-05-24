@@ -543,7 +543,8 @@ public class TensorFlowInferenceInterface {
       } catch (UnsatisfiedLinkError e2) {
         throw new RuntimeException(
             "Native TF methods not found; check that the correct native"
-                + " libraries are present in the APK.");
+                + " libraries are present in the APK: "
+                + e2);
       }
     }
   }

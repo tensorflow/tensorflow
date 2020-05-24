@@ -45,6 +45,9 @@ ASYNC_STATEFUL_OPS = [
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
     "NcclAllReduce",
+    # We do not add "Send" here since we want it to be added as a control output
+    # in order to avoid being pruned.
+    "Recv",
 ]
 
 LEGACY_RANDOM_OPS = [
@@ -96,7 +99,8 @@ LEGACY_RANDOM_OPS = [
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
     "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
     "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-    "EnqueueTPUEmbeddingSparseTensorBatch"
+    "EnqueueTPUEmbeddingSparseTensorBatch",
+    "EnqueueTPUEmbeddingRaggedTensorBatch"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 

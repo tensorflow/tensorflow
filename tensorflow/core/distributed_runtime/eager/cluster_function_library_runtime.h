@@ -55,7 +55,7 @@ class EagerClusterFunctionLibraryRuntime
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           std::vector<eager::RemoteTensorHandle>* args,
+           gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,

@@ -110,54 +110,6 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
       << module->ToString();
 }
 
-TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
-  HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}), "0"));
-  auto reshape1 = builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(reshape1, computation->root_instruction());
-  EXPECT_FALSE(
-      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
-          .Run(module.get())
-          .ValueOrDie());
-}
-
-TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
-  HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}), "0"));
-  auto reshape1 = builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(reshape1, computation->root_instruction());
-  EXPECT_FALSE(
-      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
-          .Run(module.get())
-          .ValueOrDie());
-}
-
-TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
-  HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}), "0"));
-  auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(S32, {}), param0, {}));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(transpose1, computation->root_instruction());
-  EXPECT_FALSE(
-      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
-          .Run(module.get())
-          .ValueOrDie());
-}
-
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloComputation::Builder builder(TestName());
   auto shape = ShapeUtil::MakeShape(F32, {16, 16});

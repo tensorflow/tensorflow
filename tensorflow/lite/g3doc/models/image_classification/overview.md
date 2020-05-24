@@ -329,4 +329,4 @@ images for each of the new labels you wish to train.
 Learn how to perform transfer learning in the
 <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">Recognize
 flowers with TensorFlow</a> codelab, or with the
-[model maker toolkit](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb).
+[model maker toolkit](/lite/tutorials/model_maker_image_classification).

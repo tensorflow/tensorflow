@@ -23,10 +23,10 @@ cc_library(
         "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",
@@ -63,10 +63,10 @@ cc_library(
         ":delegate_only_runtime",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:tensorflow",
@@ -100,10 +100,10 @@ cc_library(
         "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -134,13 +134,14 @@ cc_library(
         "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
         ],
@@ -179,10 +180,10 @@ cc_library(
         # set of core TensorFlow kernels. We may want to revisit this dependency
         # to allow selective registration via build targets.
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
@@ -207,10 +208,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:tensorflow",
@@ -241,10 +242,10 @@ cc_library(
         "//tensorflow/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",

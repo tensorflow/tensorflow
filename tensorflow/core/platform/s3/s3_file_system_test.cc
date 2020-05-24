@@ -232,7 +232,7 @@ TEST_F(S3FileSystemTest, HasAtomicMove) {
   const string fname = TmpDir("HasAtomicMove");
   TF_ASSERT_OK(WriteString(fname, "test"));
   bool has_atomic_move = true;
-  TF_EXPECT_OK(s3fs.NeedsTempLocation(fname, &has_atomic_move).code());
+  TF_EXPECT_OK(s3fs.HasAtomicMove(fname, &has_atomic_move));
   EXPECT_EQ(has_atomic_move, false);
 }
 

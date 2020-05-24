@@ -109,7 +109,7 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
 
 // output data and golden must be shaped correctly
 void TestPadFloat(const int* input_dims_data, const float* input_data,
-                  const int* pad_dims_data, const int* pad_data,
+                  const int* pad_dims_data, const int32_t* pad_data,
                   const int* output_dims_data, const float* golden,
                   float* output_data,
                   TfLiteStatus expected_status = kTfLiteOk) {
@@ -135,7 +135,7 @@ void TestPadFloat(const int* input_dims_data, const float* input_data,
 
 // output data and golden must be shaped correctly
 void TestPadV2Float(const int* input_dims_data, const float* input_data,
-                    const int* pad_dims_data, const int* pad_data,
+                    const int* pad_dims_data, const int32_t* pad_data,
                     const float pad_value, const int* output_dims_data,
                     const float* golden, float* output_data,
                     TfLiteStatus expected_status = kTfLiteOk) {
@@ -166,7 +166,7 @@ template <typename T>
 void TestPadQuantized(const int* input_dims_data, const float* input_data,
                       T* input_quantized, float input_scale,
                       int input_zero_point, const int* pad_dims_data,
-                      const int* pad_data, const int* output_dims_data,
+                      const int32_t* pad_data, const int* output_dims_data,
                       const float* golden, T* golden_quantized,
                       float output_scale, int output_zero_point, T* output_data,
                       TfLiteStatus expected_status = kTfLiteOk) {
@@ -199,7 +199,7 @@ template <typename T>
 void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
                         T* input_quantized, float input_scale,
                         int input_zero_point, const int* pad_dims_data,
-                        const int* pad_data, const float pad_value,
+                        const int32_t* pad_data, const float pad_value,
                         const float pad_value_scale,
                         const int pad_value_zero_point,
                         const int* output_dims_data, const float* golden,
@@ -249,7 +249,7 @@ TF_LITE_MICRO_TEST(Test2DFloat) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -263,7 +263,7 @@ TF_LITE_MICRO_TEST(Test4DFloat) {
   const int input_dims[] = {4, 1, 1, 1, 1};
   const float input_values[] = {42};
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 1, 1, 1, 1, 1, 1};
+  const int32_t pad_values[] = {1, 1, 1, 1, 1, 1, 1, 1};
   const int output_dims[] = {4, 3, 3, 3, 3};
   const int kOutputLen = 81;  // 3 * 3 * 3 * 3
   float golden[kOutputLen];
@@ -282,7 +282,7 @@ TF_LITE_MICRO_TEST(Test2DFloatV2) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
@@ -300,7 +300,7 @@ TF_LITE_MICRO_TEST(Test2DUInt8) {
   const float input_scale = 1.0f;
   const int input_zero_point = 127;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -322,7 +322,7 @@ TF_LITE_MICRO_TEST(Test2DUInt8V2) {
   const float input_scale = 1.0f;
   const int input_zero_point = 127;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   const float pad_value_scale = 1.0;
   const float pad_value_zero_point = 127;
@@ -348,7 +348,7 @@ TF_LITE_MICRO_TEST(Test2DInt8) {
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -370,7 +370,7 @@ TF_LITE_MICRO_TEST(Test2DInt8V2) {
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   const float pad_value_scale = 1.0;
   const float pad_value_zero_point = 0;
@@ -396,7 +396,7 @@ TF_LITE_MICRO_TEST(Test2DInt8V2ExpectFailurePadValueQuantizationMismatch) {
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   // Causes failure since this is in a different quantization space than input.
   const float pad_value_scale = .5;
@@ -424,7 +424,7 @@ TF_LITE_MICRO_TEST(Test2DInt8ExpectFailureQuantizationRangeExcludesZero) {
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
   const int pad_dims[] = {2, 4, 2};
-  const int pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
+  const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
                           42, 3,  4,  42, 42, 42, 42, 42, 42, 42, 42, 42};

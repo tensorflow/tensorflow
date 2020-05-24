@@ -394,6 +394,156 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedSigned2D) {
       output_data);
 }
 
+TF_LITE_MICRO_TEST(SimpleTestQuantizedSigned3D) {
+  using tflite::testing::F2QS;
+
+  const float input_min = -63.5f;
+  const float input_max = 64.0f;
+  const float output_min = 0.0f;
+  const float output_max = (255.0f / 256.0f);
+  const int output_dims_count = 60;
+  int8_t output_data[output_dims_count];
+  tflite::testing::TestSoftmaxQuantizedSigned(  //
+      {3, 3, 4, 5},                             // Input shape.
+      {                                         // n = 0
+       // c = 0
+       // h = 0
+       F2QS(3.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(-5.00, input_min, input_max), F2QS(4.00, input_min, input_max),
+       F2QS(-9.00, input_min, input_max),
+       // h = 1
+       F2QS(-10.00, input_min, input_max), F2QS(-10.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(2.00, input_min, input_max),
+       // h = 2
+       F2QS(8.00, input_min, input_max), F2QS(-5.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max), F2QS(5.00, input_min, input_max),
+       F2QS(-6.00, input_min, input_max),
+       // h = 3
+       F2QS(-8.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(1.00, input_min, input_max), F2QS(-10.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max),
+
+       // c = 1
+       // h = 0
+       F2QS(7.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(-10.00, input_min, input_max), F2QS(-4.00, input_min, input_max),
+       F2QS(-5.00, input_min, input_max),
+       // h = 1
+       F2QS(2.00, input_min, input_max), F2QS(7.00, input_min, input_max),
+       F2QS(9.00, input_min, input_max), F2QS(-9.00, input_min, input_max),
+       F2QS(7.00, input_min, input_max),
+       // h = 2
+       F2QS(-4.00, input_min, input_max), F2QS(-2.00, input_min, input_max),
+       F2QS(8.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(2.00, input_min, input_max),
+       // h = 3
+       F2QS(3.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(6.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max),
+
+       // c = 2
+       // h = 0
+       F2QS(9.00, input_min, input_max), F2QS(7.00, input_min, input_max),
+       F2QS(-7.00, input_min, input_max), F2QS(0.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max),
+       // h = 1
+       F2QS(-3.00, input_min, input_max), F2QS(8.00, input_min, input_max),
+       F2QS(8.00, input_min, input_max), F2QS(-3.00, input_min, input_max),
+       F2QS(-4.00, input_min, input_max),
+       // h = 2
+       F2QS(-9.00, input_min, input_max), F2QS(-9.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max), F2QS(-8.00, input_min, input_max),
+       F2QS(-1.00, input_min, input_max),
+       // h = 3
+       F2QS(-10.00, input_min, input_max), F2QS(-2.00, input_min, input_max),
+       F2QS(6.00, input_min, input_max), F2QS(-7.00, input_min, input_max),
+       F2QS(0.00, input_min, input_max)},
+      input_min, input_max,  // Input quantized range.
+      {                      // Expected results.
+       // n = 0
+       // c = 0
+       // h = 0
+       F2QS(0.042009463, output_min, output_max),
+       F2QS(0.843782625, output_min, output_max),
+       F2QS(0.000014093, output_min, output_max),
+       F2QS(0.114193561, output_min, output_max),
+       F2QS(0.000000258, output_min, output_max),
+       // h = 1
+       F2QS(0.000003072, output_min, output_max),
+       F2QS(0.000003072, output_min, output_max),
+       F2QS(0.000022699, output_min, output_max),
+       F2QS(0.499985578, output_min, output_max),
+       F2QS(0.499985578, output_min, output_max),
+       // h = 2
+       F2QS(0.952571219, output_min, output_max),
+       F2QS(0.000002153, output_min, output_max),
+       F2QS(0.000000107, output_min, output_max),
+       F2QS(0.047425728, output_min, output_max),
+       F2QS(0.000000792, output_min, output_max),
+       // h = 3
+       F2QS(0.000000826, output_min, output_max),
+       F2QS(0.993305397, output_min, output_max),
+       F2QS(0.006692839, output_min, output_max),
+       F2QS(0.000000112, output_min, output_max),
+       F2QS(0.000000826, output_min, output_max),
+
+       // c = 1
+       // h = 0
+       F2QS(0.731046347, output_min, output_max),
+       F2QS(0.268936922, output_min, output_max),
+       F2QS(0.000000030, output_min, output_max),
+       F2QS(0.000012210, output_min, output_max),
+       F2QS(0.000004492, output_min, output_max),
+       // h = 1
+       F2QS(0.000717124, output_min, output_max),
+       F2QS(0.106430599, output_min, output_max),
+       F2QS(0.786421666, output_min, output_max),
+       F2QS(0.000000012, output_min, output_max),
+       F2QS(0.106430599, output_min, output_max),
+       // h = 2
+       F2QS(0.000006114, output_min, output_max),
+       F2QS(0.000045174, output_min, output_max),
+       F2QS(0.995015917, output_min, output_max),
+       F2QS(0.002466398, output_min, output_max),
+       F2QS(0.002466398, output_min, output_max),
+       // h = 3
+       F2QS(0.022595176, output_min, output_max),
+       F2QS(0.453836234, output_min, output_max),
+       F2QS(0.453836234, output_min, output_max),
+       F2QS(0.008312301, output_min, output_max),
+       F2QS(0.061420055, output_min, output_max),
+
+       // c = 2
+       // h = 0
+       F2QS(0.875505904, output_min, output_max),
+       F2QS(0.118486839, output_min, output_max),
+       F2QS(0.000000099, output_min, output_max),
+       F2QS(0.000108046, output_min, output_max),
+       F2QS(0.005899112, output_min, output_max),
+       // h = 1
+       F2QS(0.000008351, output_min, output_max),
+       F2QS(0.499990113, output_min, output_max),
+       F2QS(0.499990113, output_min, output_max),
+       F2QS(0.000008351, output_min, output_max),
+       F2QS(0.000003072, output_min, output_max),
+       // h = 2
+       F2QS(0.000002245, output_min, output_max),
+       F2QS(0.000002245, output_min, output_max),
+       F2QS(0.993296627, output_min, output_max),
+       F2QS(0.000006103, output_min, output_max),
+       F2QS(0.006692780, output_min, output_max),
+       // h = 3
+       F2QS(0.000000112, output_min, output_max),
+       F2QS(0.000334520, output_min, output_max),
+       F2QS(0.997191323, output_min, output_max),
+       F2QS(0.000002254, output_min, output_max),
+       F2QS(0.002471790, output_min, output_max)},
+      {3, 3, 4, 5},            // Output shape.
+      output_min, output_max,  // Output quantized range.
+      output_data);
+}
+
 TF_LITE_MICRO_TEST(SimpleTestQuantizedSigned4D) {
   using tflite::testing::F2QS;
 

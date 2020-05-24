@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -30,14 +31,16 @@ namespace mlir {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple);
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool return_tuple,
+                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                               shape_representation_fn = nullptr);
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.
-llvm::Optional<xla::XlaOp> CreateXlaOperator(
+llvm::Optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
-    llvm::DenseMap<mlir::Value, xla::XlaOp>* value_lowering);
+    llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 
 }  // namespace mlir
 

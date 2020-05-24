@@ -26,8 +26,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 template <typename InputType>
@@ -36,7 +36,7 @@ class TopKV2OpModel : public SingleOpModel {
   TopKV2OpModel(int top_k, std::initializer_list<int> input_shape,
                 std::initializer_list<InputType> input_data,
                 TestType input_tensor_types) {
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       input_ = AddInput(GetTensorType<InputType>());
       top_k_ = AddInput(TensorType_INT32);
     } else {
@@ -49,7 +49,7 @@ class TopKV2OpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_TOPK_V2, BuiltinOptions_TopKV2Options, 0);
     BuildInterpreter({input_shape, {1}});
 
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<InputType>(input_, input_data);
       PopulateTensor<int32_t>(top_k_, {top_k});
     }
@@ -119,7 +119,8 @@ TEST_P(TopKV2OpTest, TypeInt32) {
 }
 
 INSTANTIATE_TEST_SUITE_P(TopKV2OpTest, TopKV2OpTest,
-                         ::testing::Values(TestType::CONST, TestType::DYNAMIC));
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
 
 // Check that uint8_t works.
 TEST_P(TopKV2OpTest, TypeUint8) {

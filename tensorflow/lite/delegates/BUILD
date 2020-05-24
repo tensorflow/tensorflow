@@ -26,6 +26,8 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
     ],
 )
@@ -39,5 +41,26 @@ cc_test(
         ":utils",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "delegate_test",
+    size = "small",
+    srcs = ["delegate_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )

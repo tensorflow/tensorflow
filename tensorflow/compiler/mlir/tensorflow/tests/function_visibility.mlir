@@ -5,13 +5,13 @@
 module attributes {tf_saved_model.semantics} {
   // SAVEDMODEL: func @func_exported_1() attributes {tf_saved_model.exported_names = ["func_exported_1"]}
   func @func_exported_1() attributes {tf_saved_model.exported_names = ["func_exported_1"]} {
-    "some_dialect.call"() {callee = {callee = {callee = @child}}} : () -> ()
+    "tf.some_call"() {callee = {callee = {callee = @child}}} : () -> ()
     return
   }
 
   // SAVEDMODEL: func @func_exported_2() attributes {tf_saved_model.exported_names = ["func_exported_2"]}
   func @func_exported_2() attributes {tf_saved_model.exported_names = ["func_exported_2"]} {
-    "some_dialect.call"() {callee = {callee = {callee = @child}}} : () -> ()
+    "tf.some_call"() {callee = {callee = {callee = @child}}} : () -> ()
     return
   }
 

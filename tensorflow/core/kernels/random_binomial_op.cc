@@ -326,7 +326,7 @@ namespace {
 template <typename Device, typename T, typename U>
 class RandomBinomialOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static const int32 kDesiredBatchSize = 100;
+  static constexpr int32 kDesiredBatchSize = 100;
 
  public:
   explicit RandomBinomialOp(OpKernelConstruction* context)
@@ -439,7 +439,7 @@ class RandomBinomialOp : public OpKernel {
 template <typename Device, typename T, typename U>
 class StatelessRandomBinomialOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static const int32 kDesiredBatchSize = 100;
+  static constexpr int32 kDesiredBatchSize = 100;
 
  public:
   explicit StatelessRandomBinomialOp(OpKernelConstruction* context)

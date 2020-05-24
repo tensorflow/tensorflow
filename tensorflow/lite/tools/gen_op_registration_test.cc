@@ -36,7 +36,7 @@ class GenOpRegistrationTest : public ::testing::Test {
   std::map<string, std::pair<int, int>> custom_ops_;
 };
 
-TEST_F(GenOpRegistrationTest, TestNonExistantFiles) {
+TEST_F(GenOpRegistrationTest, TestNonExistentFiles) {
   ReadOps("/tmp/tflite_model_1234");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);

@@ -67,14 +67,15 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     data->output_offset = output->params.zero_point;
     data->left_shift = 20;
     const double twice_max_input_scale =
-        2 * std::max(input1->params.scale, input2->params.scale);
+        2 * static_cast<double>(
+                std::max(input1->params.scale, input2->params.scale));
     const double real_input1_multiplier =
-        input1->params.scale / twice_max_input_scale;
+        static_cast<double>(input1->params.scale) / twice_max_input_scale;
     const double real_input2_multiplier =
-        input2->params.scale / twice_max_input_scale;
+        static_cast<double>(input2->params.scale) / twice_max_input_scale;
     const double real_output_multiplier =
         twice_max_input_scale /
-        ((1 << data->left_shift) * output->params.scale);
+        ((1 << data->left_shift) * static_cast<double>(output->params.scale));
 
     QuantizeMultiplierSmallerThanOneExp(
         real_input1_multiplier, &data->input1_multiplier, &data->input1_shift);
@@ -186,8 +187,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, EvalAddQuantized(context, node, params, &data,
                                                 input1, input2, output));
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Inputs and outputs not all float|uint8|int8 types.");
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                       TfLiteTypeGetName(output->type), output->type);
     return kTfLiteError;
   }
 

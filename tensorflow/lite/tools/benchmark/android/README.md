@@ -36,8 +36,9 @@ bazel build -c opt \
 ```
 adb install -r -d -g bazel-bin/tensorflow/lite/tools/benchmark/android/benchmark_model.apk
 ```
+
 Note: Make sure to install with "-g" option to grant the permission for reading
-extenal storage.
+external storage.
 
 (3) Push the compute graph that you need to test.
 
@@ -113,12 +114,12 @@ the system dismisses the notification and displays a third notification "Trace
 saved", confirming that your trace has been saved and that you're ready to share
 the system trace.
 
-(9) [Share](https://developer.android.com/topic/performance/tracing/on-device#share-trace)
+(9)
+[Share](https://developer.android.com/topic/performance/tracing/on-device#share-trace)
 a trace file,
 [convert](https://developer.android.com/topic/performance/tracing/on-device#converting_between_trace_formats)
 between tracing formats and
 [create](https://developer.android.com/topic/performance/tracing/on-device#create-html-report)
-an HTML report.
-Note that, the catured tracing file format is either in Perfetto format or in
-Systrace format depending on the Android version of your device. Select the
-appropriate method to handle the generated file.
+an HTML report. Note that, the captured tracing file format is either in
+Perfetto format or in Systrace format depending on the Android version of your
+device. Select the appropriate method to handle the generated file.

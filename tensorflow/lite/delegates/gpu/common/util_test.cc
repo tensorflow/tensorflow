@@ -24,16 +24,16 @@ namespace {
 
 using testing::Eq;
 
-TEST(UtilTest, IntegralDivideRoundUp) {
-  EXPECT_THAT(IntegralDivideRoundUp(0, 256), Eq(0));
-  EXPECT_THAT(IntegralDivideRoundUp(2u, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(2, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(255u, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(255, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(256u, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(256, 256), Eq(1));
-  EXPECT_THAT(IntegralDivideRoundUp(257u, 256), Eq(2));
-  EXPECT_THAT(IntegralDivideRoundUp(257, 256), Eq(2));
+TEST(UtilTest, DivideRoundUp) {
+  EXPECT_THAT(DivideRoundUp(0, 256), Eq(0));
+  EXPECT_THAT(DivideRoundUp(2u, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(2, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(255u, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(255, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(256u, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(256, 256), Eq(1));
+  EXPECT_THAT(DivideRoundUp(257u, 256), Eq(2));
+  EXPECT_THAT(DivideRoundUp(257, 256), Eq(2));
 }
 
 TEST(UtilTest, AlignByN) {

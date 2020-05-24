@@ -44,6 +44,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import saver as v1_saver_lib
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
@@ -52,23 +53,28 @@ from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Loaded lazily due to a circular dependency.
-keras_backend = lazy_loader.LazyLoader(
-    "keras_backend", globals(),
-    "tensorflow.python.keras.backend")
+# The callable that provide Keras default session that is needed for saving.
+_SESSION_PROVIDER = None
+
+
+def register_session_provider(session_provider):
+  global _SESSION_PROVIDER
+  if _SESSION_PROVIDER is None:
+    _SESSION_PROVIDER = session_provider
 
 
 def get_session():
   # Prefer TF's default session since get_session from Keras has side-effects.
   session = ops.get_default_session()
   if session is None:
-    session = keras_backend.get_session()
+    global _SESSION_PROVIDER
+    if _SESSION_PROVIDER is not None:
+      session = _SESSION_PROVIDER()  # pylint: disable=not-callable
   return session
 
 
@@ -163,7 +169,7 @@ class _CheckpointRestoreCoordinator(object):
   """Holds the status of an object-based checkpoint load."""
 
   def __init__(self, object_graph_proto, save_path, save_path_tensor,
-               restore_op_cache, graph_view):
+               restore_op_cache, graph_view, options):
     """Specify the checkpoint being loaded.
 
     Args:
@@ -179,7 +185,9 @@ class _CheckpointRestoreCoordinator(object):
         `restore()` calls.
       graph_view: A graph_view_lib.ObjectGraphView object for the restored
         objects.
+      options: A CheckpointOptions object.
     """
+    self.options = options
     self.object_graph_proto = object_graph_proto
     self.restore_uid = ops.uid()
     # Maps from proto ids to lists of attributes which were in the checkpoint
@@ -286,7 +294,7 @@ class _CheckpointRestoreCoordinator(object):
             ("Saveable keys changed when validating. Got back %s, was "
              "expecting %s") % (tensor_saveables.keys(), validated_names))
       new_restore_ops = functional_saver.MultiDeviceSaver(
-          validated_saveables).restore(self.save_path_tensor)
+          validated_saveables).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
         for name, restore_op in sorted(new_restore_ops.items()):
           restore_ops.append(restore_op)
@@ -1108,13 +1116,15 @@ class TrackableSaver(object):
 
   def _save_cached_when_graph_building(self,
                                        file_prefix,
-                                       object_graph_tensor=None):
+                                       object_graph_tensor,
+                                       options):
     """Create or retrieve save ops.
 
     Args:
       file_prefix: The prefix for saved checkpoint files.
       object_graph_tensor: A `Tensor` to which the current object graph will be
         fed.
+      options: `CheckpointOptions` object.
 
     Returns:
       A two-element tuple with a filename tensor and a feed_dict of tensors to
@@ -1132,14 +1142,15 @@ class TrackableSaver(object):
         # var_list.
         or context.executing_eagerly() or ops.inside_function()):
       saver = functional_saver.MultiDeviceSaver(named_saveable_objects)
-      save_op = saver.save(file_prefix)
+      save_op = saver.save(file_prefix, options=options)
       with ops.device("/cpu:0"):
         with ops.control_dependencies([save_op]):
           self._cached_save_operation = array_ops.identity(file_prefix)
       self._last_save_object_graph = graph_proto
     return self._cached_save_operation, feed_additions
 
-  def save(self, file_prefix, checkpoint_number=None, session=None):
+  def save(self, file_prefix, checkpoint_number=None, session=None,
+           options=None):
     """Save a training checkpoint.
 
     The saved checkpoint includes variables created by this object and any
@@ -1157,10 +1168,12 @@ class TrackableSaver(object):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     feed_dict = {}
     use_session = (not context.executing_eagerly() and
                    not ops.inside_function())
@@ -1184,7 +1197,7 @@ class TrackableSaver(object):
 
     file_io.recursive_create_dir(os.path.dirname(file_prefix))
     save_path, new_feed_additions = self._save_cached_when_graph_building(
-        file_prefix=file_prefix_tensor, object_graph_tensor=object_graph_tensor)
+        file_prefix_tensor, object_graph_tensor, options)
     if new_feed_additions:
       feed_dict.update(new_feed_additions)
     if not use_session:
@@ -1197,7 +1210,7 @@ class TrackableSaver(object):
     else:
       return save_path
 
-  def restore(self, save_path):
+  def restore(self, save_path, options=None):
     """Restore a training checkpoint.
 
     Restores `root_trackable` and any objects that it tracks
@@ -1245,6 +1258,7 @@ class TrackableSaver(object):
         object which may run initializers for objects in the dependency graph.
         If the checkpoint was written by the name-based
         `tf.compat.v1.train.Saver`, names are used to match variables.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       A load status object, which can be used to make assertions about the
@@ -1255,6 +1269,7 @@ class TrackableSaver(object):
       If `save_path` points to a name-based checkpoint, a `NameBasedSaverStatus`
       object is returned which runs restore ops from a name-based saver.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     if save_path is None:
       return InitializationOnlyStatus(self._graph_view, ops.uid())
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
@@ -1299,7 +1314,8 @@ class TrackableSaver(object):
         save_path=save_path,
         save_path_tensor=file_prefix_tensor,
         restore_op_cache=self._restore_op_cache,
-        graph_view=self._graph_view)
+        graph_view=self._graph_view,
+        options=options)
     base.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
     load_status = CheckpointLoadStatus(
@@ -1718,9 +1734,9 @@ class Checkpoint(tracking.AutoTrackable):
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
   that contain trackable state, such as `tf.keras.optimizers.Optimizer`
-  implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
-  `tf.keras.Model` implementations. It saves these values with a checkpoint, and
-  maintains a `save_counter` for numbering checkpoints.
+  implementations, `tf.Variable`s, `tf.data.Dataset` iterators, `tf.keras.Layer`
+  implementations, or `tf.keras.Model` implementations. It saves these values
+  with a checkpoint, and maintains a `save_counter` for numbering checkpoints.
 
   Example usage:
 
@@ -1731,6 +1747,8 @@ class Checkpoint(tracking.AutoTrackable):
   checkpoint_directory = "/tmp/training_checkpoints"
   checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
+  # Create a Checkpoint that will manage two objects with trackable state,
+  # one we name "optimizer" and the other we name "model".
   checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
   status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
   for _ in range(num_training_steps):
@@ -1739,7 +1757,7 @@ class Checkpoint(tracking.AutoTrackable):
   checkpoint.save(file_prefix=checkpoint_prefix)
   ```
 
-  `Checkpoint.save` and `Checkpoint.restore` write and read object-based
+  `Checkpoint.save()` and `Checkpoint.restore()` write and read object-based
   checkpoints, in contrast to TensorFlow 1.x's `tf.compat.v1.train.Saver` which
   writes and
   reads `variable.name` based checkpoints. Object-based checkpointing saves a
@@ -1752,7 +1770,7 @@ class Checkpoint(tracking.AutoTrackable):
   arguments to their constructors, and each dependency is given a name that is
   identical to the name of the keyword argument for which it was created.
   TensorFlow classes like `Layer`s and `Optimizer`s will automatically add
-  dependencies on their variables (e.g. "kernel" and "bias" for
+  dependencies on their own variables (e.g. "kernel" and "bias" for
   `tf.keras.layers.Dense`). Inheriting from `tf.keras.Model` makes managing
   dependencies easy in user-defined classes, since `Model` hooks into attribute
   assignment. For example:
@@ -1835,7 +1853,7 @@ class Checkpoint(tracking.AutoTrackable):
                 dtype=dtypes.int64,
                 trainable=False))
 
-  def write(self, file_prefix):
+  def write(self, file_prefix, options=None):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
@@ -1847,14 +1865,37 @@ class Checkpoint(tracking.AutoTrackable):
     use by higher level checkpoint management utilities. `save` provides a very
     basic implementation of these features.
 
+    Checkpoints written with `write` must be read with `read`.
+
+    Example usage:
+
+    ```
+    step = tf.Variable(0, name="step")
+    checkpoint = tf.Checkpoint(step=step)
+    checkpoint.write("/tmp/ckpt")
+
+    # Later, read the checkpoint with read()
+    checkpoint.read("/tmp/ckpt").assert_consumed()
+
+    # You can also pass options to write() and read(). For example this
+    # runs the IO ops on the localhost:
+    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    checkpoint.write("/tmp/ckpt", options=options)
+
+    # Later, read the checkpoint with read()
+    checkpoint.read("/tmp/ckpt", options=options).assert_consumed()
+    ```
+
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix).
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    output = self._saver.save(file_prefix=file_prefix)
+    options = options or checkpoint_options.CheckpointOptions()
+    output = self._saver.save(file_prefix=file_prefix, options=options)
     if tensor_util.is_tensor(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
@@ -1877,7 +1918,7 @@ class Checkpoint(tracking.AutoTrackable):
     self._maybe_create_save_counter()
     return self._save_counter
 
-  def save(self, file_prefix):
+  def save(self, file_prefix, options=None):
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
@@ -1888,17 +1929,36 @@ class Checkpoint(tracking.AutoTrackable):
     sequentially numbering checkpoints using `save_counter` and updating the
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
-    provided by other utilities which also wrap `write`
+    provided by other utilities which also wrap `write` and `read`.
     (`tf.train.CheckpointManager` for example).
+
+    ```
+    step = tf.Variable(0, name="step")
+    checkpoint = tf.Checkpoint(step=step)
+    checkpoint.save("/tmp/ckpt")
+
+    # Later, read the checkpoint with restore()
+    checkpoint.restore("/tmp/ckpt").assert_consumed()
+
+    # You can also pass options to save() and restore(). For example this
+    # runs the IO ops on the localhost:
+    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    checkpoint.save("/tmp/ckpt", options=options)
+
+    # Later, read the checkpoint with restore()
+    checkpoint.restore("/tmp/ckpt", options=options).assert_consumed()
+    ```
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix). Names are generated based on this
         prefix and `Checkpoint.save_counter`.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint.
     """
+    options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:
       if ops.inside_function():
@@ -1924,7 +1984,8 @@ class Checkpoint(tracking.AutoTrackable):
       checkpoint_number = session.run(self._save_assign_op)
     else:
       checkpoint_number = assign_op.numpy()
-    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number))
+    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
+                           options=options)
     checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
@@ -1932,24 +1993,73 @@ class Checkpoint(tracking.AutoTrackable):
         save_relative_paths=True)
     return file_path
 
-  def restore(self, save_path):
+  def read(self, save_path, options=None):
+    """Read a training checkpoint written with `write`.
+
+    Reads this `Checkpoint` and any objects it depends on.
+
+    This method is just like `restore()` but does not expect the `save_counter`
+    variable in the checkpoint. It only restores the objects that the checkpoint
+    already depends on.
+
+    The method is primarily intended for use by higher level checkpoint
+    management utilities that use `write()` instead of `save()` and have their
+    own mechanisms to number and track checkpoints.
+
+    Example usage:
+
+    ```python
+    # Create a checkpoint with write()
+    ckpt = tf.train.Checkpoint(v=tf.Variable(1.))
+    path = ckpt.write('/tmp/my_checkpoint')
+
+    # Later, load the checkpoint with read()
+    # With restore() assert_consumed() would have failed.
+    checkpoint.read(path).assert_consumed()
+
+    # You can also pass options to restore(). For example this
+    # runs the IO ops on the localhost:
+    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    checkpoint.read(path, options=options)
+    ```
+
+    Args:
+      save_path: The path to the checkpoint as returned by `write`.
+      options: Optional `tf.train.CheckpointOptions` object.
+
+    Returns:
+      A load status object, which can be used to make assertions about the
+      status of a checkpoint restoration.  See `restore` for details.
+    """
+    options = options or checkpoint_options.CheckpointOptions()
+    return self._saver.restore(save_path=save_path, options=options)
+
+  def restore(self, save_path, options=None):
     """Restore a training checkpoint.
 
     Restores this `Checkpoint` and any objects it depends on.
 
-    Either assigns values immediately if variables to restore have been created
-    already, or defers restoration until the variables are created. Dependencies
-    added after this call will be matched if they have a corresponding object in
-    the checkpoint (the restore request will queue in any trackable object
-    waiting for the expected dependency to be added).
+    This method is intended to be used to load checkpoints created by `save()`.
+    For checkpoints created by `write()` use the `read()` method which does not
+    expect the `save_counter` variable added by `save()`.
+
+    `restore()` either assigns values immediately if variables to restore have
+    been created already, or defers restoration until the variables are
+    created. Dependencies added after this call will be matched if they have a
+    corresponding object in the checkpoint (the restore request will queue in
+    any trackable object waiting for the expected dependency to be added).
 
     To ensure that loading is complete and no more assignments will take place,
     use the `assert_consumed()` method of the status object returned by
-    `restore`:
+    `restore()`:
 
     ```python
     checkpoint = tf.train.Checkpoint( ... )
     checkpoint.restore(path).assert_consumed()
+
+    # You can additionally pass options to restore():
+    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    checkpoint.restore(path, options=options).assert_consumed()
     ```
 
     An exception will be raised if any Python objects in the dependency graph
@@ -1963,11 +2073,10 @@ class Checkpoint(tracking.AutoTrackable):
 
     Args:
       save_path: The path to the checkpoint, as returned by `save` or
-        `tf.train.latest_checkpoint`. If None (as when there is no latest
-        checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency graph.
-        If the checkpoint was written by the name-based
-        `tf.compat.v1.train.Saver`, names are used to match variables.
+        `tf.train.latest_checkpoint`. If the checkpoint was written by the
+        name-based `tf.compat.v1.train.Saver`, names are used to match
+        variables.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       A load status object, which can be used to make assertions about the
@@ -2006,7 +2115,7 @@ class Checkpoint(tracking.AutoTrackable):
           checkpoint file or object when the `Checkpoint` object is deleted
           (often at program shutdown).
     """
-    status = self._saver.restore(save_path=save_path)
+    status = self.read(save_path, options=options)
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to errors when using,
     # say, train.Saver() to save the model before initializing it.

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/function_api_info.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -159,6 +160,15 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
   }
 
   if (apiInfo.function_type() == FunctionApiInfo::BACKWARD) {
+    // Strip node control dependencies. We'll add them back after updating
+    // all the data inputs.
+    std::vector<std::string> control_deps;
+    for (int i = node_def->input_size() - 1; i >= 0; --i) {
+      if (!IsControlInput(node_def->input(i))) break;
+      control_deps.push_back(node_def->input(i));
+      node_def->mutable_input()->RemoveLast();
+    }
+
     // For step 4 above.
     const int prev_input_size = node_def->input_size();
     const int diff = prev_input_size - apiInfo.input_arg_dtypes().size();
@@ -194,6 +204,11 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
       for (int i = 1; i <= -diff; ++i)
         node_def->add_input(strings::StrCat(node_name, ":", i + last_index));
     }
+
+    // Add control dependencies back.
+    for (std::string& control : control_deps)
+      node_def->add_input(std::move(control));
+
   } else if (apiInfo.function_type() == FunctionApiInfo::FORWARD) {
     // For forward function, since the DTYPE of the intermediate state might
     // have been changed, we want to update the down stream Identity node if

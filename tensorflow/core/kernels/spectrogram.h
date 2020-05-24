@@ -56,6 +56,19 @@ class Spectrogram {
   // Initialize with an explicit window instead of a length.
   bool Initialize(const std::vector<double>& window, int step_length);
 
+  // Reset internal variables.
+  // Spectrogram keeps internal state: remaining input data from previous call.
+  // As a result it can produce different number of frames when you call
+  // ComputeComplexSpectrogram multiple times (even though input data
+  // has the same size). As it is shown in
+  // MultipleCallsToComputeComplexSpectrogramMayYieldDifferentNumbersOfFrames
+  // in tensorflow/core/kernels/spectrogram_test.cc.
+  // But if you need to compute Spectrogram on input data without keeping
+  // internal state (and clear remaining input data from the previous call)
+  // you have to call Reset() before computing Spectrogram.
+  // For example in tensorflow/core/kernels/spectrogram_op.cc
+  bool Reset();
+
   // Processes an arbitrary amount of audio data (contained in input)
   // to yield complex spectrogram frames. After a successful call to
   // Initialize(), Process() may be called repeatedly with new input data
