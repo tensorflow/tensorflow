@@ -26,6 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+
 std::string GetKernelOneLayerTextureArray() {
   return R"(
 
@@ -43,12 +44,12 @@ __kernel void main_function(__write_only image2d_array_t dst) {
 // texture, we will get zeroes instead of actual values.
 // The same kernel will work, if we use texture array with more than one layer.
 // With help of this code we can detect this bug.
-Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
-                                                bool* result) {
+absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
+                                                      bool* result) {
   // No bug on Adreno 6xx
   if (env->device().GetInfo().adreno_info.gpu_version >= 600) {
     *result = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   CLKernel kernel;
   RETURN_IF_ERROR(env->program_cache()->GetOrCreateCLKernel(
@@ -75,12 +76,12 @@ Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateEnvironment(Environment* result, bool shared,
-                         cl_context_properties egl_context,
-                         cl_context_properties egl_display) {
+absl::Status CreateEnvironment(Environment* result, bool shared,
+                               cl_context_properties egl_context,
+                               cl_context_properties egl_display) {
   CLDevice gpu;
   RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));
 
@@ -107,8 +108,9 @@ Status CreateEnvironment(Environment* result, bool shared,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
+
 }  // namespace
 
 Environment::Environment(CLDevice&& device, CLContext&& context,
@@ -137,7 +139,7 @@ Environment& Environment::operator=(Environment&& environment) {
   return *this;
 }
 
-Status Environment::Init() {
+absl::Status Environment::Init() {
   if (device().IsAdreno() && device().SupportsTextureArray()) {
     bool supports_one_layer;
     RETURN_IF_ERROR(
@@ -146,7 +148,7 @@ Status Environment::Init() {
       GetDevicePtr()->DisableOneLayerTextureArray();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Environment::SetHighPerformance() const {
@@ -266,7 +268,7 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
   return TensorStorageType::BUFFER;
 }
 
-Status CreateEnvironment(Environment* result) {
+absl::Status CreateEnvironment(Environment* result) {
   CLDevice gpu;
   RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));
 

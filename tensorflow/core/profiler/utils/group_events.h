@@ -16,9 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -32,7 +39,8 @@ namespace profiler {
 struct InterThreadConnectInfo {
   int64 parent_event_type;
   int64 child_event_type;
-  std::vector<int64> stat_types;
+  std::vector<int64> parent_stat_types;
+  std::vector<int64> child_stat_types;
 };
 
 // A wrapper for XEvent with parent and children pointers. Through these
@@ -70,7 +78,15 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
+  void SetIsEager(bool is_eager);
+
+  // Returns true if this event is part of eagerly executed op.
+  bool IsEager();
+
   bool IsNestedIn(EventNode* parent);
+
+  // Returns the closest parent of the given event type.
+  EventNode* FindParent(int64 event_type);
 
  private:
   const XPlaneVisitor* visitor_;
@@ -119,6 +135,12 @@ class EventForest {
   void CreateEventGroup(
       const std::vector<int64 /*EventType*/>& root_event_types);
 
+  // Sets the is_eager stat to true for the eagerly executed GPU kernel events.
+  void MarkEagerlyExecutedGpuKernels();
+
+  // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
+  void MarkEagerlyExecutedCpuTfOps();
+
   // Create virtual events of HostEventType::kHostTrainingLoopIteration and
   // event nodes for them. A virtual event is created for each iteration of the
   // host training loop and connected to the
@@ -135,6 +157,8 @@ class EventForest {
   VirtualEventContainer virtual_event_container_;
   EventGroupNameMap event_group_name_map_;
 };
+
+std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.

@@ -49,8 +49,7 @@ Status BufferedInputStream::FillBuffer() {
   Status s = input_stream_->ReadNBytes(size_, &buf_);
   pos_ = 0;
   limit_ = buf_.size();
-  if (buf_.empty()) {
-    DCHECK(!s.ok());
+  if (!s.ok()) {
     file_status_ = s;
   }
   return s;
@@ -93,7 +92,7 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
                                    bytes_to_read);
   }
   result->clear();
-  if (!file_status_.ok() && bytes_to_read > 0) {
+  if (pos_ == limit_ && !file_status_.ok() && bytes_to_read > 0) {
     return file_status_;
   }
   result->reserve(bytes_to_read);

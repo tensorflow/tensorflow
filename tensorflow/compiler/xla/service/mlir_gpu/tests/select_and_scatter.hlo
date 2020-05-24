@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule SelectAndScatter
 
 %ge (x: f32[], y: f32[]) -> pred[] {

@@ -159,6 +159,18 @@ class FileIoTest(test.TestCase):
     file_io.delete_recursively(dir_path)
     self.assertFalse(file_io.file_exists(os.path.join(dir_path, "file3.txt")))
 
+  def testGetMatchingFilesWhenParentDirContainsParantheses(self):
+    dir_path = os.path.join(self._base_dir, "dir_(special)")
+    file_io.create_dir(dir_path)
+    files = ["file1.txt", "file(2).txt"]
+    for name in files:
+      file_path = os.path.join(dir_path, name)
+      file_io.FileIO(file_path, mode="w").write("testing")
+    expected_match = [os.path.join(dir_path, name) for name in files]
+    glob_pattern = os.path.join(dir_path, "*")
+    self.assertItemsEqual(
+        file_io.get_matching_files(glob_pattern), expected_match)
+
   def testCreateRecursiveDir(self):
     dir_path = os.path.join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
     file_io.recursive_create_dir(dir_path)

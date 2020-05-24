@@ -1,4 +1,5 @@
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
+$(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 
 person_detection_MODEL_SRCS := \
 tensorflow/lite/micro/examples/person_detection/model_settings.cc \

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Adamax for TensorFlow."""
+"""Adamax optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -39,27 +39,27 @@ class Adamax(optimizer_v2.OptimizerV2):
 
   Initialization:
 
-  ```
-  m_0 <- 0 (Initialize initial 1st moment vector)
-  v_0 <- 0 (Initialize the exponentially weighted infinity norm)
-  t <- 0 (Initialize timestep)
+  ```python
+  m = 0  # Initialize initial 1st moment vector
+  v = 0  # Initialize the exponentially weighted infinity norm
+  t = 0  # Initialize timestep
   ```
 
-  The update rule for `variable` with gradient `g` uses an optimization
+  The update rule for parameter `w` with gradient `g` is
   described at the end of section 7.1 of the paper:
 
+  ```python
+  t += 1
+  m = beta1 * m + (1 - beta) * g
+  v = max(beta2 * v, abs(g))
+  current_lr = learning_rate / (1 - beta1 ** t)
+  w = w - current_lr * m / (v + epsilon)
   ```
-  t <- t + 1
 
-  m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-  v_t <- max(beta2 * v_{t-1}, abs(g))
-  variable <- variable - learning_rate / (1 - beta1^t) * m_t / (v_t + epsilon)
-  ```
+  Similarly to `Adam`, the epsilon is added for numerical stability
+  (especially to get rid of division by zero when `v_t == 0`).
 
-  Similar to AdamOptimizer, the epsilon is added for numerical stability
-  (especially to get rid of division by zero when v_t = 0).
-
-  Contrast to AdamOptimizer, the sparse implementation of this algorithm
+  In contrast to `Adam`, the sparse implementation of this algorithm
   (used when the gradient is an IndexedSlices object, typically because of
   `tf.gather` or an embedding lookup in the forward pass) only updates
   variable slices and corresponding `m_t`, `v_t` terms when that part of
@@ -68,12 +68,26 @@ class Adamax(optimizer_v2.OptimizerV2):
   implementations which ignore momentum unless a variable slice was actually
   used).
 
-  References
-    see Section 7 of [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
-      ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
+    beta_1: A float value or a constant float tensor. The exponential decay
+      rate for the 1st moment estimates.
+    beta_2: A float value or a constant float tensor. The exponential decay
+      rate for the exponentially weighted infinity norm.
+    epsilon: A small constant for numerical stability.
+    name: Optional name for the operations created when applying gradients.
+      Defaults to `"Adamax"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
+
+  Reference:
+    - [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -82,24 +96,6 @@ class Adamax(optimizer_v2.OptimizerV2):
                epsilon=1e-7,
                name='Adamax',
                **kwargs):
-    """Construct a new Adamax optimizer.
-
-    Args:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      beta_1: A float value or a constant float tensor. The exponential decay
-        rate for the 1st moment estimates.
-      beta_2: A float value or a constant float tensor. The exponential decay
-        rate for the exponentially weighted infinity norm.
-      epsilon: A small constant for numerical stability.
-      name: Optional name for the operations created when applying gradients.
-        Defaults to "Adamax".
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-    """
     super(Adamax, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)

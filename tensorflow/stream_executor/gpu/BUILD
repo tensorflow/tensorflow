@@ -112,7 +112,10 @@ cc_library(
 cc_library(
     name = "gpu_helpers_header",
     hdrs = if_gpu_is_configured(["gpu_helpers.h"]),
-    deps = [":gpu_types_header"],
+    deps = [
+        ":gpu_types_header",
+        "//tensorflow/core/platform:logging",
+    ],
 )
 
 cc_library(
@@ -219,11 +222,11 @@ cc_library(
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tf_copts(),
     visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
-        "//third_party/tf_runtime/tools/tf_kernel_gen:__subpackages__",
     ],
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",

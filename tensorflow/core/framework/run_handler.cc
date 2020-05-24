@@ -167,7 +167,7 @@ Task ThreadWorkSource::EnqueueTask(Task t, bool is_blocking) {
   }
 
   Waiter* w = nullptr;
-  bool use_sub_thread_pool =
+  static const bool use_sub_thread_pool =
       ParamFromEnvBoolWithDefault("TF_RUN_HANDLER_USE_SUB_THREAD_POOL", false);
 
   Waiter* waiter_queue;
@@ -424,7 +424,8 @@ void RunHandlerThreadPool::SetThreadWorkSources(
     // thread_work_sources are order as start_request_idx, 0, 2, 4 ... 1, 3,
     // 5... for half of the threads and start_request_idx, 1, 3, 5 ... 0, 2,
     // 4... for the other half of the threads.
-    int num_shards = ParamFromEnvWithDefault("TF_RUN_HANDLER_QUEUE_SHARDS", 1);
+    static const int num_shards =
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_QUEUE_SHARDS", 1);
     int token = tid % num_shards;
     for (int i = 0; i < num_shards; ++i) {
       for (int j = token; j < thread_work_sources.size(); j += num_shards) {

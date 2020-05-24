@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -mlir-print-debuginfo %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -mlir-print-debuginfo %s -o - | FileCheck %s
 
 # Verify that importing a Graph with a backedge leads to two NextIteration nodes
 # to break the cycle.

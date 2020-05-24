@@ -131,6 +131,7 @@ KNOWN_STRING_CONSTRUCTOR_ERRORS = (
     RuntimeError,
     StopIteration,
     TypeError,
+    UnboundLocalError,
     ValueError,
 )
 

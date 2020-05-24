@@ -130,9 +130,10 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       tensor_property.per_axis = true;
       tensor_property.per_axis_index = 0;
       tensor_property.symmetric = true;
-      property.inputs = {{1, tensor_property}, {2, {}}};
+      property.inputs = {{2, {}}, {1, tensor_property}};
       property.outputs = {{0, {}}};
-      property.version = 2;
+      property.biases = {3};
+      property.version = 3;
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
@@ -814,7 +815,17 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_PRELU:
+      property.inputs = {{0, {}}, {1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = false;
+      property.version = 1;
+      break;
     case BuiltinOperator_LEAKY_RELU:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
       property.inputs = {{0, {}}};
@@ -928,6 +939,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_outputs = true;
       property.restrict_same_input_output_scale = true;
       property.version = 1;
+      break;
+    case BuiltinOperator_MIRROR_PAD:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
       break;
     default:
       // No quantized implementation exists for this operation.

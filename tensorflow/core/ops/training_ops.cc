@@ -559,6 +559,7 @@ REGISTER_OP("ApplyFtrl")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyFtrl")
@@ -575,6 +576,7 @@ REGISTER_OP("SparseApplyFtrl")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyFtrl")
@@ -588,6 +590,7 @@ REGISTER_OP("ResourceApplyFtrl")
     .Input("lr_power: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyFtrl")
@@ -603,6 +606,7 @@ REGISTER_OP("ResourceSparseApplyFtrl")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
 REGISTER_OP("ApplyFtrlV2")
@@ -618,6 +622,7 @@ REGISTER_OP("ApplyFtrlV2")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyFtrlV2")
@@ -635,6 +640,7 @@ REGISTER_OP("SparseApplyFtrlV2")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyFtrlV2")
@@ -649,6 +655,7 @@ REGISTER_OP("ResourceApplyFtrlV2")
     .Input("lr_power: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyFtrlV2")
@@ -665,6 +672,7 @@ REGISTER_OP("ResourceSparseApplyFtrlV2")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
     .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
 template <bool is_sparse, bool is_resource>

@@ -1442,6 +1442,16 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
     op.input_tensors[2] = nullptr;
   }
 
+  {
+    Tensor block_shape = test::AsTensor<int32>({});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({});
+    op.input_tensors[2] = &paddings;
+    INFER_OK(op, "?;[0];[0,2]", "?");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
   INFER_ERROR("rank", op, "[1,3,3,1];[2];[1]");
   INFER_ERROR("shape", op, "[1,3,3,1];[2];[1,2]");
 }

@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -49,22 +47,13 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
-    if (compat.forward_compatible(2019, 11, 25) or
-        (input_dataset.options().experimental_distribute.auto_shard_policy !=
-         AutoShardPolicy.AUTO)):
-      variant_tensor = ged_ops.auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          auto_shard_policy=int(input_dataset.options().experimental_distribute
-                                .auto_shard_policy),
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          **self._flat_structure)
+    variant_tensor = ged_ops.auto_shard_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        index=index,
+        auto_shard_policy=int(
+            input_dataset.options().experimental_distribute.auto_shard_policy),
+        **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

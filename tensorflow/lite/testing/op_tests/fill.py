@@ -31,7 +31,7 @@ def make_fill_tests(options):
   test_parameters = [{
       "dims_dtype": [tf.int32, tf.int64],
       "dims_shape": [[], [1], [3], [3, 3]],
-      "value_dtype": [tf.int32, tf.int64, tf.float32],
+      "value_dtype": [tf.int32, tf.int64, tf.float32, tf.bool, tf.string],
   }]
 
   def build_graph(parameters):
@@ -57,4 +57,4 @@ def make_fill_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=12)
+      expected_tf_failures=20)

@@ -30,8 +30,9 @@ void TestReferenceResizeNearestNeighbor(
     const RuntimeShape& input_shape, const std::vector<T>& input_data,
     const std::vector<int32>& output_size_data,
     const RuntimeShape& output_shape,
-    const std::vector<T>& expected_output_data) {
-  ResizeNearestNeighborParams op_params{/*align_corners=*/false};
+    const std::vector<T>& expected_output_data, bool align_corners = false,
+    bool half_pixel_centers = false) {
+  ResizeNearestNeighborParams op_params{align_corners, half_pixel_centers};
   RuntimeShape output_size_shape({1, 1, 1, 2});
 
   std::vector<T> output_data(expected_output_data.size());
@@ -55,6 +56,30 @@ TEST(ResizeNearestNeighborReference, Test2x2To1x1) {
                                      output_shape, output_data);
 }
 
+TEST(ResizeNearestNeighborReference, Test2x2To1x1_AlignCorners) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<float> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {1, 1};
+  RuntimeShape output_shape = {1, 1, 1, 1};
+  std::vector<float> output_data = {1};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data,
+                                     /*align_corners=*/true);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To1x1_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<float> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {1, 1};
+  RuntimeShape output_shape = {1, 1, 1, 1};
+  std::vector<float> output_data = {4};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
+}
+
 TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<uint8> input_data = {1, 2, 3, 4};
@@ -64,6 +89,30 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<uint8> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data,
+                                     /*align_corners=*/true);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To3x3_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<uint8> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
 }
 
 TEST(ResizeNearestNeighborReference, Test3x3To2x2) {
@@ -77,6 +126,30 @@ TEST(ResizeNearestNeighborReference, Test3x3To2x2) {
                                      output_shape, output_data);
 }
 
+TEST(ResizeNearestNeighborReference, Test3x3To2x2_AlignCorners) {
+  RuntimeShape input_shape = {1, 3, 3, 1};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  std::vector<int32> output_size_data = {2, 2};
+  RuntimeShape output_shape = {1, 2, 2, 1};
+  std::vector<float> output_data = {1, 3, 7, 9};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data,
+                                     /*align_corners=*/true);
+}
+
+TEST(ResizeNearestNeighborReference, Test3x3To2x2_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 3, 3, 1};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  std::vector<int32> output_size_data = {2, 2};
+  RuntimeShape output_shape = {1, 2, 2, 1};
+  std::vector<float> output_data = {1, 3, 7, 9};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
+}
+
 TEST(ResizeNearestNeighborReference, Test2x2To2x5) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<uint8> input_data = {1, 2, 3, 4};
@@ -86,6 +159,18 @@ TEST(ResizeNearestNeighborReference, Test2x2To2x5) {
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To2x5_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<uint8> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {2, 5};
+  RuntimeShape output_shape = {1, 2, 5, 1};
+  std::vector<uint8> output_data = {1, 1, 2, 2, 2, 3, 3, 4, 4, 4};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
 }
 
 TEST(ResizeNearestNeighborReference, Test4x4To3x3) {
@@ -100,6 +185,32 @@ TEST(ResizeNearestNeighborReference, Test4x4To3x3) {
                                      output_shape, output_data);
 }
 
+TEST(ResizeNearestNeighborReference, Test4x4To3x3_AlignCorners) {
+  RuntimeShape input_shape = {1, 4, 4, 1};
+  std::vector<uint8> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
+                                   9, 10, 11, 12, 13, 14, 15, 16};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<uint8> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data,
+                                     /*align_corners=*/true);
+}
+
+TEST(ResizeNearestNeighborReference, Test4x4To3x3_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 4, 4, 1};
+  std::vector<uint8> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
+                                   9, 10, 11, 12, 13, 14, 15, 16};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<uint8> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
+}
+
 TEST(ResizeNearestNeighborReference, Test2x2To5x2) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
@@ -109,6 +220,31 @@ TEST(ResizeNearestNeighborReference, Test2x2To5x2) {
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2To5x2_HalfPixelCenters) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<float> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {5, 2};
+  RuntimeShape output_shape = {1, 5, 2, 1};
+  std::vector<float> output_data = {1, 2, 1, 2, 3, 4, 3, 4, 3, 4};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
+}
+
+TEST(ResizeNearestNeighborReference,
+     Test2x2To5x2_HalfPixelCenters_AlignCorners) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<float> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {5, 2};
+  RuntimeShape output_shape = {1, 5, 2, 1};
+  std::vector<float> output_data = {2, 2, 2, 2, 4, 4, 4, 4, 4, 4};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/true, /*half_pixel_centers=*/true);
 }
 
 TEST(ResizeNearestNeighborReference, Test2x2To4x4) {
@@ -149,10 +285,56 @@ TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2) {
                                      output_shape, output_data);
 }
 
+TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2_AlignCorners) {
+  RuntimeShape input_shape = {2, 2, 2, 2};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8,
+                                   1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {2, 3, 3, 2};
+  std::vector<float> output_data = {
+      1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 7, 8, 5, 6, 7, 8, 7, 8,
+      1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 7, 8, 5, 6, 7, 8, 7, 8,
+  };
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/true, /*half_pixel_centers=*/false);
+}
+
+TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2_HalfPixelCenters) {
+  RuntimeShape input_shape = {2, 2, 2, 2};
+  std::vector<float> input_data = {1, 1, 2, 2, 3, 3, 4, 4,
+                                   5, 5, 6, 6, 7, 7, 8, 8};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {2, 3, 3, 2};
+  std::vector<float> output_data = {1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 4, 4,
+                                    3, 3, 4, 4, 4, 4, 5, 5, 6, 6, 6, 6,
+                                    7, 7, 8, 8, 8, 8, 7, 7, 8, 8, 8, 8};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/false, /*half_pixel_centers=*/true);
+}
+
+TEST(ResizeNearestNeighborReference,
+     Test2x2x2x2To2x3x3x2_HalfPixelCenters_AlignCorners) {
+  RuntimeShape input_shape = {2, 2, 2, 2};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8,
+                                   1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {2, 3, 3, 2};
+  std::vector<float> output_data = {1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 7, 8,
+                                    5, 6, 7, 8, 7, 8, 1, 2, 3, 4, 3, 4,
+                                    5, 6, 7, 8, 7, 8, 5, 6, 7, 8, 7, 8};
+
+  TestReferenceResizeNearestNeighbor(
+      input_shape, input_data, output_size_data, output_shape, output_data,
+      /*align_corners=*/true, /*half_pixel_centers=*/true);
+}
+
 void TestOptimizedResizeNearestNeighbor(int batch, int depth, int input_width,
                                         int input_height, int output_width,
                                         int output_height) {
-  ResizeNearestNeighborParams op_params{/*align_corners=*/false};
   RuntimeShape output_size_shape({1, 1, 1, 2});
 
   RuntimeShape input_shape({batch, input_height, input_width, depth});
@@ -167,6 +349,9 @@ void TestOptimizedResizeNearestNeighbor(int batch, int depth, int input_width,
   std::vector<uint8> output_data(output_shape.FlatSize(), 3);
   std::vector<int32> output_size_data = {output_height, output_width};
 
+  ResizeNearestNeighborParams op_params{/*align_corners=*/false,
+                                        /*half_pixel_centers=*/false};
+
   // Test the optimized version against the reference version.
   reference_ops::ResizeNearestNeighbor(
       op_params, input_shape, input_data.data(), output_size_shape,
@@ -174,7 +359,35 @@ void TestOptimizedResizeNearestNeighbor(int batch, int depth, int input_width,
   optimized_ops::ResizeNearestNeighbor(
       op_params, input_shape, input_data.data(), output_size_shape,
       output_size_data.data(), output_shape, output_data.data());
+  ASSERT_EQ(reference_output_data, output_data);
 
+  op_params.align_corners = true;
+  reference_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, reference_output_data.data());
+  optimized_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, output_data.data());
+  ASSERT_EQ(reference_output_data, output_data);
+
+  op_params.align_corners = false;
+  op_params.half_pixel_centers = true;
+  reference_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, reference_output_data.data());
+  optimized_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, output_data.data());
+  ASSERT_EQ(reference_output_data, output_data);
+
+  op_params.align_corners = true;
+  op_params.half_pixel_centers = true;
+  reference_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, reference_output_data.data());
+  optimized_ops::ResizeNearestNeighbor(
+      op_params, input_shape, input_data.data(), output_size_shape,
+      output_size_data.data(), output_shape, output_data.data());
   ASSERT_EQ(reference_output_data, output_data);
 }
 
@@ -214,7 +427,7 @@ bool is_valid_scale(int input_width, int input_height, int output_width,
 
 TEST(ResizeNearestNeighborOptimized, TestReferenceParity) {
   int invalid_count = 0;
-  const int kTestsToRun = 100 * 1000;
+  const int kTestsToRun = 10000;
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);

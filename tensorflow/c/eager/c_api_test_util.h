@@ -19,28 +19,33 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 // Return a tensor handle containing a float scalar
-TFE_TensorHandle* TestScalarTensorHandle(float value);
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, float value);
 
 // Return a tensor handle containing a int scalar
-TFE_TensorHandle* TestScalarTensorHandle(int value);
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, int value);
 
 // Return a tensor handle containing a bool scalar
-TFE_TensorHandle* TestScalarTensorHandle(bool value);
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, bool value);
 
 // Return a tensor handle containing a 2x2 matrix of doubles
-TFE_TensorHandle* DoubleTestMatrixTensorHandle();
+TFE_TensorHandle* DoubleTestMatrixTensorHandle(TFE_Context* ctx);
 
 // Return a tensor handle containing a 2x2 matrix of floats
-TFE_TensorHandle* TestMatrixTensorHandle();
+TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx);
 
 // Return a tensor handle containing a 100x100 matrix of floats
-TFE_TensorHandle* TestMatrixTensorHandle100x100();
+TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);
 
 // Return a tensor handle containing a 3x2 matrix of doubles
-TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2();
+TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2(TFE_Context* ctx);
 
 // Return a tensor handle containing a 3x2 matrix of floats
-TFE_TensorHandle* TestMatrixTensorHandle3X2();
+TFE_TensorHandle* TestMatrixTensorHandle3X2(TFE_Context* ctx);
+
+// Return a variable handle referring to a variable with the given initial value
+// on the given device.
+TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
+                               const tensorflow::string& device_name = "");
 
 // Return an add op multiplying `a` by `b`.
 TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
@@ -55,7 +60,7 @@ TFE_Op* IdentityOp(TFE_Context* ctx, TFE_TensorHandle* a);
 TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
 
 // Return an 1-D INT32 tensor containing a single value 1.
-TFE_TensorHandle* TestAxisTensorHandle();
+TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx);
 
 // Return an op taking minimum of `input` long `axis` dimension.
 TFE_Op* MinOp(TFE_Context* ctx, TFE_TensorHandle* input,

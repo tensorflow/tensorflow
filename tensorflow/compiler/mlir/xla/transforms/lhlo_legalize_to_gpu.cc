@@ -19,21 +19,21 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
@@ -112,7 +112,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto step = rewriter.create<mlir::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
-      auto loop = rewriter.create<mlir::loop::ForOp>(loc, zero, upper, step);
+      auto loop = rewriter.create<mlir::scf::ForOp>(loc, zero, upper, step);
 
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
@@ -168,13 +168,12 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   };
 };
 
-struct LhloLegalizeToGpu : public FunctionPass<LhloLegalizeToGpu> {
+struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           gpu::GPUDialect, loop::LoopOpsDialect,
-                           XlaLhloDialect>();
+                           gpu::GPUDialect, scf::SCFDialect, XlaLhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
@@ -186,7 +185,7 @@ struct LhloLegalizeToGpu : public FunctionPass<LhloLegalizeToGpu> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
   return absl::make_unique<LhloLegalizeToGpu>();
 }
 

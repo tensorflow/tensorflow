@@ -16,14 +16,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ESTIMATOR_H_
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/hardware.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
-
-namespace hardware {
-// Empty classes that represents hardware types.
-class CPU {};
-class GPU {};
-}  // namespace hardware
 
 template <typename Op, typename TargetHardware>
 class TFLiteCostEstimator {

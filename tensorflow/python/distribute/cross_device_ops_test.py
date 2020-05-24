@@ -19,6 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
+import threading
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,6 +34,7 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -38,7 +42,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 
 
 def _get_devices(devices):
@@ -118,7 +124,8 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         self.evaluate(ops.convert_to_tensor(left)),
         self.evaluate(ops.convert_to_tensor(right)))
 
-  def _assert_mirrored_equal(self, left_list, right_list, sess):
+  def _assert_mirrored_equal(self, left_list, right_list, sess,
+                             run_options=None):
     if not isinstance(left_list, list):
       left_list, right_list = [left_list], [right_list]
 
@@ -139,7 +146,13 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
       # Densify IndexedSlices.
       left = [ops.convert_to_tensor(v) for v in left]
       right = [ops.convert_to_tensor(v) for v in right]
-      left, right = sess.run((left, right))
+      if context.executing_eagerly():
+        # Optional args in session run are not supported when eager execution
+        # is enabled.
+        assert run_options is None
+        left, right = sess.run((left, right))
+      else:
+        left, right = sess.run((left, right), options=run_options)
       for left_value, right_value in zip(left, right):
         self.assertAllEqual(left_value, right_value)
 
@@ -386,6 +399,33 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     self._testIndexedSlicesAllReduce(devices, cross_device_ops_instance,
                                      reduce_op, batch_reduce)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          cross_device_ops_instance=[
+              combinations.NamedObject(
+                  "ReductionToOneDevice",
+                  cross_device_ops_lib.ReductionToOneDevice()),
+              combinations.NamedObject(
+                  "AllReduceCrossDeviceOps",
+                  cross_device_ops_lib.AllReduceCrossDeviceOps("ring"))
+          ],
+          batch_reduce=[True, False],
+          mode=["graph", "eager"]))
+  def testReduceDistributedVariable(self, distribution,
+                                    cross_device_ops_instance, batch_reduce):
+    with distribution.scope():
+      v = variables.Variable(1.)
+    if batch_reduce:
+      result = cross_device_ops_instance.batch_reduce(reduce_util.ReduceOp.MEAN,
+                                                      [(v, v)])[0]
+    else:
+      result = cross_device_ops_instance.reduce(reduce_util.ReduceOp.MEAN, v, v)
+    for v in result.values:
+      self.assertIsInstance(v, ops.Tensor)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(result.values), [1.0, 1.0])
+
 
 class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
                                     CrossDeviceOpsTestBase):
@@ -522,6 +562,17 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             communication=communication)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
+
+  def _assert_mirrored_equal(self, left_list, right_list, sess):
+    if context.executing_eagerly():
+      run_options = None
+    else:
+      # TODO(b/151025792): figure out why missing run options would make the
+      # test flaky and whether this is a problem in TF 2.
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 5
+    super(CollectiveAllReduceTest, self)._assert_mirrored_equal(
+        left_list, right_list, sess, run_options=run_options)
 
   def _test_reduction(self,
                       task_type,
@@ -788,6 +839,64 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         variable_length=variable_length,
         local_mode=True)
 
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=2,
+          mode="eager",
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testEagerMultiThread(self, communication):
+    collective, devices, _ = self._get_test_objects(
+        None,
+        None,
+        num_gpus=2,
+        communication=communication,
+        use_strategy_object=False,
+        local_mode=True)
+
+    # We would like to simulate the following sequence:
+    #   thread-0  device0                 device1
+    #   thread-1          device0 device1
+    # If the kernel launch sequence is as-is the program will deadlock since
+    # NCCL requires the launch order to be same on each device.
+    v0 = _make_per_replica([1.0 for _ in devices], devices)
+    v1 = _make_per_replica([2.0 for _ in devices], devices)
+
+    # Add a delay to collective_ops.all_reduce according to the input tensors
+    # index in `sequence.`
+    sequence = [v0.values[0], v1.values[0], v1.values[1], v0.values[1]]
+    all_reduce = collective_ops.all_reduce
+
+    def delayed_all_reduce(input_tensor, *args, **kwargs):
+      for idx, v in enumerate(sequence):
+        if input_tensor is v:
+          time.sleep(idx)
+          break
+      return all_reduce(input_tensor, *args, **kwargs)
+
+    with test.mock.patch.object(collective_ops, "all_reduce",
+                                delayed_all_reduce):
+      # We only use NCCL for batch reduce with two or more values, so we use two
+      # values here.
+
+      def thread_fn():
+        reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v0, v0),
+                                                                     (v0, v0)])
+        self.assertAllEqual(reduced[0].values, [2.0, 2.0])
+        self.assertAllEqual(reduced[1].values, [2.0, 2.0])
+
+      t = threading.Thread(target=thread_fn)
+      t.start()
+      reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v1, v1),
+                                                                   (v1, v1)])
+      self.assertAllEqual(reduced[0].values, [4.0, 4.0])
+      self.assertAllEqual(reduced[1].values, [4.0, 4.0])
+      t.join()
+
 
 if __name__ == "__main__":
+  # Set default inter op thread pool size to one to ensure we don't exhaust the
+  # thread pool with the additional executors to run collectives in eager.
+  os.environ["TF_NUM_INTEROP_THREADS"] = "1"
   test.main()

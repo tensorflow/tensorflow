@@ -1,0 +1,30 @@
+op {
+  name: "StringSplitV2"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "sep"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "maxsplit"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

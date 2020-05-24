@@ -9,7 +9,12 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "aws-checksums",
-    srcs = glob([
+    srcs = select({
+        "@org_tensorflow//tensorflow:windows": glob([
+            "source/visualc/*.c",
+        ]),
+        "//conditions:default": [],
+    }) + glob([
         "source/intel/*.c",
         "source/*.c",
     ]),

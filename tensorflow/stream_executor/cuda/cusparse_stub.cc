@@ -51,7 +51,7 @@ cusparseStatus_t GetSymbolNotFoundError() {
 }
 }  // namespace
 
-#if CUDA_VERSION < 9020
+#if CUDA_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cusparse_9_0.inc"
 #elif CUDA_VERSION == 10000
 #include "tensorflow/stream_executor/cuda/cusparse_10_0.inc"

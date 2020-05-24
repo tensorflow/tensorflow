@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
+#include <numeric>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -22,28 +24,21 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 
-const char* const kXlaShardingAttrName = "_XlaSharding";
 const char* const kInputShardingAttr = "input_sharding_configuration";
 const char* const kOutputShardingAttr = "output_sharding_configuration";
-
-llvm::Optional<mlir::StringRef> ParseShardingAttribute(
-    mlir::Operation* operation) {
-  const auto& sharding_attr =
-      operation->getAttrOfType<mlir::StringAttr>(kXlaShardingAttrName);
-  if (!sharding_attr) return llvm::Optional<mlir::StringRef>();
-  return sharding_attr.getValue();
-}
 
 namespace {
 
@@ -99,6 +94,46 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
       location, output_types, split_dimension_op.output(), src_input);
   split_op->setAttr(kNumSplitAttr, builder->getIntegerAttr(
                                        builder->getIntegerType(32), num_split));
+  return mlir::success();
+}
+
+// Creates a tf::ConcatOp that merges `input` values in `concat_dimension`.
+mlir::LogicalResult CreateConcatOp(const int concat_dimension,
+                                   const mlir::Location& location,
+                                   mlir::ArrayRef<mlir::Value> inputs,
+                                   mlir::OpBuilder* builder,
+                                   mlir::TF::ConcatOp* concat_op) {
+  // Creates a const op to hold concat dimension value.
+  auto concat_dim_type =
+      mlir::RankedTensorType::get({}, builder->getIntegerType(32));
+  auto concat_dimension_attr =
+      mlir::DenseElementsAttr::get(concat_dim_type, concat_dimension);
+  auto concat_dimension_op = builder->create<mlir::TF::ConstOp>(
+      location, concat_dim_type, concat_dimension_attr);
+
+  // Correctly set output shapes of concat op output if output shape is
+  // statically known. Since the shape of TPUExecute op must be the same
+  // across logical devices, we refer to the shape of 0th logical device
+  // computation output.
+  mlir::Type output_type;
+  auto input_type = inputs[0].getType().cast<mlir::TensorType>();
+
+  if (input_type.hasRank()) {
+    if (input_type.getShape()[concat_dimension] ==
+        mlir::ShapedType::kDynamicSize) {
+      output_type = input_type;
+    } else {
+      auto shape = llvm::to_vector<4>(input_type.getShape());
+      shape[concat_dimension] = shape[concat_dimension] * inputs.size();
+      output_type =
+          mlir::RankedTensorType::get(shape, input_type.getElementType());
+    }
+  } else {
+    output_type = input_type;
+  }
+
+  *concat_op = builder->create<mlir::TF::ConcatOp>(
+      location, output_type, concat_dimension_op.output(), inputs);
   return mlir::success();
 }
 
@@ -167,23 +202,23 @@ mlir::LogicalResult HandleTileShardedInputs(
 }  // namespace
 
 mlir::LogicalResult ExtractInputsForLogicalDevices(
-    int num_logical_cores, mlir::tf_device::LaunchFuncOp launch_func,
-    mlir::OpBuilder* builder,
+    const int num_cores_per_replica,
+    mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list) {
   // Initialize the input list for each logical devices.
-  input_list->reserve(num_logical_cores);
-  for (int i = 0; i < num_logical_cores; ++i)
+  input_list->reserve(num_cores_per_replica);
+  for (int i = 0; i < num_cores_per_replica; ++i)
     input_list->emplace_back(llvm::SmallVector<mlir::Value, 4>());
 
-  llvm::SmallVector<mlir::Value, 4> launch_func_inputs(
-      launch_func.getOperands());
+  llvm::SmallVector<mlir::Value, 4> cluster_func_inputs(
+      cluster_func.getOperands());
   auto sharding_attrs =
-      launch_func.getOperation()->getAttrOfType<mlir::ArrayAttr>(
+      cluster_func.getOperation()->getAttrOfType<mlir::ArrayAttr>(
           kInputShardingAttr);
   // If sharding attribute does not exist, then all inputs are placed on 0th
   // logical core by default.
   if (!sharding_attrs) {
-    (*input_list)[0] = launch_func_inputs;
+    (*input_list)[0] = cluster_func_inputs;
     return mlir::success();
   }
 
@@ -194,34 +229,34 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
   for (const auto& sharding_attr_and_index : llvm::enumerate(sharding_attrs)) {
     const auto& sharding_attr = sharding_attr_and_index.value();
     const auto input_index = sharding_attr_and_index.index();
-    const auto& input_value = launch_func_inputs[input_index];
+    const auto& input_value = cluster_func_inputs[input_index];
 
     xla::OpSharding sharding;
     sharding.ParseFromString(
         sharding_attr.cast<mlir::StringAttr>().getValue().str());
 
-    const auto input_sharing_type = sharding.type();
-    if (input_sharing_type == xla::OpSharding::OTHER) {
+    const auto input_sharding_type = sharding.type();
+    if (input_sharding_type == xla::OpSharding::OTHER) {
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
       auto result = HandleTileShardedInputs(
-          launch_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
+          cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
       if (mlir::failed(result)) return mlir::failure();
 
-      if (tiled_inputs.size() != num_logical_cores)
-        launch_func.emitError(llvm::formatv(
+      if (tiled_inputs.size() != num_cores_per_replica)
+        cluster_func.emitError(llvm::formatv(
             "incorrect {0}-th tiled input sharding received. "
             "Product of tile sharding splits({1}) must be equal to "
             "number of logical devices : {2}",
-            input_index, tiled_inputs.size(), num_logical_cores));
+            input_index, tiled_inputs.size(), num_cores_per_replica));
 
       for (int i = 0; i < sharding.tile_assignment_devices_size(); ++i) {
         const int assigned_logical_device = sharding.tile_assignment_devices(i);
         (*input_list)[assigned_logical_device].emplace_back(tiled_inputs[i]);
       }
-    } else if (input_sharing_type == xla::OpSharding::REPLICATED) {
+    } else if (input_sharding_type == xla::OpSharding::REPLICATED) {
       for (auto& inputs : *input_list) inputs.emplace_back(input_value);
     } else {
-      assert(input_sharing_type == xla::OpSharding::MAXIMAL);
+      assert(input_sharding_type == xla::OpSharding::MAXIMAL);
       const int logical_device_id = sharding.tile_assignment_devices(0);
       (*input_list)[logical_device_id].emplace_back(input_value);
     }
@@ -230,37 +265,50 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
 }
 
 mlir::LogicalResult ParseAndValidateOutputSharding(
-    mlir::tf_device::LaunchFuncOp launch_func,
+    const int num_cores_per_replica,
+    mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::SmallVector<xla::OpSharding, 4>* output_sharding_list) {
-  output_sharding_list->reserve(launch_func.getNumResults());
+  output_sharding_list->reserve(cluster_func.getNumResults());
 
   const auto output_sharding_attrs =
-      launch_func.getOperation()->getAttrOfType<mlir::ArrayAttr>(
+      cluster_func.getOperation()->getAttrOfType<mlir::ArrayAttr>(
           kOutputShardingAttr);
   if (!output_sharding_attrs)
-    return launch_func.emitError(
-        "output_sharding_configuration missing from launch func");
+    return cluster_func.emitError(
+        "output_sharding_configuration missing from cluster func");
 
-  if (output_sharding_attrs.size() != launch_func.getNumResults())
-    return launch_func.emitError("incorrect number of output sharding");
+  if (output_sharding_attrs.size() != cluster_func.getNumResults())
+    return cluster_func.emitError("incorrect number of output sharding");
 
   for (auto output_sharding_and_index :
        llvm::enumerate(output_sharding_attrs)) {
     const auto& output_sharding = output_sharding_and_index.value();
     const int sharding_index = output_sharding_and_index.index();
     if (!output_sharding.isa<mlir::StringAttr>())
-      return launch_func.emitError(llvm::formatv(
+      return cluster_func.emitError(llvm::formatv(
           "non-string output sharding at index {0}", sharding_index));
 
     xla::OpSharding sharding;
     if (!sharding.ParseFromString(
             output_sharding.cast<mlir::StringAttr>().getValue().str()))
-      return launch_func.emitError("incorrect sharding format for outputs");
+      return cluster_func.emitError("incorrect sharding format for outputs");
 
-    const auto output_sharing_type = sharding.type();
-    if (output_sharing_type == xla::OpSharding::OTHER)
-      return launch_func.emitError(
-          "tiled outputs are not yet supported for model parallelism");
+    if (sharding.type() == xla::OpSharding::OTHER &&
+        sharding.tile_assignment_devices_size() != num_cores_per_replica)
+      return cluster_func.emitError(llvm::formatv(
+          "incorrect sharding format for outputs. Number of "
+          "tiled outputs({0}) must match the number of logical "
+          "devices({1})",
+          sharding.tile_assignment_devices_size(), num_cores_per_replica));
+
+    if (sharding.type() == xla::OpSharding::MAXIMAL &&
+        ((sharding.tile_assignment_devices(0) >= num_cores_per_replica) ||
+         (sharding.tile_assignment_devices(0) < 0)))
+      return cluster_func.emitError(llvm::formatv(
+          "incorrect sharding format for outputs. Maximal "
+          "sharding should be assigned to device id in range "
+          "[0, {0}). Currently assigned to {1}",
+          num_cores_per_replica, sharding.tile_assignment_devices(0)));
 
     output_sharding_list->emplace_back(std::move(sharding));
   }
@@ -276,18 +324,18 @@ bool IsAssignedToLogicalDevice(const int core_id,
 }
 
 // Returns the index of the return value of region in
-// `tf_device.parallel_execute` that represents launch func output at
-// index |launch_func_output_index|. Regions of parallel_execute may
+// `tf_device.parallel_execute` that represents cluster func output at
+// index |cluster_func_output_index|. Regions of parallel_execute may
 // have different return values depending on outside sharding
 // configuration.
-int MapLaunchOutputIndexWithRegionOutputIndex(
+int MapClusterOutputIndexWithRegionOutputIndex(
     llvm::ArrayRef<xla::OpSharding> output_sharding_config, const int core_id,
-    const int launch_func_output_index) {
+    const int cluster_func_output_index) {
   int region_output_index = 0;
-  for (int output_index = 0; output_index < launch_func_output_index;
+  for (int output_index = 0; output_index < cluster_func_output_index;
        ++output_index) {
     const auto& sharding = output_sharding_config[output_index];
-    if (sharding.type() == xla::OpSharding::REPLICATED ||
+    if (sharding.type() != xla::OpSharding::MAXIMAL ||
         IsAssignedToLogicalDevice(core_id, sharding))
       region_output_index++;
   }
@@ -295,53 +343,199 @@ int MapLaunchOutputIndexWithRegionOutputIndex(
   return region_output_index;
 }
 
+// Merges outputs from TPU computation for tile-sharded outputs.
+mlir::LogicalResult HandleTileShardedOutputs(
+    const int cluster_func_output_index, const xla::OpSharding& sharding,
+    const mlir::Location& location, mlir::Value cluster_func_output,
+    mlir::tf_device::ParallelExecuteOp parallel_execute,
+    mlir::OpBuilder* builder) {
+  // Inject concat ops after parallel_execute to merge outputs from
+  // concurrently executed computations.
+  builder->setInsertionPointAfter(parallel_execute);
+
+  // Reorders outputs from TPUExecute op as defined by the output sharding
+  // configuration.
+  llvm::SmallVector<mlir::Value, 4> outputs_to_merge;
+  outputs_to_merge.reserve(sharding.tile_assignment_devices_size());
+  for (const auto logical_device_id : sharding.tile_assignment_devices()) {
+    const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
+        sharding, logical_device_id, cluster_func_output_index);
+    const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
+        logical_device_id)[region_output_index];
+    outputs_to_merge.emplace_back(output_from_logical_device);
+  }
+
+  // Creates a tree of Concat ops that merges outputs from multiple logical
+  // devices to a single replica output.
+  int concat_dimension = sharding.tile_assignment_dimensions_size() - 1;
+  for (auto num_splits : llvm::reverse(sharding.tile_assignment_dimensions())) {
+    if (num_splits == 1) {
+      --concat_dimension;
+      continue;
+    }
+
+    llvm::SmallVector<mlir::Value, 4> new_outputs;
+    new_outputs.reserve(num_splits);
+    for (int i = 0; i < outputs_to_merge.size(); i = i + num_splits) {
+      mlir::TF::ConcatOp concat_op;
+      auto result =
+          CreateConcatOp(concat_dimension, location,
+                         llvm::ArrayRef<mlir::Value>{
+                             outputs_to_merge.begin() + i,
+                             outputs_to_merge.begin() + i + num_splits},
+                         builder, &concat_op);
+      if (mlir::failed(result)) return mlir::failure();
+
+      new_outputs.emplace_back(concat_op.getResult());
+    }
+
+    std::swap(new_outputs, outputs_to_merge);
+    --concat_dimension;
+  }
+
+  assert(outputs_to_merge.size() == 1);
+  cluster_func_output.replaceAllUsesWith(outputs_to_merge[0]);
+  return mlir::success();
+}
+
+mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
+    const mlir::Location& location,
+    const mlir::TensorType cluster_func_output_type,
+    const xla::OpSharding& output_sharding,
+    mlir::Type* tiled_logical_computation_type) {
+  auto new_output_shape =
+      llvm::to_vector<4>(cluster_func_output_type.getShape());
+  for (auto dimension_and_output_splits :
+       llvm::enumerate(output_sharding.tile_assignment_dimensions())) {
+    const auto dimension_index = dimension_and_output_splits.index();
+    const auto output_splits = dimension_and_output_splits.value();
+    const auto output_shape = cluster_func_output_type.getShape();
+
+    if (output_shape[dimension_index] == mlir::ShapedType::kDynamicSize) {
+      *tiled_logical_computation_type = cluster_func_output_type;
+      break;
+    }
+
+    auto output_shape_at_dim =
+        cluster_func_output_type.getShape()[dimension_index];
+    if (output_shape_at_dim % output_splits != 0) {
+      mlir::emitError(
+          location,
+          llvm::formatv("incorrect output sharding received. "
+                        "{0}-th dimension of the output must be "
+                        "evenly divisible by {1}, got dimension "
+                        "shape {2}",
+                        dimension_index, output_splits, output_shape_at_dim));
+    }
+
+    new_output_shape[dimension_index] =
+        output_shape[dimension_index] / output_splits;
+  }
+
+  *tiled_logical_computation_type = mlir::RankedTensorType::get(
+      new_output_shape, cluster_func_output_type.getElementType());
+
+  return mlir::success();
+}
+
 }  // namespace
 
-mlir::SmallVector<mlir::Type, 4> GetOutputTypesForLogicalDeviceComputation(
-    const int logical_device_id,
-    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::LaunchFuncOp launch_func) {
-  mlir::SmallVector<mlir::Type, 4> output_types;
-  output_types.reserve(launch_func.getNumResults());
+mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
+    const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    mlir::tf_device::ClusterFuncOp cluster_func,
+    llvm::SmallVectorImpl<mlir::Type>* output_types) {
+  output_types->reserve(cluster_func.getNumResults());
 
-  for (auto result_and_index : llvm::enumerate(launch_func.getResults())) {
+  for (auto result_and_index : llvm::enumerate(cluster_func.getResults())) {
     const auto output_index = result_and_index.index();
     const auto& output_sharding = output_sharding_config[output_index];
     const auto output_sharding_type = output_sharding.type();
-    const auto& launch_func_output = result_and_index.value();
+    const auto cluster_func_output_type =
+        result_and_index.value().getType().cast<mlir::TensorType>();
 
-    if (output_sharding_type == xla::OpSharding::REPLICATED ||
-        IsAssignedToLogicalDevice(logical_device_id, output_sharding))
-      output_types.emplace_back(launch_func_output.getType());
+    // If output shape of cluster func is statically known and output is tiled
+    // sharded, then the corresponding output shape of cluster func must be
+    // evenly divisible number of shardings.
+    if (output_sharding_type == xla::OpSharding::OTHER) {
+      mlir::Type tiled_logical_computation_type;
+      if (cluster_func_output_type.hasRank()) {
+        auto result = ValidateAndGetTiledExecuteOutputShape(
+            cluster_func.getLoc(), cluster_func_output_type, output_sharding,
+            &tiled_logical_computation_type);
+        if (mlir::failed(result)) return mlir::failure();
+      } else {
+        tiled_logical_computation_type = cluster_func_output_type;
+      }
+      output_types->emplace_back(tiled_logical_computation_type);
+    } else if (output_sharding_type == xla::OpSharding::REPLICATED ||
+               IsAssignedToLogicalDevice(core_id, output_sharding)) {
+      output_types->emplace_back(cluster_func_output_type);
+    }
   }
 
-  return output_types;
+  return mlir::success();
 }
 
 void RemapOutputsFromLogicalDevices(
+    const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::LaunchFuncOp launch_func,
-    mlir::tf_device::ParallelExecuteOp parallel_execute) {
-  for (auto result_and_index : llvm::enumerate(launch_func.getResults())) {
+    mlir::tf_device::ClusterFuncOp cluster_func,
+    mlir::tf_device::ParallelExecuteOp parallel_execute,
+    mlir::OpBuilder* builder) {
+  for (auto result_and_index : llvm::enumerate(cluster_func.getResults())) {
     const auto output_index = result_and_index.index();
-    const auto& launch_func_output = result_and_index.value();
+    const auto cluster_func_output = result_and_index.value();
     const auto& output_sharding = output_sharding_config[output_index];
-    const auto output_sharing_type = output_sharding.type();
+    const auto output_sharding_type = output_sharding.type();
+    if (output_sharding_type == xla::OpSharding::OTHER) {
+      HandleTileShardedOutputs(output_index, output_sharding, location,
+                               cluster_func_output, parallel_execute, builder);
+      continue;
+    }
 
     int logical_device_id = 0;
-    if (output_sharing_type == xla::OpSharding::MAXIMAL)
+    if (output_sharding_type == xla::OpSharding::MAXIMAL)
       logical_device_id = output_sharding.tile_assignment_devices(0);
 
     // For maximal sharding configuration, correctly remap outputs from
-    // parallel_execute region to users of the launch func.
-    const int region_output_index = MapLaunchOutputIndexWithRegionOutputIndex(
+    // parallel_execute region to users of the cluster func.
+    const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
         output_sharding_config, logical_device_id, output_index);
 
     const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
         logical_device_id)[region_output_index];
-
-    launch_func_output.replaceAllUsesWith(output_from_logical_device);
+    cluster_func_output.replaceAllUsesWith(output_from_logical_device);
   }
+}
+
+llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
+    const tpu::TPUCompileMetadataProto& metadata) {
+  llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> input_mappings(
+      metadata.num_cores_per_replica(), llvm::SmallVector<int64_t, 4>());
+
+  if (metadata.num_cores_per_replica() == 1) {
+    input_mappings.front().resize(metadata.args_size());
+    std::iota(input_mappings.front().begin(), input_mappings.front().end(), 0);
+    return input_mappings;
+  }
+
+  for (const auto& arg_and_idx : llvm::enumerate(metadata.args())) {
+    const auto& sharding = arg_and_idx.value().sharding();
+    const int64_t idx = arg_and_idx.index();
+
+    const auto sharding_type = sharding.type();
+    if (sharding_type == xla::OpSharding::OTHER) {
+      for (const auto& device : sharding.tile_assignment_devices())
+        input_mappings[device].push_back(idx);
+    } else if (sharding_type == xla::OpSharding::REPLICATED) {
+      for (auto& input : input_mappings) input.push_back(idx);
+    } else {
+      assert(sharding_type == xla::OpSharding::MAXIMAL);
+      input_mappings[sharding.tile_assignment_devices(0)].push_back(idx);
+    }
+  }
+
+  return input_mappings;
 }
 
 }  // namespace tensorflow

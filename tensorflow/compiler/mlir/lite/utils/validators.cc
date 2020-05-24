@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {

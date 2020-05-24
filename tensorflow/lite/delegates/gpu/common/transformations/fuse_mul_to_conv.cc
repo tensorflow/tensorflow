@@ -32,6 +32,11 @@ class MergeConvolutionWithMul : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[0];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
+
     auto& mul_node = *sequence[1];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {
@@ -74,11 +79,11 @@ class MergeConvolutionWithMul : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemoveFollowingNode(graph, &mul_node, &conv_node);
+    absl::Status status = RemoveFollowingNode(graph, &mul_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove mul node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -91,6 +96,10 @@ class MergeMulWithConvolution : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[1];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
     auto& mul_node = *sequence[0];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {
@@ -134,11 +143,11 @@ class MergeMulWithConvolution : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemovePrecedingNode(graph, &mul_node, &conv_node);
+    absl::Status status = RemovePrecedingNode(graph, &mul_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove mul node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }

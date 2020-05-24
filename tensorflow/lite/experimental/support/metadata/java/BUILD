@@ -16,7 +16,6 @@ android_library(
     deps = [
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_fbs_android",
         "//tensorflow/lite/experimental/support/metadata:schema_fbs_android",
-        "//tensorflow/lite/java:tensorflowlite",
         "@org_checkerframework_qual",
     ],
 )
@@ -25,10 +24,13 @@ java_library(
     name = "tensorflow-lite-support-metadata-lib",
     srcs = glob(["src/java/org/tensorflow/lite/support/metadata/**/*.java"]),
     javacopts = JAVACOPTS,
+    resource_jars = [
+        "//tensorflow/lite/experimental/support/metadata:libmetadata_schema_java.jar",
+        "//tensorflow/lite/experimental/support/metadata:libschema_fbs_java.jar",
+    ],
     deps = [
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_java",
         "//tensorflow/lite/experimental/support/metadata:schema_fbs_java",
-        "//tensorflow/lite/java:tensorflowlitelib",
         "@org_checkerframework_qual",
     ],
 )

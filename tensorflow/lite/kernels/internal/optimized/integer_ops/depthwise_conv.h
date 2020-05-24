@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -1810,13 +1810,10 @@ inline void DepthwiseConvWithRounding(
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #if defined(__ANDROID__) && defined(__clang__)
-  ruy::Context* ruy_context = cpu_backend_context.ruy_context();
-  const auto ruy_paths = ruy_context != nullptr
-                             ? ruy_context->GetRuntimeEnabledPaths()
-                             : ruy::Path::kNone;
+  CpuFlags cpu_flags;
+  GetCpuFlags(&cpu_flags);
   // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
-  const bool has_dot_product_instructions =
-      false && (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+  const bool has_dot_product_instructions = false && cpu_flags.neon_dotprod;
 
   // Dispatch to dot-product 3x3 kernels when supported.
   if (has_dot_product_instructions) {

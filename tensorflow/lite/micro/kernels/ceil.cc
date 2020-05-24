@@ -54,9 +54,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace ceil
 
 TfLiteRegistration* Register_CEIL() {
-  static TfLiteRegistration r = {};
-  r.prepare = ceil::Prepare;
-  r.invoke = ceil::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/ceil::Prepare,
+                                 /*invoke=*/ceil::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -210,6 +212,9 @@ class TransferManager {
   // rather than writing all subbuffers. This method is always asynchronous.
   Status WriteRootTupleIndexTable(se::Stream* stream,
                                   const ShapedBuffer& device_buffer);
+  Status WriteRootTupleIndexTable(
+      se::Stream* stream,
+      const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree);
 
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
@@ -249,6 +254,13 @@ class TransferManager {
   // immediately.
   virtual bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor, const ShapedBuffer& device_buffer) const {
+    return false;
+  }
+
+  // Equivalent to CanShapedBufferBeAccessedNow but for a single device buffer.
+  virtual bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const {
     return false;
   }
 

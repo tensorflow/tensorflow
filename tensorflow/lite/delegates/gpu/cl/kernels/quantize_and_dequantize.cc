@@ -92,17 +92,17 @@ std::string QuantizeAndDequantize::GetArgsDeclaration() const {
                       scale_.GetDeclaration());
 }
 
-Status QuantizeAndDequantize::BindArguments(CLKernel* kernel) {
+absl::Status QuantizeAndDequantize::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetBytesAuto(min_));
   RETURN_IF_ERROR(kernel->SetBytesAuto(max_));
   RETURN_IF_ERROR(kernel->SetBytesAuto(scale_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateQuantizeAndDequantize(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const QuantizeAndDequantizeAttributes& attr,
-                                   QuantizeAndDequantize* result) {
+absl::Status CreateQuantizeAndDequantize(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const QuantizeAndDequantizeAttributes& attr,
+    QuantizeAndDequantize* result) {
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
                                     : definition.precision;
@@ -120,7 +120,7 @@ Status CreateQuantizeAndDequantize(const CreationContext& creation_context,
     *result = QuantizeAndDequantize(definition, attr, scalar_precision);
   }
   result->SetLinkIndex(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

@@ -66,6 +66,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
@@ -90,6 +91,7 @@ tf_cc_test(
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -161,11 +163,12 @@ tf_cuda_library(
     deps = [
         ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:gpu_id",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -268,6 +271,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

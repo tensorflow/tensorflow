@@ -133,34 +133,6 @@ Status GetTmpFilename(string* filename) {
   return Status::OK();
 }
 
-/// \brief Splits a GCS path to a bucket and an object.
-///
-/// For example, "gs://bucket-name/path/to/file.txt" gets split into
-/// "bucket-name" and "path/to/file.txt".
-/// If fname only contains the bucket and empty_object_ok = true, the returned
-/// object is empty.
-Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
-                    string* object) {
-  StringPiece scheme, bucketp, objectp;
-  io::ParseURI(fname, &scheme, &bucketp, &objectp);
-  if (scheme != "gs") {
-    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
-                                   fname);
-  }
-  *bucket = string(bucketp);
-  if (bucket->empty() || *bucket == ".") {
-    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
-                                   fname);
-  }
-  absl::ConsumePrefix(&objectp, "/");
-  *object = string(objectp);
-  if (!empty_object_ok && object->empty()) {
-    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
-                                   fname);
-  }
-  return Status::OK();
-}
-
 /// Appends a trailing slash if the name doesn't already have one.
 string MaybeAppendSlash(const string& name) {
   if (name.empty()) {
@@ -186,12 +158,17 @@ string JoinGcsPath(const string& path, const string& subpath) {
 /// For example:
 ///  - for 'a/b/c/d' it will append 'a', 'a/b' and 'a/b/c'
 ///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
+///  - for 'a//b/c/' it will append 'a', 'a//b' and 'a//b/c'
+///  - for '/a/b/c/' it will append '/a', '/a/b' and '/a/b/c'
 std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   std::set<string> result;
   result.insert(paths.begin(), paths.end());
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
-    while (!subpath.empty()) {
+    // If `path` starts with `/`, `subpath` will be `/` and then we get into an
+    // infinite loop. Same behavior happens if there is a `//` pattern in
+    // `path`, so we check for that and leave the loop quicker.
+    while (!(subpath.empty() || subpath == "/")) {
       result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
@@ -308,7 +285,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
       : filename_(filename),
         read_fn_(std::move(read_fn)),
         buffer_size_(buffer_size),
-        buffer_start_(0) {}
+        buffer_start_(0),
+        buffer_end_is_past_eof_(false) {}
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
@@ -332,9 +310,9 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         memcpy(scratch, buffer_.data() + (offset - buffer_start_), copy_size);
         *result = StringPiece(scratch, copy_size);
       }
-      if (copy_size < n) {
-        // Try reading from the file regardless of previous read status.
-        // The file might have grown since the last read.
+      bool consumed_buffer_to_eof =
+          offset + copy_size >= buffer_end && buffer_end_is_past_eof_;
+      if (copy_size < n && !consumed_buffer_to_eof) {
         Status status = FillBuffer(offset + copy_size);
         if (!status.ok() && status.code() != errors::Code::OUT_OF_RANGE) {
           // Empty the buffer to avoid caching bad reads.
@@ -347,9 +325,11 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         *result = StringPiece(scratch, copy_size);
       }
       if (copy_size < n) {
+        // Forget the end-of-file flag to allow for clients that poll on the
+        // same file.
+        buffer_end_is_past_eof_ = false;
         return errors::OutOfRange("EOF reached. Requested to read ", n,
-                                  " bytes from ", offset, " but only got ",
-                                  copy_size, " bytes.");
+                                  " bytes from ", offset, ".");
       }
     }
     return Status::OK();
@@ -363,6 +343,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
     StringPiece str_piece;
     Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
                              &(buffer_[0]));
+    buffer_end_is_past_eof_ = status.code() == errors::Code::OUT_OF_RANGE;
     buffer_.resize(str_piece.size());
     return status;
   }
@@ -382,6 +363,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
   // Offset of buffer from start of the file.
   mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
+
+  mutable bool buffer_end_is_past_eof_ TF_GUARDED_BY(buffer_mutex_);
 
   mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };
@@ -1028,6 +1011,34 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
   return Status::OK();
 }
 
+Status GcsFileSystem::ParseGcsPathForScheme(StringPiece fname, string scheme,
+                                            bool empty_object_ok,
+                                            string* bucket, string* object) {
+  StringPiece parsed_scheme, bucketp, objectp;
+  io::ParseURI(fname, &parsed_scheme, &bucketp, &objectp);
+  if (parsed_scheme != scheme) {
+    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
+                                   fname);
+  }
+  *bucket = string(bucketp);
+  if (bucket->empty() || *bucket == ".") {
+    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
+                                   fname);
+  }
+  absl::ConsumePrefix(&objectp, "/");
+  *object = string(objectp);
+  if (!empty_object_ok && object->empty()) {
+    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
+                                   fname);
+  }
+  return Status::OK();
+}
+
+Status GcsFileSystem::ParseGcsPath(StringPiece fname, bool empty_object_ok,
+                                   string* bucket, string* object) {
+  return ParseGcsPathForScheme(fname, "gs", empty_object_ok, bucket, object);
+}
+
 void GcsFileSystem::ClearFileCaches(const string& fname) {
   tf_shared_lock l(block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
@@ -1343,9 +1354,19 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 
         const auto& files_and_folders = AddAllSubpaths(all_files);
 
+        // To handle `/` in the object names, we need to remove it from `dir`
+        // and then use `StrCat` to insert it back.
+        const StringPiece dir_no_slash = str_util::StripSuffix(dir, "/");
+
         // Match all obtained paths to the input pattern.
         for (const auto& path : files_and_folders) {
-          const string& full_path = this->JoinPath(dir, path);
+          // Manually construct the path instead of using `JoinPath` for the
+          // cases where `path` starts with a `/` (which is a valid character in
+          // the filenames of GCS objects). `JoinPath` canonicalizes the result,
+          // removing duplicate slashes. We know that `dir_no_slash` does not
+          // end in `/`, so we are safe inserting the new `/` here as the path
+          // separator.
+          const string full_path = strings::StrCat(dir_no_slash, "/", path);
           if (this->Match(full_path, pattern)) {
             results->push_back(full_path);
           }

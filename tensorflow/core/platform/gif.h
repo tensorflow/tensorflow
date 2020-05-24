@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_GIF_H_
 #define TENSORFLOW_CORE_PLATFORM_GIF_H_
 
-#include "gif_lib.h"  // TF:gif
+#include "gif_lib.h"  // from @gif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_GIF_H_

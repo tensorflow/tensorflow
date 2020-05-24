@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-to-std %s -o - | FileCheck %s
+// RUN: xla-opt -xla-legalize-to-std %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
@@ -40,40 +40,6 @@ func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32
 
   // CHECK-NEXT:   return %4 : tensor<4xi32>
   return %4 : tensor<4xi32>
-}
-
-// Broadcasting is not currently supported.
-// TODO(suderman):Future pass should take all broadcasted binary ops and convert
-// them to separate broadcast and binary op.
-// CHECK-LABEL: func @binary_ops_broadcast(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>) -> tensor<4x4xf32> {
-func @binary_ops_broadcast(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>) -> tensor<4x4xf32> {
-  // CHECK-NEXT: %0 = "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, name = "add.3"} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-  %0 = "xla_hlo.add"(%arg0, %arg1) {
-      name = "add.3", broadcast_dimensions = dense<1> : tensor<1xi64>} :
-          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-
-  // CHECK-NEXT: %1 = "xla_hlo.multiply"(%0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, name = "mul.4"} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-  %1 = "xla_hlo.multiply"(%0, %arg1) {
-      name = "mul.4", broadcast_dimensions = dense<1> : tensor<1xi64>} :
-          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-
-  // CHECK-NEXT: %2 = "xla_hlo.subtract"(%1, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, name = "sub.5"} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-  %2 = "xla_hlo.subtract"(%1, %arg1) {
-      name = "sub.5", broadcast_dimensions = dense<1> : tensor<1xi64>} :
-          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-
-  // CHECK-NEXT: %3 = "xla_hlo.divide"(%2, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, name = "div.6"} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-  %3 = "xla_hlo.divide"(%2, %arg1) {
-      name = "div.6", broadcast_dimensions = dense<1> : tensor<1xi64>} :
-          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-
-  // CHECK-NEXT: %4 = "xla_hlo.remainder"(%3, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-  %4 = "xla_hlo.remainder"(%3, %arg1) {
-    broadcast_dimensions = dense<1> : tensor<1xi64>} :
-          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
-
-  // CHECK-NEXT: return %4 : tensor<4x4xf32>
-  return %4 : tensor<4x4xf32>
 }
 
 // CHECK-LABEL: func @compare_int(%arg0: tensor<4xi32>) -> (tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>) {

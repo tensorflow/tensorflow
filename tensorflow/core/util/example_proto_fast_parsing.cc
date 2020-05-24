@@ -1272,20 +1272,23 @@ Status FastParseExample(const Config& config,
       SparseBuffer& buffer = sparse_buffers[i][d];
 
       // Update indices.
-      int64* ix_p = &indices->matrix<int64>()(offset, 0);
       size_t delta = 0;
-      size_t example_index = first_example_of_minibatch(i);
-      for (size_t example_end_index : buffer.example_end_indices) {
-        size_t feature_index = 0;
-        for (; delta < example_end_index; ++delta) {
-          // Column 0: example index
-          *ix_p = example_index;
-          // Column 1: the feature index buffer example
-          *(ix_p + 1) = feature_index;
-          ix_p += 2;
-          ++feature_index;
+
+      if (indices->NumElements() > 0) {
+        int64* ix_p = &indices->matrix<int64>()(offset, 0);
+        size_t example_index = first_example_of_minibatch(i);
+        for (size_t example_end_index : buffer.example_end_indices) {
+          size_t feature_index = 0;
+          for (; delta < example_end_index; ++delta) {
+            // Column 0: example index
+            *ix_p = example_index;
+            // Column 1: the feature index buffer example
+            *(ix_p + 1) = feature_index;
+            ix_p += 2;
+            ++feature_index;
+          }
+          ++example_index;
         }
-        ++example_index;
       }
 
       CopySparseBufferToTensor(config.sparse[d].dtype, offset, &buffer, values);

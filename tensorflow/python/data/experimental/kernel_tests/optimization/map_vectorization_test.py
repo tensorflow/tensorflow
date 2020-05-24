@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
@@ -222,9 +221,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     """
     map_node_name = "Map"
     if num_parallel_calls is not None:
-      map_node_name = "ParallelMap"
-      if compat.forward_compatible(2020, 3, 6):
-        map_node_name = "ParallelMapV2"
+      map_node_name = "ParallelMapV2"
 
     def _make_dataset(node_names):
       dataset = base_dataset.apply(testing.assert_next(node_names))

@@ -79,7 +79,7 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
   if (registration->prepare) {
     // Error can happen either in Prepare or eval stage.
     auto status = registration->prepare(&context, &node);
-    if (status == kTfLiteError && expect_failure) {
+    if (status != kTfLiteOk && expect_failure) {
       return;
     } else {
       TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, status);

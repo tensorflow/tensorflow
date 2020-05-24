@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -27,7 +27,7 @@ namespace TF {
 namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
-struct LegalizeTFToQuant : public FunctionPass<LegalizeTFToQuant> {
+struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 
@@ -146,12 +146,12 @@ void LegalizeTFToQuant::runOnFunction() {
   auto func = getFunction();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect to QuantOps dialect pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFToQuantPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 

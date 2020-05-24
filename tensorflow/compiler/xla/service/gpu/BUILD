@@ -11,11 +11,13 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -420,9 +422,24 @@ filegroup(
     ),
 )
 
+# use alias since nested select statements not possible
+cc_library(
+    name = "empty",
+)
+
+alias(
+    name = "virtual_nccl",
+    actual = if_cuda("@local_config_nccl//:nccl", ":empty"),
+)
+
+alias(
+    name = "virtual_rccl",
+    actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = if_cuda(
+    srcs = if_cuda_or_rocm(
         [":nccl_all_reduce_thunk_src"],
         ["dummy_all_reduce_thunk.cc"],
     ),
@@ -443,10 +460,15 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_nccl([
-        "@local_config_nccl//:nccl",
+    ]) + if_rocm([
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+    ]) + if_nccl([
+        ":virtual_nccl",
+        ":virtual_rccl",
     ]),
 )
 
@@ -662,7 +684,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
@@ -698,7 +720,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -1184,7 +1206,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
@@ -1653,7 +1674,7 @@ tf_proto_library_cc(
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:autotuning_proto",
+        "//tensorflow/core/protobuf:autotuning_proto",
     ],
 )
 
@@ -1664,8 +1685,8 @@ cc_library(
     deps = [
         ":gpu_autotuning_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

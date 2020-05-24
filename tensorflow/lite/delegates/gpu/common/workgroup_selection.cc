@@ -34,9 +34,9 @@ void AddCornerCases(const T& grid, int max_work_group_total_size,
   for (int x = 1; x <= 4; ++x) {
     for (int y = 1; y <= 4; ++y) {
       for (int z = 1; z <= 4; ++z) {
-        int wg_x = IntegralDivideRoundUp(grid.x, x);
-        int wg_y = IntegralDivideRoundUp(grid.y, y);
-        int wg_z = IntegralDivideRoundUp(grid.z, z);
+        int wg_x = DivideRoundUp(grid.x, x);
+        int wg_y = DivideRoundUp(grid.y, y);
+        int wg_z = DivideRoundUp(grid.z, z);
         if (wg_x > max_work_group_sizes.x || wg_y > max_work_group_sizes.y ||
             wg_z > max_work_group_sizes.z ||
             wg_x * wg_y * wg_z > max_work_group_total_size) {
@@ -184,10 +184,9 @@ template std::vector<uint3> GenerateWorkGroupSizes(
     WorkGroupSizeAlignment z_alignment);
 
 template <typename T>
-Status GenerateWorkGroupSizesAlignedToGrid(const T& grid,
-                                           const T& max_work_group_size,
-                                           const int max_work_group_invocations,
-                                           std::vector<T>* work_groups) {
+absl::Status GenerateWorkGroupSizesAlignedToGrid(
+    const T& grid, const T& max_work_group_size,
+    const int max_work_group_invocations, std::vector<T>* work_groups) {
   auto alignment = WorkGroupSizeAlignment::PRECISE;
   *work_groups = GenerateWorkGroupSizes<T>(
       grid, /*min_work_group_total_size = */ 32, max_work_group_invocations,
@@ -197,16 +196,16 @@ Status GenerateWorkGroupSizesAlignedToGrid(const T& grid,
     AddCornerCases(grid, max_work_group_invocations, max_work_group_size,
                    alignment, alignment, alignment, work_groups);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Specializations of GenerateWorkGroupSizesAlignedToGrid for int3 and uint3
 
-template Status GenerateWorkGroupSizesAlignedToGrid(
+template absl::Status GenerateWorkGroupSizesAlignedToGrid(
     const int3& grid, const int3& max_work_group_size,
     const int max_work_group_invocations, std::vector<int3>* work_groups);
 
-template Status GenerateWorkGroupSizesAlignedToGrid(
+template absl::Status GenerateWorkGroupSizesAlignedToGrid(
     const uint3& grid, const uint3& max_work_group_size,
     const int max_work_group_invocations, std::vector<uint3>* work_groups);
 

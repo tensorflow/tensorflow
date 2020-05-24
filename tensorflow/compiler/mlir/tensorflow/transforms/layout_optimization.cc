@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -36,7 +36,8 @@ namespace {
 
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
-class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
+class LayoutAssignmentPass
+    : public PassWrapper<LayoutAssignmentPass, FunctionPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
@@ -57,7 +58,8 @@ class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
 // the basic block where they are defined. This will allow canonicalzer to
 // delete redundant transposes.
-class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
+class MoveTransposesPass
+    : public PassWrapper<MoveTransposesPass, FunctionPass> {
  public:
   enum class Direction { kBegin, kEnd };
 
@@ -126,7 +128,7 @@ void LayoutAssignmentPass::runOnFunction() {
 
     mlir::Operation* op = layout_sensitive_interface.getOperation();
     Location loc = op->getLoc();
-    OpBuilder builder(op->getBlock());
+    OpBuilder builder = OpBuilder::atBlockEnd(op->getBlock());
 
     auto perm_attr = [&](Permutation permutation) -> DenseIntElementsAttr {
       auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(32));
@@ -316,7 +318,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
     SmallVector<int64_t, 8> permutation;
 
     auto attr = permutation_op.value().cast<DenseElementsAttr>();
-    for (auto value : attr.getIntValues())
+    for (const auto& value : attr.getIntValues())
       permutation.push_back(value.getSExtValue());
 
     if (failed(fold_operands.FoldOperandsPermutation(permutation))) return;

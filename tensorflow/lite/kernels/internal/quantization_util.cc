@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 

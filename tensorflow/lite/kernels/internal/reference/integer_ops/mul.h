@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_MUL_H_
 
 #include "fixedpoint/fixedpoint.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {

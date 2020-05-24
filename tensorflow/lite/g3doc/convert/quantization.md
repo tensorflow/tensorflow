@@ -56,16 +56,23 @@ Convert the graph:
 converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.inference_type = tf.lite.constants.QUANTIZED_UINT8
 input_arrays = converter.get_input_arrays()
-converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
+converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean_value, std_dev
 tflite_model = converter.convert()
 ```
 
-For fully integer models, the inputs are uint8. The `mean` and `std_dev values`
-specify how those uint8 values map to the float input values used while training
-the model.
+For fully integer models, the inputs are uint8. When the `inference_type` is set
+to `QUANTIZED_UINT8` as above, the real_input_value is standardised using the
+[standard-score](https://en.wikipedia.org/wiki/Standard_score) as follows:
+
+real_input_value = (quantized_input_value - mean_value) / std_dev_value
+
+The `mean_value` and `std_dev values` specify how those uint8 values map to the
+float input values used while training the model. For more details, please see
+the
+[TFLiteConverter](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter)
 
 `mean` is the integer value from 0 to 255 that maps to floating point 0.0f.
-`std_dev` is 255 / (float_max - float_min)
+`std_dev` is 255 / (float_max - float_min).
 
 For most users, we recommend using post-training quantization. We are working on
 new tools for post-training and during training quantization that we hope will

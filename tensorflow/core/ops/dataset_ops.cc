@@ -37,8 +37,8 @@ REGISTER_OP("TensorDataset")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that
                                                 // `components` have shapes
                                                 // compatible with
@@ -49,8 +49,8 @@ REGISTER_OP("TensorSliceDataset")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that the
                                                 // dim-0 slices of `components`
                                                 // have shapes compatible with
@@ -62,8 +62,8 @@ REGISTER_OP("SparseTensorSliceDataset")
     .Input("dense_shape: int64")
     .Output("handle: variant")
     .Attr("Tvalues: type")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("GeneratorDataset")
@@ -79,8 +79,8 @@ REGISTER_OP("GeneratorDataset")
     .Attr("Tfinalize_func_args: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ZipDataset")
@@ -392,8 +392,8 @@ REGISTER_OP("RangeDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // start, stop, and step should be scalars.
@@ -438,6 +438,13 @@ REGISTER_OP("DeleteRandomSeedGenerator")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("DummySeedGenerator")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("ShuffleDataset")
     .Input("input_dataset: variant")
     .Input("buffer_size: int64")
@@ -465,9 +472,29 @@ REGISTER_OP("ShuffleDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // buffer_size, seed, and seed2 should be scalars.
+      // buffer_size and seed_generator should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ShuffleDatasetV3")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("seed_generator: resource")
+    .Output("handle: variant")
+    .Attr("reshuffle_each_iteration: bool = true")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, seed2, and seed_generator should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -480,6 +507,7 @@ REGISTER_OP("ShuffleAndRepeatDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("reshuffle_each_iteration: bool = true")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size, seed, seed2, and count should be scalars.
@@ -487,6 +515,28 @@ REGISTER_OP("ShuffleAndRepeatDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ShuffleAndRepeatDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("count: int64")
+    .Input("seed_generator: resource")
+    .Output("handle: variant")
+    .Attr("reshuffle_each_iteration: bool = true")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, seed2, count, and seed_generator should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -503,6 +553,13 @@ REGISTER_OP("DeleteMemoryCache")
     .Input("handle: resource")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
+
+REGISTER_OP("DummyMemoryCache")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")
@@ -538,8 +595,8 @@ REGISTER_OP("TextLineDataset")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -558,8 +615,8 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("footer_bytes: int64")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -581,8 +638,8 @@ REGISTER_OP("FixedLengthRecordDatasetV2")
     .Input("buffer_size: int64")
     .Input("compression_type: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -601,8 +658,8 @@ REGISTER_OP("TFRecordDataset")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
+    .SetDoNotOptimize()  // TODO(b/123753214): Source dataset ops must
+                         // disable constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
@@ -674,42 +731,19 @@ REGISTER_OP("OneShotIterator")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-namespace {
-
-Status IteratorGetNextShapeFn(shape_inference::InferenceContext* c) {
-  shape_inference::ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-  std::vector<PartialTensorShape> output_shapes;
-  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-  if (output_shapes.size() != c->num_outputs()) {
-    return errors::InvalidArgument(
-        "`output_shapes` must be the same length as `output_types` (",
-        output_shapes.size(), " vs. ", c->num_outputs());
-  }
-  for (size_t i = 0; i < output_shapes.size(); ++i) {
-    shape_inference::ShapeHandle output_shape_handle;
-    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-        output_shapes[i], &output_shape_handle));
-    c->set_output(static_cast<int>(i), output_shape_handle);
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
 REGISTER_OP("IteratorGetNext")
     .Input("iterator: resource")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorGetNextSync")
     .Input("iterator: resource")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
 // implement a mechanism to determine whether `dataset` has a side-effect
@@ -721,7 +755,7 @@ REGISTER_OP("DatasetToSingleElement")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
 // implement a mechanism to determine whether `dataset` has a side-effect
@@ -739,7 +773,7 @@ REGISTER_OP("ReduceDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
     .SetIsStateful()
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
@@ -818,7 +852,7 @@ REGISTER_OP("OptionalGetValue")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorGetNextAsOptional")
     .Input("iterator: resource")
@@ -935,7 +969,7 @@ REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("MultiDeviceIteratorToStringHandle")
     .Input("multi_device_iterator: resource")

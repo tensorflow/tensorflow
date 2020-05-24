@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
@@ -157,6 +158,9 @@ class MirroredTwoDeviceDistributionTest(
       self.set_v2_tensorshape(original_v2)
 
   def testReplicateDataset(self, distribution):
+    if tf2.enabled() and not context.executing_eagerly():
+      self.skipTest("Skipping test since we do not support graph mode in TF 2")
+
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
     input_fn = self._input_fn_to_test_input_context(
@@ -379,16 +383,38 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
           self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
-  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
-    def merge_fn(_):
-      pass
+  def testControlFlowFunctionInCallForEachReplicaWithMergeCall(
+      self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
 
     @def_function.function
     def model_fn():
+
       def body_fn(i):
-        ds_context.get_replica_context().merge_call(merge_fn)
-        return i + 1
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
+
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
+
+  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
+
+    def model_fn():
+
+      @def_function.function
+      def model_fn_nested():
+        t = constant_op.constant(1)
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(t,))
+
+      return model_fn_nested()
 
     with distribution.scope():
       with self.assertRaisesRegexp(

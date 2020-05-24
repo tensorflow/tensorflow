@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule Const
 
 ENTRY %Const () -> s32[100] {

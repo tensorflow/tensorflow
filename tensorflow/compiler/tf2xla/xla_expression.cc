@@ -121,6 +121,9 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
                       handle().builder()->IsConstant(handle()));
   if (!is_constant) return {absl::nullopt};
 
+  if (!client)
+    return errors::InvalidArgument("client is required to resolve constant");
+
   TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
                       handle().builder()->BuildConstantSubGraph(
                           handle(), dynamic_dimension_is_minus_one));

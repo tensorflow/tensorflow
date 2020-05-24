@@ -30,6 +30,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+
 std::string GenerateConvCode(
     const OperationDef& op_def, const int3& block_size, bool is1x1,
     bool adreno4xx_optimization, bool stride_correction,
@@ -384,7 +385,7 @@ ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
   return *this;
 }
 
-Status ConvTexture::Compile(const CreationContext& creation_context) {
+absl::Status ConvTexture::Compile(const CreationContext& creation_context) {
   auto storage_type = definition_.GetPrimaryStorageType();
   bool is1x1 = kernel_size_.x == 1 && kernel_size_.y == 1;
   bool adreno4xx_optimization =
@@ -407,7 +408,7 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status ConvTexture::BindArguments() {
+absl::Status ConvTexture::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_0_.GetMemoryPtr()));
@@ -427,48 +428,47 @@ Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvTexture::GetGridSize() const {
   const int grid_x =
-      IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
-  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.z);
+      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), block_size_.y);
+  const int grid_z = DivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvTexture::Tune(const TuningParameters& params) {
+absl::Status ConvTexture::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &work_group_size_);
 }
 
-Status ConvTexture::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvTexture::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status CreateConvTexture(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const Convolution2DAttributes& attr,
-                         ConvTexture* result) {
+absl::Status CreateConvTexture(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const Convolution2DAttributes& attr,
+                               ConvTexture* result) {
   *result = ConvTexture(definition, attr);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvTexture(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const FullyConnectedAttributes& attr,
-                         ConvTexture* result) {
+absl::Status CreateConvTexture(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const FullyConnectedAttributes& attr,
+                               ConvTexture* result) {
   *result = ConvTexture(definition);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvTextureWino4x4To6x6(const CreationContext& creation_context,
-                                     const OperationDef& definition,
-                                     const Convolution2DAttributes& attr,
-                                     ConvTexture* result) {
+absl::Status CreateConvTextureWino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvTexture* result) {
   *result = ConvTexture(definition);
   result->different_weights_for_height_ = true;
   result->block_size_ = {4, 1, 2};

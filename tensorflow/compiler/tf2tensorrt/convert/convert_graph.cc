@@ -32,23 +32,20 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
-#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
@@ -77,7 +74,18 @@ Status BuildNodeMap(const Graph& graph,
   return Status::OK();
 }
 
-}  // namespace
+EngineInfo::EngineType GetEngineType(const ConversionParams& params) {
+  return (params.is_dyn_op || params.use_calibration)
+             ? EngineInfo::EngineType::TRTDynamic
+             : EngineInfo::EngineType::TRTStatic;
+}
+
+// Returns true when use_implicit_batch is false or when we are building dynamic
+// engine, to allow unknown size for dimensions rather than dimension 0.
+bool AllowDynamicNonBatchDimension(const ConversionParams& params) {
+  return !params.use_implicit_batch ||
+         GetEngineType(params) == EngineInfo::EngineType::TRTDynamic;
+}
 
 struct EdgePtrCompare {
   bool operator()(const Edge* lhs, const Edge* rhs) const {
@@ -393,9 +401,8 @@ Status CreateTRTNode(const ConversionParams& params,
           for (int i = 1; i < conn.outside_shape.dims(); i++) {
             if (conn.outside_shape.dim_size(i) <= 0) {
               return errors::Internal(
-                  "Input shapes must be fully defined when in static mode. "
-                  "Please try is_dynamic_op=True (shape was ",
-                  conn.outside_shape.DebugString(), ")");
+                  "Not fully defined input shape when in static mode which "
+                  "should have been excluded by the segmenter. ");
             }
           }
         }
@@ -543,6 +550,13 @@ Status CreateTRTNode(const ConversionParams& params,
   return Status::OK();
 }
 
+int64 GetNextGraphSequenceNumber() {
+  static std::atomic<int64> graph_sequence_num;
+  return graph_sequence_num++;
+}
+
+}  // namespace
+
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
                                       Graph* graph, const string& engine_name) {
   Graph segment_graph(graph->flib_def());
@@ -626,25 +640,32 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         "Calibration with FP32 or FP16 is not supported.");
   }
 
+  grappler::GraphProperties static_graph_properties(*params.grappler_item);
+  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
+
+  const GraphDef& graph_def = params.grappler_item->graph;
   // Convert graphdef to graph.
-  FunctionLibraryDefinition flib(OpRegistry::Global(),
-                                 params.input_graph_def->library());
+  FunctionLibraryDefinition flib(OpRegistry::Global(), graph_def.library());
   Graph graph(flib);
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
-                                            *params.input_graph_def, &graph));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), graph_def, &graph));
 
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (auto node : *(params.output_names)) {
+  for (const auto& node : *(params.output_names)) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
+  segment_options.use_implicit_batch = params.use_implicit_batch;
+  segment_options.allow_dynamic_non_batch_dim =
+      AllowDynamicNonBatchDimension(params);
+
   segment::SegmentNodesVector initial_segments;
-  TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
+  TrtNodeValidator validator(static_graph_properties, params.precision_mode,
                              params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph,
+      &graph, &static_graph_properties,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
@@ -666,22 +687,21 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   std::vector<size_t> engine_bytes_size;
   segment::SegmentNodesVector converted_segments;
   converted_segments.reserve(initial_segments.size());
+  string engine_name_prefix =
+      StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
-    curr_engine.engine_name = StrCat("TRTEngineOp_", t);
-    Status status =
-        GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
-                      reverse_topo_order, &curr_engine);
+    curr_engine.engine_name = StrCat(engine_name_prefix, t);
+    Status status = GetEngineInfo(&graph, static_graph_properties, curr_segment,
+                                  node_map, reverse_topo_order, &curr_engine);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
                    << status;
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
-                                   ? EngineInfo::EngineType::TRTDynamic
-                                   : EngineInfo::EngineType::TRTStatic);
+    curr_engine.engine_type = GetEngineType(params);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
@@ -757,6 +777,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Cannot replace " << msg
+                   << " reason: " << status.error_message()
                    << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {

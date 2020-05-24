@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
@@ -89,18 +90,24 @@ float GetFloatVectorElement(__m128 v) {
 
 }  // namespace
 
-void SseMatrixBatchVectorMultiplyAccumulate(
+void SseMatrixBatchVectorMultiplyAccumulateImpl(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result) {
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, const int32_t* row_sums) {
   for (std::intptr_t batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
+    const int32_t batch_offset = input_offset ? input_offset[batch] : 0;
     // Compute dot-product for every column.
     for (std::intptr_t row = 0; row < m_rows; ++row) {
       // Get the address of the first element of the row.
       const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
-
+      const float row_scale =
+          per_channel_scale ? per_channel_scale[row] * batch_scaling_factor
+                            : batch_scaling_factor;
+      const int32_t row_offset =
+          row_sums && batch_offset ? batch_offset * row_sums[row] : 0;
       // Initialize the dot product sum for the row to 0.
       __m128i dotprod_32x4 = _mm_setzero_si128();
       std::intptr_t col = 0;
@@ -152,8 +159,10 @@ void SseMatrixBatchVectorMultiplyAccumulate(
       for (; col < m_cols; ++col) {
         sum += row_ptr[col] * vectors[col];
       }  // for col
-
-      *result += sum * batch_scaling_factor;
+      if (row_offset) {
+        sum -= row_offset;
+      }
+      *result += sum * row_scale;
       ++result;
     }  // for row
 
@@ -165,51 +174,30 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, const float* __restrict__ per_channel_scale,
-    const int32_t* __restrict__ input_offset) {
-  static constexpr std::intptr_t kBlockSize = 16;
-  for (std::intptr_t batch = 0; batch < n_batch; ++batch) {
-    const float batch_scaling_factor = scaling_factors[batch];
-    for (std::intptr_t row = 0; row < m_rows; ++row) {
-      const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
-      float scale = batch_scaling_factor;
-      if (per_channel_scale != nullptr) {
-        scale *= per_channel_scale[row];
-      }
-      __m128i dotprod_32x4 = _mm_setzero_si128();
-      __m128i row_sum_16x8 = _mm_setzero_si128();
-      std::intptr_t col = 0;
-      for (; col < (m_cols & ~(kBlockSize - 1)); col += kBlockSize) {
-        const __m128i vec_8x16 =
-            _mm_loadu_si128(reinterpret_cast<const __m128i*>(vectors + col));
-        const __m128i row_8x16 =
-            _mm_loadu_si128(reinterpret_cast<const __m128i*>(row_ptr + col));
-        // dotprod += vec · row
-        dotprod_32x4 =
-            _mm_add_epi32(dotprod_32x4, DotProdInt8x4x4(vec_8x16, row_8x16));
+    float* __restrict__ result) {
+  SseMatrixBatchVectorMultiplyAccumulateImpl(
+      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      /*per_channel_scale=*/nullptr, /*input_offset=*/nullptr,
+      /*row_sums=*/nullptr);
+}
 
-        // Pairwise add 16x 8-bit values; equivalently, multipy-add with 1.
-        // Result is 8x 16-bit values.
-        const __m128i row_16x8 = _mm_maddubs_epi16(_mm_set1_epi8(1), row_8x16);
-        row_sum_16x8 = _mm_add_epi16(row_sum_16x8, row_16x8);
-      }  // for col
-      // Pairwise add 8x 16-bit values; equivalently, multipy-add with 1.
-      // Result is 4x 32-bit values.
-      const __m128i row_sum_32x4 =
-          _mm_madd_epi16(row_sum_16x8, _mm_set1_epi16(1));
-      int32_t sum = ReduceInt32x4(dotprod_32x4);
-      int32_t row_sum = ReduceInt32x4(row_sum_32x4);
-      // Postamble loop.
-      for (; col < m_cols; ++col) {
-        sum += row_ptr[col] * vectors[col];
-        row_sum += row_ptr[col];
-      }  // for col
-      sum -= row_sum * input_offset[batch];
-      *result += sum * scale;
-      ++result;
-    }  // for row
-    vectors += m_cols;
-  }  // for batch
+void SseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context) {
+  if ((input_offset != nullptr) && (!compute_row_sums || *compute_row_sums)) {
+    memset(row_sums, 0, sizeof(int32_t) * m_rows);
+    SseReductionSumVector(matrix, row_sums, m_rows, m_cols);
+    if (compute_row_sums) {
+      *compute_row_sums = false;
+    }
+  }
+  SseMatrixBatchVectorMultiplyAccumulateImpl(
+      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      per_channel_scale, input_offset, row_sums);
 }
 
 namespace {
@@ -340,6 +328,44 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     vectors += m_cols;
     results += m_rows;
   }  // for batch
+}
+
+void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                           const int output_size, const int reduction_size) {
+  static constexpr std::intptr_t kBlockSize = 16;
+  for (std::intptr_t row = 0; row < output_size; ++row) {
+    const int8_t* __restrict__ row_ptr = input_vector + row * reduction_size;
+    __m128i row_sum_16x8 = _mm_setzero_si128();
+    std::intptr_t col = 0;
+    for (; col < (reduction_size & ~(kBlockSize - 1)); col += kBlockSize) {
+      const __m128i row_8x16 =
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(row_ptr + col));
+      const __m128i row_16x8 = _mm_maddubs_epi16(_mm_set1_epi8(1), row_8x16);
+      row_sum_16x8 = _mm_add_epi16(row_sum_16x8, row_16x8);
+    }  // for col
+#ifdef __SSE4_1__
+    // Postamble for 8x 8-bit inputs.
+    if (col < (reduction_size & ~7)) {
+      // _mm_loadu_si64 not supported in gcc versions < 9, breaks kokoro build.
+      const __m128i row_16x8 = _mm_cvtepi8_epi16(
+          _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
+      // dotprod += vec · row
+      row_sum_16x8 = _mm_add_epi16(row_sum_16x8, row_16x8);
+      col += 8;
+    }
+#endif
+    const __m128i row_sum_32x4 =
+        _mm_madd_epi16(row_sum_16x8, _mm_set1_epi16(1));
+    int32_t row_sum = ReduceInt32x4(row_sum_32x4);
+#if defined(__SSE4_1__) && defined(__clang__)
+    // SSE 4.1: Don't try to unroll and vectorize this, already done above.
+#pragma clang loop unroll(disable) vectorize(disable)
+#endif
+    for (; col < reduction_size; col++) {
+      row_sum += *(row_ptr + col);
+    }
+    *(output_vector + row) += row_sum;
+  }
 }
 
 }  // namespace tensor_utils

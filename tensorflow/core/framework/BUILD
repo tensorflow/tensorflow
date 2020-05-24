@@ -47,6 +47,7 @@ exports_files(
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
@@ -76,7 +77,10 @@ exports_files(
         "tracking_allocator.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -173,6 +177,7 @@ filegroup(
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "node_def_util.h",
@@ -243,6 +248,7 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
+        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
         "op_kernel.cc",
@@ -343,6 +349,8 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
+        "metrics.cc",
+        "metrics.h",
         "model.cc",
         "model.h",
         "node_def_builder.cc",
@@ -381,7 +389,6 @@ filegroup(
         "shape_inference.cc",
         "shape_inference.h",
         "stats_aggregator.h",
-        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_slice.cc",
         "tensor_slice.h",
@@ -627,7 +634,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/tfrt_delegate:__pkg__",
+        "//tensorflow/core/runtime_fallback:__subpackages__",
     ],
     deps = [
         ":bounds_check",

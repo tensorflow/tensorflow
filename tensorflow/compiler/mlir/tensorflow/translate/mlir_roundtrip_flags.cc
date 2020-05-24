@@ -81,7 +81,7 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
     // using the type from the graph.
     used_node_dtypes.resize(node_names.size(), DataType_Name(DT_INVALID));
   } else if (node_names.size() == node_dtypes.size()) {
-    for (auto dtype : node_dtypes) {
+    for (const auto& dtype : node_dtypes) {
       if (dtype.empty()) {
         used_node_dtypes.push_back(DataType_Name(DT_INVALID));
       } else if (dtype != DataType_Name(DT_INVALID)) {

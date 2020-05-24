@@ -59,6 +59,8 @@ namespace data {
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+constexpr char kTFDataFunction[] = "_tf_data_function";
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
@@ -250,7 +252,7 @@ class GraphDefBuilderWrapper {
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
 
   bool HasAttr(const OpDef* op_def, const string& attr_name) const {
-    for (auto attr : op_def->attr()) {
+    for (const auto& attr : op_def->attr()) {
       if (attr.name() == attr_name) {
         return true;
       }
@@ -332,7 +334,9 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::MaxParallelism();
+        static const int32 kDefaultRunnerThreadpoolSize =
+            port::MaxParallelism();
+        runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
@@ -628,14 +632,6 @@ class IteratorBase {
     return input->SaveInternal(ctx, writer);
   }
 
-  // TODO(jsimsa): Remove this override when all callers are migrated to the
-  // override that uses SerializationContext.
-  Status SaveInput(IteratorStateWriter* writer,
-                   const std::unique_ptr<IteratorBase>& input) {
-    SerializationContext ctx(/*params=*/{});
-    return input->SaveInternal(&ctx, writer);
-  }
-
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their input iterators.
   Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
@@ -648,16 +644,7 @@ class IteratorBase {
   // This method is used to store the state of the iterator in a checkpoint.
   // implementations have an override.
   virtual Status SaveInternal(SerializationContext* ctx,
-                              IteratorStateWriter* writer) {
-    return SaveInternal(writer);
-  }
-
-  // TODO(jsimsa): Remove this override when all subclasses are migrated to the
-  // override that accepts SerializationContext and make that override pure
-  // virtual.
-  virtual Status SaveInternal(IteratorStateWriter* writer) {
-    return errors::Unimplemented("checkpointing is not supported");
-  }
+                              IteratorStateWriter* writer) = 0;
 
   // Restores the state of this iterator.
   //
@@ -669,6 +656,11 @@ class IteratorBase {
   // implementations have an override.
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) = 0;
+
+  // Returns a pointer to the node representing this iterator in the performance
+  // model. It may be null, if performance modeling is not enabled for this
+  // iterator.
+  std::shared_ptr<model::Node> model_node() const { return node_; }
 
   // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
@@ -686,7 +678,7 @@ class IteratorBase {
                         const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
-  model::Node* node_ = nullptr;  // Not owned.
+  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   int64 id_ = 0;
   int64 parent_id_ = 0;
@@ -968,10 +960,15 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   // When modeling is enabled, this method records the fact that this iterator
-  // has produced an element.
-  void RecordElement(IteratorContext* ctx) {
+  // has produced an element and its size in bytes.
+  void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
     if (node_) {
+      int64 num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
+      node_->record_bytes_produced(num_bytes);
+      if (node_->output()) {
+        node_->output()->record_bytes_consumed(num_bytes);
+      }
     }
   }
 

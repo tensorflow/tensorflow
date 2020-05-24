@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
@@ -58,21 +59,19 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
-                   vectors, scaling_factors, n_batch, result, per_channel_scale,
-                   input_offset);
-}
-
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
                    vectors, scaling_factors, n_batch, result, per_channel_scale,
                    input_offset, scratch, row_sums, compute_row_sums, context);
+}
+
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate1x4, matrix,
+                   segments, indices, m_rows, m_cols, vector, n_batch, result);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(

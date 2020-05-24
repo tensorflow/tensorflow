@@ -156,6 +156,7 @@ cc_library(
         ":array_grad",
         ":data_flow_grad",
         ":image_grad",
+        ":manip_grad",
         ":math_grad",
         ":nn_grad",
     ],
@@ -177,10 +178,11 @@ cc_library_with_android_deps(
     name = "ops",
     srcs = ["framework/ops.cc"],
     hdrs = ["framework/ops.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
@@ -195,7 +197,7 @@ cc_library_with_android_deps(
         "framework/scope_internal.h",
     ],
     hdrs = ["framework/scope.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     common_deps = [
         ":ops",
     ],
@@ -235,7 +237,7 @@ cc_library_with_android_deps(
     name = "client_session",
     srcs = ["client/client_session.cc"],
     hdrs = ["client/client_session.h"],
-    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    android_deps = ["//tensorflow/core:portable_tensorflow_lib"],
     common_deps = [
         ":ops",
         ":scope",
@@ -273,7 +275,7 @@ cc_library_with_android_deps(
     srcs = ["ops/const_op.cc"],
     hdrs = ["ops/const_op.h"],
     android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ],
     common_deps = [
         ":ops",
@@ -302,7 +304,7 @@ cc_library_with_android_deps(
     srcs = ["ops/while_loop.cc"],
     hdrs = ["ops/while_loop.h"],
     android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:portable_tensorflow_lib",
     ],
     common_deps = [
         ":cc_ops",
@@ -488,6 +490,32 @@ tf_cc_test(
         ":gradient_checker",
         ":testutil",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "manip_grad",
+    srcs = ["gradients/manip_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":gradients",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_manip_grad_test",
+    srcs = ["gradients/manip_grad_test.cc"],
+    deps = [
+        ":array_ops",
+        ":cc_ops",
+        ":gradient_checker",
+        ":manip_grad",
+        ":testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

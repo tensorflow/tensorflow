@@ -64,16 +64,34 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       return this;
     }
 
+    /**
+     * Specifies the name of the target accelerator to be used by NNAPI. If this parameter is
+     * specified the {@link #setUseNnapiCpu(boolean)} method won't have any effect.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setAcceleratorName(String name) {
       this.acceleratorName = name;
       return this;
     }
 
+    /**
+     * Configure the location to be used to store model compilation cache entries. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setCacheDir(String cacheDir) {
       this.cacheDir = cacheDir;
       return this;
     }
 
+    /**
+     * Sets the token to be used to identify this model in the model compilation cache. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setModelToken(String modelToken) {
       this.modelToken = modelToken;
       return this;
@@ -93,7 +111,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
      * Enable or disable the NNAPI CPU Device "nnapi-reference". If unset it will use the NNAPI
      * default settings.
      *
-     * <p>Only effective on Android 10 and above.
+     * <p>Only effective on Android 10 (API level 29) and above.
      */
     public Options setUseNnapiCpu(boolean enable) {
       this.useNnapiCpu = !enable;

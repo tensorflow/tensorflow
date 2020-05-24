@@ -33,28 +33,23 @@ namespace {
 
 class Resize : public NodeShader {
  public:
-  Resize() {}
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr = absl::any_cast<const Resize2DAttributes&>(ctx.op_attr);
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-    auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    auto attr =
-        absl::any_cast<Resize2DAttributes>(ctx.node->operation.attributes);
-
-    if (input->tensor.shape.w > output->tensor.shape.w ||
-        input->tensor.shape.h > output->tensor.shape.h) {
-      return InvalidArgumentError("Output size is less than input size.");
+    if (ctx.input_shapes[0][2] > ctx.output_shapes[0][2] ||
+        ctx.input_shapes[0][1] > ctx.output_shapes[0][1]) {
+      return absl::InvalidArgumentError("Output size is less than input size.");
     }
-    if (output->tensor.shape.w != attr.new_shape.w ||
-        output->tensor.shape.h != attr.new_shape.h) {
-      return InvalidArgumentError(
+    if (ctx.output_shapes[0][2] != attr.new_shape.w ||
+        ctx.output_shapes[0][1] != attr.new_shape.h) {
+      return absl::InvalidArgumentError(
           "Output size does not match new_size in attributes.");
     }
-    if (input->tensor.shape.c != output->tensor.shape.c) {
-      return InvalidArgumentError("Input/output channels mismatch.");
+    if (ctx.input_shapes[0][3] != ctx.output_shapes[0][3]) {
+      return absl::InvalidArgumentError("Input/output channels mismatch.");
     }
-    if (input->tensor.shape.h == 1 && input->tensor.shape.w == 1) {
+    if (ctx.input_shapes[0][1] == 1 && ctx.input_shapes[0][2] == 1) {
       // Copy a single element from input.
       *generated_code = {
           /*parameters=*/{},
@@ -66,16 +61,16 @@ class Resize : public NodeShader {
           /*input=*/IOStructure::ONLY_DEFINITIONS,
           /*output=*/IOStructure::AUTO,
       };
-      return OkStatus();
+      return absl::OkStatus();
     }
     std::vector<Variable> parameters = {
-        {"input_data_0_h", input->tensor.shape.h},
-        {"input_data_0_w", input->tensor.shape.w},
+        {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+        {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
         {"scale_factor",
-         float2(CalculateResizeScale(input->tensor.shape.w,
-                                     output->tensor.shape.w, attr),
-                CalculateResizeScale(input->tensor.shape.h,
-                                     output->tensor.shape.h, attr))},
+         float2(CalculateResizeScale(ctx.input_shapes[0][2],
+                                     ctx.output_shapes[0][2], attr),
+                CalculateResizeScale(ctx.input_shapes[0][1],
+                                     ctx.output_shapes[0][1], attr))},
     };
 
     std::string source;
@@ -107,7 +102,7 @@ class Resize : public NodeShader {
       value_0 = $input_data_0[coord.x, coord.y, gid.z]$;
       )";
     } else {
-      return InvalidArgumentError("Unknown sampling type");
+      return absl::InvalidArgumentError("Unknown sampling type");
     }
     *generated_code = {
         /*parameters=*/std::move(parameters),
@@ -119,7 +114,7 @@ class Resize : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

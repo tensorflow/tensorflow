@@ -46,11 +46,7 @@ cc_library(
         "test_helpers.h",
     ],
     build_for_embedded = True,
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         ":micro_compatibility",
         ":micro_string",
@@ -60,8 +56,10 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -75,10 +73,7 @@ cc_library(
     ],
     build_for_embedded = True,
     copts = micro_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-    ],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(

@@ -86,3 +86,27 @@ module attributes {tf_saved_model.semantics} {
   }
 }
 
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // CHECK-NOT: tf_saved_model.global_tensor
+ "tf_saved_model.global_tensor"() {sym_name = "v", type = tensor<f32>, value = dense<1.0> : tensor<f32> } : () -> ()
+ "tf_saved_model.global_tensor"() {sym_name = "v2", type = tensor<f32>, value = dense<1.0> : tensor<f32> } : () -> ()
+
+  func @f(%arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @"v"}, %arg2: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @"v2"})
+  attributes {tf_saved_model.exported_names = ["f"]} {
+    // CHECK: "tf.Const"()
+    %0 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+
+    // CHECK: "tf.Const"()
+    %1 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+    return
+  }
+}
+
+// -----
+
+// Test running the pass on a module that does not have
+// tf_saved_model.semantics.
+module {}

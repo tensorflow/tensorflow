@@ -1150,6 +1150,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* user, const ShapeIndex& user_index) const {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
+  if (operand->opcode() == HloOpcode::kConstant) {
+    return false;
+  }
   const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =

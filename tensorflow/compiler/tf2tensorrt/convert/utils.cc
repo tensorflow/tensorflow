@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -161,6 +162,62 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
     }
   }
   return true;
+}
+
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      *trt_type = nvinfer1::DataType::kFLOAT;
+      break;
+    case DT_HALF:
+      *trt_type = nvinfer1::DataType::kHALF;
+      break;
+    case DT_INT32:
+      *trt_type = nvinfer1::DataType::kINT32;
+      break;
+    default:
+      return errors::Internal("Unsupported tensorflow type");
+  }
+  return Status::OK();
+}
+
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
+  switch (trt_type) {
+    case nvinfer1::DataType::kFLOAT:
+      *tf_type = DT_FLOAT;
+      break;
+    case nvinfer1::DataType::kHALF:
+      *tf_type = DT_HALF;
+      break;
+    case nvinfer1::DataType::kINT32:
+      *tf_type = DT_INT32;
+      break;
+    default:
+      return errors::Internal("Invalid TRT type");
+  }
+  return Status::OK();
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {

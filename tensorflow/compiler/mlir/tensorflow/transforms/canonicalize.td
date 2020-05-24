@@ -27,9 +27,10 @@ def SingleResultAndOperandHaveSameType : Constraint<
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
-// Checks if the value has only one user.
-def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
-
+// Checks if all the users is ReadVariableOp.
+def HasOnlyReadVariableOpUsers : Constraint<
+  CPred<"llvm::all_of($0.getUsers(), [](mlir::OpOperand op) { "
+        "return llvm::isa<mlir::TF::ReadVariableOp>(op.getOwner()); })">>;
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.
@@ -152,6 +153,23 @@ def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+def ReshapeSelectPredIfNecessary : NativeCodeCall<
+  "ReshapeSelectPredIfNecessary(&($_builder), $0.getOwner()->getLoc(), $1, "
+  "$2.getType().cast<RankedTensorType>().getRank())">;
+
+// Select supports tensor `condition` where the shape is equal to the first
+// dimension of t and e. SelectV2 op supports normal broadcasting, so in these
+// cases the condition needs to be reshaped.
+def SelectToSelectV2 : Pat<
+  (TF_SelectOp:$op StaticShapeTensorOf<[AnyType]>:$cond,
+                   StaticShapeTensorOf<[AnyType]>:$t,
+                   StaticShapeTensorOf<[AnyType]>:$e),
+  (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
+
+//===----------------------------------------------------------------------===//
 // Square op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -185,5 +203,5 @@ def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
 // Cast op followed by a ReadVariable op can be folded into the ReadVariable
 //===----------------------------------------------------------------------===//
 
-def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOneUse $output)]>;
+def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOnlyReadVariableOpUsers $output)]>;
 

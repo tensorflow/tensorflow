@@ -72,6 +72,8 @@ FRAMEWORK_LIB_HDRS = [
     "graph_info.h",
     "interpreter.h",
     "model.h",
+    "model_builder.h",
+    "interpreter_builder.h",
     "mutable_op_resolver.h",
     "op_resolver.h",
     "optional_debug_tools.h",
@@ -81,6 +83,7 @@ FRAMEWORK_LIB_HDRS = [
 cc_library(
     name = "version",
     hdrs = ["version.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     # Note that we only use the header defines from :version_lib.
     deps = ["//tensorflow/core:version_lib"],
@@ -133,6 +136,7 @@ cc_library(
     name = "external_cpu_backend_context",
     srcs = ["external_cpu_backend_context.cc"],
     hdrs = ["external_cpu_backend_context.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         "//tensorflow/lite/c:common",
@@ -222,7 +226,8 @@ cc_library(
         "core/subgraph.cc",
         "graph_info.cc",
         "interpreter.cc",
-        "model.cc",
+        "interpreter_builder.cc",
+        "model_builder.cc",
         "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
         "stderr_reporter.cc",
@@ -241,6 +246,7 @@ cc_library(
         ":minimal_logging",
         ":simple_memory_arena",
         ":string",
+        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",
@@ -248,6 +254,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
@@ -303,6 +310,49 @@ cc_library(
         ":string",
         "//tensorflow/lite/c:common",
     ],
+)
+
+# Link this library to inject XNNPACK delegate to TFLite runtime automatically
+# by utilizing the weak symbols if they're supported by the platform.
+cc_library(
+    name = "tflite_with_xnnpack",
+    srcs = ["tflite_with_xnnpack.cc"],
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    linkstatic = True,
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+    alwayslink = 1,
+)
+
+# Enables applying XNNPACK delegate for float models in TFLite runtime.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_xnnpack_enabled",
+    values = {"define": "tflite_with_xnnpack=true"},
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_optional",
+    srcs = ["tflite_with_xnnpack_optional.cc"],
+    hdrs = [
+        "core/macros.h",
+        "tflite_with_xnnpack_optional.h",
+    ],
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    defines = select({
+        ":tflite_with_xnnpack_enabled": ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/lite/c:common",
+    ] + select({
+        ":tflite_with_xnnpack_enabled": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(
@@ -432,6 +482,32 @@ tf_cc_test(
     ],
 )
 
+# Test model framework with the XNNPACK delegate.
+cc_test(
+    name = "model_xnnpack_test",
+    size = "small",
+    srcs = [
+        "model_xnnpack_test.cc",
+    ],
+    data = [
+        "testdata/multi_add.bin",
+    ],
+    tags = [
+        "no_windows",  # No weak symbols with MSVC.
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":framework",
+        ":tflite_with_xnnpack",
+        ":util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Test OpResolver.
 cc_test(
     name = "mutable_op_resolver_test",
@@ -530,6 +606,9 @@ cc_test(
 #   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite",
+    # Until we have more granular symbol export for the C++ API on Windows,
+    # export all symbols.
+    features = ["windows_export_all_symbols"],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",

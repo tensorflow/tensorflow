@@ -263,6 +263,15 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
+    auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
+    prefetch->set_parameter(parameter);
+    for (auto index : indices) {
+      prefetch->add_index(index);
+    }
+  }
   return proto;
 }
 
@@ -389,6 +398,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   }
 
+  for (auto prefetch : proto.cross_program_prefetches()) {
+    module->AddCrossProgramPrefetch(
+        prefetch.parameter(),
+        ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
+  }
+
   return std::move(module);
 }
 
@@ -405,6 +420,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     if (execution_options->num_partitions() > 0) {
       module_config.set_num_partitions(execution_options->num_partitions());
     }
+    module_config.set_use_spmd_partitioning(
+        execution_options->use_spmd_partitioning());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -668,6 +685,11 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
       }
     }
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+  }
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
+    module->AddCrossProgramPrefetch(parameter, indices);
   }
   return module;
 }

@@ -22,11 +22,11 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -66,9 +66,11 @@ namespace {
 // across ops. This step is necessary for post-training quantization and also
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
-class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
+class PrepareQuantizePass
+    : public PassWrapper<PrepareQuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration and enforce uint8 quantization.
+  // This is only used by test.
   explicit PrepareQuantizePass() {
     if (quantize_signed)
       quant_specs_.inference_type = tensorflow::DT_QINT8;
@@ -256,24 +258,26 @@ void PrepareQuantizePass::runOnFunction() {
   // convert all of them to signed.
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
+  int bit_width = quant_specs_.GetQuantizationTypeWidth();
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(8, false, true, ctx);
+    patterns.insert<PrepareQuantStats>(bit_width, false, true, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(8, false, false, ctx);
+    patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   SanityCheckAndAdjustment(func);
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
-  ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
-                                     GetOpQuantSpec);
+  ApplyQuantizationParamsPropagation(
+      func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
+      GetOpQuantSpec);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }
@@ -281,7 +285,7 @@ void PrepareQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareQuantizePass>(quant_specs);
 }

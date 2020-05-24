@@ -28,13 +28,15 @@ class NegOpModel : public SingleOpModelWithHexagon {
     BuildInterpreter({GetShape(input_)});
   }
 
+  template <typename integer_type>
   void SetQuantizedInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<uint8_t>(input_, data);
+    QuantizeAndPopulate<integer_type>(input_, data);
   }
 
+  template <typename integer_type>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<integer_type>(ExtractVector<integer_type>(output_),
+                                    GetScale(output_), GetZeroPoint(output_));
   }
 
  protected:
@@ -42,15 +44,26 @@ class NegOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-TEST(NegOpModel, NegTest) {
-  NegOpModel m({TensorType_UINT8, {2, 3}, -10, 10},
-               {TensorType_UINT8, {2, 3}, -10, 10});
-  m.SetQuantizedInput({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f});
+TEST(NegOpModel, NegTest_UInt8) {
+  NegOpModel m({TensorType_UINT8, {2, 3}, -4, 4},
+               {TensorType_UINT8, {2, 3}, -4, 4});
+  m.SetQuantizedInput<uint8_t>({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f});
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(
-      m.GetDequantizedOutput(),
+      m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f},
-                                      /*max_abs_error=*/0.1)));
+                                      /*max_abs_error=*/0.05)));
+}
+
+TEST(NegOpModel, NegTest_Int8) {
+  NegOpModel m({TensorType_INT8, {2, 3}, -4, 4},
+               {TensorType_INT8, {2, 3}, -4, 4});
+  m.SetQuantizedInput<int8_t>({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f});
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f},
+                                      /*max_abs_error=*/0.05)));
 }
 
 }  // namespace tflite

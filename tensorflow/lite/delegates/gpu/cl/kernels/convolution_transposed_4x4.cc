@@ -301,7 +301,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
   return *this;
 }
 
-Status ConvolutionTransposed4x4::Compile(
+absl::Status ConvolutionTransposed4x4::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, biases_, linked_operations_, weights_upload_type_);
@@ -314,11 +314,10 @@ Status ConvolutionTransposed4x4::Compile(
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvolutionTransposed4x4::BindArguments() {
+absl::Status ConvolutionTransposed4x4::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -329,19 +328,17 @@ Status ConvolutionTransposed4x4::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   const int32_t filters_offset = 4 * 16 * src_[0]->Slices();
   RETURN_IF_ERROR(kernel_.SetBytesAuto(filters_offset));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvolutionTransposed4x4::GetGridSize() const {
-  const int grid_x =
-      IntegralDivideRoundUp(dst_[0]->Width() + 2, 2) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height() + 2, 2);
+  const int grid_x = DivideRoundUp(dst_[0]->Width() + 2, 2) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(dst_[0]->Height() + 2, 2);
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -354,13 +351,13 @@ bool IsConvolutionTransposed4x4Supported(
          attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
 }
 
-Status CreateConvolutionTransposed4x4(
+absl::Status CreateConvolutionTransposed4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed4x4* result) {
   if (!IsConvolutionTransposed4x4Supported(*creation_context.device, definition,
                                            attr)) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "ConvolutionTransposed4x4 doesn't support this attributes");
   }
   *result = ConvolutionTransposed4x4(definition, *creation_context.device);
@@ -373,7 +370,7 @@ Status CreateConvolutionTransposed4x4(
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

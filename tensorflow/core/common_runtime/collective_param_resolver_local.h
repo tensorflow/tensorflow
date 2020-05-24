@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class CompleteGroupRequest;
 class CompleteGroupResponse;
 class CompleteInstanceRequest;
 class CompleteInstanceResponse;
+class ConfigProto;
 class DeviceMgr;
 
 // Implements ParamResolverInterface for a single-task context.

@@ -145,6 +145,21 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
     TF_RETURN_IF_ERROR(
         GetFunctionBodies(flib_runtime, node, "branches", &branch_bodies));
     return CondConstInputIndices(branch_bodies, const_input_idxs, flib_runtime);
+  } else if (node.op() == "PartitionedCall" ||
+             node.op() == "StatefulPartitionedCall") {
+    const FunctionBody* fbody;
+    TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "f", &fbody));
+    int num_inputs = fbody->fdef.signature().input_arg_size();
+    std::vector<bool> compile_time_const_arg_indices(num_inputs);
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fbody->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+    for (int i = 0; i < num_inputs; i++) {
+      if (compile_time_const_arg_indices[i]) {
+        const_input_idxs->push_back(i);
+      }
+    }
+    return Status::OK();
   } else if (op_def != nullptr) {
     return XlaOpRegistry::CompileTimeConstantInputs(node, *op_def,
                                                     const_input_idxs);
@@ -166,11 +181,21 @@ Status GetCompileTimeConstInputs(const Node* node,
 
 // Backwards dataflow analysis that finds arguments to a graph that must be
 // compile-time constants.
-Status BackwardsConstAnalysis(const Graph& g,
-                              std::vector<bool>* compile_time_const_arg_indices,
-                              std::vector<bool>* compile_time_const_nodes,
-                              FunctionLibraryRuntime* flib_runtime,
-                              std::function<bool(const Edge&)> edge_filter) {
+Status BackwardsConstAnalysis(
+    const Graph& g, std::vector<bool>* compile_time_const_arg_indices,
+    std::vector<bool>* compile_time_const_nodes,
+    FunctionLibraryRuntime* flib_runtime,
+    std::function<bool(const Edge&)> edge_filter_input) {
+  if (!compile_time_const_nodes && g.GetConstArgIndicesCache().has_value() &&
+      !edge_filter_input) {
+    VLOG(5) << "Using cached argument indices on graph " << &g;
+    *compile_time_const_arg_indices = g.GetConstArgIndicesCache().value();
+    return Status::OK();
+  }
+  auto edge_filter = [&](const Edge& e) {
+    return edge_filter_input ? edge_filter_input(e) : true;
+  };
+
   std::vector<bool> compile_time_const_nodes_impl;
   if (compile_time_const_nodes) {
     CHECK_EQ(compile_time_const_nodes->size(), g.num_node_ids());
@@ -252,6 +277,10 @@ Status BackwardsConstAnalysis(const Graph& g,
   // acyclic graph.
   DFS(g, /*enter=*/{}, /*leave=*/visit, NodeComparatorName{},
       [](const Edge& edge) { return !edge.src()->IsNextIteration(); });
+  if (compile_time_const_arg_indices && !edge_filter_input) {
+    VLOG(5) << "Setting the cache on the graph: " << &g;
+    g.GetConstArgIndicesCache() = *compile_time_const_arg_indices;
+  }
   return status;
 }
 

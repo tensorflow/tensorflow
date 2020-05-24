@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -30,16 +31,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -273,8 +277,26 @@ Status XlaCompilationCache::CompileSingleOp(
 
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
-    return compiler->CompileGraph(compile_options, node_def.name(),
-                                  std::move(graph), args, result);
+
+    bool are_args_supported =
+        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kConstant ||
+                 arg.kind == XlaCompiler::Argument::kParameter;
+        });
+    const ConfigProto* config = ctx->function_library()->config_proto();
+    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    // TODO(b/155596779): Understand the source of other argument types and
+    // depending on the source either support those or avoid these codepath.
+    if (!use_mlir || !are_args_supported) {
+      return compiler->CompileGraph(compile_options, node_def.name(),
+                                    std::move(graph), args, result);
+    }
+
+    GraphDebugInfo debug_info;
+    return CompileGraphToXlaHlo(
+        *graph, {args.data(), args.size()}, options.device_type.type_string(),
+        compile_options.use_tuple_arg, *options.flib_def, debug_info,
+        options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

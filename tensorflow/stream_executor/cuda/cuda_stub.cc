@@ -93,7 +93,7 @@ typedef struct CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS_st
     CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS;
 typedef void(CUDA_CB* CUhostFn)(void* userData);
 
-#if CUDA_VERSION <= 9000
+#if CUDA_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cuda_9_0.inc"
 #elif CUDA_VERSION == 10000
 #include "tensorflow/stream_executor/cuda/cuda_10_0.inc"

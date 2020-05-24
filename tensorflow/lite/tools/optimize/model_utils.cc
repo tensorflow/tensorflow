@@ -77,10 +77,14 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
   tensor_raw->name = name;
   tensor_raw->shape = shape;
+  if (!shape_signature.empty()) {
+    tensor_raw->shape_signature = shape_signature;
+  }
   tensor_raw->type = type;
 
   tensor->reset(tensor_raw);
@@ -89,10 +93,11 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
                               const std::vector<int32_t>& shape,
+                              const std::vector<int32_t>& shape_signature,
                               const TensorType& type, float scale,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor) {
-  MakeTensor(name, shape, type, tensor);
+  MakeTensor(name, shape, shape_signature, type, tensor);
   (*tensor)->quantization = absl::make_unique<QuantizationParametersT>();
   (*tensor)->quantization->scale.push_back(scale);
   (*tensor)->quantization->zero_point.push_back(zero_point);
@@ -129,8 +134,10 @@ void SetOperatorCodeVersion(ModelT* model) {
       OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
       operator_property::OperatorProperty property =
           operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
-      if (property.quantizable) {
-        // Only update the versions of quantizable operations.
+      if (property.quantizable && op_code->version < property.version) {
+        // Only update the versions of quantizable operations if the original
+        // version is lesser than minimum quantized one mentioned by
+        // OperatorProperty.
         op_code->version = property.version;
       }
     }

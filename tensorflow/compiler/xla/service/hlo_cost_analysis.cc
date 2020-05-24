@@ -498,7 +498,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
+  if (transpose->IsEffectiveBitcast()) {
+    return HandleBitcast(transpose);
+  }
   return Status::OK();
 }
 
@@ -704,6 +707,10 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
@@ -726,6 +733,16 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteDone(
+    const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 

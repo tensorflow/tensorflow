@@ -228,7 +228,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_types", dataset->output_dtypes())));
   }
-  for (auto attr : attrs) {
+  for (const auto& attr : attrs) {
     opts.reset(
         new GraphDefBuilder::Options(opts->WithAttr(attr.first, attr.second)));
   }
@@ -484,7 +484,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx, out_tensors);
   RecordStop(ctx, /*start_output=*/true);
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,

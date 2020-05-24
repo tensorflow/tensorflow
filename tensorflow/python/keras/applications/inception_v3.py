@@ -23,14 +23,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -40,6 +39,8 @@ WEIGHTS_PATH = (
 WEIGHTS_PATH_NO_TOP = (
     'https://storage.googleapis.com/tensorflow/keras-applications/'
     'inception_v3/inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5')
+
+layers = VersionAwareLayers()
 
 
 @keras_export('keras.applications.inception_v3.InceptionV3',
@@ -51,11 +52,10 @@ def InceptionV3(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the Inception v3 architecture.
 
-  Reference paper:
+  Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 
@@ -108,7 +108,7 @@ def InceptionV3(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -406,36 +406,11 @@ def conv2d_bn(x,
 
 @keras_export('keras.applications.inception_v3.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-
-  Raises
-    ValueError: In case of unknown `data_format` argument.
-  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.inception_v3.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 

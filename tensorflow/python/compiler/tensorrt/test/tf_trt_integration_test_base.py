@@ -522,6 +522,25 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     logging.info("Writing graph to %s/%s", temp_dir, graph_name)
     graph_io.write_graph(gdef, temp_dir, graph_name)
 
+  # Remove the graph sequence number prefix from the name only if the name has
+  # a prefix TRTEngineOp_n_. When expecting_prefix is true, assert such a
+  # prefix exists.
+  def _RemoveGraphSequenceNumberImpl(self, name, expecting_prefix):
+    match = re.search(r"TRTEngineOp_\d+_", name)
+    has_prefix = match and name.startswith(match.group(0))
+    assert (not expecting_prefix) or has_prefix
+    if has_prefix:
+      parts = name.split("_", maxsplit=2)
+      assert len(parts) == 3
+      return parts[0] + "_" + parts[2]
+    return name
+
+  def _RemoveGraphSequenceNumber(self, name):
+    return self._RemoveGraphSequenceNumberImpl(name, True)
+
+  def _MayRemoveGraphSequenceNumber(self, name):
+    return self._RemoveGraphSequenceNumberImpl(name, False)
+
   def _VerifyConnections(self, expected_engines, original_gdef, converted_gdef):
     old_to_new_node_map = {
         self._ToString(node.name): self._ToString(node.name)
@@ -579,11 +598,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     # Compute the actual mapping from each node to its input nodes.
     actual_input_map = {}
     for node in converted_gdef.node:
-      name_str = self._ToString(node.name)
+      name_str = node.name
+      if node.op == "TRTEngineOp":
+        name_str = self._RemoveGraphSequenceNumber(name_str)
       actual_input_map[name_str] = set()
       input_set = actual_input_map[name_str]
       for inp in node.input:
         (prefix, node_name) = _InputName(inp)
+        node_name = self._MayRemoveGraphSequenceNumber(node_name)
         input_set.add(prefix + node_name)
 
     self.assertEqual(
@@ -628,7 +650,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         self.assertIn(function_name, functions)
         if not IsQuantizationWithCalibration and not is_dynamic_engine:
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
-        self.assertIn(node.name, expected_engines)
+        self.assertIn(
+            self._RemoveGraphSequenceNumber(node.name), expected_engines)
         self.assertEqual(
             self._ToBytes(run_params.precision_mode),
             node.attr["precision_mode"].s, node.name)
@@ -662,7 +685,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
     ]
     for func in gdef_to_verify.library.function:
-      if not re.search(r"TRTEngineOp_\d+_native_segment", func.signature.name):
+      if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+                       func.signature.name):
         for node in func.node_def:
           all_op_names.append(node.name)
           if node.op == "TRTEngineOp":
@@ -670,9 +694,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     # Remove the function name prefix.
     def _Canonicalize(names):
       return set(self._ToString(name.split("/")[-1]) for name in names)
+    # Remove the graph sequence number prefix from all the names.
+    def _RemoveGraphSequenceNumber(names):
+      return set(self._RemoveGraphSequenceNumber(name) for name in names)
 
     all_op_names = _Canonicalize(all_op_names)
-    trt_op_names = _Canonicalize(trt_op_names)
+    trt_op_names = _RemoveGraphSequenceNumber(_Canonicalize(trt_op_names))
 
     if isinstance(expected_engines, dict):
       # For simplicity we don't verify the connections inside the engine in

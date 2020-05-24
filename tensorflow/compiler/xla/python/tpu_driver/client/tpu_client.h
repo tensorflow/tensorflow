@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -267,13 +267,12 @@ class PyTpuExecutable {
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyTpuClient> client,
-      absl::optional<DeviceAssignment> device_assignment);
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 
   PyTpuExecutable(
       std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
       DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
-      xla::Shape result_shape);
+      xla::Shape result_shape, bool tuple_arguments);
   virtual ~PyTpuExecutable() {
     for (auto it = executables_.begin(); it != executables_.end(); ++it) {
       client_->driver()->UnloadProgram(std::move(it->second), {});
@@ -284,6 +283,8 @@ class PyTpuExecutable {
   PyTpuExecutable(PyTpuExecutable&&) = delete;
   PyTpuExecutable& operator=(const PyTpuExecutable&) = delete;
   PyTpuExecutable& operator=(PyTpuExecutable&&) = delete;
+
+  std::shared_ptr<PyTpuClient> client() const { return client_; }
 
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }
@@ -309,7 +310,7 @@ class PyTpuExecutable {
   // inside for computation to finish. Coordinate with JAX code change to see if
   // we can make both Execute and ExecutePerReplica non-blocking.
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
-      absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments);
+      absl::Span<PyTpuBuffer* const> argument_handles);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
@@ -317,8 +318,7 @@ class PyTpuExecutable {
   // count.
   StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
   ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
-      bool tuple_arguments);
+      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   void Delete() { executables_.clear(); }
 
@@ -336,6 +336,7 @@ class PyTpuExecutable {
   std::shared_ptr<PyTpuClient> const client_;
   std::map<int, std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
   const DeviceAssignment device_assignment_;
+  const bool tuple_arguments_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

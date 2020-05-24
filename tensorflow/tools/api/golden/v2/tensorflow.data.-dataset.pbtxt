@@ -46,7 +46,7 @@ tf_class {
   }
   member_method {
     name: "from_generator"
-    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\', \'output_signature\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "from_tensor_slices"
@@ -58,7 +58,7 @@ tf_class {
   }
   member_method {
     name: "interleave"
-    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'-1\', \'1\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "list_files"

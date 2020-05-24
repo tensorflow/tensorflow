@@ -78,6 +78,10 @@ class HexagonDelegateKernel {
   void ReportError(TfLiteContext* context, HexagonKernelState state,
                    const std::string& msg);
 
+  // Resizes output tensors in case the delegate has dynamic batch enabled.
+  // Returns Error otherwise or if the requested size is invalid.
+  TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node);
+
   void PrintLog();
 
   // Prints performance information about the graph including cycles per node.
@@ -95,6 +99,9 @@ class HexagonDelegateKernel {
   // Indices of nodes in the delegated TfLite subgraph.
   std::vector<int> nodes_;
   ::TfLiteHexagonDelegateOptions params_;
+
+  // Whether the Hexagon graph is prepared or not.
+  bool graph_prepared_ = false;
 };
 
 }  // namespace tflite

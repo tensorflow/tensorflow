@@ -77,19 +77,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet_v2/')
+layers = None
 
 
 @keras_export('keras.applications.mobilenet_v2.MobileNetV2',
@@ -105,9 +105,9 @@ def MobileNetV2(input_shape=None,
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
-  Reference paper:
-  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
-  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
+  Reference:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks](
+      https://arxiv.org/abs/1801.04381) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
 
@@ -173,12 +173,14 @@ def MobileNetV2(input_shape=None,
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

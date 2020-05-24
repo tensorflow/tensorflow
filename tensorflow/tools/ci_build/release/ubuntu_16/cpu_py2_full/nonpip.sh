@@ -38,6 +38,7 @@ tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py2,-v1only"
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Run tests
+set +e
 bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
@@ -45,3 +46,4 @@ bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+test_xml_summary_exit

@@ -375,6 +375,32 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
+  def _assert_same_weights(self, model, loaded_model,
+                           original_optimizer_has_iterations_variable=True):
+    """Checks that the loaded weighs are the same as the original weights.
+
+    Args:
+      model: original model
+      loaded_model: loaded model
+      original_optimizer_has_iterations_variable: If the original optimizer
+        uses an iterations variable. The loaded model will have a v2
+        optimizer, which always contains an iterations variable. So when
+        comparing the weights, the first variable in the loaded optimizer
+        weights may need to be ignored.
+    """
+    self.assertAllClose(model.weights, loaded_model.weights)
+    if loaded_model.optimizer:
+      if testing_utils.get_save_format() == 'tf':
+        # TODO(b/153110928): Keras TF format doesn't restore optimizer weights
+        # currently.
+        return
+      if original_optimizer_has_iterations_variable:
+        self.assertAllClose(model.optimizer.weights,
+                            loaded_model.optimizer.weights)
+      else:
+        self.assertAllClose(model.optimizer.weights,
+                            loaded_model.optimizer.weights[1:])
+
   def test_sequential_model_saving(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -407,6 +433,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights(model, new_model)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -452,6 +479,8 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.save(saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights(
+          model, new_model, original_optimizer_has_iterations_variable=False)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -472,6 +501,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights(model, new_model)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -501,12 +531,13 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out = model.predict(x)
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
-      model = keras.models.load_model(
+      new_model = keras.models.load_model(
           saved_model_dir,
           custom_objects={'CustomOp': CustomOp,
                           'custom_loss': custom_loss})
+      self._assert_same_weights(model, new_model)
 
-      out2 = model.predict(x)
+      out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
   def test_functional_model_saving(self):
@@ -1179,7 +1210,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   def test_incompatible_checkpoint(self):
     save_path = trackable.Checkpoint().save(
         os.path.join(self.get_temp_dir(), 'ckpt'))
-    m = keras.Model()
+    m = DummySubclassModel()
     with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
       m.load_weights(save_path)
     m.dense = keras.layers.Dense(2)
@@ -1191,7 +1222,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_directory_passed(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
       prefix = os.path.join(self.get_temp_dir(),
@@ -1204,7 +1235,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_relative_path(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       os.chdir(self.get_temp_dir())
 
@@ -1235,7 +1266,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nonexistent_prefix_directory(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
       prefix = os.path.join(self.get_temp_dir(),
@@ -1244,6 +1275,11 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
       self.assertEqual(42., self.evaluate(v))
+
+
+class DummySubclassModel(training.Model):
+  pass
+
 
 if __name__ == '__main__':
   test.main()

@@ -577,8 +577,8 @@ def tf_additional_all_protos():
 
 def tf_protos_all_impl():
     return [
-        clean_dep("//tensorflow/core:autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core:conv_autotuning_proto_cc_impl"),
+        clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
+        clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core:protos_all_cc_impl"),
     ]
 
@@ -589,7 +589,10 @@ def tf_protos_all():
     )
 
 def tf_protos_profiler_impl():
-    return [clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl")]
+    return [
+        clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
+    ]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
@@ -635,7 +638,9 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows"): [
+            "//tensorflow/core/platform/cloud:gcs_file_system",
+        ],
         clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
@@ -653,7 +658,9 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows"): [
+            clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
+        ],
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
@@ -712,12 +719,6 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
-def tf_protobuf_full_deps():
-    return tf_protobuf_deps()
-
-def tf_protobuf_lite_deps():
-    return tf_protobuf_deps()
-
 def tf_protobuf_deps():
     return if_static(
         [
@@ -725,6 +726,9 @@ def tf_protobuf_deps():
         ],
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
+
+def tf_portable_proto_lib():
+    return ["//tensorflow/core:protos_all_cc_impl"]
 
 def tf_protobuf_compiler_deps():
     return if_static(
@@ -747,8 +751,8 @@ def tf_windows_aware_platform_deps(name):
 def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]
 
-def tf_platform_alias(name):
-    return ["//tensorflow/core/platform/default:" + name]
+def tf_platform_alias(name, platform_dir = "//tensorflow/core/platform/"):
+    return [platform_dir + "default:" + name]
 
 def tf_logging_deps():
     return ["//tensorflow/core/platform/default:logging"]
@@ -763,7 +767,7 @@ def tf_portable_deps_no_runtime():
         "@nsync//:nsync_cpp",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-    ] + tf_protobuf_deps()
+    ]
 
 def tf_google_mobile_srcs_no_runtime():
     return []

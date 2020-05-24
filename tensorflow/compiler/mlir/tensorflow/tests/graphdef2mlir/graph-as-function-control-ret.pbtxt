@@ -1,6 +1,6 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var2_add -o - | FileCheck %s --dump-input=fail
-# RUN: not tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var1_add -o - 2>&1 | FileCheck %s --check-prefix=UNIQUE --dump-input=fail
-# RUN: not tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -tf-control-output-arrays=var3_add -o - 2>&1 | FileCheck %s --check-prefix=MISSING --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var2_add -o - | FileCheck %s --dump-input=fail
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var1_add -o - 2>&1 | FileCheck %s --check-prefix=UNIQUE --dump-input=fail
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var3_add -o - 2>&1 | FileCheck %s --check-prefix=MISSING --dump-input=fail
 
 node {
   name: "arg0"
@@ -194,11 +194,9 @@ versions {
 # CHECK-DAG:     %[[VAR_ADD_2:.*]] = tf_executor.island wraps "tf.AssignAddVariableOp"(%[[ARG_2]], %{{.*}})
 # CHECK:         tf_executor.fetch %{{.*}}, %[[VAR_ADD_1]], %[[VAR_ADD_2]]
 
-
 # Test duplicate control ret node names.
 
 # UNIQUE: Control outputs must be unique
-
 
 # Test missing control ret node name.
 

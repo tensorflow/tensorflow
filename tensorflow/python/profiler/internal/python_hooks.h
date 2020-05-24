@@ -15,10 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define TENSORFLOW_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
-#include "include/pybind11/cast.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/cast.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 

@@ -28,18 +28,18 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -75,7 +75,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // the TPUExecute op.
 
 struct TPUMergeVariablesWithExecutePass
-    : public FunctionPass<TPUMergeVariablesWithExecutePass> {
+    : public PassWrapper<TPUMergeVariablesWithExecutePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -531,7 +531,8 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUMergeVariablesWithExecutePass() {
   return std::make_unique<TPUMergeVariablesWithExecutePass>();
 }
 

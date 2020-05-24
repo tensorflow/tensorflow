@@ -58,5 +58,6 @@ cc_binary(
     deps = [
         ":imagenet_accuracy_eval_lib",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
     ],
 )

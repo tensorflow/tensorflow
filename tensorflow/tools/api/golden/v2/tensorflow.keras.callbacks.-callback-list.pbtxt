@@ -1,0 +1,85 @@
+path: "tensorflow.keras.callbacks.CallbackList"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.callbacks.CallbackList\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'callbacks\', \'add_history\', \'add_progbar\', \'model\'], varargs=None, keywords=params, defaults=[\'None\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "append"
+    argspec: "args=[\'self\', \'callback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "on_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_epoch_begin"
+    argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_epoch_end"
+    argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_model"
+    argspec: "args=[\'self\', \'model\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_params"
+    argspec: "args=[\'self\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -205,15 +205,10 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << "rank " << rank << " output " << output << " buf "
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
-      Notification note;
       Device* dev = instances_[rank]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          output, /*tensor_name=*/"", dev, &actual, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
               << actual.DebugString(output_length);
       for (int i = 0; i < output_length; ++i) {
@@ -270,13 +265,8 @@ class NcclTestBase : public ::testing::Test {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
       auto* dev_info = device_->tensorflow_gpu_device_info();
-      Notification note;
-      dev_info->default_context->CopyCPUTensorToDevice(
-          &cpu_tensor, device_, &input_, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+          &cpu_tensor, device_, &input_));
     }
 
     void PrepareDeviceContext(OpKernelContext::Params* params) {

@@ -762,6 +762,36 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
+TfLiteStatus Subgraph::ResizeInputTensorStrict(int tensor_index,
+                                               const std::vector<int>& dims) {
+  TF_LITE_ENSURE(&context_,
+                 tensor_index < context_.tensors_size && tensor_index >= 0);
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+
+  // Ensure that only unknown dimensions can be resized.
+  TF_LITE_ENSURE_EQ(&context_, tensor->dims->size, dims.size());
+  for (size_t idx = 0; idx < dims.size(); idx++) {
+    // `dims_signature` is not defined when no unknown dimensions are present.
+    int dim_signature;
+    if (tensor->dims_signature && tensor->dims_signature->size) {
+      dim_signature = tensor->dims_signature->data[idx];
+    } else {
+      dim_signature = tensor->dims->data[idx];
+    }
+
+    if (dim_signature != -1 && dim_signature != dims[idx]) {
+      ReportError(
+          "Attempting to resize dimension %d of tensor %d with value %d to %d. "
+          "ResizeInputTensorStrict only allows mutating unknown dimensions "
+          "identified by -1.",
+          idx, tensor_index, dim_signature, dims[idx]);
+      return kTfLiteError;
+    }
+  }
+
+  return ResizeInputTensor(tensor_index, dims);
+}
+
 TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
@@ -802,7 +832,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
-    if (OpPrepare(registration, &node) == kTfLiteError) {
+    if (OpPrepare(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to prepare");
     }
@@ -909,7 +939,7 @@ TfLiteStatus Subgraph::Invoke() {
 
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) == kTfLiteError) {
+    if (OpInvoke(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to invoke");
     }
@@ -941,6 +971,22 @@ TfLiteStatus Subgraph::Invoke() {
 TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
                                     TfLiteTensor* tensor,
                                     TfLiteIntArray* new_size) {
+  // If the dimensions don't change, avoiding
+  // unnecessary (re)allocations.
+  //
+  // Note that it's required to check `tensor->data.raw != nullptr`. Otherwise
+  // the subgraph won't allocate memory for a dynamic tensor when its size
+  // is equal to the original tensor size.
+  if (tensor->data.raw != nullptr &&
+      EqualArrayAndTfLiteIntArray(tensor->dims, new_size->size,
+                                  new_size->data)) {
+    // A number of clients assume |new_size| remains valid upon success, so
+    // swap it in as the new (but logically identical) tensor dims.
+    TfLiteIntArrayFree(tensor->dims);
+    tensor->dims = new_size;
+    return kTfLiteOk;
+  }
+
   // Note here that context->impl_ is recovering the this pointer for an
   // instance of Interpreter to call into the member function ResizeTensorImpl
   // (this function is static).
@@ -1137,7 +1183,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
   // Note that in theory we could resize kTfLiteArenaRwPersistent tensors too.
   if (tensor->allocation_type == kTfLiteArenaRw ||
       tensor->allocation_type == kTfLiteDynamic ||
-      tensor->allocation_type == kTfLiteArenaRwPersistent) {
+      tensor->allocation_type == kTfLiteArenaRwPersistent ||
+      tensor->allocation_type == kTfLitePersistentRo) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
@@ -1149,14 +1196,16 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
         return kTfLiteError;
       }
 
-      // Realloc space for kTfLiteDynamic tensors.
+      // Realloc space for heap-allocated tensors.
       TfLiteTensorRealloc(bytesRequired, tensor);
       tensor->bytes = bytesRequired;
     }
     if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
     tensor->dims = new_size;
 
-    if (tensor->allocation_type != kTfLiteDynamic) {
+    // Reset arena-allocated tensors; they will be allocated later.
+    if (tensor->allocation_type == kTfLiteArenaRw ||
+        tensor->allocation_type == kTfLiteArenaRwPersistent) {
       tensor->data.raw = nullptr;
     }
   } else {
@@ -1259,6 +1308,14 @@ TfLiteStatus Subgraph::RedoAllDelegates() {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::RemoveAllDelegates() {
+  TF_LITE_ENSURE_STATUS(UndoAllDelegates());
+  delegates_applied_.clear();
+  delegates_undone_ = false;
+  TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::EnsureMemoryAllocations() {
   if (memory_planner_) {
     state_ = kStateUninvokable;
@@ -1312,15 +1369,11 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   auto reset_delegation_if_not_ok = [this](TfLiteStatus status) {
     if (status != kTfLiteOk) {
-      // This will undo all delegate nodes currently in the graph.
-      TF_LITE_ENSURE_STATUS(this->UndoAllDelegates());
-      // This will call AllocateTensors, thus-reapplying any (successfully
-      // applied) previous delegates.
-      TF_LITE_ENSURE_STATUS(this->EnsureMemoryAllocations());
+      TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
       ReportError(
-          "Restored previous execution plan after delegate application "
+          "Restored original execution plan after delegate application "
           "failure.");
-      return kTfLiteError;
+      return kTfLiteDelegateError;
     }
     return kTfLiteOk;
   };

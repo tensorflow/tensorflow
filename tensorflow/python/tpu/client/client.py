@@ -29,7 +29,7 @@ from six.moves.urllib.error import HTTPError
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
-  from apiclient import discovery  # pylint: disable=g-import-not-at-top
+  from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
   from oauth2client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False

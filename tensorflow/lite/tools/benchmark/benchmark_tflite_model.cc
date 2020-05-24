@@ -28,7 +28,8 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
+#include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -36,10 +37,9 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
-#include "tensorflow/lite/tools/evaluation/utils.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -65,7 +65,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class PlatformProfilingListener : public BenchmarkListener {
  public:
   explicit PlatformProfilingListener(Interpreter* interpreter) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
+    TFLITE_TOOLS_CHECK(interpreter);
     platform_profiler_ = profiling::CreatePlatformProfiler();
     interpreter->SetProfiler(platform_profiler_.get());
   }
@@ -215,7 +215,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
     input.name = names[i];
 
-    TFLITE_BENCHMARK_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
+    TFLITE_TOOLS_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
     for (int dim : input.shape) {
       if (dim == -1) {
@@ -270,13 +270,12 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("max_delegated_partitions",
-                          BenchmarkParam::Create<int32_t>(0));
   default_params.AddParam("enable_platform_tracing",
                           BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    delegate_util->AddParams(&default_params);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    default_params.Merge(delegate_provider->DefaultParams());
   }
 
   return default_params;
@@ -284,7 +283,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)),
-      random_engine_(std::random_device()()) {}
+      random_engine_(std::random_device()()) {
+  AddListener(&log_output_);
+}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.
@@ -294,7 +295,7 @@ void BenchmarkTfLiteModel::CleanUp() {
 BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
-  std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
+  std::vector<Flag> flags = BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
       CreateFlag<std::string>("graph", &params_, "graph file name"),
       CreateFlag<std::string>("input_layer", &params_, "input layer names"),
@@ -327,16 +328,15 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
           "prints to stdout."),
-      CreateFlag<int>("max_delegated_partitions", &params_,
-                      "Max partitions to be delegated."),
       CreateFlag<bool>("enable_platform_tracing", &params_,
                        "enable platform-wide tracing, only meaningful when "
                        "--enable_op_profiling is set to true.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    auto delegate_flags = delegate_util->CreateFlags(&params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    auto delegate_flags = delegate_provider->CreateFlags(&params_);
     flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
   }
 
@@ -372,13 +372,12 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
                    << params_.Get<std::string>("profiling_output_csv_file")
                    << "]";
-  TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
-                   << params_.Get<int32_t>("max_delegated_partitions") << "]";
   TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
                    << params_.Get<bool>("enable_platform_tracing") << "]";
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    delegate_util->LogParams(params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    delegate_provider->LogParams(params_);
   }
 }
 
@@ -397,7 +396,7 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
-  TFLITE_BENCHMARK_CHECK(interpreter_);
+  TFLITE_TOOLS_CHECK(interpreter_);
   uint64_t total_input_bytes = 0;
   for (int input : interpreter_->inputs()) {
     auto* t = interpreter_->tensor(input);
@@ -494,6 +493,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
                         << " of type FLOAT16 is disabled.";
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
       break;
+    }
+    case kTfLiteFloat64: {
+      return CreateInputTensorData<double>(
+          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
     }
     case kTfLiteInt64: {
       int low = has_value_range ? low_range : 0;
@@ -594,17 +597,20 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
   return kTfLiteOk;
 }
 
-TfLiteStatus BenchmarkTfLiteModel::Init() {
-  TF_LITE_ENSURE_STATUS(LoadModel());
-
+TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
-
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
   if (!interpreter_) {
-    TFLITE_LOG(ERROR) << "Failed to construct interpreter";
+    TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::Init() {
+  TF_LITE_ENSURE_STATUS(LoadModel());
+  TF_LITE_ENSURE_STATUS(InitInterpreter());
 
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the
@@ -615,7 +621,9 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+  owned_delegates_.clear();
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
     // It's possible that a delegate of certain type won't be created as
     // user-specified benchmark params tells not to.
@@ -646,12 +654,13 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " delegate, and the model graph will be "
                        << delegate_status << " executed w/ the delegate.";
     }
+    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();
 
   if (!inputs_.empty()) {
-    TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
         << "Inputs mismatch: Model inputs #:" << inputs_.size()
         << " expected: " << interpreter_inputs.size();
   }

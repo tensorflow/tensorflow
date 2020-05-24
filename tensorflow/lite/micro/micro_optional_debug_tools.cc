@@ -20,8 +20,17 @@ limitations under the License.
 #endif
 
 #include <cinttypes>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <vector>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 namespace {
 
@@ -77,6 +86,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteComplex64";
     case kTfLiteFloat16:
       return "kTfLiteFloat16";
+    case kTfLiteFloat64:
+      return "kTfLiteFloat64";
   }
   return "(invalid)";
 }
@@ -93,6 +104,8 @@ const char* AllocTypeName(TfLiteAllocationType type) {
       return "kTfLiteArenaRw";
     case kTfLiteArenaRwPersistent:
       return "kTfLiteArenaRwPersistent";
+    case kTfLitePersistentRo:
+      return "kTfLitePersistentRo";
   }
   return "(invalid)";
 }

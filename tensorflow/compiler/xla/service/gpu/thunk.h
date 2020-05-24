@@ -79,6 +79,18 @@ class Thunk {
 
   Kind kind() const { return kind_; }
   const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
+  string profile_annotation() const { return profile_annotation_; }
+
+  // Constructs and caches the profile annotation string for this thunk and
+  // any child thunks.
+  virtual void ComputeAnnotations() {
+    const HloInstruction* hlo = hlo_instruction();
+    if (hlo) {
+      profile_annotation_ =
+          absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s#", hlo->name(),
+                          hlo->GetModule()->name());
+    }
+  }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -130,6 +142,7 @@ class Thunk {
  private:
   Kind kind_;
   const HloInstruction* hlo_instruction_;
+  string profile_annotation_;
 };
 
 // A sequence of thunks.

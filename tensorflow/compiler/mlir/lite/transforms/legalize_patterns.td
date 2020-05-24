@@ -58,6 +58,9 @@ def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
 def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
+def CreateNoneValue : NativeCodeCall<
+  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+
 // Checks if the value has only one user.
 // TODO(karimnosseir): Move to a common place?
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
@@ -208,6 +211,11 @@ def : Pat<(TF_LogicalOrOp $l, $r), (TFL_LogicalOrOp $l, $r)>;
 
 def : Pat<(TF_AddOp $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
 def : Pat<(TF_AddV2Op $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
+// When batch size is known, TF BatchMatMul gets unfolded to TFL FullyConnected
+// with additional ops. In the case of unknown batch size, the match will
+// fall through to here and convert to TF Lite BatchMatMul.
+def : Pat<(TF_BatchMatMulV2Op $lhs, $rhs, $adj_x, $adj_y), (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+def : Pat<(TF_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y), (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
 def : Pat<(TF_SubOp $lhs, $rhs), (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
 def : Pat<(TF_MulOp $lhs, $rhs), (TFL_MulOp $lhs, $rhs, TFL_AF_None)>;
 def : Pat<(TF_RealDivOp $lhs, $rhs), (TFL_DivOp $lhs, $rhs, TFL_AF_None)>;
@@ -294,7 +302,7 @@ def : Pat<(TF_DepthToSpaceOp $input, $block_size, IsDataFormatNHWC:$data_format)
           (TFL_DepthToSpaceOp $input, (convertIntAttrTo32Bit $block_size))>;
 
 def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, $half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners, $half_pixel_centers)>;
-def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners)>;
+def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, $half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners, $half_pixel_centers)>;
 
 def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
 
@@ -343,6 +351,7 @@ def : Pat<
      (TF_TransposeOp $filter,
        (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
      $out_backprop,
+     /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
@@ -350,3 +359,6 @@ def : Pat<
 def : Pat<
   (TF_MatrixSetDiagOp $input, $diagonal),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
+
+def : Pat<(TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
+          (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;

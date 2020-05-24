@@ -20,13 +20,18 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
+
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation. Use of CpuBackendContext in method
+// implementations is purely optional.
+class CpuBackendContext;
+
 namespace tensor_utils {
 
 // Checks if all entries of vector are zero for float.
@@ -64,6 +69,15 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result);
+
+// Same as the function above, but the matrix is a sparse tensor with block
+// pattern 1x4.
+// This function assumes that m_cols is a multiple of the block size (4 in this
+// case) so that there's no incomplete block.
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:

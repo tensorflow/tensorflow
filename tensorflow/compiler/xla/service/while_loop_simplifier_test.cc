@@ -209,8 +209,8 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
 
-// We can simplify loops whose bodies contain infeed or other side-effecting
-// instructions other than send/recv.
+// We can't simplify loops whose bodies contain infeed or other side-effecting
+// instructions.
 TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
   HloComputation* computation = m->entry_computation();
@@ -220,8 +220,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
-  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
-  EXPECT_THAT(m->entry_computation()->root_instruction(), op::Tuple());
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
 
 // We don't simplify trip-count-1 loops whose *conditions* contain infeed or

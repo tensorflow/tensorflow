@@ -119,17 +119,35 @@ TEST(FloatDivOpTest, VariousInputShapes) {
 
 TEST(FloatDivOpTest, WithBroadcast) {
   std::vector<std::vector<int>> test_shapes = {
-      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+      {8}, {2, 4}, {2, 1, 4}, {1, 2, 2, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatDivOpModel m({TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, {}},  // always a scalar
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, 0.07, 0.08, 0.11, -0.123});
+    m.PopulateTensor<float>(m.input1(),
+                            {-0.2, 0.2, 0.07, 0.08, 0.11, -0.123, -0.32, 0.54});
     m.PopulateTensor<float>(m.input2(), {0.1});
     m.Invoke();
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-2.0, 2.0, 0.7, 0.8, 1.1, -1.23})))
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.0, 2.0, 0.7, 0.8, 1.1, -1.23, -3.2, 5.4})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(FloatDivOpTest, WithBroadcast5D) {
+  std::vector<std::vector<int>> test_shapes = {{1, 2, 1, 2, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatDivOpModel m({TensorType_FLOAT32, test_shapes[i]},
+                      {TensorType_FLOAT32, {}},  // always a scalar
+                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<float>(m.input1(),
+                            {-0.2, 0.2, 0.07, 0.08, 0.11, -0.123, -0.32, 0.54});
+    m.PopulateTensor<float>(m.input2(), {0.1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.0, 2.0, 0.7, 0.8, 1.1, -1.23, -3.2, 5.4})))
         << "With shape number " << i;
   }
 }
@@ -171,15 +189,16 @@ TEST(IntegerDivOpTest, VariousInputShapes) {
 
 TEST(IntegerDivOpTest, WithBroadcast) {
   std::vector<std::vector<int>> test_shapes = {
-      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+      {8}, {2, 4}, {2, 1, 4}, {1, 4, 1, 2}, {1, 2, 1, 2, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     IntegerDivOpModel m({TensorType_INT32, test_shapes[i]},
                         {TensorType_INT32, {}},  // always a scalar
                         {TensorType_INT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<int32_t>(m.input1(), {-20, 21, 7, 8, 11, -123});
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 21, 7, 8, 11, -123, -42, -48});
     m.PopulateTensor<int32_t>(m.input2(), {3});
     m.Invoke();
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-6, 7, 2, 2, 3, -41}))
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray({-6, 7, 2, 2, 3, -41, -14, -16}))
         << "With shape number " << i;
   }
 }
@@ -262,19 +281,19 @@ template <TensorType tensor_type, typename integer_dtype>
 void QuantizedWithBroadcast() {
   const float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
   const std::vector<std::vector<int>> test_shapes = {
-      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+      {8}, {2, 4}, {2, 1, 4}, {1, 4, 1, 2}, {1, 2, 1, 2, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedDivOpModel m(
         {tensor_type, test_shapes[i], -3.0, 3.0}, {tensor_type, {}, -3.0, 3.0},
         {tensor_type, {}, -3.0, 3.0}, ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<integer_dtype>(m.input1(),
-                                         {-2.0, 0.2, 0.7, 0.8, -0.5, 1.1});
+    m.QuantizeAndPopulate<integer_dtype>(
+        m.input1(), {-2.0, 0.2, 0.7, 0.8, -0.5, 1.1, -1.3, 1.2});
     m.QuantizeAndPopulate<integer_dtype>(m.input2(), {0.7});
     m.Invoke();
-    EXPECT_THAT(
-        m.GetDequantizedOutput<integer_dtype>(),
-        ElementsAreArray(ArrayFloatNear(
-            {-2.857, 0.286, 1.0, 1.143, -0.714, 1.571}, kQuantizedTolerance)))
+    EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.857, 0.286, 1.0, 1.143, -0.714, 1.571, -1.857, 1.714},
+                    kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }

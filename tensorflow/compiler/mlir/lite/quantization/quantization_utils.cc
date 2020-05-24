@@ -22,15 +22,15 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/QuantizeUtils.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantizeUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
@@ -79,7 +79,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
-    for (auto f : factor_values) {
+    for (const auto& f : factor_values) {
       new_scales.push_back(*(scales_iter++) *
                            std::fabs(FloatAttr::getValueAsDouble(f)));
     }

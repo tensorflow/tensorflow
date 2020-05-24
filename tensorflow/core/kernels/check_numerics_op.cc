@@ -353,7 +353,7 @@ class CheckNumericsV2Op<GPUDevice, T> : public CheckNumericsOp<GPUDevice, T> {
     }
   }
 
-  static const int abnormal_detected_size = 3;
+  static constexpr int abnormal_detected_size = 3;
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -39,12 +39,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -136,46 +136,6 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
   return Status::OK();
-}
-
-// There is a shape_representation_fn or sharding for an output, this function
-// uses a reshape to fix the layout.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
-  if (original_shape.IsTuple()) {
-    std::vector<xla::XlaOp> elements;
-    for (int64 i = 0; i < original_shape.tuple_shapes_size(); ++i) {
-      auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
-      TF_ASSIGN_OR_RETURN(auto element,
-                          ReshapeWithCorrectRepresentationAndSharding(
-                              builder, xla::GetTupleElement(original, i),
-                              original_shape.tuple_shapes(i),
-                              shape_representation_fn, subsharding, fast_mem));
-      elements.push_back(element);
-    }
-    return xla::Tuple(builder, elements);
-  }
-  if (!original_shape.IsArray()) return original;
-  TensorShape shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
-  TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                          original_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(auto to_shape,
-                      shape_representation_fn(shape, dtype, fast_mem));
-  if (sharding) {
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                        xla::HloSharding::FromProto(*sharding));
-    TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
-        hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
-  }
-  if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64 i = 0; i < original_shape.rank(); ++i) {
-      to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
-    }
-  }
-  return xla::Reshape(to_shape, original);
 }
 
 // Builds the XLA computation.
@@ -562,13 +522,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
   // The default shape representation function is the identity.
   if (!options_.shape_representation_fn) {
-    options_.shape_representation_fn =
-        [](const TensorShape& shape, DataType dtype,
-           bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
-      xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-      return xla_shape;
-    };
+    options_.shape_representation_fn = IdentityShapeRepresentationFn();
   }
 }
 
@@ -667,6 +621,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   graph_optimizer_options.cf_consider_fn = cf_consider_fn;
   graph_optimizer_options.inline_multi_device_functions = true;
   graph_optimizer_options.inline_impl_selection_group_functions = true;
+  graph_optimizer_options.inline_with_single_device_body_placer = true;
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 
@@ -1502,6 +1457,15 @@ xla::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
   return iter->second;
 }
 
+XlaCompiler::ShapeRepresentationFn IdentityShapeRepresentationFn() {
+  return [](const TensorShape& shape, DataType dtype,
+            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+    xla::Shape xla_shape;
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+    return xla_shape;
+  };
+}
+
 // Rewrites the layout of xla_shape if there is tiled sharding.
 Status RewriteLayoutWithShardedShape(
     const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
@@ -1540,6 +1504,46 @@ Status RewriteLayoutWithShardedShape(
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
   return Status::OK();
+}
+
+// There is a shape_representation_fn or sharding for an output, this function
+// uses a reshape to fix the layout.
+xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
+  if (original_shape.IsTuple()) {
+    std::vector<xla::XlaOp> elements;
+    for (int64 i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+      auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
+      TF_ASSIGN_OR_RETURN(auto element,
+                          ReshapeWithCorrectRepresentationAndSharding(
+                              builder, xla::GetTupleElement(original, i),
+                              original_shape.tuple_shapes(i),
+                              shape_representation_fn, subsharding, fast_mem));
+      elements.push_back(element);
+    }
+    return xla::Tuple(builder, elements);
+  }
+  if (!original_shape.IsArray()) return original;
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
+  TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                          original_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(auto to_shape,
+                      shape_representation_fn(shape, dtype, fast_mem));
+  if (sharding) {
+    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+                        xla::HloSharding::FromProto(*sharding));
+    TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+        hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
+  }
+  if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
+    for (int64 i = 0; i < original_shape.rank(); ++i) {
+      to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
+    }
+  }
+  return xla::Reshape(to_shape, original);
 }
 
 }  // namespace tensorflow

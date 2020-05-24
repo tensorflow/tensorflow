@@ -168,4 +168,20 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
+    .Input("sample_splits: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("device_ordinal: int = -1")
+    .Attr("combiners: list(string) = []")
+    .Attr("table_ids: list(int)")
+    .Attr("max_sequence_lengths: list(int) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // namespace tensorflow

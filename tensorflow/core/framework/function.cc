@@ -1118,12 +1118,12 @@ Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
   return Status::OK();
 }
 
-Status FunctionCallFrame::GetArg(int index, Tensor* val) const {
+Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
   if (index < 0 || static_cast<size_t>(index) >= args_.size()) {
     return errors::InvalidArgument("GetArg ", index, " is not within [0, ",
                                    args_.size(), ")");
   }
-  *val = args_[index];
+  *val = &args_[index];
   return Status::OK();
 }
 
@@ -1505,9 +1505,17 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // function's attrs to see if noinline is specified. Otherwise,
     // uses func's attrs.
     if (!grad_name.empty()) {
-      return &(FindHelper(grad_name)->fdef);
+      if (const auto helper = FindHelper(grad_name)) {
+        return &(helper->fdef);
+      } else {
+        return nullptr;
+      }
     }
-    return &(FindHelper(func_name)->fdef);
+    if (const auto helper = FindHelper(func_name)) {
+      return &(helper->fdef);
+    } else {
+      return nullptr;
+    }
   }
 }
 

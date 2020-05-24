@@ -283,7 +283,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = False,  # Fails in XLA b/143610154
+    xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

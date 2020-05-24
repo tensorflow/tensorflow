@@ -28,7 +28,7 @@ MAIN_SRCS += $(ESP_PERSON_DETECTION_SRCS)
 # ESP specific flags and files
 CCFLAGS += -Wno-nonnull
 CXXFLAGS += -Wno-return-type -Wno-strict-aliasing
-ESP_PROJECT_FILES += \
+person_detection_ESP_PROJECT_FILES := \
   sdkconfig.defaults \
   main/Kconfig.projbuild
 

@@ -18,7 +18,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
 namespace profiler {

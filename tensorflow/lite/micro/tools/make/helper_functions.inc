@@ -65,6 +65,8 @@ specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS)))
 # 6 - Linker flags required.
 # 7 - C++ compilation flags needed.
 # 8 - C compilation flags needed.
+# 9 - Target Toolchian root directory
+# 10 - Target Toolchain prefix
 # Calling eval on the output will create a <Name>_makefile target that you
 # can invoke to create the standalone project.
 define generate_project
@@ -82,7 +84,9 @@ $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/%.tpl
 	sed -E 's#\%\{EXECUTABLE\}\%#$(3)#g' | \
 	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
+	sed -E 's#\%\{TARGET_TOOLCHAIN_ROOT\}\%#$(9)#g' | \
+	sed -E 's#\%\{TARGET_TOOLCHAIN_PREFIX\}\%#$(10)#g' > $$@
 
 $(PRJDIR)$(3)/$(1)/keil_project.uvprojx: tensorflow/lite/micro/tools/make/templates/keil_project.uvprojx.tpl
 	@mkdir -p $$(dir $$@)
@@ -120,27 +124,42 @@ endef
 # 6 - Linker flags required.
 # 7 - C++ compilation flags needed.
 # 8 - C compilation flags needed.
+
 # Calling eval on the output will create a <Name>_makefile target that you
 # can invoke to create the standalone project.
 define generate_arc_project
 
 ifeq ($(TARGET_ARCH), arc)
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/Makefile.tpl
+
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/arc/arc_app_makefile.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
-	sed -E '1 i\CC = ccac\nCXX = ccac\nLD = ccac\n' | \
+	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
+	sed -E 's#\%\{CXX\}\%#$(CXX_TOOL)#g' | \
+	sed -E 's#\%\{LD\}\%#$(LD_TOOL)#g' | \
 	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
 	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
+	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
+	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
+	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
+	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
+	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
+	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
+	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
+	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
 
-# Special rule to copy TCF in case the local filesystem file name has been defined
-ifneq ($(TCF_FILE_NAME), )
-$(PRJDIR)$(3)/$(1)/$(TCF_FILE_NAME): $(TCF_FILE)
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/arc/%.tpl
 	@cp $$< $$@
-endif
+
+$(foreach var,$(ARC_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+
 endif
 endef
+
+
+
 
 # Creates a set of rules to build a standalone Arduino project for an
 # executable, including all of the source and header files required in a
@@ -156,6 +175,14 @@ endef
 # Calling eval on the output will create a <Name>_makefile target that you
 # can invoke to create the standalone project.
 define generate_arduino_project
+
+$(PRJDIR)$(2)/arduino/examples/%.c: tensorflow/lite/micro/examples/%.c
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/micro/tools/make/transform_source.py \
+        --platform=arduino \
+        --is_example_source \
+        --source_path="$$<" \
+        --third_party_headers="$(4)" < $$< > $$@
 
 $(PRJDIR)$(2)/arduino/examples/%.cpp: tensorflow/lite/micro/examples/%.cc
 	@mkdir -p $$(dir $$@)
@@ -366,12 +393,14 @@ endef
 # Calling eval on the output will create targets that you can invoke to
 # generate the standalone project.
 define generate_microlite_projects
-$(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
-$(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
-$(call generate_project,mbed,$(MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
-$(call generate_project,keil,$(KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
-$(call generate_arduino_project,$(ARDUINO_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
-$(call generate_esp_project,$(ESP_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS),$(2),$(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(PROJECT_INCLUDES))
+$(call generate_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
+$(call generate_arc_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_project,mbed,$(MBED_PROJECT_FILES) $($(1)_MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
+$(call generate_project,keil,$(KEIL_PROJECT_FILES) $($(1)_KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
+ifeq (,$(findstring _benchmark,$(1)))
+  $(call generate_arduino_project,$(ARDUINO_PROJECT_FILES) $($(1)_ARDUINO_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
+endif
+$(call generate_esp_project,$(ESP_PROJECT_FILES) $($(1)_ESP_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS),$(2),$(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(PROJECT_INCLUDES))
 endef
 
 # Handles the details of generating a binary target, including specializing

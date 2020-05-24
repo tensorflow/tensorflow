@@ -113,7 +113,7 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
   return *this;
 }
 
-Status FullyConnected::Compile(const CreationContext& creation_context) {
+absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
   int wg_width = 32;
   int wg_height = 4;
   int work_items;
@@ -134,10 +134,10 @@ Status FullyConnected::Compile(const CreationContext& creation_context) {
     }
     work_items = work_group_size_.x * work_group_size_.y * work_group_size_.z;
   } while (work_items > kernel_.GetMaxWorkGroupSize());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
+absl::Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -146,15 +146,14 @@ Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(src_[0]->Slices(), dst_[0]->Slices())));
-
   return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
                                  work_group_size_);
 }
 
-Status CreateFullyConnected(const CreationContext& creation_context,
-                            const OperationDef& definition,
-                            const FullyConnectedAttributes& attr,
-                            FullyConnected* result) {
+absl::Status CreateFullyConnected(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  FullyConnected* result) {
   *result = FullyConnected(definition);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
@@ -165,7 +164,7 @@ Status CreateFullyConnected(const CreationContext& creation_context,
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

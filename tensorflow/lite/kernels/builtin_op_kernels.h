@@ -36,6 +36,7 @@ TfLiteRegistration* Register_ARG_MAX();
 TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_AVERAGE_POOL_2D();
 TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
+TfLiteRegistration* Register_BATCH_MATMUL();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_RNN();
 TfLiteRegistration* Register_CAST();

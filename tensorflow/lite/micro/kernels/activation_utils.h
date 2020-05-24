@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_ACTIVATION_UTILS_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_ACTIVATION_UTILS_H_
 
+#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 namespace ops {
@@ -30,11 +32,11 @@ inline float ActivationValFloat(TfLiteFusedActivation act, float a) {
     case kTfLiteActNone:
       return a;
     case kTfLiteActRelu:
-      return std::fmax(0.0f, a);
+      return std::max(0.0f, a);
     case kTfLiteActRelu1:
-      return std::fmax(-1.0f, std::fmin(a, 1.0f));
+      return std::max(-1.0f, std::min(a, 1.0f));
     case kTfLiteActRelu6:
-      return std::fmax(0.0f, std::fmin(a, 6.0f));
+      return std::max(0.0f, std::min(a, 6.0f));
     case kTfLiteActTanh:
       return std::tanh(a);
     case kTfLiteActSignBit:

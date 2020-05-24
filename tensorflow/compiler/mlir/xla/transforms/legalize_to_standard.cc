@@ -16,10 +16,10 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -177,13 +177,14 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
 }  // end anonymous namespace
 
 namespace {
-struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
+struct LegalizeToStandard
+    : public PassWrapper<LegalizeToStandard, FunctionPass> {
   /// Perform the lowering to Standard dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
 }
 
@@ -197,7 +198,7 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
-  applyPatternsGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

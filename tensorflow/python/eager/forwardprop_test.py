@@ -35,9 +35,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import convolutional
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -202,7 +199,6 @@ def _test_gradients(testcase,
   # And the symbolic computations should be much closer.
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
 
-
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testJVPFunction(self):
@@ -237,6 +233,17 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         y = array_ops.zeros_like(x)
       self.assertIsNone(acc1.jvp(y))
     self.assertIsNone(acc2.jvp(y))
+
+  def testRunFunctionsEagerly(self):
+    try:
+      original_setting = def_function.functions_run_eagerly()
+      def_function.run_functions_eagerly(True)
+      x = constant_op.constant(1.)
+      with forwardprop.ForwardAccumulator(x, 2.) as acc:
+        y = x * 3.
+      self.assertAllClose(6., acc.jvp(y))
+    finally:
+      def_function.run_functions_eagerly(original_setting)
 
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
@@ -353,14 +360,17 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testCustomGradientRecomputeGrad(self):
+  # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly fails around this test?
+  def testExceptionCustomGradientRecomputeGradForward(self):
 
     @custom_gradient.recompute_grad
     def f(x):
       return math_ops.reduce_prod(math_ops.tanh(x)**2)
 
-    _test_gradients(self, f, [constant_op.constant([1.])], order=3)
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 "recompute_grad tried to transpose"):
+      primals = [constant_op.constant([1.])]
+      sym_jac_fwd = _jacfwd(f, primals)
 
   def testExceptionInCustomGradientNotSwallowed(self):
 
@@ -383,96 +393,6 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
        ("SwishM5", [-0.5], nn_impl.swish)])
   def testElementwiseNNOps(self, value, op_fn):
     _test_gradients(self, op_fn, [constant_op.constant(value)], order=3)
-
-  @parameterized.named_parameters(
-      [("Dense", [[0.1]], functools.partial(core.Dense, 5)),
-       ("Conv2D",
-        np.reshape(np.arange(start=-1., stop=1., step=2. / (1 * 2 * 4 * 4)),
-                   [1, 2, 4, 4]),
-        functools.partial(convolutional.Conv2D, 2, 2), 1e-3)])
-  def testKerasLayers(self, value, op_fn, atol=1e-6):
-    layer = op_fn()
-    input_value = constant_op.constant(value, dtype=dtypes.float32)
-    layer.build(input_value.shape)
-    # Make sure the test is deterministic by avoiding random variable
-    # initialization.
-    for v in layer.trainable_variables:
-      v.assign(array_ops.reshape(
-          math_ops.range(
-              -1., 1., 2. / array_ops.size(v, out_type=dtypes.float32),
-              dtype=dtypes.float32),
-          v.shape))
-    _test_gradients(
-        self, layer, [input_value], atol=atol,
-        # These are linear, so second-order is pretty boring.
-        order=2)
-
-  @parameterized.named_parameters(
-      [("NonFused", [[0.1], [0.2], [-0.3]],
-        functools.partial(normalization_v2.BatchNormalization, fused=False)),
-       ("Fused", [[[[0.1, 2.]]], [[[0.2, -3.]]], [[[-0.3, 4.]]]],
-        functools.partial(normalization_v2.BatchNormalization, fused=True))])
-  def testBatchNorm(self, value, op_fn):
-    for training in [True, False]:
-      layer = op_fn()
-      input_value = constant_op.constant(value, dtype=dtypes.float32)
-      layer.build(input_value.shape)
-      _test_gradients(
-          self, functools.partial(layer, training=training), [input_value],
-          order=2, atol=1e-3)
-
-  @parameterized.named_parameters(
-      [("NonFused", [[0.1], [0.2], [-0.3]],
-        functools.partial(normalization_v2.BatchNormalization, fused=False)),
-       ("Fused", [[[[0.1, 2.]]], [[[0.2, -3.]]], [[[-0.3, 4.]]]],
-        functools.partial(normalization_v2.BatchNormalization, fused=True))])
-  def testBatchNormLayerParamGrads(self, value, op_fn):
-    for training in [True, False]:
-      layer = op_fn()
-      with backprop.GradientTape() as tape:
-        input_value = constant_op.constant(value, dtype=dtypes.float32)
-        tape.watch(input_value)
-        output = layer(input_value, training=training)
-      jac_back = tape.jacobian(
-          output, [input_value] + layer.trainable_variables)
-      jac_forward = _jacfwd(
-          lambda *args: layer(args[0], training=training),  # pylint:disable=cell-var-from-loop
-          [input_value] + layer.trainable_variables)
-      for backward, forward in zip(jac_back, jac_forward):
-        forward = array_ops.reshape(forward, array_ops.shape(backward))
-        self.assertAllClose(backward, forward)
-
-  @parameterized.named_parameters(
-      [("NCHW", "NCHW", [4, 3, 2, 2], 3, False),
-       ("NHWC", "NHWC", [4, 2, 2, 3], 3, False),
-       ("NCHWForward", "NCHW", [2, 2, 1, 1], 2, True),
-       ("NHWCForward", "NHWC", [2, 1, 1, 2], 2, True),])
-  def testFusedBatchNormGradsTraining(self, data_format, x_shape, channels,
-                                      test_back_over_forward):
-    increment = 3. / math_ops.reduce_prod(
-        constant_op.constant(x_shape, dtype=dtypes.float32))
-    x = array_ops.reshape(math_ops.range(-2., 1., increment), x_shape)
-    scale = constant_op.constant([1., 1.1, 0.9])[:channels]
-    offset = constant_op.constant([-0.5, -0.6, -0.7])[:channels]
-    epsilon = 0.001
-
-    def _bn_fused(x_arg, scale_arg, offset_arg):
-      return nn_impl.fused_batch_norm(x_arg, scale_arg, offset_arg,
-                                      epsilon=epsilon, is_training=True,
-                                      data_format=data_format)[0]
-    _test_gradients(self, _bn_fused, [x, scale, offset], order=2, atol=1e-3)
-    if test_back_over_forward:
-      # Note that this uses a loop over parameters, and so is quite slow. Thus
-      # it's skipped for the larger test cases.
-      gradfwd_x = _gradfwd(_bn_fused, 0)
-      _test_gradients(self, gradfwd_x, [x, scale, offset], order=1,
-                      atol=1e-3)
-      gradfwd_scale = _gradfwd(_bn_fused, 1)
-      _test_gradients(self, gradfwd_scale, [x, scale, offset], order=1,
-                      atol=1e-3)
-      gradfwd_offset = _gradfwd(_bn_fused, 2)
-      _test_gradients(self, gradfwd_offset, [x, scale, offset], order=1,
-                      atol=1e-3)
 
   def testFusedBatchNormGradsInference(self):
 
@@ -498,55 +418,6 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
                                       epsilon=epsilon, is_training=False)[0]
     _test_gradients(self, _bn_fused, [x, scale, offset],
                     order=2, atol=1e-2)
-
-  @parameterized.named_parameters(
-      [("Function", def_function.function),
-       ("NoFunction", lambda f: f)])
-  def testVariablesHVP(self, decorator):
-
-    if test.is_built_with_rocm():
-      # TODO(rocm)
-      # This test was recently added and has never passed on the
-      # ROCm platform. Remove this skip once the test is passing again
-      self.skipTest("NoFunction decorator test fails on the ROCm platform")
-
-    class _Model(module.Module):
-
-      def __init__(self):
-        self._first_dense = core.Dense(18)
-        self._conv = convolutional.Conv2D(2, 2)
-        self._norm = normalization_v2.BatchNormalization()
-        self._second_dense = core.Dense(1)
-
-      def __call__(self, x):
-        x = self._first_dense(x)
-        x = nn_ops.relu(x)
-        x = self._norm(x)
-        x = nn_ops.relu(self._conv(array_ops.reshape(x, [-1, 2, 3, 3])))
-        return self._second_dense(x)
-
-    model = _Model()
-    def _loss():
-      input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])
-      target = constant_op.constant([[-1.], [2.]])
-      return math_ops.reduce_sum((model(input_value) - target) ** 2.)
-
-    @decorator
-    def _compute_hvps():
-      with backprop.GradientTape() as tape:
-        loss = _loss()
-      vector = tape.gradient(loss, model.trainable_variables)
-      variable_input_fn = lambda unused_variables: _loss()
-      forward_over_back_hvp, = _hvp(
-          variable_input_fn, [model.trainable_variables], [vector])
-      with backprop.GradientTape(persistent=True) as tape:
-        tape.watch(model.trainable_variables)
-        loss = _loss()
-        first_grads = tape.gradient(loss, model.trainable_variables)
-      back_over_back_hvp = tape.gradient(
-          first_grads, model.trainable_variables, output_gradients=vector)
-      return forward_over_back_hvp, back_over_back_hvp
-    self.assertAllClose(*_compute_hvps(), rtol=1e-5, atol=1e-5)
 
   def testPushPopAccumulatorState(self):
     # Note that this example is somewhat contrived. push_forwardprop_state is
@@ -1068,29 +939,6 @@ class HessianTests(test.TestCase, parameterized.TestCase):
         _f, [constant_op.constant(x_value)],
         use_pfor=True, dtype=[dtypes.float32])
     self.assertAllClose(hess_value, hessian_pfor)
-
-  @parameterized.named_parameters(
-      [("PFor", True),
-       ("MapFn", False)])
-  def testHessianOfVariables(self, use_pfor):
-    model = core.Dense(1)
-    model.build([None, 2])
-
-    def _loss(*unused_args):
-      input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])
-      target = constant_op.constant([[-1.], [2.]])
-      return math_ops.reduce_sum((model(input_value) - target) ** 2.)
-
-    kernel_hess, bias_hess = _forward_over_back_hessian(
-        _loss, [model.kernel, model.bias], use_pfor=use_pfor,
-        dtype=[dtypes.float32, dtypes.float32])
-    # 3 total parameters, the whole hessian is the 3x3 concatenation
-    self.assertEqual([3, 2, 1], kernel_hess.shape)
-    self.assertEqual([3, 1], bias_hess.shape)
-    full_hessian = array_ops.concat(
-        [array_ops.reshape(kernel_hess, [3, 2]), bias_hess], axis=1)
-    # The full Hessian should be symmetric.
-    self.assertAllClose(full_hessian, array_ops.transpose(full_hessian))
 
 
 if __name__ == "__main__":

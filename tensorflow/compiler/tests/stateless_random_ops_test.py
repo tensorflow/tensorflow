@@ -26,6 +26,7 @@ from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -130,6 +131,39 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         random_test_util.test_truncated_normal(
             self.assertEqual, self.assertAllClose, n, y,
             variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
+
+
+class StatelessRandomOpsBenchmark(test.Benchmark):
+  """Microbenchmarks for the stateless random ops."""
+
+  def _benchmarkUniform(self, name, dtype, use_xla_jit):
+
+    def BuilderFn():
+      shape = (10, 1000, 1000)
+      seed_var = variables.Variable((312, 456),
+                                    dtype=dtypes.int32,
+                                    name='input')
+      random_t = stateless.stateless_random_uniform(
+          shape, seed=seed_var, dtype=dtype)
+      return '%s.shape%s' % (name, shape), [random_t]
+
+    xla_test.Benchmark(self, BuilderFn, use_xla_jit=use_xla_jit, device='cpu')
+
+  def benchmarkUniformF32(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=False)
+
+  def benchmarkUniformF64(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=False)
+
+  def benchmarkUniformF32XLA(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=True)
+
+  def benchmarkUniformF64XLA(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=True)
 
 
 if __name__ == '__main__':

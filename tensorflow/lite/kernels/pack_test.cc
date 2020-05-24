@@ -195,10 +195,10 @@ template <typename InputType>
 struct PackOpTestInt : public ::testing::Test {
   using TypeToTest = InputType;
   TensorType TENSOR_TYPE =
-      std::is_same<InputType, int16_t>::value
-          ? TensorType_INT16
-          : (std::is_same<InputType, uint8_t>::value ? TensorType_UINT8
-                                                     : TensorType_INT8);
+      (std::is_same<InputType, int16_t>::value
+           ? TensorType_INT16
+           : (std::is_same<InputType, uint8_t>::value ? TensorType_UINT8
+                                                      : TensorType_INT8));
 };
 
 using TestTypes = testing::Types<int8_t, uint8_t, int16_t>;

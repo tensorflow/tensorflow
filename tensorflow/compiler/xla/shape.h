@@ -63,6 +63,8 @@ class Shape {
   // shapes are traversed recursively.
   bool is_static() const;
 
+  bool is_dynamic() const { return !is_static(); }
+
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_.at(dimension);

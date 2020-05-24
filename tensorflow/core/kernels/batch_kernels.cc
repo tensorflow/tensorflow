@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/errors.h"
@@ -33,6 +35,60 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+
+namespace {
+
+void RecordPaddingSize(int32 padding_size, const string& model_name,
+                       int32 execution_batch_size) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
+      {"/tensorflow/serving/batching/padding_size", "model_name",
+       "execution_batch_size",
+       "Tracks the padding size distribution on batches by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name, absl::StrCat(execution_batch_size))
+      ->Add(static_cast<double>(padding_size));
+}
+
+void RecordInputBatchSize(int32 batch_size, const string& model_name) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/input_batch_size", "model_name",
+       "Tracks the batch size distribution on the inputs by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/processed_batch_size", "model_name",
+       "Tracks the batch size distribution on processing by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordBatchDelayMs(int64 batch_delay_ms, const string& model_name) {
+  static auto* cell = monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/batch_delay_ms", "model_name",
+       "Tracks the batching delay for inputs by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_ms));
+}
+
+const string& GetModelName(OpKernelContext* ctx) {
+  static string* kModelNameUnset = new string("model_name_unset");
+  if (!ctx->session_metadata()) return *kModelNameUnset;
+  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+  return ctx->session_metadata()->name();
+}
+
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -246,6 +302,7 @@ class BatchResource : public ResourceBase {
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback) {
     auto batch_components = MakeUnique<BatchTask>();
+    batch_components->start_time = EnvTime::NowNanos();
     batch_components->guid = guid;
     batch_components->propagated_context = Context(ContextKind::kThread);
     OpInputList tensors;
@@ -264,6 +321,7 @@ class BatchResource : public ResourceBase {
       }
       batch_components->inputs.push_back(tensor);
     }
+    RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context));
     OpInputList captured_tensors;
     const auto captured_status =
         context->input_list("captured_tensors", &captured_tensors);
@@ -298,6 +356,8 @@ class BatchResource : public ResourceBase {
     AsyncOpKernel::DoneCallback done_callback;
 
     size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    uint64 start_time;
   };
 
   using Batcher = serving::SharedBatchScheduler<BatchTask>;
@@ -344,6 +404,8 @@ class BatchResource : public ResourceBase {
 
     const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
     const int padding_amount = padded_batch_size - batch.size();
+    RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size);
+    RecordProcessedBatchSize(padded_batch_size, GetModelName(context));
 
     // All tasks should have the same number of input edges.
     const int num_inputs = batch.task(0).inputs.size();
@@ -526,6 +588,12 @@ class BatchResource : public ResourceBase {
         batch->task(batch->num_tasks() - 1).captured_inputs;
     args.insert(args.end(), captured_inputs.begin(), captured_inputs.end());
 
+    uint64 current_time = EnvTime::NowNanos();
+    const string& model_name = GetModelName(last_task_context);
+    for (int i = 0; i < batch->num_tasks(); ++i) {
+      RecordBatchDelayMs((current_time - batch->task(i).start_time) * 1e-6,
+                         model_name);
+    }
     // Releases the cleanup method here, because the callback of the function
     // library runtime will handle it now.
     finally.release();

@@ -37,13 +37,23 @@ class TransposeConv2dOpBuilder : public OpBuilder {
   ~TransposeConv2dOpBuilder();
 
  private:
+  // TODO(b/142009955): Combine into common util for all types of Conv.
+  TfLiteStatus ProcessPerChannelQuantizedWeights(const TfLiteIntArray* inputs,
+                                                 const TfLiteIntArray* outputs,
+                                                 TfLiteContext* context,
+                                                 float* weights_min,
+                                                 float* weights_max);
+
   TensorID node_output_;
   std::vector<float> transposed_weights_;
   std::vector<int> stride_shape_;
   std::vector<int> weight_shape_, bias_shape_;
   std::vector<int> bias_data_;
-  float data_min_, data_max_, weights_min_, weights_max_, bias_min_, bias_max_,
-      output_min_, output_max_;
+
+  // Non-null only if node has per-channel quantized weights/biases.
+  OpBuilder* channel_scales_node_ = nullptr;
+  float* scales_data_ = nullptr;
+  int num_scale_values_ = 1;
 };
 
 }  // namespace hexagon

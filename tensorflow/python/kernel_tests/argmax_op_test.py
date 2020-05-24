@@ -61,16 +61,26 @@ class ArgMaxTest(test.TestCase):
       self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
-    x = np.arange(200, dtype=dtype)
+    x = np.arange(200, dtype=np.float32).astype(np.bool_).astype(dtype)
     np.random.shuffle(x)
 
     # Check that argmin and argmax match numpy along the primary axis
     self._testBothArg(math_ops.argmax, x, 0, x.argmax())
     self._testBothArg(math_ops.argmin, x, 0, x.argmin())
 
+  def _testTieBreaking(self, dtype):
+    x = np.zeros(200, dtype=dtype)
+
+    # Check that argmin and argmax match numpy along the primary axis for
+    # breaking ties.
+    self._testBothArg(math_ops.argmax, x, 0, x.argmax())
+    self._testBothArg(math_ops.argmin, x, 0, x.argmin())
+
   def _testDim(self, dtype):
     shape = (3, 2, 4, 5, 6, 3, 7)
-    x = np.arange(functools.reduce(lambda x, y: x * y, shape), dtype=dtype)
+    x = np.arange(
+        functools.reduce(lambda x, y: x * y, shape),
+        dtype=np.float32).astype(dtype)
     np.random.shuffle(x)
     x = x.reshape(shape)
 
@@ -81,6 +91,7 @@ class ArgMaxTest(test.TestCase):
 
   def testFloat(self):
     self._testBasic(np.float32)
+    self._testTieBreaking(np.float32)
     self._testDim(np.float32)
 
   def testFloatInt32Output(self):
@@ -102,15 +113,23 @@ class ArgMaxTest(test.TestCase):
 
   def testDouble(self):
     self._testBasic(np.float64)
+    self._testTieBreaking(np.float64)
     self._testDim(np.float64)
 
   def testInt32(self):
     self._testBasic(np.int32)
+    self._testTieBreaking(np.int32)
     self._testDim(np.int32)
 
   def testInt64(self):
     self._testBasic(np.int64)
+    self._testTieBreaking(np.int64)
     self._testDim(np.int64)
+
+  def testBool(self):
+    self._testBasic(np.bool_)
+    self._testTieBreaking(np.bool_)
+    self._testDim(np.bool_)
 
   def testEmpty(self):
     with self.cached_session():

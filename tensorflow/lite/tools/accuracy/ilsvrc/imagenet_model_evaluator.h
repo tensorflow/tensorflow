@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
 namespace tensorflow {
@@ -120,7 +121,8 @@ class ImagenetModelEvaluator {
   const Params& params() const { return params_; }
 
   // Evaluates the provided model over the dataset.
-  TfLiteStatus EvaluateModel() const;
+  TfLiteStatus EvaluateModel(const tflite::evaluation::DelegateProviders*
+                                 delegate_providers = nullptr) const;
 
  private:
   const Params params_;

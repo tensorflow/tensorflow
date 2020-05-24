@@ -244,6 +244,13 @@ bool ChooseQuantizationForOperatorInput(
       weights_input_index = 1;
     }
   }
+  if (op.type == OperatorType::kTransposeConv) {
+    if (input_index == 3) {
+      is_bias_vector = true;
+      activations_input_index = 2;
+      weights_input_index = 1;
+    }
+  }
   if (op.type == OperatorType::kLstmCell) {
     if (input_index == LstmCellOperator::BIASES_INPUT) {
       is_bias_vector = true;

@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
+#include "ruy/context.h"  // from @ruy
 #include "tensorflow/lite/external_cpu_backend_context.h"
 
 namespace tflite {

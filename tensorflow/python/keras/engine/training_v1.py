@@ -25,6 +25,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -42,7 +43,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.engine import network
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
@@ -61,6 +62,7 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -179,8 +181,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return network.Network.get_weights(self)
-    return network.Network.get_weights(self)
+        return base_layer.Layer.get_weights(self)
+    return base_layer.Layer.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -230,7 +232,7 @@ class Model(training_lib.Model):
     """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
@@ -358,6 +360,12 @@ class Model(training_lib.Model):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
+    if isinstance(self._distribution_strategy,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy.ParameterServerStrategy)):
+      raise NotImplementedError('ParameterServerStrategy currently only works '
+                                'with the tf.Estimator API')
+
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
@@ -483,6 +491,11 @@ class Model(training_lib.Model):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics.
+        return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
     metrics.extend(_get_metrics_from_layers(self._layers))
@@ -496,6 +509,12 @@ class Model(training_lib.Model):
     # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics name
+        return super(Model, self).metrics_names
+
       # Add output loss metric names to the metric names list.
       if len(self._training_endpoints) > 1:
         metrics_names.extend([
@@ -527,7 +546,7 @@ class Model(training_lib.Model):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
         return def_function.RUN_FUNCTIONS_EAGERLY
       else:
@@ -800,7 +819,7 @@ class Model(training_lib.Model):
                use_multiprocessing=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be:
@@ -820,7 +839,7 @@ class Model(training_lib.Model):
           `keras.utils.Sequence` instance, `y` should not be specified (since
           targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -903,7 +922,7 @@ class Model(training_lib.Model):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input samples. It could be:
@@ -914,7 +933,7 @@ class Model(training_lib.Model):
           - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -3136,7 +3155,7 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if ops.is_dense_tensor_like(expected_input):
+    if isinstance(expected_input, core.Tensor):
       if ops.executing_eagerly_outside_functions():
         # In TF2 we do not silently densify sparse matrices.
         raise ValueError('A SciPy sparse matrix was passed to a model '

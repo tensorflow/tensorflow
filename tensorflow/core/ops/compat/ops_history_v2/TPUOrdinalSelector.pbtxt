@@ -1,0 +1,8 @@
+op {
+  name: "TPUOrdinalSelector"
+  output_arg {
+    name: "device_ordinals"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

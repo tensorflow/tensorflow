@@ -259,10 +259,14 @@ void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
 // Create a new TensorT object.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
+                const std::vector<int32_t>& shape_signature,
                 std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
   tensor_raw->name = name;
   tensor_raw->shape = shape;
+  if (!shape_signature.empty()) {
+    tensor_raw->shape_signature = shape_signature;
+  }
 
   tensor->reset(tensor_raw);
 }
@@ -419,8 +423,8 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
       // Create a new tensor to be the output of the dequantize op.
       std::unique_ptr<TensorT> dequantize_output;
       const string dequant_name = tensor->name + "_dequantize";
-      utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
-                        &dequantize_output);
+      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
+                        TensorType_FLOAT32, &dequantize_output);
       const int32_t dequantize_output_idx = subgraph->tensors.size();
       subgraph->tensors.push_back(std::move(dequantize_output));
 
@@ -503,8 +507,8 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
       // Create a new tensor to be the output of the dequantize op.
       std::unique_ptr<TensorT> dequantize_output;
       const string dequant_name = tensor->name + "_dequantize";
-      utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
-                        &dequantize_output);
+      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
+                        TensorType_FLOAT32, &dequantize_output);
       const int32_t dequantize_output_idx = subgraph->tensors.size();
       subgraph->tensors.push_back(std::move(dequantize_output));
 

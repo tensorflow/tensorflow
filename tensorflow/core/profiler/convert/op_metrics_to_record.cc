@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 
+#include <iterator>
 #include <tuple>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -28,7 +30,7 @@ std::vector<const OpMetrics*> SortedOpMetricsDb(const OpMetricsDb& metrics_db,
   std::vector<const OpMetrics*> result;
   result.reserve(metrics_db.metrics_db_size());
   for (const OpMetrics& metrics : metrics_db.metrics_db()) {
-    if (metrics.occurrences() > 0) result.push_back(&metrics);
+    result.push_back(&metrics);
   }
 
   auto comp = [](const OpMetrics* a, const OpMetrics* b) {

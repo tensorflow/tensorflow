@@ -30,9 +30,9 @@ class SpaceToDepth : public GPUOperation {
  public:
   SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr)
       : GPUOperation(op_def), attr_(attr), work_group_size_(8, 4, 1) {}
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   SpaceToDepth(SpaceToDepth&& operation);
   SpaceToDepth& operator=(SpaceToDepth&& operation);
@@ -40,7 +40,7 @@ class SpaceToDepth : public GPUOperation {
   SpaceToDepth& operator=(const SpaceToDepth&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   SpaceToDepthAttributes attr_;

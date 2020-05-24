@@ -45,6 +45,18 @@ namespace xla {
 // TODO(b/150633678): Both the ExecutionInput and ExecutionOutput need to be
 // revisited, with the execute APIs taking data structure which can better model
 // shareable buffers.
+//
+// ExecutionInput buffers are in one of three states:
+//
+// 1) Owned by the caller and immutable.
+// 2) Donated by the caller but returned on error.
+// 3) Donated by the caller and freed on error.
+//
+// Case (1) buffers are stored as MaybeOwningDeviceMemory(DeviceMemoryBase).
+// Case (2) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices present in unowned_indices_.
+// Case (3) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices absent from unowned_indices_.
 class ExecutionInput {
  public:
   ExecutionInput() = default;
@@ -80,6 +92,10 @@ class ExecutionInput {
     unowned_indices_.push_back(index);
   }
 
+  void SetUnownedIndex(const ShapeIndex& index) {
+    unowned_indices_.push_back(index);
+  }
+
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
   ShapeTree<MaybeOwningDeviceMemory>* MutableBuffers() { return &buffers_; }
@@ -94,6 +110,8 @@ class ExecutionInput {
 
  private:
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
+  // (Unordered) set of indices of buffers that should be returned to the
+  // caller if an error occurs when enqueuing the computation.
   std::vector<ShapeIndex> unowned_indices_;
 };
 
@@ -131,9 +149,6 @@ class ExecutionOutput {
     to_be_released_.push_back(std::move(mem));
   }
 
-  void SetOutputShapeTable(se::OwningDeviceMemory output_shape_table) {
-    output_shape_table_ = std::move(output_shape_table);
-  }
 
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
@@ -146,17 +161,9 @@ class ExecutionOutput {
 
   ScopedShapedBuffer* MutableResult() { return &result_; }
 
-  const se::OwningDeviceMemory& ShapeTable() const {
-    return output_shape_table_;
-  }
-
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
-  }
-
-  se::OwningDeviceMemory ConsumeShapeTable() {
-    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {

@@ -59,14 +59,14 @@ class DeviceType {
   explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
 
   const char* type() const { return type_.c_str(); }
-  const string& type_string() const { return type_; }
+  const std::string& type_string() const { return type_; }
 
   bool operator<(const DeviceType& other) const;
   bool operator==(const DeviceType& other) const;
   bool operator!=(const DeviceType& other) const { return !(*this == other); }
 
  private:
-  string type_;
+  std::string type_;
 };
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
@@ -110,10 +110,10 @@ typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
     PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:
-string DataTypeString(DataType dtype);
-string DeviceTypeString(const DeviceType& device_type);
-string DataTypeSliceString(const DataTypeSlice dtypes);
-inline string DataTypeVectorString(const DataTypeVector& dtypes) {
+std::string DataTypeString(DataType dtype);
+std::string DeviceTypeString(const DeviceType& device_type);
+std::string DataTypeSliceString(const DataTypeSlice dtypes);
+inline std::string DataTypeVectorString(const DataTypeVector& dtypes) {
   return DataTypeSliceString(dtypes);
 }
 

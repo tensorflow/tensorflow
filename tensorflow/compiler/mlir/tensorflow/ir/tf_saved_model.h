@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
-#include "mlir/IR/Dialect.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
 namespace mlir {
 namespace tf_saved_model {

@@ -382,13 +382,13 @@ def enable_check_numerics(stack_height_limit=30,
      x = -1.0
 
      # When the following line runs, a function graph will be compiled
-     # from the Python function `log_x_plus_1()`. Due to the
+     # from the Python function `square_log_x_plus_1()`. Due to the
      # `enable_check_numerics()` call above, the graph will contain
      # numerics checking ops that will run during the function graph's
      # execution. The function call generates an -infinity when the Log
      # (logarithm) op operates on the output tensor of the Add op.
      # The program errors out at this line, printing an error message.
-     y = log_x_plus_1(x)
+     y = square_log_x_plus_1(x)
      z = -y
     ```
 
@@ -409,6 +409,21 @@ def enable_check_numerics(stack_height_limit=30,
      y = tf.math.sqrt(x)
      z = tf.matmul(y, y)
      ```
+
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.enable_check_numerics()` as this API uses automatic outside
+  compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.enable_check_numerics()
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
 
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.

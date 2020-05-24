@@ -21,8 +21,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only, const void* data,
-                    CLContext* context, Buffer* result) {
+
+absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
+                          const void* data, CLContext* context,
+                          Buffer* result) {
   cl_mem_flags flags = gpu_read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
   if (data != nullptr) {
     flags |= CL_MEM_COPY_HOST_PTR;
@@ -31,14 +33,14 @@ Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only, const void* data,
   cl_mem buffer = clCreateBuffer(context->context(), flags, size_in_bytes,
                                  const_cast<void*>(data), &error_code);
   if (!buffer) {
-    return UnknownError(
+    return absl::UnknownError(
         absl::StrCat("Failed to allocate device memory with clCreateBuffer",
                      CLErrorCodeToString(error_code)));
   }
 
   *result = Buffer(buffer, size_in_bytes);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -69,18 +71,18 @@ void Buffer::Release() {
   }
 }
 
-Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
-                            Buffer* result) {
+absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
+                                  Buffer* result) {
   return CreateBuffer(size_in_bytes, true, nullptr, context, result);
 }
 
-Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
-                            CLContext* context, Buffer* result) {
+absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
+                                  CLContext* context, Buffer* result) {
   return CreateBuffer(size_in_bytes, true, data, context, result);
 }
 
-Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
-                             Buffer* result) {
+absl::Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
+                                   Buffer* result) {
   return CreateBuffer(size_in_bytes, false, nullptr, context, result);
 }
 

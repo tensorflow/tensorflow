@@ -17,15 +17,15 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -39,6 +39,7 @@ using mlir::MLIRContext;
 using mlir::OpRewritePattern;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
+using mlir::PassWrapper;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
 using mlir::success;
@@ -170,13 +171,14 @@ struct GeneralDotConvert
   }
 };
 
-struct LegalizeGeneralDot : public FunctionPass<LegalizeGeneralDot> {
+struct LegalizeGeneralDot
+    : public PassWrapper<LegalizeGeneralDot, FunctionPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(&patterns,
                                                         &getContext());
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 

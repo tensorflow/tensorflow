@@ -21,8 +21,8 @@ py_library(
     srcs = [
         "__init__.py",
         "compile_utils.py",
+        "functional.py",
         "input_layer.py",
-        "network.py",
         "node.py",
         "partial_batch_padding_handler.py",
         "saving.py",
@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:activations",
@@ -117,6 +118,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
@@ -288,6 +290,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 20,
     tags = [
+        "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
@@ -424,24 +427,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "feature_columns_integration_test",
-    size = "medium",
-    srcs = ["feature_columns_integration_test.py"],
-    python_version = "PY3",
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/feature_column:feature_column_py",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["training_eager_test.py"],
@@ -476,9 +461,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "network_test",
+    name = "functional_test",
     size = "medium",
-    srcs = ["network_test.py"],
+    srcs = ["functional_test.py"],
     python_version = "PY3",
     shard_count = 8,
     tags = [
@@ -508,6 +493,23 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "node_test",
+    size = "medium",
+    srcs = ["node_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
     ],
 )
 
@@ -582,6 +584,23 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "deferred_sequential_test",
+    size = "small",
+    srcs = ["deferred_sequential_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

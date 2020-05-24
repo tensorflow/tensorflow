@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -283,6 +284,26 @@ Status TransferManager::WriteRootTupleIndexTable(
   }
   return WriteSingleTupleIndexTable(
       stream, elements, device_buffer.on_device_shape(), &device_memory);
+}
+
+Status TransferManager::WriteRootTupleIndexTable(
+    se::Stream* stream, const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree) {
+  TF_RET_CHECK(buffer_tree.shape().IsTuple());
+  if (ShapeUtil::TupleElementCount(buffer_tree.shape()) == 0) {
+    return Status::OK();
+  }
+  se::DeviceMemoryBase device_memory =
+      buffer_tree.element({}).AsDeviceMemoryBase();
+  TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
+               device_memory.size());
+
+  std::vector<se::DeviceMemoryBase> elements;
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
+       ++i) {
+    elements.push_back(buffer_tree.element({i}).AsDeviceMemoryBase());
+  }
+  return WriteSingleTupleIndexTable(stream, elements, buffer_tree.shape(),
+                                    &device_memory);
 }
 
 Status TransferManager::TransferBufferFromDevice(

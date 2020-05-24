@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
+// RUN: xla-opt %s -verify-diagnostics -split-input-file | xla-opt | FileCheck %s
 
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
@@ -34,7 +34,7 @@ func @convert_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @exp_memref
 func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.exp"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.exponential"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -50,7 +50,7 @@ func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @neg_memref
 func @neg_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.neg"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.negate"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -176,5 +176,26 @@ func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: m
     tensor_store %4, %out : memref<10xf32>
     "xla_lhlo.terminator"() : () -> ()
   } ) : () -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @case_memref
+func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memref<f32>, %operand_3: memref<f32>, %out: memref<f32>) -> () {
+  "xla_lhlo.case"(%index, %operand_1, %operand_2, %operand_3, %out) ( {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.negate"(%arg0, %out) : (memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    },  {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.copy"(%arg0, %out) : (memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    },  {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.add"(%arg0, %arg0, %out) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    }
+  ) : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
   return
 }

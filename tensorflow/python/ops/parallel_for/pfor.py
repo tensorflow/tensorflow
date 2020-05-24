@@ -24,6 +24,7 @@ import string
 import sys
 import traceback
 
+import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
@@ -52,6 +53,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -65,14 +67,28 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
+
+# TODO(agarwal): remove flag.
 flags.DEFINE_bool(
-    "op_conversion_fallback_to_while_loop", False,
-    "If true, falls back to using a while loop for ops for "
-    "which a converter is not defined.")
+    "op_conversion_fallback_to_while_loop", True,
+    "DEPRECATED: Flag is ignored.")
 
 
 def _stack(t, length):
   """stacks `t` `length` times."""
+  # Note that this stacking may currently be triggered, for example, when a
+  # loop invariant tensor with dtype variant is input to a while_loop which then
+  # produces a loop dependent output. Simply stacking the variants may not be
+  # suitable since operations on stacked handles may expect a vectorized version
+  # of the variant.
+  # Given that variant types are generic, we are currently unable to figure out
+  # which particular variant type is being considered here and hence it may not
+  # be safe to allow stacking it.
+  if t.dtype == dtypes.variant:
+    raise NotImplementedError(
+        "Vectorization tried to stack variant tensor %s. "
+        "This is likely because vectorization of that variant "
+        "is not fully supported yet." % t)
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -92,11 +108,21 @@ def _stack(t, length):
 passthrough_stateful_ops = set([
     "VariableV2",
     "VarHandleOp",
+    "VariableShape",
     "ReadVariableOp",
     "StackV2",
     "TensorArrayWriteV3",
     "TensorArrayReadV3",
     "TensorArraySizeV3",
+])
+
+
+# Ops which we will treat like stateful for the purpose of vectorization.
+# Typically this is used to force pfor converters to run for these ops.
+force_stateful_ops = set([
+    # We vectorize this since we need to change the element shape set on the
+    # list.
+    "TensorListReserve",
 ])
 
 
@@ -108,6 +134,8 @@ def _is_stateful_pfor_op(op):
     return False
   if op.type in passthrough_stateful_ops:
     return False
+  if op.type in force_stateful_ops:
+    return True
   assert hasattr(op, "op_def") and op.op_def is not None, op
   return op.op_def.is_stateful
 
@@ -116,14 +144,17 @@ def _is_stateful_pfor_op(op):
 class WhileOp(object):
   """Object for storing state for converting the outputs of a while_loop."""
 
-  def __init__(self, exit_node, pfor_ops, pfor_config):
+  def __init__(self, exit_node, pfor_ops, fallback_to_while_loop, pfor_config):
     """Initializer.
 
     Args:
       exit_node: A tensor output from the while_loop.
       pfor_ops: list of ops inside the current pfor loop.
+      fallback_to_while_loop: If True, fallback to while loop when conversion of
+        an op is not supported
       pfor_config: PForConfig object used while constructing loop body.
     """
+    self._fallback_to_while_loop = fallback_to_while_loop
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
@@ -306,6 +337,7 @@ class WhileOp(object):
         pfor_ops=self._pfor_ops,
         all_indices=indices,
         all_indices_partitioned=cond_stacked,
+        fallback_to_while_loop=self._fallback_to_while_loop,
         pfor_config=self._pfor_config)
     # Map all inputs of Enter nodes in self._direct_enters to their converted
     # values.
@@ -680,6 +712,10 @@ class WhileOp(object):
     return outputs
 
 
+class ConversionNotImplementedError(Exception):
+  pass
+
+
 class _PforInput(object):
   """Input object passed to registered pfor converters."""
 
@@ -763,7 +799,7 @@ class _PforInput(object):
         input_name = "at index %d" % index
       else:
         input_name = "\"%s\"" % op_def.input_arg[index].name
-      raise ValueError(
+      raise ConversionNotImplementedError(
           "Input %s of op \"%s\" expected to be not loop invariant" %
           (input_name, op_type))
     return t
@@ -777,8 +813,9 @@ class _PforInput(object):
         input_name = "at index %d" % index
       else:
         input_name = "\"%s\"" % op_def.input_arg[index].name
-      raise ValueError("Input %s of op \"%s\" expected to be loop invariant" %
-                       (input_name, op_type))
+      raise ConversionNotImplementedError(
+          "Input %s of op \"%s\" expected to be loop invariant" %
+          (input_name, op_type))
     return t
 
   @property
@@ -954,8 +991,9 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   return WrappedTensor(tensor, is_stacked, is_sparse_stacked)
 
 
-def _fallback_converter(pfor_input):
-  logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
+def _fallback_converter(pfor_input, warn=True):
+  if warn:
+    logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -971,6 +1009,8 @@ def _fallback_converter(pfor_input):
         attrs=pfor_input.op.node_def.attr).outputs
 
     outputs = []
+    # TODO(agarwal): Add tf.debugging asserts to check that the shapes across
+    # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
       assert isinstance(out, ops.Tensor)
       outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
@@ -1144,6 +1184,7 @@ class PFor(object):
                loop_var,
                loop_len,
                pfor_ops,
+               fallback_to_while_loop,
                all_indices=None,
                all_indices_partitioned=False,
                pfor_config=None):
@@ -1155,6 +1196,8 @@ class PFor(object):
       loop_len: A scalar or scalar Tensor representing the number of iterations
         the loop is run for.
       pfor_ops: List of all ops inside the loop body.
+      fallback_to_while_loop: If True, on failure to vectorize an op, a while
+        loop is used to sequentially execute that op.
       all_indices: If not None, an int32 vector with size `loop_len`
         representing the iteration ids that are still active. These values
         should be unique and sorted. However they may not be contiguous. This is
@@ -1182,6 +1225,7 @@ class PFor(object):
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
+    self._fallback_to_while_loop = fallback_to_while_loop
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
@@ -1217,10 +1261,10 @@ class PFor(object):
     the new dense shape will be (N, max_i(x_i), max_i(y_i), max_i(z_i)).
 
     Args:
-      y: A tf.SparseTensor.
+      y: A tf.sparse.SparseTensor.
 
     Returns:
-      A tf.SparseTensor that is the converted value corresponding to y.
+      A tf.sparse.SparseTensor that is the converted value corresponding to y.
     """
     outputs = [
         self._convert_helper(t) for t in (y.indices, y.values, y.dense_shape)
@@ -1350,7 +1394,9 @@ class PFor(object):
       is_while_loop = y_op.type == "Exit"
       if is_while_loop:
         while_op = WhileOp(
-            y, pfor_ops=self._pfor_ops, pfor_config=self._pfor_config)
+            y, pfor_ops=self._pfor_ops,
+            fallback_to_while_loop=self.fallback_to_while_loop,
+            pfor_config=self._pfor_config)
         is_inside_loop = while_op.is_inside_loop
         # If all nodes in the while_loop graph were created inside the pfor, we
         # treat the whole loop subgraph as a single op (y_op) and try to convert
@@ -1455,20 +1501,31 @@ class PFor(object):
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
-            if flags.FLAGS.op_conversion_fallback_to_while_loop:
+            has_variant_outputs = any(x.dtype == dtypes.variant for x in
+                                      y_op.outputs)
+            if self._fallback_to_while_loop and not has_variant_outputs:
               converter = _fallback_converter
             else:
-              raise ValueError("No converter defined for %s\n%s\ninputs: %s. "
-                               "\nEither add a converter or set "
-                               "--op_conversion_fallback_to_while_loop=True, "
-                               "which may run slower" %
-                               (y_op.type, y_op, converted_inputs))
+              message = ("No pfor vectorization defined for %s\n"
+                         "%s\n"
+                         "inputs: %s. " %
+                         (y_op.type, y_op, converted_inputs))
+              if not self._fallback_to_while_loop:
+                message += ("Consider enabling the fallback_to_while_loop "
+                            "option to pfor, which may run slower.")
+              raise ValueError(message)
           # TODO(rachelim): Handle the case where some inputs are sparsely
           # stacked. We should only call the converter if it supports handling
           # those inputs.
           pfor_inputs = _PforInput(self, y_op, converted_inputs)
           try:
-            new_outputs = converter(pfor_inputs)
+            try:
+              new_outputs = converter(pfor_inputs)
+            except ConversionNotImplementedError as e:
+              if self._fallback_to_while_loop:
+                new_outputs = _fallback_converter(pfor_inputs)
+              else:
+                six.reraise(ValueError, ValueError(str(e)), sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
             logging.error(
                 "Got error while pfor was converting op %s"
@@ -1543,6 +1600,10 @@ class PFor(object):
       may be active.
     """
     return self._all_indices_partitioned
+
+  @property
+  def fallback_to_while_loop(self):
+    return self._fallback_to_while_loop
 
 
 # The code below defines converters for different operations. Please see comment
@@ -2029,7 +2090,7 @@ def _convert_diag(pfor_input):
   else:
     # It is not clear if we can do better than a while loop here with existing
     # kernels.
-    return _fallback_converter(pfor_input)
+    return _fallback_converter(pfor_input, warn=False)
 
 
 # See notes for MatrixDiagV2
@@ -2072,7 +2133,7 @@ def _convert_diag_part(pfor_input):
   else:
     # It is not clear if we can do better than a while loop here with existing
     # kernels.
-    return _fallback_converter(pfor_input)
+    return _fallback_converter(pfor_input, warn=False)
 
 
 @RegisterPFor("OneHot")
@@ -2751,8 +2812,8 @@ def _convert_equal(pfor_input):
   x = pfor_input.input(0)[0]
   y = pfor_input.input(1)[0]
   incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
-  assert incompatible_shape_error
-  return wrap(math_ops.equal(x, y), True)
+  return wrap(gen_math_ops.equal(
+      x, y, incompatible_shape_error=incompatible_shape_error), True)
 
 
 @RegisterPFor("NotEqual")
@@ -2761,8 +2822,8 @@ def _convert_not_equal(pfor_input):
   x = pfor_input.input(0)[0]
   y = pfor_input.input(1)[0]
   incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
-  assert incompatible_shape_error
-  return wrap(math_ops.not_equal(x, y), True)
+  return wrap(gen_math_ops.not_equal(
+      x, y, incompatible_shape_error=incompatible_shape_error), True)
 
 
 @RegisterPFor("ApproximateEqual")
@@ -3006,7 +3067,7 @@ def _convert_stateless_multinomial(pfor_input):
   # random numbers under vectorization.
   # Unfortunately, the kernels currently are not necessarily setup to do this
   # efficiently and hence we fallback to a sequential loop for vectorization.
-  return _fallback_converter(pfor_input)
+  return _fallback_converter(pfor_input, warn=False)
 
 
 # linalg_ops
@@ -3438,6 +3499,241 @@ def _convert_tensor_array_grad_v3(pfor_input):
   return [wrap(grad_handle, False), wrap(flow_out, True)]
 
 
+def _stack_tensor_list_shape(shape, pfor_input):
+  first_dim = pfor_input.pfor.loop_len_vector
+  shape_value = tensor_util.constant_value(shape)
+  # Note that negative values in the shape are used to signify unknown shapes
+  # and are handled in a special way.
+  if shape_value is not None:
+    shape_value = np.asarray(shape_value)
+    if -1 in shape_value:
+      return constant_op.constant(-1)
+    elif not shape_value.size:
+      return first_dim
+  else:
+    shape = array_ops.reshape(shape, [-1])
+    return control_flow_ops.cond(
+        math_ops.reduce_any(shape < 0),
+        lambda: constant_op.constant(-1),
+        lambda: array_ops.concat([first_dim, shape], axis=0))
+
+
+def _tile_variant(t, pfor_input):
+  """stacks `t` `length` times."""
+  t.set_shape([])
+  t = array_ops.reshape(t, [-1])
+  with ops.device("CPU:0"):
+    return array_ops.tile(t, pfor_input.pfor.loop_len_vector)
+
+
+def _untile_variant(t):
+  return array_ops.gather(t, 0)
+
+
+@RegisterPFor("TensorListReserve")
+def _convert_tensor_list_reserve(pfor_input):
+  element_shape = pfor_input.unstacked_input(0)
+  num_elements = pfor_input.unstacked_input(1)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  # Prepend a dimension to element_shape.
+  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  handle = list_ops.tensor_list_reserve(
+      element_shape, num_elements, element_dtype=element_dtype)
+
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListElementShape")
+def _convert_tensor_list_element_shape(pfor_input):
+  handle = _untile_variant(pfor_input.stacked_input(0))
+  shape_type = pfor_input.get_attr("shape_type")
+  shape = list_ops.tensor_list_element_shape(handle, shape_type)
+  shape = array_ops.reshape(shape, [-1])
+  shape = shape[1:]
+  return wrap(shape, False)
+
+
+@RegisterPFor("TensorListLength")
+def _convert_tensor_list_length(pfor_input):
+  handle = _untile_variant(pfor_input.stacked_input(0))
+  return wrap(list_ops.tensor_list_length(handle), False)
+
+
+def _stack_tensor_list(handle, dtype, pfor_input, element_shape=None):
+  if element_shape is None:
+    element_shape = list_ops.tensor_list_element_shape(handle, dtypes.int32)
+  length = list_ops.tensor_list_length(handle)
+  new_handle = list_ops.tensor_list_reserve(
+      _stack_tensor_list_shape(element_shape, pfor_input), length, dtype)
+
+  def _body_fn(i, h):
+    elem = list_ops.tensor_list_get_item(handle, i, dtype, element_shape)
+    elem = _stack(elem, pfor_input.pfor.loop_len_vector).t
+    return i + 1, list_ops.tensor_list_set_item(h, i, elem)
+
+  return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
+                                     [0, new_handle])[1]
+
+
+@RegisterPFor("TensorListGetItem")
+def _convert_tensor_list_get_item(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  element_shape = pfor_input.unstacked_input(2)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  if handle_stacked:
+    handle = _untile_variant(handle)
+    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    if index_stacked:
+      # We use a sequential loop since that may be more efficient than first
+      # gathering and concatenating all the element corresponding to `index`,
+      # and then doing a gather on it.
+      def _map_fn(i):
+        item_i = list_ops.tensor_list_get_item(
+            handle,
+            index[i],
+            element_dtype=element_dtype)
+        return array_ops.gather(item_i, i)
+
+      output = map_fn.map_fn(_map_fn, pfor_input.pfor.all_indices)
+      return wrap(output, True)
+    else:
+      output = list_ops.tensor_list_get_item(
+          handle,
+          index,
+          element_shape=element_shape,
+          element_dtype=element_dtype)
+      return wrap(output, True)
+  else:
+    assert index_stacked
+    return wrap(
+        list_ops.tensor_list_gather(
+            handle,
+            index,
+            element_shape=element_shape,
+            element_dtype=element_dtype), True)
+
+
+@RegisterPFor("TensorListSetItem")
+def _convert_tensor_array_set_item(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  item, item_stacked, _ = pfor_input.input(2)
+
+  if not handle_stacked:
+    # Special case where we can statically guarantee that the indices are
+    # disjoint.
+    if index is pfor_input.pfor.all_indices:
+      if not item_stacked:
+        item = _stack(item, pfor_input.pfor.loop_len_vector).t
+      return wrap(
+          list_ops.tensor_list_scatter(item, index, input_handle=handle), False)
+    else:
+      handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+  else:
+    handle = _untile_variant(handle)
+
+  if index_stacked:
+    # TODO(agarwal): handle this.
+    raise ValueError("Vectorizing writes to a TensorList with loop "
+                     "variant indices is currently unsupported.")
+
+  else:
+    if not item_stacked:
+      item = _stack(item, pfor_input.pfor.loop_len_vector).t
+    handle = list_ops.tensor_list_set_item(handle, index, item)
+    return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListStack")
+def _convert_tensor_list_stack(pfor_input):
+  handle = pfor_input.stacked_input(0)
+  input_shape = pfor_input.unstacked_input(1)
+  element_dtype = pfor_input.get_attr("element_dtype")
+  num_elements = pfor_input.get_attr("num_elements")
+
+  handle = _untile_variant(handle)
+  input_shape = _stack_tensor_list_shape(input_shape, pfor_input)
+  output = list_ops.tensor_list_stack(
+      handle,
+      element_dtype,
+      element_shape=input_shape,
+      num_elements=num_elements)
+  output = _transpose_first_two_dims(output)
+  return wrap(output, True)
+
+
+@RegisterPFor("TensorListGather")
+def _convert_tensor_list_gather(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  element_shape = pfor_input.unstacked_input(2)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  if handle_stacked:
+    handle = _untile_variant(handle)
+    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    if index_stacked:
+      # We use a sequential loop since that may be more efficient than first
+      # gathering and concatenating all the element corresponding to `index`,
+      # and then doing a gather on it.
+      def _map_fn(i):
+        item_i = list_ops.tensor_list_gather(
+            handle,
+            index[i],
+            element_dtype=element_dtype)
+        axis = array_ops.rank(index) - 1
+        return array_ops.gather(item_i, i, axis=axis)
+
+      output = map_fn.map_fn(_map_fn, pfor_input.pfor.all_indices)
+      return wrap(output, True)
+    else:
+      output = list_ops.tensor_list_gather(
+          handle,
+          index,
+          element_shape=element_shape,
+          element_dtype=element_dtype)
+      return wrap(output, True)
+  else:
+    assert index_stacked
+    index_shape = array_ops.shape(index)
+    index = array_ops.reshape(index, [-1])
+    values = list_ops.tensor_list_gather(
+        handle, index, element_shape=element_shape, element_dtype=element_dtype)
+    final_shape = array_ops.concat(
+        [index_shape, array_ops.shape(values)[1:]], axis=0)
+    return wrap(array_ops.reshape(values, final_shape), True)
+
+
+@RegisterPFor("TensorListScatterIntoExistingList")
+def _convert_tensor_list_scatter(pfor_input):
+  pfor_input.stack_inputs([1])
+  handle, handle_stacked, _ = pfor_input.input(0)
+  item = pfor_input.stacked_input(1)
+  # TODO(agarwal): handle stacked indices.
+  indices = pfor_input.unstacked_input(2)
+  if handle_stacked:
+    handle = _untile_variant(handle)
+  else:
+    handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+
+  item = _transpose_first_two_dims(item)
+  handle = list_ops.tensor_list_scatter(item, indices, input_handle=handle)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListFromTensor")
+def _convert_tensor_list_from_tensor(pfor_input):
+  tensor = pfor_input.stacked_input(0)
+  element_shape = pfor_input.unstacked_input(1)
+  tensor = _transpose_first_two_dims(tensor)
+  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  handle = list_ops.tensor_list_from_tensor(tensor, element_shape)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
 # StackV2 conversion is tricky since we don't have arrays of StackV2. So similar
 # to TensorArrays, we convert them by changing the dimension of the elements
 # inside the stack.
@@ -3657,6 +3953,7 @@ def _convert_partitioned_call(pfor_input):
       loop_var=pfor.loop_var,
       loop_len=pfor.loop_len_vector[0],
       pfor_ops=func.graph.get_operations(),
+      fallback_to_while_loop=pfor.fallback_to_while_loop,
       all_indices=pfor.all_indices,
       all_indices_partitioned=pfor.all_indices_partitioned,
       pfor_config=pfor.pfor_config)
@@ -3684,6 +3981,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
       loop_var=pfor_input.pfor.loop_var,
       loop_len=array_ops.size(indices),
       pfor_ops=func.graph.get_operations(),
+      fallback_to_while_loop=pfor_input.pfor.fallback_to_while_loop,
       all_indices=indices,
       all_indices_partitioned=partitioned,
       pfor_config=pfor_input.pfor.pfor_config)
@@ -3697,9 +3995,12 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
   return stacked_outputs
 
 
+# TODO(agarwal): Currently the converted code aggressively tiles loop variant
+# outputs from the then/else branches. Instead, it could do so only if at least
+# one of the branch outputs is loop variant.
 @RegisterPFor("StatelessIf")
 @RegisterPFor("If")
-def _convert_stateless_if(pfor_input):
+def _convert_if(pfor_input):
   cond, cond_stacked, _ = pfor_input.input(0)
   inputs = pfor_input.inputs[1:]
   then_branch = pfor_input.get_attr("then_branch")
@@ -3748,6 +4049,322 @@ def _convert_stateless_if(pfor_input):
         lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
         lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
     return [wrap(t, True) for t in outputs]
+
+
+class WhileV2(object):
+  """Object for vectorizing V2 while_loop op."""
+
+  def __init__(self, pfor_input):
+    self._pfor_input = pfor_input
+    self._pfor = pfor_input.pfor
+    cond_func_name = pfor_input.get_attr("cond").name
+    self._cond_func = pfor_input.op.graph._get_function(compat.as_bytes(
+        cond_func_name))
+    body_func_name = pfor_input.get_attr("body").name
+    self._body_func = pfor_input.op.graph._get_function(compat.as_bytes(
+        body_func_name))
+    if self._cond_func is None or self._body_func is None:
+      raise ValueError("Error extracting cond and body functions for op %s." % (
+          self._pfor_input.op))
+    # Indices of inputs that are passed unchanged through the while loop body.
+    # Typically these are tensors captured from outside the body context.
+    self._body_pass_through_indices = set()
+    for i, (inp, out) in enumerate(zip(self._body_func.graph.inputs,
+                                       self._body_func.graph.outputs)):
+      if id(inp) == id(out):
+        self._body_pass_through_indices.add(i)
+    self._parallel_iterations = self._pfor_input.get_attr("parallel_iterations")
+
+  def _output_shapes(self):
+    # Calculate output shape for vectorized loop. This will be used as
+    # shape_invariant. Merges shape inference outputs with the `output_shapes`
+    # attribute of the op.
+    output_shapes = [out.shape for out in self._pfor_input.op.outputs]
+    shapes = self._pfor_input.get_attr("output_shapes")
+    if not shapes:
+      shapes = [tensor_shape.TensorShape(None) for _ in output_shapes]
+    else:
+      shapes = [tensor_shape.TensorShape(shape) for shape in shapes]
+    for i, shape in enumerate(shapes):
+      shape = shape.merge_with(output_shapes[i])
+      if self._pfor_input.input(i).is_stacked:
+        shape = tensor_shape.TensorShape([None]).concatenate(shape)
+      output_shapes[i] = shape
+    assert len(output_shapes) == self._pfor_input.num_inputs
+    return output_shapes
+
+  def _init_values(self):
+    """Create arguments passed to converted while_loop."""
+    loop_len = self._pfor.loop_len_vector[0]
+    inputs = []
+    # TensorArrays for outputs of converted while loop
+    output_tas = []
+
+    with ops.name_scope("while_init"):
+      for inp in self._pfor_input.inputs:
+        inputs.append(inp.t)
+        output_tas.append(tensor_array_ops.TensorArray(inp.t.dtype, loop_len))
+    # See documentation for __call__ for the structure of init_values.
+    return [True, self._pfor.all_indices] + inputs + output_tas
+
+  def _process_cond_unstacked(self, conditions, indices, inputs, output_tas):
+    """Handles case when condition is pfor loop invariant."""
+    # Note that all iterations end together. So we don't need to partition the
+    # inputs.
+    not_all_done = array_ops.reshape(conditions, [])
+    return not_all_done, indices, inputs, output_tas
+
+  def _process_cond_stacked(self, conditions, indices, inputs, inputs_stacked,
+                            output_tas):
+    """Handles case when condition is pfor loop dependent."""
+    # Compute if all iterations are done.
+    not_all_done = math_ops.reduce_any(conditions)
+    conditions_int = math_ops.cast(conditions, dtypes.int32)
+    # Partition the indices.
+    done_indices, new_indices = data_flow_ops.dynamic_partition(
+        indices, conditions_int, 2)
+
+    new_inputs = []
+    new_output_tas = []
+    for i, (inp, stacked) in enumerate(zip(inputs, inputs_stacked)):
+      pass_through = i in self._body_pass_through_indices
+      # Partition the inputs.
+      if stacked:
+        done_inp, new_inp = data_flow_ops.dynamic_partition(
+            inp, conditions_int, 2)
+      else:
+        if not pass_through:
+          done_inp = _stack(inp, [array_ops.size(done_indices)]).t
+        new_inp = inp
+
+      new_inputs.append(new_inp)
+      out_ta = output_tas[i]
+      if not pass_through:
+        # Note that done_indices can be empty. done_inp should also be empty
+        # in that case.
+        out_ta = out_ta.scatter(done_indices, done_inp)
+      new_output_tas.append(out_ta)
+
+    assert len(new_output_tas) == len(output_tas)
+    assert len(new_inputs) == len(inputs)
+    return not_all_done, new_indices, new_inputs, new_output_tas
+
+  def _process_body(self, inputs_stacked, new_indices, cond_stacked,
+                    new_inputs, not_all_done):
+    """Convert the body function."""
+    # This is used to store the indices of inputs to the while op that need to
+    # be stacked. This stacking may be needed in cases where the input to the
+    # while_loop is loop_invariant but the corresponding output is not.
+    mismatching_stacked_indices = []
+
+    def true_fn():
+      """Converts the body function for all but last iteration."""
+      wrapped_inputs = [wrap(inp, stacked) for inp, stacked in
+                        zip(new_inputs, inputs_stacked)]
+      # Note the iterative process below to figure out loop invariance.
+      # Here we iterate on vectorization process till a fixed point. The issue
+      # is that the while body can take pfor loop invariant inputs but return
+      # loop variant outputs. For any loop variant output, the corresponding
+      # input has to be then made loop variant (since subsequent while
+      # iterations will need to see loop variant values).
+      # However once we make a new input loop variant, we might make other
+      # outputs loop variant. Hence we need to iterate till we get fixed point.
+      while True:
+        body_pfor = PFor(
+            loop_var=self._pfor.loop_var,
+            loop_len=array_ops.size(new_indices),
+            pfor_ops=self._body_func.graph.get_operations(),
+            fallback_to_while_loop=self._pfor.fallback_to_while_loop,
+            all_indices=new_indices,
+            all_indices_partitioned=(self._pfor.all_indices_partitioned or
+                                     cond_stacked),
+            pfor_config=self._pfor.pfor_config)
+        stacking_mismatch = False
+        outputs = _convert_function_call(self._body_func,
+                                         body_pfor,
+                                         wrapped_inputs)
+        for i, (out, inp) in enumerate(zip(outputs, wrapped_inputs)):
+          if out.is_stacked != inp.is_stacked:
+            stacking_mismatch = True
+            mismatching_stacked_indices.append(i)
+            wrapped_inputs[i] = _stack(inp.t, [array_ops.size(new_indices)])
+        if not stacking_mismatch:
+          if mismatching_stacked_indices:
+            # We needed to stack some inputs. This code will be abandoned and
+            # should not get executed. Hence we simply return `new_inputs` to
+            # make sure the graph construction code completes.
+            with ops.control_dependencies([
+                control_flow_ops.Assert(
+                    False, ["pfor ERROR: this branch should never execute"])]):
+              return [array_ops.identity(x) for x in new_inputs]
+          else:
+            return [out.t for out in outputs]
+
+    # If all are done, we simply return `new_inputs`. Else we need to run the
+    # body function.
+    return control_flow_ops.cond(
+        not_all_done,
+        true_fn,
+        lambda: list(new_inputs)), mismatching_stacked_indices
+
+  def __call__(self):
+    """Converter for the V2 while_loop.
+
+    The conversion of a while_loop is another while_loop.
+
+    The arguments to this converted while_loop are as follows:
+    not_all_done: Boolean scalar Tensor indicating if all the pfor iterations
+      are done.
+    indices: int32 1-D Tensor storing the id of the pfor iterations that are not
+      done.
+    args: Remaining arguments. These can be divided into 2 categories:
+      - The first set of arguments correspond one-to-one to the inputs to the
+        unvectorized while_loop.
+      - The second set are TensorArrays, corresponding one-to-one to each output
+        of the unvectorized while_loop. Each TensorArray has `PFor.loop_len`
+        elements, i.e. the number of pfor iterations. At the end, the i'th
+        element of each TensorArray will contain the output computed by the i'th
+        iteration of pfor. Note that elements can be written into these tensors
+        arrays in any order, depending on when the corresponding pfor iteration
+        is done.
+    In each iteration, the while_loop body recomputes the condition for all
+    active pfor iterations to see which of them are now done. It then partitions
+    all the inputs and passes them along to the converted body. Values for all
+    the iterations that are done are written to TensorArrays indexed by the pfor
+    iteration number. When all iterations are done, the TensorArrays are stacked
+    to get the final value.
+
+    Returns:
+      List of converted outputs.
+    """
+    output_shapes = self._output_shapes()
+    # Note that we use these lists as a hack since we need the `body` to compute
+    # these values during construction of the while_loop graph.
+    cond_is_stacked = [None]
+    indices_to_stack = []
+
+    def cond(not_all_done, *_):
+      return not_all_done
+
+    def body(not_all_done, indices, *args):
+      # See documentation for __call__ for the structure of *args.
+      num_inputs = self._pfor_input.num_inputs
+      inputs = args[:num_inputs]
+      output_tas = args[num_inputs:]
+      inputs_stacked = [x.is_stacked for x in self._pfor_input.inputs]
+      assert len(inputs) >= len(output_tas)
+      assert len(inputs) == len(inputs_stacked)
+      # Convert condition
+      with ops.name_scope("while_cond"):
+        # Note that we set all_indices_partitioned to True here. At this point
+        # we don't know if indices will be partitioned. Hence we use the
+        # conservative value.
+        cond_pfor = PFor(
+            loop_var=self._pfor.loop_var,
+            loop_len=array_ops.size(indices),
+            pfor_ops=self._cond_func.graph.get_operations(),
+            fallback_to_while_loop=self._pfor.fallback_to_while_loop,
+            all_indices=indices,
+            all_indices_partitioned=True,
+            pfor_config=self._pfor.pfor_config)
+
+        wrapped_inputs = [wrap(inp, stacked) for inp, stacked
+                          in zip(inputs, inputs_stacked)]
+        conditions, cond_stacked, _ = _convert_function_call(
+            self._cond_func,
+            cond_pfor,
+            wrapped_inputs)[0]
+        cond_is_stacked[0] = cond_stacked
+
+      # Recompute the new condition, write outputs of done iterations, and
+      # partition the inputs if needed.
+      if not cond_stacked:
+        (not_all_done, new_indices, new_inputs,
+         new_output_tas) = self._process_cond_unstacked(conditions, indices,
+                                                        inputs, output_tas)
+      else:
+        (not_all_done, new_indices, new_inputs,
+         new_output_tas) = self._process_cond_stacked(conditions, indices,
+                                                      inputs, inputs_stacked,
+                                                      output_tas)
+      # Convert body
+      with ops.name_scope("while_body"):
+        #  Compute the outputs from the body.
+        new_outputs, mismatching_stacked_indices = self._process_body(
+            inputs_stacked, new_indices, cond_stacked, new_inputs, not_all_done)
+
+      indices_to_stack[:] = mismatching_stacked_indices
+      for i, new_output in enumerate(new_outputs):
+        new_output.set_shape(output_shapes[i])
+      new_args = ([not_all_done, new_indices] + new_outputs +
+                  list(new_output_tas))
+      return tuple(new_args)
+
+    # Note that we run the code below in a function since we might abandon the
+    # generated code in cases where the conversion dictates that some inputs be
+    # further stacked. Hence we run the graph construction using
+    # `get_concrete_function` and avoid calling the constructed function if not
+    # needed.
+    @def_function.function
+    def while_fn():
+      # Create init_values that will be passed to the while_loop.
+      init_values = self._init_values()
+      ta_shape_invariants = [tensor_shape.TensorShape([]) for _ in
+                             self._pfor_input.outputs]
+      shape_invariants = (
+          [tensor_shape.TensorShape([]), tensor_shape.TensorShape([None])]
+          + output_shapes + ta_shape_invariants)
+
+      while_outputs = control_flow_ops.while_loop(
+          cond, body, init_values,
+          shape_invariants=shape_invariants,
+          parallel_iterations=self._parallel_iterations)
+      if indices_to_stack:
+        # This function will be abandoned.
+        return while_outputs
+      else:
+        num_inputs = self._pfor_input.num_inputs
+        new_inputs = while_outputs[2:num_inputs+2]
+        output_tas = while_outputs[num_inputs+2:]
+        assert cond_is_stacked[0] is not None
+        outputs = []
+        for i, inp in enumerate(new_inputs):
+          if cond_is_stacked[0]:
+            if i in self._body_pass_through_indices:
+              outputs.append(init_values[i + 2])
+            else:
+              ta = output_tas[i]
+              outputs.append(ta.stack())
+          else:
+            outputs.append(inp)
+        return outputs
+
+    _ = while_fn.get_concrete_function()
+    if indices_to_stack:
+      # Need to abandon the current conversion, stack some inputs and restart.
+      self._pfor_input.stack_inputs(stack_indices=indices_to_stack)
+      # Note that this call will recurse at most one time. The first call will
+      # do the required stacking, based on the iterative procedure in
+      # _process_body, and the next invocation to __call__ should not need to do
+      # any more stacking.
+      # We invoke `self()` here as a way to discard any corrupted state.
+      return self()
+    else:
+      outputs = while_fn()
+      wrapped_outputs = []
+      for i, (out, inp) in enumerate(zip(outputs, self._pfor_input.inputs)):
+        if i not in self._body_pass_through_indices and cond_is_stacked[0]:
+          wrapped_outputs.append(wrap(out, True))
+        else:
+          wrapped_outputs.append(wrap(out, inp.is_stacked))
+      return wrapped_outputs
+
+
+@RegisterPFor("StatelessWhile")
+@RegisterPFor("While")
+def _convert_while(pfor_input):
+  converter = WhileV2(pfor_input)
+  return converter()
 
 
 # spectral_ops

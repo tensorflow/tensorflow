@@ -55,6 +55,7 @@ struct OpData {
   // These fields are only used by full kernel.
   int scratch_tensor_index;
   lstm_eval::IntegerLstmParameter integer_lstm_param;
+  bool compute_row_sums;
 };
 
 namespace full {
@@ -727,7 +728,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMFullKernel;
-  context->AddTensors(context, /*tensors_to_add=*/8,
+  context->AddTensors(context, /*tensors_to_add=*/10,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -1236,7 +1237,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(8);
+    node->temporaries = TfLiteIntArrayCreate(10);
   } else if (is_integer) {
     if (is_8x8_16) {
       node->temporaries = TfLiteIntArrayCreate(6);
@@ -1273,6 +1274,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (is_hybrid_op) {
+    op_data->compute_row_sums = true;
     // Allocate temporary tensors to store quantized values of input,
     // activation_state and cell_state tensors.
     node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
@@ -1369,6 +1371,41 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       accum_size->data[1] = n_batch;
       TF_LITE_ENSURE_OK(
           context, context->ResizeTensor(context, accum_scratch, accum_size));
+    }
+
+    node->temporaries->data[8] = op_data->scratch_tensor_index + 8;
+    TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
+    zero_points->type = kTfLiteFloat32;
+    zero_points->allocation_type = kTfLiteArenaRw;
+    int zero_points_dims[1] = {n_batch};
+    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, zero_points_dims)) {
+      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
+      zero_points_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
+                                                       zero_points_size));
+    }
+
+    node->temporaries->data[9] = op_data->scratch_tensor_index + 9;
+    const TfLiteTensor* input_to_input_weights =
+        GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
+    const bool use_cifg = (input_to_input_weights == nullptr);
+    int row_sums_rows = use_cifg ? 6 : 8;
+    const TfLiteTensor* projection_weights =
+        GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
+    if (projection_weights != nullptr) {
+      row_sums_rows += ceil(static_cast<float>(n_output) / n_cell);
+    }
+
+    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+    row_sums->type = kTfLiteInt32;
+    row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    const int row_sums_dims[2] = {row_sums_rows, n_cell};
+    if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {
+      TfLiteIntArray* row_sums_size = TfLiteIntArrayCreate(2);
+      row_sums_size->data[0] = row_sums_dims[0];
+      row_sums_size->data[1] = row_sums_dims[1];
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, row_sums, row_sums_size));
     }
   }
 
@@ -1556,6 +1593,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTemporary(context, node, /*index=*/6);
         TfLiteTensor* output_scratch_buffer =
             GetTemporary(context, node, /*index=*/7);
+        TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
+        TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+        const int row_sums_size = row_sums->dims->data[0];
         return lstm_eval::EvalHybrid(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -1577,7 +1617,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             input_quantized,
             /*aux_input_quantized=*/nullptr, activation_state_quantized,
             cell_state_quantized, activation_state, cell_state,
-            output_scratch_buffer, output,
+            output_scratch_buffer, output, zero_points, row_sums, row_sums_size,
+            &op_data->compute_row_sums,
             CpuBackendContext::GetFromContext(context));
       } else {
         const int num_intermediate_tensors = node->intermediates->size;

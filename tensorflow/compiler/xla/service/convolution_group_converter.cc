@@ -225,10 +225,12 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   const int64 kernel_output_feature_dimension =
       dim_numbers.kernel_output_feature_dimension();
 
+  const int64 input_batch =
+      activation->shape().dimensions(input_batch_dimension);
   const int64 output_feature =
       filter->shape().dimensions(kernel_output_feature_dimension);
 
-  if (output_feature != batch_group_count) {
+  if (output_feature != batch_group_count || input_batch != batch_group_count) {
     // Insert a spatial dimension to the activation before the input batch
     // dimension to represent the batch group.
     std::vector<int64> input_sizes(activation->shape().dimensions().begin(),

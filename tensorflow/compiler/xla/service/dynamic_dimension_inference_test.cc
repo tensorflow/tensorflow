@@ -386,6 +386,53 @@ TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 3), nullptr);
 }
 
+TEST_F(DynamicDimensionInferenceTest, DotTestMultiContracting) {
+  auto builder = HloComputation::Builder(TestName());
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 8, 64});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 512});
+  auto output_shape = ShapeUtil::MakeShape(F32, {8, 64, 512});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, lhs_shape, "A"));
+  auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, rhs_shape, "B"));
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, scalar_shape_, "size_param"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(output_shape, a_param, b_param, dot_dnums,
+                                HloTestBase::DefaultPrecisionConfig(2)));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 1}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  // Nothing is dynamic in the output.
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 2), nullptr);
+}
+
 TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
   auto builder = HloComputation::Builder(TestName());
   constexpr int xdim = 3;
@@ -472,6 +519,45 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_2);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 2), size_param_1);
+}
+
+TEST_F(DynamicDimensionInferenceTest, NonDescendingTransposeTest) {
+  // Test the ability to trace unmodified dimensions
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  auto output_shape = ShapeUtil::MakeShape(F32, {3, 1, 2});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+  auto* size_param_1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, scalar_shape_, "size_param"));
+  auto* size_param_2 = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, scalar_shape_, "size_param"));
+  auto* size_param_3 = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/3, scalar_shape_, "size_param"));
+
+  auto* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(output_shape, a_param, {2, 0, 1}));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 2}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
+  EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_1);
+  EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 2), size_param_2);
 }
 
 TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
@@ -681,7 +767,7 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
   //  While
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, tuple_shape, "A"));
-  auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
+  builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, scalar_shape_, "size_param"));
   builder.AddInstruction(
       HloInstruction::CreateWhile(tuple_shape, condition, body, a_param));
@@ -696,37 +782,155 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
-  // Test that dynamic dimension inference does the right thing. A lambda is
-  // used here since we want to test twice by running inference again
-  // (idempotency).
-  auto test_dynamic_dimension = [&]() {
-    HloInstruction* while_hlo = nullptr;
-    // The while hlo has been replaced, find the new one.
-    for (HloInstruction* inst : module_->entry_computation()->instructions()) {
-      if (inst->opcode() == HloOpcode::kWhile) {
-        while_hlo = inst;
-      }
+  TF_ASSERT_OK(RunInference());
+  HloInstruction* while_hlo = nullptr;
+  // The while hlo has been replaced, find the new one.
+  for (HloInstruction* inst : module_->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kWhile) {
+      while_hlo = inst;
     }
-    ASSERT_NE(while_hlo, nullptr);
-    // The original while shape has 2 parameters. With dynamic size passed in
-    // as an extra parameter, the tuple should have 3 elements.
-    EXPECT_EQ(while_hlo->shape().tuple_shapes_size(), 3);
-    HloInstruction* add = nullptr;
-    for (HloInstruction* inst : while_hlo->while_body()->instructions()) {
-      if (inst->opcode() == HloOpcode::kAdd) {
-        add = inst;
-      }
+  }
+  ASSERT_NE(while_hlo, nullptr);
+  // The original while shape has 2 parameters. With dynamic size, the tuple
+  // should have 4 elements (We don't deduplicate the arguments).
+  EXPECT_EQ(while_hlo->shape().tuple_shapes_size(), 4);
+  HloInstruction* add_inst = nullptr;
+  for (HloInstruction* inst : while_hlo->while_body()->instructions()) {
+    if (inst->opcode() == HloOpcode::kAdd) {
+      add_inst = inst;
     }
-    EXPECT_NE(add, nullptr);
-    EXPECT_NE(inference_->GetDynamicSize(add, {}, 0), nullptr);
-    EXPECT_EQ(inference_->GetDynamicSize(while_hlo, {0}, 0), size_param);
-    EXPECT_EQ(inference_->GetDynamicSize(while_hlo, {1}, 0), size_param);
-  };
+  }
+  EXPECT_NE(add_inst, nullptr);
+  EXPECT_NE(inference_->GetDynamicSize(add_inst, {}, 0), nullptr);
+  EXPECT_NE(inference_->GetDynamicSize(
+                module_->entry_computation()->root_instruction(), {0}, 0),
+            nullptr);
+  EXPECT_NE(inference_->GetDynamicSize(
+                module_->entry_computation()->root_instruction(), {1}, 0),
+            nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
+  // Test the ability to trace into contional loops.
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
+  auto output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  // In this test we set inputs to different branches to different shapes.
+  auto tuple_shape_1 = ShapeUtil::MakeTupleShape({input_shape});
+  auto tuple_shape_2 = ShapeUtil::MakeTupleShape({input_shape, input_shape});
+  auto tuple_shape_3 =
+      ShapeUtil::MakeTupleShape({input_shape, input_shape, input_shape});
+
+  // true branch:
+  //
+  //   Param
+  //   |  |
+  // GTE1 GTE2
+  //   |  |
+  // Tuple(ADD)
+  auto true_builder = HloComputation::Builder("true");
+  {
+    auto true_param = true_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_2, "param"));
+    auto gte_0 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, true_param, 0));
+    auto gte_1 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, true_param, 1));
+    auto add = true_builder.AddInstruction(HloInstruction::CreateBinary(
+        input_shape, HloOpcode::kAdd, gte_0, gte_1));
+    true_builder.AddInstruction(HloInstruction::CreateTuple({add}));
+  }
+  HloComputation* true_branch =
+      module_->AddEmbeddedComputation(true_builder.Build());
+  // false branch:
+  //
+  //      Param
+  //  |     |    |
+  // GTE1  GTE2 GTE3
+  //        |     |
+  //       Tuple(ADD)
+  auto false_builder = HloComputation::Builder("false");
+  {
+    auto false_param = false_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_3, "param"));
+    auto gte_0 = false_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, false_param, 1));
+    auto gte_1 = false_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, false_param, 2));
+    auto add = false_builder.AddInstruction(HloInstruction::CreateBinary(
+        input_shape, HloOpcode::kAdd, gte_0, gte_1));
+    false_builder.AddInstruction(HloInstruction::CreateTuple({add}));
+  }
+  HloComputation* false_branch =
+      module_->AddEmbeddedComputation(false_builder.Build());
+
+  // Entry:
+  //
+  //  Param(bool) Param2 (tuple_2) Param3(tuple_3)
+  //   |            |                 |
+  //   +---------Condition------------+
+  auto* pred_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeScalarShape(PRED), "pred"));
+
+  auto* tuple_2_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, tuple_shape_2, "tuple_2_param"));
+  auto* tuple_3_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, tuple_shape_3, "tuple_3_param"));
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/3, scalar_shape_, "size_param"));
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      tuple_shape_1, pred_param, tuple_2_param, true_branch, tuple_3_param,
+      false_branch));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{1, {0}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{1, {1}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{2, {1}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{2, {2}, 0}));
 
   TF_ASSERT_OK(RunInference());
-  test_dynamic_dimension();
-  TF_ASSERT_OK(RunInference());
-  test_dynamic_dimension();
+
+  HloInstruction* conditional_hlo = nullptr;
+  // The while hlo has been replaced, find the new one.
+  for (HloInstruction* inst : module_->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kConditional) {
+      conditional_hlo = inst;
+    }
+  }
+  ASSERT_NE(conditional_hlo, nullptr);
+  // The original conditional shape has 1 parameters. With dynamic size passed
+  // out from the computation, another element is added to the tuple.
+  EXPECT_EQ(conditional_hlo->shape().tuple_shapes_size(), 2);
+  HloInstruction* add_true_branch = nullptr;
+  for (HloInstruction* inst :
+       conditional_hlo->true_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kAdd) {
+      add_true_branch = inst;
+    }
+  }
+  EXPECT_NE(add_true_branch, nullptr);
+  EXPECT_NE(inference_->GetDynamicSize(add_true_branch, {}, 0), nullptr);
+
+  HloInstruction* add_false_branch = nullptr;
+  for (HloInstruction* inst :
+       conditional_hlo->false_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kAdd) {
+      add_false_branch = inst;
+    }
+  }
+  EXPECT_NE(add_false_branch, nullptr);
+  EXPECT_NE(inference_->GetDynamicSize(add_false_branch, {}, 0), nullptr);
+
+  EXPECT_NE(inference_->GetDynamicSize(conditional_hlo, {0}, 0), nullptr);
 }
 
 TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {

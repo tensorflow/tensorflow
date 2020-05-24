@@ -243,3 +243,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, handle):
     """This function should never be called."""
     raise RuntimeError('This function should never be called')
+
+  def variables(self):
+    """Returns the variables of the Optimizer."""
+    return (self._optimizer.variables() +
+            list(self._loss_scale._weights.values()))  # pylint: disable=protected-access

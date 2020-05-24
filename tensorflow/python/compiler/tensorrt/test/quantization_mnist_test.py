@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+import tensorflow_datasets as tfds
+
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import keras
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator.estimator import Estimator
@@ -33,10 +35,10 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
@@ -81,12 +83,12 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
             'kernel',
             shape=[num_inputs, num_outputs],
             dtype=dtypes.float32,
-            initializer=keras.initializers.glorot_uniform())
+            initializer=init_ops.GlorotUniform())
         bias = variable_scope.get_variable(
             'bias',
             shape=[num_outputs],
             dtype=dtypes.float32,
-            initializer=keras.initializers.zeros())
+            initializer=init_ops.Zeros())
         x = math_ops.matmul(x, kernel)
         x = _Quantize(x, quantization_range)
         x = nn.bias_add(x, bias)
@@ -179,19 +181,15 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     Returns:
       The Estimator evaluation result.
     """
-    # Get dataset
-    train_data, test_data = mnist.load_data()
-
-    def _PreprocessFn(x, y):
+    def _PreprocessFn(entry):
+      x, y = entry['image'], entry['label']
       x = math_ops.cast(x, dtypes.float32)
-      x = array_ops.expand_dims(x, axis=2)
       x = 2.0 * (x / 255.0) - 1.0
       y = math_ops.cast(y, dtypes.int32)
       return x, y
 
     def _EvalInputFn():
-      mnist_x, mnist_y = test_data
-      dataset = dataset_ops.Dataset.from_tensor_slices((mnist_x, mnist_y))
+      dataset = tfds.load('mnist', split='test')
       dataset = dataset.map(
           map_func=_PreprocessFn,
           num_parallel_calls=8).batch(batch_size=batch_size)
@@ -201,9 +199,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       return features, labels
 
     def _TrainInputFn():
-      mnist_x, mnist_y = train_data
-      dataset = dataset_ops.Dataset.from_tensor_slices((mnist_x, mnist_y))
-      dataset = dataset.shuffle(2 * len(mnist_x))
+      dataset = tfds.load('mnist', split='train')
+      dataset = dataset.shuffle(60000)
       dataset = dataset.map(
           map_func=_PreprocessFn,
           num_parallel_calls=8).batch(batch_size=batch_size)

@@ -31,8 +31,8 @@ class ElementwiseOneArgument : public NodeShader {
  public:
   explicit ElementwiseOneArgument(OperationType operation_type)
       : operation_type_(operation_type) {}
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::string source;
     switch (operation_type_) {
       case OperationType::ABS:
@@ -89,7 +89,8 @@ class ElementwiseOneArgument : public NodeShader {
         source = "value_0 = tanh(value_0);";
         break;
       default:
-        return InvalidArgumentError("Incorrect elementwise operation type.");
+        return absl::InvalidArgumentError(
+            "Incorrect elementwise operation type.");
     }
     *generated_code = {
         /*parameters=*/{},
@@ -101,7 +102,7 @@ class ElementwiseOneArgument : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -113,61 +114,36 @@ class ElementwiseTwoArguments : public NodeShader {
   explicit ElementwiseTwoArguments(OperationType operation_type)
       : operation_type_(operation_type) {}
 
-  bool IsSupportedElemwise(const GenerationContext& ctx) const {
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
-
-    // Implementation supports concatenation of 2 tensors only.
-    if (inputs.size() != 2) {
-      return false;
-    }
-
-    auto shape0 = inputs[0]->tensor.shape;
-    auto shape1 = inputs[1]->tensor.shape;
-
-    // Shapes must be the same
-    if (shape0 != shape1) {
-      return false;
-    }
-    return true;
+  inline bool IsElementwiseSupported(const GenerationContext& ctx) const {
+    return ctx.input_shapes.size() == 2 &&
+           ctx.input_shapes[0] == ctx.input_shapes[1];
   }
 
-  bool IsSupportedBroadcast(const GenerationContext& ctx) const {
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
-    auto outputs = ctx.graph->FindOutputs(ctx.node->id);
-    if (inputs.size() != 2) {
-      return false;
-    }
-    if (inputs[1]->tensor.shape.h != 1 || inputs[1]->tensor.shape.w != 1 ||
-        inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c) {
-      return false;
-    }
-    return true;
+  inline bool IsBroadcastSupported(const GenerationContext& ctx) const {
+    return ctx.input_shapes.size() == 2 && ctx.input_shapes[1][1] == 1 &&
+           ctx.input_shapes[1][2] == 1 &&
+           ctx.input_shapes[0][3] == ctx.input_shapes[1][3];
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::vector<Variable> parameters;
     std::vector<std::pair<std::string, Object>> objects;
     std::string argument0, argument1;
-    if (IsSupportedElemwise(ctx)) {
+    if (IsElementwiseSupported(ctx)) {
       argument0 = "value_0";
       argument1 = "value_1";
-    } else if (IsSupportedBroadcast(ctx)) {
+    } else if (IsBroadcastSupported(ctx)) {
       argument0 = "$input_data_0[gid.x, gid.y, gid.z]$";
       argument1 = "$input_data_1[0, 0, gid.z]$";
     } else {  // Scalar of const vector case
-      const ElementwiseAttributes* attr = absl::any_cast<ElementwiseAttributes>(
-          &ctx.node->operation.attributes);
-      if (!attr) {
-        return InvalidArgumentError(
-            "Couldn't read attributes for the scalar of const vector case.");
-      }
-      auto* tensor =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-              &attr->param);
-      auto* scalar = absl::get_if<float>(&attr->param);
+      const auto& attr =
+          absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
+      const auto* tensor =
+          absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+      const auto* scalar = absl::get_if<float>(&attr.param);
       if (!tensor && !scalar) {
-        return InvalidArgumentError(
+        return absl::InvalidArgumentError(
             "Couldn't read scalar of const vector data from the attributes.");
       }
 
@@ -208,7 +184,7 @@ class ElementwiseTwoArguments : public NodeShader {
         break;
       }
       default:
-        return InvalidArgumentError(
+        return absl::InvalidArgumentError(
             "Incorrect elementwise with scalar operation type.");
     }
     source = absl::Substitute(source, argument0, argument1);
@@ -222,7 +198,7 @@ class ElementwiseTwoArguments : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

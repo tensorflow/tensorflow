@@ -59,7 +59,7 @@ TEST(AddQuantAdjustments, OneNode) {
 
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input->id).ok());
 
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   AddQuantParams(&input->quant_params, /*min=*/0.0, /*max=*/2.0,
                  /*scale=*/0.008);
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
@@ -114,18 +114,18 @@ TEST(AddQuantAdjustments, GeneralCase) {
 
   // Connections.
   ASSERT_TRUE(graph.AddConsumer(add1_node->id, input->id).ok());
-  Value<TensorRef<BHWC>>* link1;
+  Value* link1;
   ASSERT_TRUE(ConnectTwoNodes(&graph, add1_node, quant_node, &link1).ok());
   AddQuantParams(&link1->quant_params, /*min=*/0.0, /*max=*/2.0,
                  /*scale=*/0.008);
   link1->tensor.shape = BHWC(1, 4, 4, 8);
   ASSERT_TRUE(graph.AddConsumer(add2_node->id, link1->id).ok());
-  Value<TensorRef<BHWC>>* link2;
+  Value* link2;
   ASSERT_TRUE(ConnectTwoNodes(&graph, quant_node, add2_node, &link2).ok());
   AddQuantParams(&link2->quant_params, /*min=*/-1.0, /*max=*/1.0,
                  /*scale=*/0.008);
   link2->tensor.shape = BHWC(1, 4, 4, 8);
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add2_node, &output).ok());
   AddQuantParams(&output->quant_params, /*min=*/-1.0, /*max=*/1.0,
                  /*scale=*/0.008);
@@ -141,13 +141,15 @@ TEST(AddQuantAdjustments, GeneralCase) {
   EXPECT_EQ(4, graph.nodes().size());
   EXPECT_EQ(5, graph.values().size());
   EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[0]->operation.type);
+  // The new node should be inserted at index 1, just after add1.
   EXPECT_EQ(ToString(OperationType::QUANTIZE_AND_DEQUANTIZE),
             graph.nodes()[1]->operation.type);
-  EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[2]->operation.type);
   EXPECT_EQ(ToString(OperationType::QUANTIZE_AND_DEQUANTIZE),
-            graph.nodes()[3]->operation.type);
+            graph.nodes()[2]->operation.type);
+  EXPECT_EQ(quant_node->id, graph.nodes()[2]->id);
+  EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[3]->operation.type);
   auto new_quant_attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
-      graph.nodes()[3]->operation.attributes);
+      graph.nodes()[1]->operation.attributes);
   EXPECT_EQ(0.0, new_quant_attr.min);
   EXPECT_EQ(2.0, new_quant_attr.max);
   const auto& new_quant_consumers = graph.FindConsumers(graph.values()[4]->id);

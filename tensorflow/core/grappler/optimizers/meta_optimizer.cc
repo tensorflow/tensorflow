@@ -18,12 +18,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
@@ -90,6 +91,10 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "loop_optimizer" || name == "auto_mixed_precision";
 }
 
+bool IsTFDataFunction(const FunctionDef& func) {
+  return func.attr().contains(data::kTFDataFunction);
+}
+
 // Creates a function library stub from a real function library: copy only
 // signatures and attributes of all the function defined in fdef_lib. This stub
 // can be swapped with real function library in a graph, before passing it to
@@ -109,12 +114,12 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
-  const uint64 kFiveMinutesInUsec = 5 * 60 * 1000 * 1000;
+  const uint64 kTwentyMinutesInUsec = 20 * 60 * 1000 * 1000;
   if (cfg.meta_optimizer_timeout_ms() < 0) {
     return 0;
   } else {
     return cfg.meta_optimizer_timeout_ms() == 0
-               ? Env::Default()->NowMicros() + kFiveMinutesInUsec
+               ? Env::Default()->NowMicros() + kTwentyMinutesInUsec
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
@@ -695,6 +700,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // They should be specialized to their instantiation type parameters by
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
+
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
+      if (IsTFDataFunction(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "

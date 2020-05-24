@@ -359,7 +359,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       } else {
         TF_LITE_ENSURE(
             context,
-            reference_ops::Mean(
+            optimized_ops::MeanGeneral(
                 GetTensorData<float>(op_context.input),
                 op_context.input->dims->data, op_context.input->dims->size,
                 GetTensorData<float>(op_context.output),

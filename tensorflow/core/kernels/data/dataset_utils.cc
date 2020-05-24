@@ -245,7 +245,7 @@ class GraphHasher {
 
     // Hash regular inputs. We combine them in an ordered fashion.
     uint64 inputs_hash = 0;
-    for (auto input : node_rep->node_inputs) {
+    for (const auto& input : node_rep->node_inputs) {
       uint64 node_hash = 0;
       EdgeRep edge(node, input.first);
       // If the edge was pruned we get the non input node hash to avoid cycles.

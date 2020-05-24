@@ -91,6 +91,44 @@ TEST_F(GpuFusibleTest,
       LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce_fusion));
 }
 
+TEST_F(GpuFusibleTest,
+       LayoutsAreReduceInputFusionFriendly_MixedLayoutProducerWithTrivialDim) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    mixed_input_layouts_computation {
+      p0.1 = f16[128,1,32,32]{1,3,2,0} parameter(0)
+      p1.1 = f16[128,1,32,32]{3,2,1,0} parameter(1)
+      copy = f16[128,1,32,32]{1,3,2,0} copy(p1.1)
+      c0 = f16[] constant(0)
+      broadcast = f16[128,1,32,32]{1,3,2,0} broadcast(c0), dimensions={}
+      greater-than = pred[128,1,32,32]{1,3,2,0} compare(copy, broadcast), direction=GT
+      ROOT root = f16[128,1,32,32]{1,3,2,0} select(greater-than, p0.1, broadcast)
+    }
+    fused_reduce {
+      p0.2 = f16[128,1,32,32]{1,3,2,0} parameter(0)
+      convert = f32[128,1,32,32]{1,3,2,0} convert(p0.2)
+      c0.2 = f32[] constant(0)
+      ROOT reduce = f32[1]{0} reduce(convert, c0.2), dimensions={0,2,3}, to_apply=scalar_add
+    }
+    ENTRY entry {
+      p0 = f16[128,1,32,32]{1,3,2,0} parameter(0)
+      p1 = f16[128,1,32,32]{3,2,1,0} parameter(1)
+      loop_fusion = f16[128,1,32,32]{1,3,2,0} fusion(p0, p1), kind=kLoop, calls=mixed_input_layouts_computation
+      reduce_fusion = f32[1]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
+      ROOT root = (f32[1]{0}, f16[128,1,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
+    })"))
+                    .ValueOrDie();
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* reduce_fusion =
+      module->entry_computation()->root_instruction()->operand(0);
+  ASSERT_EQ(reduce_fusion->fused_expression_root()->opcode(),
+            HloOpcode::kReduce);
+  const HloInstruction* loop_fusion =
+      module->entry_computation()->root_instruction()->operand(1);
+  ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kSelect);
+  EXPECT_TRUE(
+      LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce_fusion));
+}
+
 TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce {
@@ -152,17 +190,18 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_ConsiderMaximumRanksParamsOnly) {
+       LayoutsAreReduceInputFusionFriendly_ConsiderMaximumTrueRanksParamsOnly) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     broadcasting_computation {
       p0.1 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
-      p1.1 = f32[128]{0} parameter(1)
-      broadcast = f32[128,1024,32,32]{1,3,2,0} broadcast(p1.1), dimensions={0}
+      p1.1 = f32[1,128,1,1]{3,2,1,0} parameter(1)
+      reshape = f32[128]{0} reshape(p1.1)
+      broadcast = f32[128,1024,32,32]{1,3,2,0} broadcast(reshape), dimensions={0}
       ROOT add = f32[128,1024,32,32]{1,3,2,0} add(p0.1, broadcast)
     }
     ENTRY entry {
       p0 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
-      p1 = f32[128]{0} parameter(1)
+      p1 = f32[1,128,1,1]{3,2,1,0} parameter(1)
       loop_fusion = f32[128,1024,32,32]{1,3,2,0} fusion(p0, p1), kind=kLoop, calls=broadcasting_computation
       c0.2 = f32[] constant(0)
       ROOT reduce = f32[1024]{0} reduce(loop_fusion, c0.2), dimensions={0,2,3}, to_apply=scalar_add

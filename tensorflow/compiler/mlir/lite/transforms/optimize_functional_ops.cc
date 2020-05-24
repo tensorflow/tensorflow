@@ -17,15 +17,15 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -36,8 +36,8 @@ using FuncSet = llvm::SmallSet<FuncOp, 4>;
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public ModulePass<OptimizeFunctionalOpsPass> {
-  void runOnModule() override;
+    : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -180,14 +180,14 @@ static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
   }
 }
 
-void OptimizeFunctionalOpsPass::runOnModule() {
+void OptimizeFunctionalOpsPass::runOnOperation() {
   OwningRewritePatternList patterns;
 
   FuncSet inlined_funcs;
   patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
 
-  ModuleOp module = getModule();
-  applyPatternsGreedily(module, patterns);
+  ModuleOp module = getOperation();
+  applyPatternsAndFoldGreedily(module, patterns);
 
   // Erase inlined functions that don't have any references.
   //
@@ -198,7 +198,7 @@ void OptimizeFunctionalOpsPass::runOnModule() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
   return std::make_unique<OptimizeFunctionalOpsPass>();
 }
 

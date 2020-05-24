@@ -40,9 +40,9 @@ def load_data():
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
       **x_train, x_test**: uint8 arrays of RGB image data with shape
-        (num_samples, 3, 32, 32) if the `tf.keras.backend.image_data_format` is
-        'channels_first', or (num_samples, 32, 32, 3) if the data format
-        is 'channels_last'.
+        `(num_samples, 3, 32, 32)` if `tf.keras.backend.image_data_format()` is
+        `'channels_first'`, or `(num_samples, 32, 32, 3)` if the data format
+        is `'channels_last'`.
 
       **y_train, y_test**: uint8 arrays of category labels
         (integers in range 0-9) each with shape (num_samples, 1).

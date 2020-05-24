@@ -96,6 +96,10 @@ class ShardedVariable(trackable.Trackable):
                        'to the order of the `Variable`s in the list passed to '
                        'the constructor. Found {}'.format(save_slice_info))
 
+  def __iter__(self):
+    """Return an iterable for accessing the underlying sharded variables."""
+    return iter(self._variables)
+
   @property
   def variables(self):
     """The list of `Variable`s that make up the shards of this object."""

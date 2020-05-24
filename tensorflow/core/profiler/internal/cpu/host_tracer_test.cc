@@ -12,37 +12,45 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <ostream>
 #include <string>
 
 #include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const ProfilerOptions& options);
+    const ProfileOptions& options);
 
 namespace {
 
 using ::testing::UnorderedElementsAre;
 
-NodeExecStats MakeNodeStats(const string& name, uint32 thread_id,
-                            const string& label = "") {
+NodeExecStats MakeNodeStats(absl::string_view name, uint32 thread_id,
+                            absl::string_view label = "") {
   NodeExecStats ns;
-  ns.set_node_name(name);
+  ns.set_node_name(std::string(name));
   ns.set_thread_id(thread_id);
   if (!label.empty()) {
-    ns.set_timeline_label(label);
+    ns.set_timeline_label(std::string(label));
   }
   return ns;
 }
@@ -76,7 +84,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
   uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
-  auto tracer = CreateHostTracer(ProfilerOptions());
+  auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }
@@ -107,7 +115,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   uint32 thread_id;
-  string thread_name = "MyThreadName";
+  std::string thread_name = "MyThreadName";
   XSpace space;
 
   // We start a thread with a known and controled name. As of the time of
@@ -121,7 +129,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
         thread_id = Env::Default()->GetCurrentThreadId();
 
-        auto tracer = CreateHostTracer(ProfilerOptions());
+        auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
 
         TF_ASSERT_OK(tracer->Start());
         { TraceMe traceme("hello"); }
@@ -130,6 +138,8 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         { TraceMe traceme("good#key1=value1#"); }
         { TraceMe traceme("morning#key1=value1,key2=value2#"); }
         { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        // Special cases for tf.data
+        { TraceMe traceme("Iterator::XXX::YYY::ParallelMap"); }
         TF_ASSERT_OK(tracer->Stop());
 
         TF_ASSERT_OK(tracer->CollectData(&space));
@@ -139,45 +149,79 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
+  XPlaneVisitor xplane(&plane);
   ASSERT_EQ(plane.name(), kHostThreads);
   ASSERT_EQ(plane.lines_size(), 1);
-  ASSERT_EQ(plane.event_metadata_size(), 6);
+  ASSERT_EQ(plane.event_metadata_size(), 7);
   ASSERT_EQ(plane.stat_metadata_size(), 2);
-  const auto& event_metadata = plane.event_metadata();
-  const auto& stat_metadata = plane.stat_metadata();
   const auto& line = plane.lines(0);
   EXPECT_EQ(line.id(), thread_id);
   EXPECT_EQ(line.name(), thread_name);
-  ASSERT_EQ(line.events_size(), 6);
+  ASSERT_EQ(line.events_size(), 7);
   const auto& events = line.events();
-  EXPECT_EQ(events[0].metadata_id(), 1);
-  EXPECT_EQ(event_metadata.at(1).name(), "hello");
+
+  XEventVisitor e0(&xplane, &line, &events[0]);
+  EXPECT_EQ(e0.Name(), "hello");
   ASSERT_EQ(events[0].stats_size(), 0);
-  EXPECT_EQ(events[1].metadata_id(), 2);
-  EXPECT_EQ(event_metadata.at(2).name(), "world");
+
+  XEventVisitor e1(&xplane, &line, &events[1]);
+  EXPECT_EQ(e1.Name(), "world");
   ASSERT_EQ(events[1].stats_size(), 0);
-  EXPECT_EQ(events[2].metadata_id(), 3);
-  EXPECT_EQ(event_metadata.at(3).name(), "contains#inside");
+
+  XEventVisitor e2(&xplane, &line, &events[2]);
+  EXPECT_EQ(e2.Name(), "contains#inside");
   ASSERT_EQ(events[2].stats_size(), 0);
-  EXPECT_EQ(events[3].metadata_id(), 4);
-  EXPECT_EQ(event_metadata.at(4).name(), "good");
+
+  XEventVisitor e3(&xplane, &line, &events[3]);
+  EXPECT_EQ(e3.Name(), "good");
   ASSERT_EQ(events[3].stats_size(), 1);
-  EXPECT_EQ(events[3].stats(0).metadata_id(), 1);
-  EXPECT_EQ(stat_metadata.at(1).name(), "key1");
-  EXPECT_EQ(events[3].stats(0).str_value(), "value1");
-  EXPECT_EQ(events[4].metadata_id(), 5);
-  EXPECT_EQ(event_metadata.at(5).name(), "morning");
+  {
+    absl::optional<std::string> value;
+    e3.ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Name() == "key1") value = stat.ToString();
+    });
+    ASSERT_TRUE(value);           // The stat key is present.
+    EXPECT_EQ(*value, "value1");  // The stat value is expected.
+  }
+
+  XEventVisitor e4(&xplane, &line, &events[4]);
+  EXPECT_EQ(e4.Name(), "morning");
   ASSERT_EQ(events[4].stats_size(), 2);
-  EXPECT_EQ(events[4].stats(0).metadata_id(), 1);
-  EXPECT_EQ(events[4].stats(0).str_value(), "value1");
-  EXPECT_EQ(events[4].stats(1).metadata_id(), 2);
-  EXPECT_EQ(stat_metadata.at(2).name(), "key2");
-  EXPECT_EQ(events[4].stats(1).str_value(), "value2");
-  EXPECT_EQ(events[5].metadata_id(), 6);
-  EXPECT_EQ(event_metadata.at(6).name(), "incomplete");
+  {
+    absl::optional<std::string> value1, value2;
+    e4.ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Name() == "key1") {
+        value1 = stat.ToString();
+      } else if (stat.Name() == "key2") {
+        value2 = stat.ToString();
+      }
+    });
+    ASSERT_TRUE(value1 && value2);  // The stat keys are presents.
+    EXPECT_EQ(*value1, "value1");   // The stat value1 is expected.
+    EXPECT_EQ(*value2, "value2");   // The stat value2 is expected.
+  }
+
+  XEventVisitor e5(&xplane, &line, &events[5]);
+  EXPECT_EQ(e5.Name(), "incomplete");
   ASSERT_EQ(events[5].stats_size(), 1);
-  EXPECT_EQ(events[5].stats(0).metadata_id(), 1);
-  EXPECT_EQ(events[5].stats(0).str_value(), "value1");
+  {
+    absl::optional<std::string> value1, value2;
+    e5.ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Name() == "key1") {
+        value1 = stat.ToString();
+      } else if (stat.Name() == "key2") {
+        value2 = stat.ToString();
+      }
+    });
+    ASSERT_TRUE(value1 && !value2);  // One of the stat key is present.
+    EXPECT_EQ(*value1, "value1");    // The stat value is expected.
+  }
+
+  // Dataset Ops will trim intermediate namespace.
+  XEventVisitor e6(&xplane, &line, &events[6]);
+  EXPECT_EQ(e6.Name(), "Iterator::XXX::YYY::ParallelMap");
+
+  EXPECT_EQ(e6.DisplayName(), "Iterator::ParallelMap");
 }
 
 }  // namespace

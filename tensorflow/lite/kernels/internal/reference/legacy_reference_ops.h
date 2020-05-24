@@ -387,8 +387,20 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.stride_height = stride_height;
 
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
-                output_data, DimsToShape(im2col_dims), im2col_data);
+                DimsToShape(filter_dims), filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr,
+                DimsToShape(output_dims), output_data, DimsToShape(im2col_dims),
+                im2col_data);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  TransposeConv(params, input_shape, input_data, filter_shape, filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr, output_shape,
+                output_data, im2col_shape, im2col_data);
 }
 
 inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
@@ -613,9 +625,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -2147,9 +2159,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
                               const T* input2_data, const Dims<4>& input2_dims,
                               T* output_data, const Dims<4>& output_dims,
                               Op op) {
-  MaximumMinimumBroadcast4DSlow(DimsToShape(input1_dims), input1_data,
-                                DimsToShape(input2_dims), input2_data,
-                                DimsToShape(output_dims), output_data, op);
+  MaximumMinimumBroadcastSlow(DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data, op);
 }
 
 template <typename T1, typename T2, typename T3>

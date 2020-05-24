@@ -31,11 +31,12 @@ class ShardingOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
-    auto shape =
-        TensorShapeToXLAShape(ctx->input_xla_type(0), ctx->InputShape(0));
+    auto shape_or = ctx->InputXlaShape(0);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+
     ctx->SetOutput(
         0, xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
-                           {input}, shape));
+                           {input}, shape_or.ValueOrDie()));
   }
 
  private:

@@ -145,17 +145,13 @@ from tensorflow.python.framework import tensor_shape
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.engine import training as keras_training
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
@@ -384,376 +380,6 @@ class _StateManagerImplV2(_StateManagerImpl):
     return var
 
 
-class _BaseFeaturesLayer(Layer):
-  """Base class for DenseFeatures and SequenceFeatures.
-
-  Defines common methods and helpers.
-
-  Args:
-    feature_columns: An iterable containing the FeatureColumns to use as
-      inputs to your model.
-    expected_column_type: Expected class for provided feature columns.
-    trainable:  Boolean, whether the layer's variables will be updated via
-      gradient descent during training.
-    name: Name to give to the DenseFeatures.
-    **kwargs: Keyword arguments to construct a layer.
-
-  Raises:
-    ValueError: if an item in `feature_columns` doesn't match
-      `expected_column_type`.
-  """
-
-  def __init__(self,
-               feature_columns,
-               expected_column_type,
-               trainable,
-               name,
-               partitioner=None,
-               **kwargs):
-    super(_BaseFeaturesLayer, self).__init__(
-        name=name, trainable=trainable, **kwargs)
-    self._feature_columns = _normalize_feature_columns(feature_columns)
-    self._state_manager = _StateManagerImpl(self, self.trainable)
-    self._partitioner = partitioner
-    for column in self._feature_columns:
-      if not isinstance(column, expected_column_type):
-        raise ValueError(
-            'Items of feature_columns must be a {}. '
-            'You can wrap a categorical column with an '
-            'embedding_column or indicator_column. Given: {}'.format(
-                expected_column_type, column))
-
-  def build(self, _):
-    for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
-          self.name,
-          partitioner=self._partitioner):
-        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
-            _sanitize_column_name_for_variable_scope(column.name)):
-          column.create_state(self._state_manager)
-    super(_BaseFeaturesLayer, self).build(None)
-
-  def _output_shape(self, input_shape, num_elements):
-    """Computes expected output shape of the layer or a column's dense tensor.
-
-    Args:
-      input_shape: Tensor or array with batch shape.
-      num_elements: Size of the last dimension of the output.
-
-    Returns:
-      Tuple with output shape.
-    """
-    raise NotImplementedError('Calling an abstract method.')
-
-  def compute_output_shape(self, input_shape):
-    total_elements = 0
-    for column in self._feature_columns:
-      total_elements += column.variable_shape.num_elements()
-    return self._target_shape(input_shape, total_elements)
-
-  def _process_dense_tensor(self, column, tensor):
-    """Reshapes the dense tensor output of a column based on expected shape.
-
-    Args:
-      column: A DenseColumn or SequenceDenseColumn object.
-      tensor: A dense tensor obtained from the same column.
-
-    Returns:
-      Reshaped dense tensor."""
-    num_elements = column.variable_shape.num_elements()
-    target_shape = self._target_shape(array_ops.shape(tensor), num_elements)
-    return array_ops.reshape(tensor, shape=target_shape)
-
-  def _verify_and_concat_tensors(self, output_tensors):
-    """Verifies and concatenates the dense output of several columns."""
-    _verify_static_batch_size_equality(output_tensors, self._feature_columns)
-    return array_ops.concat(output_tensors, -1)
-
-  def get_config(self):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    column_configs = serialization.serialize_feature_columns(
-        self._feature_columns)
-    config = {'feature_columns': column_configs}
-    config['partitioner'] = generic_utils.serialize_keras_object(
-        self._partitioner)
-
-    base_config = super(  # pylint: disable=bad-super-call
-        _BaseFeaturesLayer, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config, custom_objects=None):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    config_cp = config.copy()
-    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
-        config['feature_columns'], custom_objects=custom_objects)
-    config_cp['partitioner'] = generic_utils.deserialize_keras_object(
-        config['partitioner'], custom_objects)
-
-    return cls(**config_cp)
-
-
-class _LinearModelLayer(Layer):
-  """Layer that contains logic for `LinearModel`."""
-
-  def __init__(self,
-               feature_columns,
-               units=1,
-               sparse_combiner='sum',
-               trainable=True,
-               name=None,
-               **kwargs):
-    super(_LinearModelLayer, self).__init__(
-        name=name, trainable=trainable, **kwargs)
-
-    self._feature_columns = _normalize_feature_columns(feature_columns)
-    for column in self._feature_columns:
-      if not isinstance(column, (DenseColumn, CategoricalColumn)):
-        raise ValueError(
-            'Items of feature_columns must be either a '
-            'DenseColumn or CategoricalColumn. Given: {}'.format(column))
-
-    self._units = units
-    self._sparse_combiner = sparse_combiner
-
-    self._state_manager = _StateManagerImpl(self, self.trainable)
-    self.bias = None
-
-  def build(self, _):
-    # We need variable scopes for now because we want the variable partitioning
-    # information to percolate down. We also use _pure_variable_scope's here
-    # since we want to open up a name_scope in the `call` method while creating
-    # the ops.
-    with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-      for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
-            _sanitize_column_name_for_variable_scope(column.name)):
-          # Create the state for each feature column
-          column.create_state(self._state_manager)
-
-          # Create a weight variable for each column.
-          if isinstance(column, CategoricalColumn):
-            first_dim = column.num_buckets
-          else:
-            first_dim = column.variable_shape.num_elements()
-          self._state_manager.create_variable(
-              column,
-              name='weights',
-              dtype=dtypes.float32,
-              shape=(first_dim, self._units),
-              initializer=init_ops.zeros_initializer(),
-              trainable=self.trainable)
-
-      # Create a bias variable.
-      self.bias = self.add_variable(
-          name='bias_weights',
-          dtype=dtypes.float32,
-          shape=[self._units],
-          initializer=init_ops.zeros_initializer(),
-          trainable=self.trainable,
-          use_resource=True,
-          # TODO(rohanj): Get rid of this hack once we have a mechanism for
-          # specifying a default partitioner for an entire layer. In that case,
-          # the default getter for Layers should work.
-          getter=variable_scope.get_variable)
-
-    super(_LinearModelLayer, self).build(None)
-
-  def call(self, features):
-    if not isinstance(features, dict):
-      raise ValueError('We expected a dictionary here. Instead we got: {}'
-                       .format(features))
-    with ops.name_scope(self.name):
-      transformation_cache = FeatureTransformationCache(features)
-      weighted_sums = []
-      for column in self._feature_columns:
-        with ops.name_scope(
-            _sanitize_column_name_for_variable_scope(column.name)):
-          # All the weights used in the linear model are owned by the state
-          # manager associated with this Linear Model.
-          weight_var = self._state_manager.get_variable(column, 'weights')
-
-          weighted_sum = _create_weighted_sum(
-              column=column,
-              transformation_cache=transformation_cache,
-              state_manager=self._state_manager,
-              sparse_combiner=self._sparse_combiner,
-              weight_var=weight_var)
-          weighted_sums.append(weighted_sum)
-
-      _verify_static_batch_size_equality(weighted_sums, self._feature_columns)
-      predictions_no_bias = math_ops.add_n(
-          weighted_sums, name='weighted_sum_no_bias')
-      predictions = nn_ops.bias_add(
-          predictions_no_bias, self.bias, name='weighted_sum')
-      return predictions
-
-  def get_config(self):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    column_configs = serialization.serialize_feature_columns(
-        self._feature_columns)
-    config = {
-        'feature_columns': column_configs,
-        'units': self._units,
-        'sparse_combiner': self._sparse_combiner
-    }
-
-    base_config = super(  # pylint: disable=bad-super-call
-        _LinearModelLayer, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config, custom_objects=None):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    config_cp = config.copy()
-    columns = serialization.deserialize_feature_columns(
-        config_cp['feature_columns'], custom_objects=custom_objects)
-
-    del config_cp['feature_columns']
-    return cls(feature_columns=columns, **config_cp)
-
-
-# TODO(tanzheny): Cleanup it with respect to Premade model b/132690565.
-class LinearModel(keras_training.Model):
-  """Produces a linear prediction `Tensor` based on given `feature_columns`.
-
-  This layer generates a weighted sum based on output dimension `units`.
-  Weighted sum refers to logits in classification problems. It refers to the
-  prediction itself for linear regression problems.
-
-  Note on supported columns: `LinearLayer` treats categorical columns as
-  `indicator_column`s. To be specific, assume the input as `SparseTensor` looks
-  like:
-
-  ```python
-    shape = [2, 2]
-    {
-        [0, 0]: "a"
-        [1, 0]: "b"
-        [1, 1]: "c"
-    }
-  ```
-  `linear_model` assigns weights for the presence of "a", "b", "c' implicitly,
-  just like `indicator_column`, while `input_layer` explicitly requires wrapping
-  each of categorical columns with an `embedding_column` or an
-  `indicator_column`.
-
-  Example of usage:
-
-  ```python
-  price = numeric_column('price')
-  price_buckets = bucketized_column(price, boundaries=[0., 10., 100., 1000.])
-  keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  keywords_price = crossed_column('keywords', price_buckets, ...)
-  columns = [price_buckets, keywords, keywords_price ...]
-  linear_model = LinearLayer(columns)
-
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  prediction = linear_model(features)
-  ```
-  """
-
-  def __init__(self,
-               feature_columns,
-               units=1,
-               sparse_combiner='sum',
-               trainable=True,
-               name=None,
-               **kwargs):
-    """Constructs a LinearLayer.
-
-    Args:
-      feature_columns: An iterable containing the FeatureColumns to use as
-        inputs to your model. All items should be instances of classes derived
-        from `_FeatureColumn`s.
-      units: An integer, dimensionality of the output space. Default value is 1.
-      sparse_combiner: A string specifying how to reduce if a categorical column
-        is multivalent. Except `numeric_column`, almost all columns passed to
-        `linear_model` are considered as categorical columns.  It combines each
-        categorical column independently. Currently "mean", "sqrtn" and "sum"
-        are supported, with "sum" the default for linear model. "sqrtn" often
-        achieves good accuracy, in particular with bag-of-words columns.
-          * "sum": do not normalize features in the column
-          * "mean": do l1 normalization on features in the column
-          * "sqrtn": do l2 normalization on features in the column
-        For example, for two features represented as the categorical columns:
-
-          ```python
-          # Feature 1
-
-          shape = [2, 2]
-          {
-              [0, 0]: "a"
-              [0, 1]: "b"
-              [1, 0]: "c"
-          }
-
-          # Feature 2
-
-          shape = [2, 3]
-          {
-              [0, 0]: "d"
-              [1, 0]: "e"
-              [1, 1]: "f"
-              [1, 2]: "g"
-          }
-          ```
-
-        with `sparse_combiner` as "mean", the linear model outputs conceptually
-        are
-        ```
-        y_0 = 1.0 / 2.0 * ( w_a + w_ b) + w_c + b_0
-        y_1 = w_d + 1.0 / 3.0 * ( w_e + w_ f + w_g) + b_1
-        ```
-        where `y_i` is the output, `b_i` is the bias, and `w_x` is the weight
-        assigned to the presence of `x` in the input features.
-      trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-      name: Name to give to the Linear Model. All variables and ops created will
-        be scoped by this name.
-      **kwargs: Keyword arguments to construct a layer.
-
-    Raises:
-      ValueError: if an item in `feature_columns` is neither a `DenseColumn`
-        nor `CategoricalColumn`.
-    """
-
-    super(LinearModel, self).__init__(name=name, **kwargs)
-    self.layer = _LinearModelLayer(
-        feature_columns,
-        units,
-        sparse_combiner,
-        trainable,
-        name=self.name,
-        **kwargs)
-
-  def call(self, features):
-    """Returns a `Tensor` the represents the predictions of a linear model.
-
-    Args:
-      features: A mapping from key to tensors. `_FeatureColumn`s look up via
-        these keys. For example `numeric_column('price')` will look at 'price'
-        key in this dict. Values are `Tensor` or `SparseTensor` depending on
-        corresponding `_FeatureColumn`.
-
-    Returns:
-      A `Tensor` which represents predictions/logits of a linear model. Its
-      shape is (batch_size, units) and its dtype is `float32`.
-
-    Raises:
-      ValueError: If features are not a dictionary.
-    """
-    return self.layer(features)
-
-  @property
-  def bias(self):
-    return self.layer.bias
-
-
 def _transform_features_v2(features, feature_columns, state_manager):
   """Returns transformed features based on features columns passed in.
 
@@ -962,7 +588,7 @@ def embedding_column(categorical_column,
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1 / math.sqrt(dimension))
 
   return EmbeddingColumn(
@@ -1104,7 +730,7 @@ def shared_embedding_columns(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -1287,7 +913,7 @@ def shared_embedding_columns_v2(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -1969,7 +1595,7 @@ def indicator_column(categorical_column):
 
   ```python
   name = indicator_column(categorical_column_with_vocabulary_list(
-      'name', ['bob', 'george', 'wanda'])
+      'name', ['bob', 'george', 'wanda']))
   columns = [name, ...]
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -2232,7 +1858,7 @@ class FeatureColumn(object):
     In CPython, `__lt__` must be defined for all objects in the
     sequence being sorted.
 
-    If any objects in teh sequence being sorted do not have an `__lt__` method
+    If any objects in the sequence being sorted do not have an `__lt__` method
     compatible with feature column objects (such as strings), then CPython will
     fall back to using the `__gt__` method below.
     https://docs.python.org/3/library/stdtypes.html#list.sort
@@ -2255,7 +1881,25 @@ class FeatureColumn(object):
 
     `__gt__` is called when the "other" object being compared during the sort
     does not have `__lt__` defined.
-    Example: http://gpaste/4803354716798976
+    Example:
+    ```
+    # __lt__ only class
+    class A():
+      def __lt__(self, other): return str(self) < str(other)
+
+    a = A()
+    a < "b" # True
+    "0" < a # Error
+
+    # __lt__ and __gt__ class
+    class B():
+      def __lt__(self, other): return str(self) < str(other)
+      def __gt__(self, other): return str(self) > str(other)
+
+    b = B()
+    b < "c" # True
+    "0" < b # True
+    ```
 
     Args:
       other: The other object to compare to.
@@ -2515,7 +2159,8 @@ def _create_dense_column_weighted_sum(column, transformation_cache,
 class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
@@ -3245,7 +2890,7 @@ class EmbeddingColumn(
     embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
     if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
         sparse_id_rank <= 2):
-      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
+      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse_v2
     # Return embedding lookup result.
     return embedding_lookup_sparse(
         embedding_weights,
@@ -3540,7 +3185,7 @@ class SharedEmbeddingColumn(
       embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
       if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
           sparse_id_rank <= 2):
-        embedding_lookup_sparse = (embedding_ops.embedding_lookup_sparse)
+        embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse_v2
       # Return embedding lookup result.
       return embedding_lookup_sparse(
           embedding_weights,

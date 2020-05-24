@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.core.protobuf import trace_events_pb2
+from tensorflow.core.profiler.protobuf import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
@@ -47,11 +47,12 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_pb.ParseFromString(profile_result)
     devices = frozenset(device.name for device in profile_pb.devices.values())
     self.assertIn('/host:CPU', devices)
-    if config.list_physical_devices('GPU'):
+    if not test_util.IsBuiltWithROCm() and config.list_physical_devices('GPU'):
+      # device tracing is not yet supported on the ROCm platform
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
     self.assertIn('three_times_five', events)
-    self.assertIn('Mul:Mul', events)
+    self.assertIn('Mul', events)
     with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
 

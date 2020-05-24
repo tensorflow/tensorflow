@@ -28,6 +28,8 @@ toolchain(
     name = "py_toolchain",
     toolchain = ":py_runtime_pair",
     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+    target_compatible_with = [%{PLATFORM_CONSTRAINT}],
+    exec_compatible_with = [%{PLATFORM_CONSTRAINT}],
 )
 
 # To build Python C/C++ extension on Windows, we need to link to python import library pythonXY.lib

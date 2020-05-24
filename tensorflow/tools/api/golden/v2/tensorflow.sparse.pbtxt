@@ -9,12 +9,16 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
+    name: "bincount"
+    argspec: "args=[\'values\', \'weights\', \'axis\', \'minlength\', \'maxlength\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "concat"
     argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "cross"
-    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'name\', \'separator\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "cross_hashed"
@@ -34,7 +38,7 @@ tf_module {
   }
   member_method {
     name: "from_dense"
-    argspec: "args=[\'tensor\', 'name'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "mask"

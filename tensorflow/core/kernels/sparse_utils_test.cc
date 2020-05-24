@@ -66,8 +66,8 @@ TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
     bool contains_empty_rows;
     EXPECT_TRUE(GetStartIndicesOfEachDenseRow<int64>(indices_mat,
                                                      &contains_empty_rows) ==
-                std::vector<int64>({0, 1}));
-    EXPECT_FALSE(contains_empty_rows);
+                std::vector<int64>({0, 0, 0, 0, 1}));
+    EXPECT_TRUE(contains_empty_rows);
   }
   {
     uint32 data[] = {3, 0, 3, 0};
@@ -75,8 +75,8 @@ TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
     bool contains_empty_rows;
     EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint32>(indices_mat,
                                                       &contains_empty_rows) ==
-                std::vector<uint32>({0, 2}));
-    EXPECT_FALSE(contains_empty_rows);
+                std::vector<uint32>({0, 0, 0, 0, 2}));
+    EXPECT_TRUE(contains_empty_rows);
   }
   {
     uint16 data[] = {0, 0, 0, 0, 0, 0, 1, 0};
@@ -165,7 +165,7 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     const auto segment_indices =
         GetStartIndicesOfEachDenseRow<int32>(indices_mat, &contains_empty_rows);
     // indices_list = {1, 1, 2, 2, 2, 3};
-    EXPECT_FALSE(ContainsEmptyRows(segment_indices));
+    EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
     uint16 data[] = {1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
@@ -174,7 +174,7 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     const auto segment_indices = GetStartIndicesOfEachDenseRow<uint16>(
         indices_mat, &contains_empty_rows);
     // indices_list = {1, 1, 2, 2, 2, 3};
-    EXPECT_FALSE(ContainsEmptyRows(segment_indices));
+    EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
     int32 data[] = {0, 0, 1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};

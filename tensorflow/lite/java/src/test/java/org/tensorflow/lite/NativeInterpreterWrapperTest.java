@@ -46,6 +46,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String STRING_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/string.bin";
 
+  private static final String STRING_SCALAR_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/string_scalar.bin";
+
   private static final String INVALID_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/invalid_model.bin";
 
@@ -242,6 +245,20 @@ public final class NativeInterpreterWrapperTest {
           "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
       };
       assertThat(outputOneD).isEqualTo(expected);
+    }
+  }
+
+  @Test
+  public void testRunWithScalarString() {
+    try (NativeInterpreterWrapper wrapper =
+        new NativeInterpreterWrapper(STRING_SCALAR_MODEL_PATH)) {
+      String[] parsedOutputs = new String[1];
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, parsedOutputs);
+      Object[] inputs = {"s1"};
+      wrapper.run(inputs, outputs);
+      String[] expected = {"s1"};
+      assertThat(parsedOutputs).isEqualTo(expected);
     }
   }
 

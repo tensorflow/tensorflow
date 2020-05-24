@@ -156,7 +156,7 @@ Reshape& Reshape::operator=(Reshape&& operation) {
   return *this;
 }
 
-Status Reshape::Compile(const CreationContext& creation_context) {
+absl::Status Reshape::Compile(const CreationContext& creation_context) {
   const auto code = definition_.IsBatchSupported()
                         ? GetReshapeBatchedCode(definition_, linked_operations_)
                         : GetReshapeCode(definition_, linked_operations_);
@@ -165,7 +165,7 @@ Status Reshape::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Reshape::BindArguments() {
+absl::Status Reshape::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -174,8 +174,7 @@ Status Reshape::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Channels()));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Reshape::GetGridSize() const {
@@ -185,12 +184,12 @@ int3 Reshape::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Reshape::Tune(const TuningParameters& params) {
+absl::Status Reshape::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Reshape::AddToQueue(CLCommandQueue* queue) {
+absl::Status Reshape::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

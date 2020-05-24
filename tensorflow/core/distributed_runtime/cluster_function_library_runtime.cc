@@ -330,6 +330,25 @@ void ClusterFunctionLibraryRuntime::Run(
       });
 }
 
+void ClusterFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::LocalHandle handle,
+    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done) {
+  std::vector<Tensor> tensors;
+  for (const auto& arg : args) {
+    if (arg.index() == 0) {
+      tensors.push_back(absl::get<Tensor>(arg));
+    } else {
+      done(
+          errors::Internal("ClusterFunctionLibraryRuntime doesn't support "
+                           "eager::RemoteTensorHandle."));
+      return;
+    }
+  }
+  return Run(opts, handle, tensors, rets, std::move(done));
+}
+
 void ClusterFunctionLibraryRuntime::CleanUp(
     uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {

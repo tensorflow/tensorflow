@@ -46,7 +46,7 @@ limitations under the License.
 #endif
 
 #if TENSORFLOW_USE_NUMA
-#include "hwloc.h"  // TF:hwloc
+#include "hwloc.h"  // from @hwloc
 #endif
 
 namespace tensorflow {

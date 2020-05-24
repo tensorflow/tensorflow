@@ -2946,6 +2946,18 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                 output_data, DimsToShape(im2col_dims), im2col_data);
 }
 
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
+  TransposeConvV2(params, input_shape, input_data, hwoi_ordered_filter_shape,
+                  hwoi_ordered_filter_data, /*bias_shape*/ RuntimeShape(),
+                  /*bias_data*/ nullptr, output_shape, output_data,
+                  col2im_shape, col2im_data, cpu_backend_context);
+}
+
 template <typename T>
 void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
                      const Dims<4>& filter_dims, int stride_width,
@@ -3429,9 +3441,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>
