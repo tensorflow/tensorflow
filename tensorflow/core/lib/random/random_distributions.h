@@ -133,14 +133,12 @@ template <class Generator>
 class UniformDistribution<Generator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be greater equal to Eigen packet size of type,
+  // Set the number to be Eigen packet size of type at least,
   // so computations can be vectorized using SIMD.
   static constexpr int kVectorLength =
       Eigen::internal::packet_traits<bfloat16>::size;
   static constexpr int kResultElementCount =
-      (kVectorLength > Generator::kResultElementCount)
-          ? kVectorLength
-          : Generator::kResultElementCount;
+      std::max(kVectorLength, Generator::kResultElementCount);
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -148,7 +146,7 @@ class UniformDistribution<Generator, bfloat16> {
   static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<bfloat16, kResultElementCount> ResultType;
   typedef bfloat16 ResultElementType;
-  // Helper definiation for the format function.
+  // Helper definition for the format function.
   typedef bfloat16 (*FormatFunc)(uint16);
 
   PHILOX_DEVICE_INLINE
@@ -162,14 +160,12 @@ template <class Generator>
 class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be greater equal to Eigen packet size of type,
+  // Set the number to be Eigen packet size of type at least,
   // so computations can be vectorized using SIMD.
   static constexpr int kVectorLength =
       Eigen::internal::packet_traits<float>::size;
   static constexpr int kResultElementCount =
-      (kVectorLength > Generator::kResultElementCount)
-          ? kVectorLength
-          : Generator::kResultElementCount;
+      std::max(kVectorLength, Generator::kResultElementCount);
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -177,7 +173,7 @@ class UniformDistribution<Generator, float> {
   static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<float, kResultElementCount> ResultType;
   typedef float ResultElementType;
-  // Helper definiation for the format function.
+  // Helper definition for the format function.
   typedef float (*FormatFunc)(uint32);
 
   PHILOX_DEVICE_INLINE
