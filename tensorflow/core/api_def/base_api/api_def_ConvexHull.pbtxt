@@ -3,24 +3,29 @@ op {
   in_arg {
     name: "input"
     description: <<END
-3-D with shape `[batch, numbers, dimensions]`.
+3-D with shape `[batch, num_points, dim_points]`. 
+num_points specifies the amount of the points, 
+dim_points sepcifies the dimension of the space where the points lie in.
 END
   }
   out_arg {
     name: "output"
     description: <<END
-3-D with shape
-`[batch, numbers, dimensions]`.
+3-D with shape `[batch, num_points, dim_points]`.
+The output shape is identical to the input shape.
 END
   }
   attr {
     name: "clockwise"
     description: <<END
-If true, loop through points clockwise. Defaults to false.
+If true, the points are ordered clockwise. 
+If false, the points are oredered counterclockwise.
+Default is false. 
 END
   }
-  summary: "Obtain the convex hull of given points."
+  summary: "Apply sklansky's algorithm to obtain the convex hull of given points."
   description: <<END
-Input can be of different types but output is always float.
+Returns an array of convex hull points (not indices) for each input batch.
+Input can be of different types but the output is float type.
 END
 }

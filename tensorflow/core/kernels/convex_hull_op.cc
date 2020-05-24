@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class ConvexHullOp : public OpKernel {
   void Compute(OpKernelContext *context) override {
     const Tensor &input = context->input(0);
     OP_REQUIRES(context, input.dims() == 3,
-                errors::InvalidArgument("input shape must be 3-dimensional",
+                errors::InvalidArgument("Input shape must be 3-dimensional",
                                         input.shape().DebugString()));
 
     OP_REQUIRES(context,
@@ -51,11 +51,11 @@ class ConvexHullOp : public OpKernel {
                     FastBoundsCheck(input.dim_size(1),
                                     std::numeric_limits<int64>::max()),
                 errors::InvalidArgument(
-                    "point number must be between 0 and max int64"));
+                    "The number of points must be between 0 and max int64"));
 
     // TODO(musikisomorphie): the dimension of points can be extended to n > 2.
     OP_REQUIRES(context, static_cast<int32>(input.dim_size(2)) == 2,
-                errors::InvalidArgument("point dimension must be 2"));
+                errors::InvalidArgument("The dimension of points must be 2"));
 
     if (!context->status().ok()) return;
 
@@ -74,10 +74,28 @@ class ConvexHullOp : public OpKernel {
 };
 
 namespace {
-// This part follows the corresponding opencv implmentation
+// This part follows the related opencv implementation.
+// A helper function for `convex_hull`. Takes lexicographically sorted input
+// points, returns the points that form the convex hull.
+// For correctness, the `start` and `end` indices must be sorted in a way that
+// the y-coordinate of the points that belong to the convex hull are increasing
+// or decreasing monotonically as the list is traversed.
+//
+// Parameters:
+//   pts_vec    Input points, sorted in an ascending order.
+//   idx_vec    Output convex hull points.
+//   start      The index of the starting point. Must be the left- or rightmost
+//              point in the set.
+//   end        The last index of the points to process, inclusive.
+//   inc_y      `true` if convex hull points will have strictly increasing `y`
+//              coordinates. `false` for strictly decreasing `y` coordinates.
+//   clockwise  Traversal direction. `true` if clockwise, `false` if
+//   counterclockwise.
 int64 sklansky(const std::vector<std::vector<float>> &pts_vec,
                std::vector<int64> &idx_vec, const int64 start, int64 end,
-               const int64 pts_num, const int sign0, const int sign1) {
+               const bool inc_y, const bool clockwise) {
+  // If the points vector has one unique point or identical points,
+  // return the point.
   if (start == end || pts_vec[start] == pts_vec[end]) {
     idx_vec[0] = start;
     return 1;
@@ -87,62 +105,75 @@ int64 sklansky(const std::vector<std::vector<float>> &pts_vec,
   // Initialize three indices of points
   int64 pprev = start, pcur = pprev + incr, pnext = pcur + incr;
   // Initialize the number of convex hull points
-  int64 idx_sz = 3;
+  int64 idx_sz = 2;
 
   idx_vec[0] = pprev;
   idx_vec[1] = pcur;
-  idx_vec[2] = pnext;
 
   end += incr;
   while (pnext != end) {
     // Check the angle of points pprev, pcur, pnext
     float by = pts_vec[pnext][1] - pts_vec[pcur][1];
-    int by_sign = (by > 0) - (by < 0);
 
-    if (by_sign != sign0) {
+    // The next convex hull point must have y >= current y (if inc_y is true).
+    // y <= current y (if inc_y is false).
+    if ((by > 0) == inc_y || by == 0) {
+      // Calculate vectors `a` and `b` from `prev` to `cur` and `cur` to `next`.
+      // Compute the cross product between `b` and `a` to determine convexity.
+      //
+      //   b x a = ay * bx - ax * by = |a||b| sin(\theta)
+      //
+      // The angle is convex when the product is
+      //   - Nonnegative    ; if sweeping clockwise.
+      //   - Nonpositive    ; if sweeping counterclockwise.
       float ax = pts_vec[pcur][0] - pts_vec[pprev][0];
       float bx = pts_vec[pnext][0] - pts_vec[pcur][0];
       float ay = pts_vec[pcur][1] - pts_vec[pprev][1];
       // Check if the angle is convex
       float convex = ay * bx - ax * by;
-      int convex_sign = (convex > 0) - (convex < 0);
 
-      if (convex_sign == sign1 && (ax != 0 || ay != 0)) {
+      if ((convex > 0) == clockwise && convex != 0) {
+        // (prev, cur, next) forms a convex angle.
+        // Add next to idx_vec.
         pprev = pcur;
         pcur = pnext;
         pnext += incr;
-        idx_vec[idx_sz] = pnext;
+        idx_vec[idx_sz] = pcur;
         ++idx_sz;
       } else {
         if (pprev == start) {
+          // (prev, cur, next) forms a non-convex angle.
+          // Replace cur with next in idx_vec.
           pcur = pnext;
           idx_vec[1] = pcur;
           pnext += incr;
-          idx_vec[2] = pnext;
         } else {
-          idx_vec[idx_sz - 2] = pnext;
-          pcur = pprev;
-          pprev = idx_vec[idx_sz - 4];
           --idx_sz;
+          pcur = pprev;
+          pprev = idx_vec[idx_sz - 2];
         }
       }
     } else {
       pnext += incr;
-      idx_vec[idx_sz - 1] = pnext;
     }
   }
-  return --idx_sz;
+  return idx_sz;
 }
 
+// The main function `convex_hull`. Takes input
+// points, returns the points that form the convex hull.
+//
+// Parameters:
+//   pts_vec    Input points.
+//   idx_vec    Output convex hull points.
+//   clockwise  Traversal direction. `true` if clockwise, `false` if
+//   counterclockwise. 
+//   pts_num    Number of input points.
 void convex_hull(std::vector<std::vector<float>> &pts_vec,
                  std::vector<std::vector<float>> &out_vec, const bool clockwise,
                  const int64 pts_num) {
-  auto cmp_x = [](const std::vector<float> &pt0,
-                  const std::vector<float> &pt1) {
-    return pt0[0] != pt1[0] ? pt0[0] < pt1[0] : pt0[1] < pt1[1];
-  };
-  // Sort points based on coordinate x
-  std::sort(pts_vec.begin(), pts_vec.end(), cmp_x);
+  // Sort points lexicographically.
+  std::sort(pts_vec.begin(), pts_vec.end());
 
   auto cmp_y = [](const std::vector<float> &pt0,
                   const std::vector<float> &pt1) { return pt0[1] < pt1[1]; };
@@ -158,17 +189,22 @@ void convex_hull(std::vector<std::vector<float>> &pts_vec,
   if (pts_vec[0] == pts_vec[pts_num - 1]) {
     out_vec[out_idx++] = pts_vec[0];
   } else {
-    // Upper half of the convex hull
+    // Find each quadrant of the convex hull separately.
+    // - Top left: between the leftmost point and the highest point.
+    // - Top right: between the highest point and the rightmost point.
+    // - Bottom right: between the rightmost point and the lowest point.
+    // - Bottom left: between the lowest point and the leftmost point.
+
+    // Top half of the convex hull
     int64 u_st = clockwise ? 0 : pts_num - 1;
-    int u_sign = clockwise ? 1 : -1;
 
     std::vector<int64> u_vec0(pts_num + 2);
     int64 u_cnt0 =
-        sklansky(pts_vec, u_vec0, u_st, max_idy, pts_num, -1, u_sign);
+        sklansky(pts_vec, u_vec0, u_st, max_idy, true /* inc_y*/, clockwise);
 
     std::vector<int64> u_vec1(pts_num + 2);
     int64 u_cnt1 = sklansky(pts_vec, u_vec1, pts_num - 1 - u_st, max_idy,
-                            pts_num, -1, -u_sign);
+                            true /* inc_y*/, !clockwise);
 
     for (int64 i = 0; i < u_cnt0 - 1; ++i) {
       out_vec[out_idx++] = pts_vec[u_vec0[i]];
@@ -181,17 +217,21 @@ void convex_hull(std::vector<std::vector<float>> &pts_vec,
     int64 stop_idx =
         u_cnt1 > 2 ? u_vec1[1] : u_cnt0 > 2 ? u_vec0[u_cnt0 - 2] : -1;
 
-    // Lower half of the convex hull
+    // Bottom half of the convex hull
     int64 l_st = !clockwise ? 0 : pts_num - 1;
-    int l_sign = !clockwise ? -1 : 1;
 
     std::vector<int64> l_vec0(pts_num + 2);
-    int64 l_cnt0 = sklansky(pts_vec, l_vec0, l_st, min_idy, pts_num, 1, l_sign);
+    int64 l_cnt0 =
+        sklansky(pts_vec, l_vec0, l_st, min_idy, false /* inc_y*/, clockwise);
 
     std::vector<int64> l_vec1(pts_num + 2);
     int64 l_cnt1 = sklansky(pts_vec, l_vec1, pts_num - 1 - l_st, min_idy,
-                            pts_num, 1, -l_sign);
+                            false /* inc_y*/, !clockwise);
 
+    // If the points of the check_idx and stop_idx are same,
+    // then no useful points are found during bottom half search.
+    // Limit the number of points
+    // for bottom right and left convex hull.
     if (stop_idx >= 0) {
       int64 check_idx = l_cnt0 > 2
                             ? l_vec0[1]

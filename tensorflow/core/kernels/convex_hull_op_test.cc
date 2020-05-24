@@ -1,8 +1,11 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -60,7 +63,7 @@ TEST_F(ConvexHullOpTest, OnePoint) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If two points, return the input points(with differnt order)
+// If two points, return the input points (with differnt order)
 TEST_F(ConvexHullOpTest, TwoPoints) {
   MakeOp(DT_INT32, false);
 
@@ -74,7 +77,7 @@ TEST_F(ConvexHullOpTest, TwoPoints) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If three points not on the same line, return the input points(with differnt
+// If three points not on the same line, return the input points (with differnt
 // order)
 TEST_F(ConvexHullOpTest, ThreePoints) {
   MakeOp(DT_FLOAT, true);
@@ -91,7 +94,7 @@ TEST_F(ConvexHullOpTest, ThreePoints) {
 }
 
 // If three points on the same line, return the start and end points (with
-// repitition)
+// the end point padded to the end of the output array)
 TEST_F(ConvexHullOpTest, ThreePoints_SameLine) {
   MakeOp(DT_INT32, false);
 
@@ -108,7 +111,8 @@ TEST_F(ConvexHullOpTest, ThreePoints_SameLine) {
 }
 
 // If more than three points,
-// return the convex hull with repititive points padded in the end
+// return the convex hull (with the end point padded
+// to the end of the output array)
 TEST_F(ConvexHullOpTest, MorePoints) {
   MakeOp(DT_FLOAT, true);
 
@@ -133,7 +137,7 @@ TEST_F(ConvexHullOpTest, Error_InputShapeMustBe3D) {
   AddInputFromArray<float>(TensorShape({}), {5});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      absl::StrContains(s.ToString(), "input shape must be 3-dimensional"))
+      absl::StrContains(s.ToString(), "Input shape must be 3-dimensional"))
       << s;
 }
 
@@ -143,7 +147,8 @@ TEST_F(ConvexHullOpTest, Error_InputDimMustBe2) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({1, 1, 3}), {5, 6, 7});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(s.ToString(), "point dimension must be 2"))
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "The dimension of points must be 2"))
       << s;
 }
 

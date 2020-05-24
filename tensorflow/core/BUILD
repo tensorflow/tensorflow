@@ -1013,7 +1013,7 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:count_ops",
-        "//tensorflow/core/kernels:convex",
+        "//tensorflow/core/kernels:convex_hull_op",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",

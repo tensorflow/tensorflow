@@ -3954,13 +3954,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "convex",
-    deps = [
-        ":convex_hull_op",
-    ],
-)
-
 tf_kernel_library(
     name = "convex_hull_op",
     srcs = ["convex_hull_op.cc"],
@@ -3978,9 +3971,9 @@ tf_cc_test(
     size = "small",
     srcs = ["convex_hull_op_test.cc"],
     deps = [
+        ":convex_hull_op",
         ":ops_testutil",
         ":ops_util",
-        ":convex_hull_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
