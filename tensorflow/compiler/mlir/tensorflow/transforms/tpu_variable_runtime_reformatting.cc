@@ -229,7 +229,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     mapping.emplace_back(it->second, std::move(while_args));
   }
   // Sort the mapping according to execute operand order.
-  llvm::sort(mapping, llvm::less_first());
+  llvm::sort(mapping);
   // Populate the `retval_index_for_sharding` field of the argument metadate.
   for (auto entry : llvm::enumerate(execute.device_var_reads_indices())) {
     int64_t arg_index = entry.value().cast<IntegerAttr>().getInt();
