@@ -306,7 +306,7 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_rescaling_base(self):
-    kwargs = {'scale': 1./127.5, 'offset': -1.}
+    kwargs = {'scale': 0.004}
     testing_utils.layer_test(
         image_preprocessing.Rescaling,
         kwargs=kwargs,
@@ -315,18 +315,18 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_v2_only
   def test_rescaling_correctness_float(self):
-    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1.)
+    layer = image_preprocessing.Rescaling(0.004)
     inputs = random_ops.random_uniform((2, 4, 5, 3))
     outputs = layer(inputs)
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
 
   @tf_test_util.run_v2_only
   def test_rescaling_correctness_int(self):
-    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1)
+    layer = image_preprocessing.Rescaling(0.004)
     inputs = random_ops.random_uniform((2, 4, 5, 3), 0, 100, dtype='int32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype.name, 'float32')
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
 
   def test_config_with_custom_name(self):
     layer = image_preprocessing.Rescaling(0.5, name='rescaling')
