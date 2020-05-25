@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace ops {
@@ -31,14 +32,43 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 template <typename Q>
-inline void ReluQuantized(int32_t lower, const RuntimeShape& input_shape,
-                          const Q* input_data, const RuntimeShape& output_shape,
-                          Q* output_data) {
+inline void ReluQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                          const Q* input_data, Q* output_data) {
+  ReluParams params;
+  float act_min = 0.0;
+  float act_max = std::numeric_limits<float>::infinity();
+  double real_multiplier = input->params.scale / output->params.scale;
+
+  const RuntimeShape input_shape = GetTensorShape(input);
+  const RuntimeShape output_shape = GetTensorShape(output);
+
+  QuantizeMultiplier(real_multiplier, &params.output_multiplier,
+                      &params.output_shift);
+
+  params.quantized_activation_min =
+      std::max(static_cast<int32_t>(std::numeric_limits<Q>::min()),
+               output->params.zero_point +
+               static_cast<int32>(roundf(act_min / output->params.scale)));
+  params.quantized_activation_max =
+      act_max == std::numeric_limits<float>::infinity()
+      ? static_cast<int32_t>(std::numeric_limits<Q>::max())
+      : std::min(
+            static_cast<int32_t>(std::numeric_limits<Q>::max()),
+            output->params.zero_point +
+            static_cast<int32>(roundf(act_max / output->params.scale)));
+  params.input_offset = input->params.zero_point;
+  params.output_offset = output->params.zero_point;
+
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const Q val = input_data[i];
-    const Q clamped = val < lower ? lower : val;
-    output_data[i] = clamped;
+    const int32 val = static_cast<int32_t>(input_data[i]);
+    int32 clamped = params.output_offset +
+                    MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                  params.output_multiplier,
+                                                  params.output_shift);
+    clamped = std::max(params.quantized_activation_min, clamped);
+    clamped = std::min(params.quantized_activation_max, clamped);
+    output_data[i] = static_cast<Q>(clamped);
   }
 }
 
@@ -93,16 +123,14 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      ReluQuantized<int8_t>(input->params.zero_point, GetTensorShape(input),
+      ReluQuantized<int8_t>(input, output,
                             GetTensorData<int8_t>(input),
-                            GetTensorShape(output),
                             GetTensorData<int8_t>(output));
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      ReluQuantized<uint8_t>(input->params.zero_point, GetTensorShape(input),
+      ReluQuantized<uint8_t>(input, output,
                              GetTensorData<uint8_t>(input),
-                             GetTensorShape(output),
                              GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     }
