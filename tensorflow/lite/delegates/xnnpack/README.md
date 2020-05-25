@@ -92,8 +92,6 @@ Below is the list of current operators and limitations:
 * Only addition with two inputs is supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `AVERAGE_POOL_2D`
 
@@ -101,8 +99,6 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `CONV_2D`
 
@@ -111,8 +107,6 @@ Below is the list of current operators and limitations:
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `DEPTHWISE_CONV_2D`
 
@@ -121,8 +115,6 @@ Below is the list of current operators and limitations:
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `FULLY_CONNECTED`
 
@@ -131,20 +123,14 @@ Below is the list of current operators and limitations:
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `HARD_SWISH`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `MAX_POOL_2D`
 
@@ -152,16 +138,19 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
+
+### `PAD`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the padding specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* The numbers of padding elements must be non-negative.
 
 ### `PRELU`
 
@@ -169,36 +158,28 @@ Below is the list of current operators and limitations:
 * Slope must be static (use `kTfLiteMmapRo` allocation type).
 * Slope must be either a 1D tensor, or have all its non-channel dimensions equal
   1.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `RELU6`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `RELU_N1_TO_1`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### Other limitations
 
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  outputs are not supported.
 * Resizing model inputs (via `Interpreter::ResizeInputTensor`) is supported, but
   cause a complete reinitialization of the delegate instance, which has
   considerable overhead.
