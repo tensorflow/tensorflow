@@ -6520,5 +6520,23 @@ TEST_F(AlgebraicSimplifierTest, ScalarDividePredicate) {
           m::Broadcast(m::Divide(m::ConstantScalar(1), m::Parameter(1))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, MultipleDotStrengthReductions) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY test {
+      a = c64[2,2] parameter(0)
+      b = c64[2] parameter(1)
+      cd = c64[2] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      c = f64[2,2] parameter(2)
+      d = f64[2] parameter(3)
+      dd = f64[2] dot(c, d), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT tuple = (c64[2], f64[2]) tuple(cd, dd)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_EQ(3, m->computation_count());
+}
+
 }  // namespace
 }  // namespace xla
