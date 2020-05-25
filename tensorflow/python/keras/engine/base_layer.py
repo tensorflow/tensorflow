@@ -822,6 +822,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     inputs, args, kwargs = self._split_out_first_arg(args, kwargs)
 
     call_context = base_layer_utils.call_context()
+    in_call = call_context.in_call
     input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
@@ -896,16 +897,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if build_graph and base_layer_utils.needs_keras_history(inputs):
       base_layer_utils.create_keras_history(inputs)
 
-    # Clear eager losses on top level model call.
-    # We are clearing the losses only on the top level model call and not on
-    # every layer/model call because layer/model may be reused.
-    if (base_layer_utils.is_in_eager_or_tf_function() and
-        not call_context.in_call):
-      self._clear_losses()
-
     with call_context.enter(self, inputs, build_graph, training_value):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
+        # Losses are cleared for all Layers when the outermost layer is called.
+        # Losses are not cleared each time an inner layer is called, bc inner
+        # Layers can be reused in a Model.
+        if not in_call and base_layer_utils.is_in_tf_function():
+          self._clear_losses()
+
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
         # TODO(reedwm): We should assert input compatibility after the inputs
@@ -913,6 +913,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
+        # Use `self._name_scope()` to avoid auto-incrementing the name.
         with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
           # overridden).
@@ -985,7 +986,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             self._set_inputs(cast_inputs, outputs)
       else:
         # Eager execution on data tensors.
-        with backend.name_scope(self._name_scope()):
+
+        # Losses are cleared for all Layers when the outermost layer is called.
+        # Losses are not cleared each time an inner layer is called, bc inner
+        # Layers can be reused in a Model.
+        if not in_call:
+          self._clear_losses()
+
+        # In Eager mode, `ops.name_scope_v2` does not autoincrement the name.
+        with ops.name_scope_v2(self.name):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs, input_list)
           with base_layer_utils.autocast_context_manager(
