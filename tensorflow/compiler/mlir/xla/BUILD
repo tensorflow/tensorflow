@@ -28,6 +28,8 @@ package_group(
 
 exports_files(["ir/hlo_ops.td"])
 
+exports_files(["ir/lhlo_ops.td"])
+
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
@@ -87,6 +89,8 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/lhlo_ops.h.inc"),
         ("-gen-op-defs", "ir/lhlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/lhlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/lhlo_structs.cc.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/lhlo_ops.td",
@@ -362,6 +366,7 @@ cc_library(
         ":map_hlo_to_lhlo_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",

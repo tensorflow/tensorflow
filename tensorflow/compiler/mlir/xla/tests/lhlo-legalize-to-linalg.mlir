@@ -469,7 +469,7 @@ func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32 
+// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
 // CHECK-NEXT:   %[[RESULT:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
@@ -649,3 +649,27 @@ func @reverse(%arg0: memref<2x3xf32>, %arg1: memref<2x3xf32>) {
   return
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+
+// -----
+
+func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: memref<3x5x5x4xf32>) {
+  %c0 = constant 0 : index
+  %0 = alloc() : memref<3x5x5x4xf32>
+  // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
+  // CHECK-SAME: dilations = [1, 2]
+  // CHECK-SAME: padding = dense<{{\[\[}}0, 1], [0, 1]]> : tensor<2x2xi64>
+  // CHECK-SAME: strides = [2, 1]}
+  // With all atributes explicitly specified.
+  "xla_lhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>, rhs_dilation = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
+
+  // Dilation left unspecified, sets default dilation since linalg expects it.
+  // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
+  // CHECK-SAME: dilations = [1, 1]
+  // Padding is not set if it's zero.
+  // CHECK-NOT: padding
+  "xla_lhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
+
+  "xla_lhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
+  "xla_lhlo.terminator"() : () -> ()
+}

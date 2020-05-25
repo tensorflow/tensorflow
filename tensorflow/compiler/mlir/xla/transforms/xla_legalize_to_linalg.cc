@@ -192,6 +192,108 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// xla_lhlo.convolution conversion pattern.
+//===----------------------------------------------------------------------===//
+
+/// Converts xla_lhlo.convolution operation to a linalg.conv op.
+struct ConvToLinalgConverter : public OpConversionPattern<xla_lhlo::ConvOp> {
+ public:
+  using OpConversionPattern<xla_lhlo::ConvOp>::OpConversionPattern;
+
+  //  This code has been adapted from IREE's
+  //  (https://github.com/google/iree/) xla_hlo -> linalg conversion.
+  LogicalResult matchAndRewrite(
+      xla_lhlo::ConvOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    // Check validity of dimension information.
+    if (const xla_lhlo::ConvDimensionNumbers& dimensionNumbers =
+            op.dimension_numbers()) {
+      const int inputSpatialRank =
+          llvm::size(dimensionNumbers.input_spatial_dimensions());
+      // The dimensions for input should follow the order of
+      // batch_count, spatial_dims..., input_feature_count.
+      if (dimensionNumbers.input_batch_dimension().getInt() != 0 ||
+          dimensionNumbers.input_feature_dimension().getInt() !=
+              (inputSpatialRank + 1))
+        return failure();
+
+      const int kernelSpatialRank =
+          llvm::size(dimensionNumbers.kernel_spatial_dimensions());
+      // The dimensions for filter should follow the order of
+      // spatial_dims..., input_feature_count, num_output_feature_count.
+      if (dimensionNumbers.kernel_input_feature_dimension().getInt() !=
+              kernelSpatialRank ||
+          dimensionNumbers.kernel_output_feature_dimension().getInt() !=
+              (kernelSpatialRank + 1))
+        return failure();
+
+      const int outputSpatialRank =
+          llvm::size(dimensionNumbers.output_spatial_dimensions());
+      // The dimensions for output should follow the order of
+      // batch_count, spatial_dims.., output_feature_count.
+      if (dimensionNumbers.output_batch_dimension().getInt() != 0 ||
+          dimensionNumbers.output_feature_dimension().getInt() !=
+              (outputSpatialRank + 1))
+        return failure();
+
+      if (inputSpatialRank != outputSpatialRank ||
+          inputSpatialRank != kernelSpatialRank)
+        return failure();
+
+      auto inputSpatialDim =
+          dimensionNumbers.input_spatial_dimensions().begin();
+      auto kernelSpatialDim =
+          dimensionNumbers.kernel_spatial_dimensions().begin();
+      auto outputSpatialDim =
+          dimensionNumbers.output_spatial_dimensions().begin();
+      // Check if spatial dims are ordered correctly.
+      for (int i = 0; i < inputSpatialRank; ++i) {
+        const int dim = i + 1;
+        if ((*inputSpatialDim++).getZExtValue() != dim ||
+            (*outputSpatialDim++).getZExtValue() != dim ||
+            (*kernelSpatialDim++).getZExtValue() != i)
+          return failure();
+      }
+    }
+
+    // TODO: LHS dilation for deconvolution not supported yet.
+    if (op.lhs_dilation()) {
+      return failure();
+    }
+
+    llvm::SmallVector<Attribute, 4> strides;
+    if (auto windowStrides = op.window_strides()) {
+      auto range = windowStrides->getAttributeValues();
+      strides.assign(range.begin(), range.end());
+    }
+    auto stridesArg = ArrayAttr::get(strides, op.getContext());
+
+    llvm::SmallVector<Attribute, 2> dilation;
+    if (auto rhsDilation = op.rhs_dilation()) {
+      auto range = rhsDilation->getAttributeValues();
+      dilation.assign(range.begin(), range.end());
+    } else {
+      // Default dilation of 1.
+      dilation.resize(2, IntegerAttr::get(rewriter.getIntegerType(64), 1));
+    }
+    auto dilationArg = ArrayAttr::get(dilation, op.getContext());
+
+    // Set padding only if it is non-zero.
+    DenseIntElementsAttr padding = op.paddingAttr();
+    if (!padding || !llvm::any_of(padding.getValues<APInt>(), [](APInt intVal) {
+          return !intVal.isNullValue();
+        })) {
+      padding = nullptr;
+    }
+
+    // The order of input and filter are switched with linalg.conv.
+    rewriter.replaceOpWithNewOp<linalg::ConvOp>(
+        op, args[1], args[0], args[2], stridesArg, dilationArg, padding);
+    return success();
+  }
+};
+
 /// Base class for lowering xla operations that have one operand and one result,
 /// and are semantically equivalent to a copy of the input to the output (like
 /// transpose, some reshape, etc.). The derived classes need to provide a method
@@ -641,6 +743,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->insert<BroadcastConverter<xla_lhlo::BroadcastOp>,
                    BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
                    ConstConverter,
+                   ConvToLinalgConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,

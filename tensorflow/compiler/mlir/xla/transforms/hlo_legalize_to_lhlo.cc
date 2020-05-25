@@ -424,6 +424,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::CompareOp>,
       HloToLhloOpConverter<xla_hlo::ComplexOp>,
       HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvOp>,
       HloToLhloOpConverter<xla_hlo::ConvertOp>,
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,
