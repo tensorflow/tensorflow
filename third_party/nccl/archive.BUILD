@@ -90,6 +90,7 @@ cc_library(
     include_prefix = "third_party/nccl",
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
+    linkopts = ["-lrt"],
     deps = [
         ":device",
         ":include_hdrs",
