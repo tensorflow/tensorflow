@@ -112,7 +112,8 @@ constexpr int64 kDefaultMaxNumNodesInAllPaths = 100;
 
 using absl::EqualsIgnoreCase;
 
-HloRenderOptions hlo_render_options;
+// A global control for whether backend configuration display is enabled.
+bool show_backend_config = true;
 
 HloInstruction* FindInstruction(const HloModule& module, string node_name) {
   if (absl::StartsWith(node_name, "%")) {
@@ -159,8 +160,6 @@ void DoHelpCommand() {
     Renders all nodes in <computation>.
   backend_config [on|off]
     Controls whether backend operation configuration information is printed.
-  show_fusion_subcomputations [on|off]
-    Controls whether fusion subcomputations are shown.
   list [name|op_name|op_type] <pattern>
     Lists all instructions whose name, metadata op_name, or metadata op_type
     contains <pattern> as a substring.
@@ -183,32 +182,15 @@ void DoHelpCommand() {
 // Turn metadata-printing on or off.
 void DoBackendConfigCommand(const std::vector<string>& tokens) {
   if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_backend_config = true;
+    show_backend_config = true;
   } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_backend_config = false;
+    show_backend_config = false;
   } else if (tokens.size() != 1) {
     std::cerr << "(Illegal backend_config value.  Use either 'on' or 'off'.)"
               << std::endl;
   }
   std::cout << "Backend configuration display "
-            << (hlo_render_options.show_backend_config ? "ON" : "OFF")
-            << std::endl;
-}
-
-// Turn fusion computation display on or off.
-void DoShowFusionSubcomputationsCommand(const std::vector<string>& tokens) {
-  if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_fusion_subcomputations = true;
-  } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_fusion_subcomputations = false;
-  } else if (tokens.size() != 1) {
-    std::cerr << "(Illegal show_fusion_subcomputations value.  Use either "
-                 "'on' or 'off'.)"
-              << std::endl;
-  }
-  std::cout << "Fusion subcomputations display "
-            << (hlo_render_options.show_fusion_subcomputations ? "ON" : "OFF")
-            << std::endl;
+            << (show_backend_config ? "ON" : "OFF") << std::endl;
 }
 
 // List all computations in the module.
@@ -391,7 +373,7 @@ void DoExtractCommand(const HloModule& module,
   auto extracted_module = ExtractModule(instr, height);
   std::cout << extracted_module->ToString(
                    HloPrintOptions::ShortParsable().set_print_backend_config(
-                       hlo_render_options.show_backend_config))
+                       show_backend_config))
             << std::endl;
 }
 
@@ -535,7 +517,7 @@ void DoAllPathsCommand(const Options& opts, const HloModule& module,
   }
   RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
     return RenderAllPathsFromTo(*from, *to, max_nodes, format,
-                                hlo_render_options);
+                                /*show_backend_config=*/show_backend_config);
   });
 }
 
@@ -600,13 +582,15 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
       return RenderGraph(*comp, /*label=*/"",
                          comp->parent()->config().debug_options(), format,
-                         /*hlo_execution_profile=*/nullptr, hlo_render_options);
+                         /*hlo_execution_profile=*/nullptr,
+                         /*show_backend_config=*/show_backend_config);
     });
   } else {
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
-      return RenderNeighborhoodAround(*instr, graph_width, format,
-                                      hlo_render_options,
-                                      /*boundary=*/boundary);
+      return RenderNeighborhoodAround(
+          *instr, graph_width, format,
+          /*show_backend_config=*/show_backend_config,
+          /*boundary=*/boundary);
     });
   }
 }
@@ -633,8 +617,6 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
       DoHelpCommand();
     } else if (tokens[0] == "backend_config") {
       DoBackendConfigCommand(tokens);
-    } else if (tokens[0] == "show_fusion_subcomputations") {
-      DoShowFusionSubcomputationsCommand(tokens);
     } else if (tokens[0] == "list") {
       if (tokens.size() > 1 && tokens[1] == "computations") {
         DoListComputationsCommand(module, tokens);
