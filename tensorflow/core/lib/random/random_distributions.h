@@ -63,6 +63,8 @@ typename Distribution::ResultType VectorizedFormat(
     }
   }
   // Tail processing if any.
+  // Put the tail condition out of above loop to improve performance:
+  // it will be executed only once and save time on CPU.
   if (offset < kResultElementCount) {
     sample = (*gen)();
     for (int i = 0; offset < kResultElementCount; i++, offset++) {
