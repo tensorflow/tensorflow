@@ -21,11 +21,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @ops_no_operands
   func @ops_no_operands() -> () {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -45,11 +41,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @aliased_output
   func @aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -77,11 +69,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>)
     return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @all_head_computation_ops
   func @all_head_computation_ops(%arg0 : tensor<i32>) -> (tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -103,11 +91,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<i32>)
     return %0 : tensor<i32>
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @multiple_head_outside_compilation
   func @multiple_head_outside_compilation(%arg0 : tensor<i32>) -> () {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -129,11 +113,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} { 
   // CHECK-LABEL: func @test_do_not_outside_compiled_ops_in_middle
   func @test_do_not_outside_compiled_ops_in_middle(%arg0 : tensor<i32>) -> () {
     // CHECK-NOT:  tf_device.launch
@@ -150,11 +130,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} { 
   // CHECK-LABEL: func @test_ops_with_tpu_operands_not_extracted
   func @test_ops_with_tpu_operands_not_extracted(%arg0 : tensor<i32>) -> () {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -178,11 +154,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
     return
   }
-}
 
-// -----
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @test_replicated_head_outside_compilation
   func @test_replicated_head_outside_compilation(%arg0 : tensor<i32>) -> () {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
