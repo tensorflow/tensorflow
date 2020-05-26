@@ -168,7 +168,7 @@ class Hashing(Layer):
   def _process_input_list(self, inputs):
     # TODO(momernick): support ragged_cross_hashed with corrected fingerprint
     # and siphash.
-    if any([isinstance(inp, ragged_tensor.RaggedTensor) for inp in inputs]):
+    if any(isinstance(inp, ragged_tensor.RaggedTensor) for inp in inputs):
       raise ValueError('Hashing with ragged input is not supported yet.')
     sparse_inputs = [
         inp for inp in inputs if isinstance(inp, sparse_tensor.SparseTensor)
