@@ -1493,7 +1493,8 @@ class MklQuantizedConv2DOp
         float max_output_value;
         MklQuantizationRangeForMultiplication<Tinput, qint8, qint32>(
             min_input, max_input, min_filter.flat<float>()(0),
-            max_filter.flat<float>()(0), &min_output_value, &max_output_value);
+            max_filter.flat<float>()(0), &min_output_value, &max_output_value,
+            context);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
                                   output_min_mkl_shape);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
@@ -1510,7 +1511,7 @@ class MklQuantizedConv2DOp
                                   output_max_mkl_shape);
         MklQuantizationRangeForMultiplication<Tinput, qint8, qint32>(
             min_input, max_input, min_filter, max_filter, &output_min,
-            &output_max);
+            &output_max, context);
       }
     }
   }
