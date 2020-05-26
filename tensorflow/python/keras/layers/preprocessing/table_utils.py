@@ -87,6 +87,8 @@ class TableHandler(object):
         self.table.lookup, inputs)
     indexed_data = ragged_functional_ops.map_flat_values(
         self._replace_oov_buckets, inputs, indexed_data)
+    # table.lookup is not shape-preserving, so we need to set the shape here.
+    indexed_data._set_shape(inputs.shape)  # pylint: disable=protected-access
     # Composite tensors can pass tensor values through, which will cause
     # errors if all operations in the TF graph do so. We can break this chain
     # with an identity here.
