@@ -86,6 +86,9 @@ cc_library(
     ]) + if_mkl_v1_open_source_only([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
+    ]) + if_mkldnn_threadpool([
+        "-UUSE_MKL",
+        "-UUSE_CBLAS",
     ]) + select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "-fopenmp",  # only works with gcc
