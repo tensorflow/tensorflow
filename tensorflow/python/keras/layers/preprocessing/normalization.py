@@ -107,6 +107,10 @@ class Normalization(CombinerPreprocessingLayer):
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    # If the inputs are not floats, cast them to floats. This avoids issues
+    # with int-float multiplication and division below.
+    if inputs.dtype != K.floatx():
+      inputs = math_ops.cast(inputs, K.floatx())
     # We need to reshape the mean and variance data to ensure that Tensorflow
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
