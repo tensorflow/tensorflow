@@ -1273,7 +1273,19 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
-                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max)
+      .def_property("xla_backend_optimization_level",
+                    &DebugOptions::xla_backend_optimization_level,
+                    &DebugOptions::set_xla_backend_optimization_level)
+      .def_property("xla_cpu_enable_xprof_traceme",
+                    &DebugOptions::xla_cpu_enable_xprof_traceme,
+                    &DebugOptions::set_xla_cpu_enable_xprof_traceme)
+      .def_property("xla_llvm_disable_expensive_passes",
+                    &DebugOptions::xla_llvm_disable_expensive_passes,
+                    &DebugOptions::set_xla_llvm_disable_expensive_passes)
+      .def_property("xla_test_all_input_layouts",
+                    &DebugOptions::xla_test_all_input_layouts,
+                    &DebugOptions::set_xla_test_all_input_layouts);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
