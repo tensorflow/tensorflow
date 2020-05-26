@@ -338,6 +338,79 @@ TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
                                                     m::ConstantScalar(3.0))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      b0 = f32[4] broadcast(p0), dimensions={}
+      b1 = f32[4] broadcast(p1), dimensions={}
+      ROOT multiply = f32[4] multiply(b1, b0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Broadcast(m::Multiply(m::Broadcast(m::Parameter(1)),
+                                          m::Broadcast(m::Parameter(0))))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsConstantMix) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(2.0)
+      b0 = f32[4,2] broadcast(c0), dimensions={}
+      b1 = f32[4,2] broadcast(p0), dimensions={0}
+      ROOT multiply = f32[4,2] multiply(b1, b0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Multiply(
+                  m::Parameter(0), m::Broadcast(m::ConstantScalar(2.0))))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsNonScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      b0 = f32[4,2] broadcast(p0), dimensions={0}
+      b1 = f32[4,2] broadcast(p1), dimensions={0}
+      ROOT multiply = f32[4,2] multiply(b1, b0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Broadcast(m::Multiply(m::Parameter(1), m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ElementwiseNoSinkBroadcastsDifferentDims) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[8] parameter(1)
+      b0 = f32[4,8] broadcast(p0), dimensions={0}
+      b1 = f32[4,8] broadcast(p1), dimensions={1}
+      ROOT multiply = f32[4,8] multiply(b1, b0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Broadcast(m::Parameter(1)),
+                                     m::Broadcast(m::Parameter(0)))));
+}
+
 TEST_F(AlgebraicSimplifierTest,
        MultiplyReassociateMultiplyOfConstantAndBroadcast) {
   const char* kModuleStr = R"(
