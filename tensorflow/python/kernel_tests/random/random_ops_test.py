@@ -416,9 +416,8 @@ class RandomUniformTest(RandomOpTestCommon):
 
   def testUniformWithInvalidMaxMindShape(self):
     # Test case for GitHub issue 34363.
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        "must be no greater than rank of output shape"):
+    with self.assertRaises(
+        (errors.InvalidArgumentError, errors.UnknownError, ValueError)):
       array = array_ops.zeros(shape=(1,))
       random_ops.random_uniform(shape=(), minval=array)
 
