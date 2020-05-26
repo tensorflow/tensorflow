@@ -696,7 +696,6 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     indexing_maps = [#map0, #map0, #map0],
 //     iterator_types = ["parallel", "parallel"],
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-// }
 struct LhloLegalizeToLinalg
     : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
