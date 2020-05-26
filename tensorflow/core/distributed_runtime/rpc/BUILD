@@ -462,6 +462,8 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:test_utils",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
