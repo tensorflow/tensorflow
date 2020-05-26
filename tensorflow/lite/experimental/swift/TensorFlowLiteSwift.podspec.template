@@ -26,7 +26,7 @@ Pod::Spec.new do |s|
   s.subspec 'Core' do |core|
     core.dependency 'TensorFlowLiteC', "#{s.version}"
     core.source_files = swift_dir + 'Sources/*.swift'
-    core.exclude_files = swift_dir + 'Sources/CoreMLDelegate.swift'
+    core.exclude_files = swift_dir + 'Sources/*Delegate.swift'
   end
 
   s.subspec 'CoreML' do |coreml|
@@ -34,6 +34,13 @@ Pod::Spec.new do |s|
     coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
     coreml.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
   end
+
+  s.subspec 'Metal' do |metal|
+    metal.source_files = swift_dir + 'Sources/MetalDelegate.swift'
+    metal.dependency 'TensorFlowLiteC/Metal', "#{s.version}"
+    metal.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
+  end
+
 
   s.test_spec 'Tests' do |ts|
     ts.source_files = swift_dir + 'Tests/*.swift'

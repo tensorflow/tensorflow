@@ -80,6 +80,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",

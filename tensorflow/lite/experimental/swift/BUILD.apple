@@ -34,6 +34,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
     ],
