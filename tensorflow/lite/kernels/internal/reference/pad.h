@@ -171,6 +171,16 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 template <typename P>
 inline void PadImageStyle(const tflite::PadParams& op_params,
                           const RuntimeShape& input_shape,
+                          const int16_t* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          int16_t* output_data) {
+  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+      output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
                           const float* input_data, const P* pad_value_ptr,
                           const RuntimeShape& output_shape,
                           float* output_data) {
