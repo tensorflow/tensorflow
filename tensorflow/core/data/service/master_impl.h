@@ -60,6 +60,8 @@ class DataServiceMasterImpl {
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
+  Status GetWorkers(const GetWorkersRequest* request,
+                    GetWorkersResponse* response);
 
  private:
   class Worker {
