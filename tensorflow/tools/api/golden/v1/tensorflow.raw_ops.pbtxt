@@ -4606,7 +4606,7 @@ tf_module {
   }
   member_method {
     name: "TPUReplicatedInput"
-    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'index\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'index\', \'is_packed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'False\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedOutput"
