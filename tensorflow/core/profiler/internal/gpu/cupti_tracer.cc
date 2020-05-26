@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -1264,6 +1265,11 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
   std::vector<std::unique_ptr<CudaEventRecorder>> cuda_event_recorders_;
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiDriverApiHookWithCudaEvent);
 };
+
+/*static*/ std::string ErrorWithHostname(absl::string_view error_message) {
+  return absl::StrCat(port::Hostname(), ": ", error_message);
+}
+
 }  // namespace
 
 /*static*/ Status CuptiDriverApiHook::AddDriverApiCallbackEvent(
@@ -1669,11 +1675,13 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
 
 /*static*/ std::string CuptiTracer::ErrorIfAny() {
   if (CuptiTracer::NumGpus() == 0) {
-    return "No GPU detected.";
+    return ErrorWithHostname("No GPU detected.");
   } else if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
-    return "Insufficient privilege to run libcupti (you need root permission).";
+    return ErrorWithHostname(
+        "Insufficient privilege to run libcupti (you need root permission).");
   } else if (CuptiTracer::GetTimestamp() == 0) {
-    return "Failed to load libcupti (is it installed and accessible?)";
+    return ErrorWithHostname(
+        "Failed to load libcupti (is it installed and accessible?)");
   }
   return "";
 }

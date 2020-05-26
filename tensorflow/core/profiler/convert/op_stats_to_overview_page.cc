@@ -294,6 +294,7 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck.input_classification(), bottleneck.input_statement(), "",
       hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       overview_page.mutable_recommendation());
+  *overview_page.mutable_errors() = op_stats.errors();
   return overview_page;
 }
 
