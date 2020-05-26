@@ -1353,13 +1353,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # Possible a loss was added in a Layer's `build`.
           self._losses.append(symbolic_loss)
 
-  @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
-    self._eager_losses = []
-    if hasattr(self, '_layers'):
-      for layer in trackable_layer_utils.filter_empty_layer_containers(
-          self._layers):
+    # Set to thread local directly to avoid Layer.__setattr__ overhead.
+    self._thread_local._eager_losses = []
+    sublayers = getattr(self, '_layers', [])
+    if sublayers:
+      sublayers = trackable_layer_utils.filter_empty_layer_containers(sublayers)
+      for layer in sublayers:
         layer._clear_losses()
 
   @property
