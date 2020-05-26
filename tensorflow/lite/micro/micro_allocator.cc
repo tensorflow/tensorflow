@@ -269,7 +269,7 @@ TfLiteStatus FlatBufferIntArrayToTfLiteIntArray(
           TfLiteIntArrayGetSizeInBytes(flat_array->Length()),
           alignof(TfLiteIntArray)));
   if (nullptr == ret) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(error_reporter,
         "Failed to allocate %d bytes of memory to copy an array.",
         TfLiteIntArrayGetSizeInBytes(flat_array->Length()));
     return kTfLiteError;
