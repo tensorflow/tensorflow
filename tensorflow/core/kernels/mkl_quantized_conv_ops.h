@@ -69,6 +69,19 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
   const float* max_b = max_b_vector.flat<float>().data();
   float* min_c = (*min_c_vector)->flat<float>().data();
   float* max_c = (*max_c_vector)->flat<float>().data();
+#ifdef ENABLE_MKLDNN_THREADPOOL
+  // TODO: Add eigen parallel_for
+  for(size_t n = 0; n < n_channel; ++n) {
+    float a_float_for_one_quant_level =
+        MklFloatForOneQuantizedLevel<T1>(min_a, max_a);
+    float b_float_for_one_quant_level =
+        MklFloatForOneQuantizedLevel<T2>(min_b[n], max_b[n]);
+    float c_float_for_one_quant_level =
+        a_float_for_one_quant_level * b_float_for_one_quant_level;
+    min_c[n] = c_float_for_one_quant_level * c_lowest;
+    max_c[n] = c_float_for_one_quant_level * c_highest;
+  }
+#else
 #pragma omp parallel for
   for (size_t n = 0; n < n_channel; ++n) {
     float a_float_for_one_quant_level =
@@ -80,6 +93,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
     min_c[n] = c_float_for_one_quant_level * c_lowest;
     max_c[n] = c_float_for_one_quant_level * c_highest;
   }
+#endif  // ENABLE_MKLDNN_THREADPOOL
 }
 
 }  // namespace tensorflow

@@ -354,9 +354,7 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    # TODO(intel-mkl): Remove -fopenmp for threadpool after removing all
-    # omp pragmas in tensorflow/core.
-    return if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fopenmp"])
+    return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
 
 def tfe_xla_copts():
     return select({
