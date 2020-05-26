@@ -21,6 +21,7 @@ import collections
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import array_ops
@@ -60,6 +61,11 @@ class TableHandler(object):
       raise RuntimeError("Size mismatch between values and key arrays. "
                          "Keys had size %s, values had size %s." %
                          (len(keys), len(values)))
+    keys = ops.convert_to_tensor(keys, dtype=self.table._key_dtype)  # pylint: disable=protected-access
+    values = ops.convert_to_tensor(values, dtype=self.table._value_dtype)  # pylint: disable=protected-access
+    if values.shape.ndims != 1:
+      raise ValueError("`values` must be 1-dimensional, got an input with "
+                       " %s dimensions." % values.shape.ndims)
     self._run(self.table.insert(keys, values))
 
   def _replace_oov_buckets(self, inputs, lookups):
