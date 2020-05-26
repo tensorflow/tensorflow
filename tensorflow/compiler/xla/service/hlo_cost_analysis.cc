@@ -1041,6 +1041,42 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
+int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
+                                    absl::optional<int64> memory_space) const {
+  int64 bytes_read = 0;
+  for (int operand_number = 0; operand_number < hlo.operand_count();
+       ++operand_number) {
+    for (const ShapeUtil::IndexedShape& indexed_shape :
+         ShapeUtil::GetLeafShapes(hlo.operand(operand_number)->shape())) {
+      absl::optional<int64> index_memory_space;
+      if (indexed_shape.shape.has_layout()) {
+        index_memory_space = indexed_shape.shape.layout().memory_space();
+      }
+      if (!memory_space || memory_space == index_memory_space) {
+        bytes_read +=
+            operand_bytes_accessed(hlo, operand_number, indexed_shape.index);
+      }
+    }
+  }
+  return bytes_read;
+}
+
+int64 HloCostAnalysis::GetBytesWritten(
+    const HloInstruction& hlo, absl::optional<int64> memory_space) const {
+  int64 bytes_written = 0;
+  for (const ShapeUtil::IndexedShape& indexed_shape :
+       ShapeUtil::GetLeafShapes(hlo.shape())) {
+    absl::optional<int64> index_memory_space;
+    if (indexed_shape.shape.has_layout()) {
+      index_memory_space = indexed_shape.shape.layout().memory_space();
+    }
+    if (!memory_space || memory_space == index_memory_space) {
+      bytes_written += output_bytes_accessed(hlo, indexed_shape.index);
+    }
+  }
+  return bytes_written;
+}
+
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
     HloComputation* computation) {
   auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
