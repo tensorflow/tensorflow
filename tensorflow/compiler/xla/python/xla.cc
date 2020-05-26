@@ -64,7 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
-#include "tensorflow/python/profiler/internal/traceme_context_manager.h"
+#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -72,7 +72,7 @@ namespace {
 
 namespace py = pybind11;
 
-using ::tensorflow::profiler::TraceMeContextManager;
+using ::tensorflow::profiler::TraceMeWrapper;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -637,23 +637,19 @@ void BuildProfilerSubmodule(py::module* m) {
       },
       py::arg("port"));
 
-  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe",
-                                                  py::module_local());
+  py::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe",
+                                           py::module_local());
   traceme_class.def(py::init<py::str, py::kwargs>())
-      .def("__enter__",
-           [](py::object self) -> py::object {
-             py::cast<TraceMeContextManager*>(self)->Enter();
-             return self;
-           })
+      .def("__enter__", [](py::object self) -> py::object { return self; })
       .def("__exit__",
            [](py::object self, const py::object& ex_type,
               const py::object& ex_value,
               const py::object& traceback) -> py::object {
-             py::cast<TraceMeContextManager*>(self)->Exit();
+             py::cast<TraceMeWrapper*>(self)->Stop();
              return py::none();
            })
-      .def("set_metadata", &TraceMeContextManager::SetMetadata)
-      .def_static("is_enabled", &TraceMeContextManager::IsEnabled);
+      .def("set_metadata", &TraceMeWrapper::SetMetadata)
+      .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
 }
 
 }  // namespace

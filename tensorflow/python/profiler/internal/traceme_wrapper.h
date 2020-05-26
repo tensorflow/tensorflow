@@ -12,46 +12,41 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_CONTEXT_MANAGER_
-#define TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_CONTEXT_MANAGER_
+#ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_
+#define TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_
 
 #include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
-namespace py = pybind11;
-
 namespace tensorflow {
 namespace profiler {
 
-// Helper to implement TraceMe as a context manager in Python.
-class TraceMeContextManager {
+// Wraps TraceMe with an interface that takes python types.
+class TraceMeWrapper {
  public:
-  explicit TraceMeContextManager(py::str name, py::kwargs kwargs)
-      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
+  // pybind11::str and pybind11::kwargs are taken by const reference to avoid
+  // python reference-counting overhead.
+  TraceMeWrapper(const pybind11::str& name, const pybind11::kwargs& kwargs)
+      : traceme_([&]() {
+          std::string name_and_metadata(name);
+          if (!kwargs.empty()) {
+            AppendMetadata(&name_and_metadata, kwargs);
+          }
+          return name_and_metadata;
+        }) {}
 
-  void Enter() {
-    if (IsEnabled()) {
-      traceme_.emplace([this]() {
-        std::string name(name_);
-        if (!kwargs_.empty()) {
-          AppendMetadata(&name, kwargs_);
-        }
-        return name;
-      });
-    }
-  }
-
-  void SetMetadata(py::kwargs kwargs) {
-    if (TF_PREDICT_TRUE(traceme_.has_value() && !kwargs.empty())) {
-      traceme_->AppendMetadata([&kwargs]() {
+  // pybind11::kwargs is taken by const reference to avoid python
+  // reference-counting overhead.
+  void SetMetadata(const pybind11::kwargs& kwargs) {
+    if (TF_PREDICT_FALSE(!kwargs.empty())) {
+      traceme_.AppendMetadata([&]() {
         std::string metadata;
         AppendMetadata(&metadata, kwargs);
         return metadata;
@@ -59,28 +54,27 @@ class TraceMeContextManager {
     }
   }
 
-  void Exit() { traceme_.reset(); }
+  void Stop() { traceme_.Stop(); }
 
   static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
 
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe
   // metadata.
-  static void AppendMetadata(std::string* name, const py::kwargs& kwargs) {
+  static void AppendMetadata(std::string* name,
+                             const pybind11::kwargs& kwargs) {
     name->push_back('#');
     for (const auto& kv : kwargs) {
-      absl::StrAppend(name, std::string(py::str(kv.first)), "=",
-                      std::string(py::str(kv.second)), ",");
+      absl::StrAppend(name, std::string(pybind11::str(kv.first)), "=",
+                      std::string(pybind11::str(kv.second)), ",");
     }
     name->back() = '#';
   }
 
-  py::str name_;
-  py::kwargs kwargs_;
-  absl::optional<tensorflow::profiler::TraceMe> traceme_;
+  tensorflow::profiler::TraceMe traceme_;
 };
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_CONTEXT_MANAGER_
+#endif  // TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_
