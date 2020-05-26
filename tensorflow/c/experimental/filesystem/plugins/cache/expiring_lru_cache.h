@@ -65,7 +65,7 @@ class ExpiringLRUCache {
 
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
-  // with key `key` existed after the call.
+  // with key `key` existing after the call.
   bool Delete(const std::string& key) {
     std::lock_guard<std::mutex> lock(mu_);
     return DeleteLocked(key);
