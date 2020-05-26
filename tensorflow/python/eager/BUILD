@@ -790,6 +790,7 @@ tpu_py_test(
     name = "remote_cloud_tpu_test",
     srcs = ["remote_cloud_tpu_test.py"],
     tags = [
+        "no_rocm",
         "notap",
     ],
     deps = [

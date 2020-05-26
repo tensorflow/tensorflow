@@ -977,6 +977,7 @@ py_test(
     srcs = ["ragged_map_fn_op_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
