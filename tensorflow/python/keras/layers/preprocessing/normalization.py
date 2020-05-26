@@ -55,6 +55,21 @@ class Normalization(CombinerPreprocessingLayer):
         in the specified axis. If set to 'None', the layer will perform scalar
         normalization (diving the input by a single scalar value). 0 (the batch
         axis) is not allowed.
+
+
+  Examples:
+
+  Calculate the mean and variance by analyzing the dataset in `adapt`.
+
+  >>> adapt_data = np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32)
+  >>> input_data = np.array([[1.], [2.], [3.]], np.float32)
+  >>> layer = Normalization()
+  >>> layer.adapt(adapt_data)
+  >>> layer(input_data)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[-1.4142135 ],
+         [-0.70710677],
+         [ 0.        ]], dtype=float32)>
   """
 
   def __init__(self, axis=-1, dtype=None, **kwargs):

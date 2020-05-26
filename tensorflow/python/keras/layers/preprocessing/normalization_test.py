@@ -146,6 +146,7 @@ class NormalizationTest(keras_parameterized.TestCase,
     self.validate_accumulator_extract(combiner, data, expected)
     self.validate_accumulator_extract_and_restore(combiner, data,
                                                   expected)
+
   @parameterized.named_parameters(
       {
           "data": np.array([[1], [2], [3], [4], [5]]),

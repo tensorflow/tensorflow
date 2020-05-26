@@ -157,42 +157,43 @@ class TextVectorization(CombinerPreprocessingLayer):
   Example:
   This example instantiates a TextVectorization layer that lowercases text,
   splits on whitespace, strips punctuation, and outputs integer vocab indices.
-  ```
-  max_features = 5000  # Maximum vocab size.
-  max_len = 40  # Sequence length to pad the outputs to.
 
-  # Create the layer.
-  vectorize_layer = text_vectorization.TextVectorization(
-    max_tokens=max_features,
-    output_mode='int',
-    output_sequence_length=max_len)
+  >>> text_dataset = tf.data.Dataset.from_tensor_slices(["foo", "bar", "baz"])
+  >>> max_features = 5000  # Maximum vocab size.
+  >>> max_len = 4  # Sequence length to pad the outputs to.
+  >>> embedding_dims = 2
+  >>>
+  >>> # Create the layer.
+  >>> vectorize_layer = TextVectorization(
+  ...  max_tokens=max_features,
+  ...  output_mode='int',
+  ...  output_sequence_length=max_len)
+  >>>
+  >>> # Now that the vocab layer has been created, call `adapt` on the text-only
+  >>> # dataset to create the vocabulary. You don't have to batch, but for large
+  >>> # datasets this means we're not keeping spare copies of the dataset.
+  >>> vectorize_layer.adapt(text_dataset.batch(64))
+  >>>
+  >>> # Create the model that uses the vectorize text layer
+  >>> model = tf.keras.models.Sequential()
+  >>>
+  >>> # Start by creating an explicit input layer. It needs to have a shape of
+  >>> # (1,) (because we need to guarantee that there is exactly one string
+  >>> # input per batch), and the dtype needs to be 'string'.
+  >>> model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
+  >>>
+  >>> # The first layer in our model is the vectorization layer. After this
+  >>> # layer, we have a tensor of shape (batch_size, max_len) containing vocab
+  >>> # indices.
+  >>> model.add(vectorize_layer)
+  >>>
+  >>> # Now, the model can map strings to integers, and you can add an embedding
+  >>> # layer to map these integers to learned embeddings.
+  >>> input_data = [["foo qux bar"], ["qux baz"]]
+  >>> model.predict(input_data)
+  array([[2, 1, 4, 0],
+         [1, 3, 0, 0]])
 
-  # Now that the vocab layer has been created, call `adapt` on the text-only
-  # dataset to create the vocabulary. You don't have to batch, but for large
-  # datasets this means we're not keeping spare copies of the dataset in memory.
-  vectorize_layer.adapt(text_dataset.batch(64))
-
-  # Create the model that uses the vectorize text layer
-  model = tf.keras.models.Sequential()
-
-  # Start by creating an explicit input layer. It needs to have a shape of (1,)
-  # (because we need to guarantee that there is exactly one string input per
-  # batch), and the dtype needs to be 'string'.
-  model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
-
-  # The first layer in our model is the vectorization layer. After this layer,
-  # we have a tensor of shape (batch_size, max_len) containing vocab indices.
-  model.add(vectorize_layer)
-
-  # Next, we add a layer to map those vocab indices into a space of
-  # dimensionality 'embedding_dims'. Note that we're using max_features+1 here,
-  # since there's an OOV token that gets added to the vocabulary in
-  # vectorize_layer.
-  model.add(tf.keras.layers.Embedding(max_features+1, embedding_dims))
-
-  # At this point, you have embedded float data representing your tokens, and
-  # can add whatever other layers you need to create your model.
-  ```
   """
   # TODO(momernick): Add an examples section to the docstring.
 
