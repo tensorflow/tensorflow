@@ -33265,6 +33265,14 @@ func TPUReplicatedInputIndex(value int64) TPUReplicatedInputAttr {
 	}
 }
 
+// TPUReplicatedInputIsPacked sets the optional is_packed attribute to value.
+// If not specified, defaults to false
+func TPUReplicatedInputIsPacked(value bool) TPUReplicatedInputAttr {
+	return func(m optionalAttr) {
+		m["is_packed"] = value
+	}
+}
+
 // Connects N inputs to an N-way replicated TPU computation.
 //
 // This operation holds a replicated input to a `tpu.replicate()` computation subgraph.
