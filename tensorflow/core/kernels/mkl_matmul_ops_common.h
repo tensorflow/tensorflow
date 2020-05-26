@@ -547,9 +547,7 @@ class MklMatMulPrimitive : public MklPrimitive {
       : cpu_engine_(ENGINE_CPU, 0) {
     context_.stream.reset(new CPU_STREAM(cpu_engine_));
     // Create matmul primitive
-    if (context_.matmul_prim == nullptr) {
-      Setup(params);
-    }
+    Setup(params);
   }
 
   ~MklMatMulPrimitive() {}
@@ -559,7 +557,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)));
     context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)));
 
-    execute_primitives(context_.matmul_primtimives, context_.stream,
+    execute_primitives(context_.matmul_primitives, context_.stream,
                        context_.net_args);
 
     // After execution, set data handle back
@@ -586,9 +584,8 @@ class MklMatMulPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory::desc> c_md;
 
     // MatMul primitive.
-    std::shared_ptr<mkldnn::primitive> matmul_prim;
     std::shared_ptr<mkldnn::stream> stream;
-    std::vector<mkldnn::primitive> matmul_primtimives;
+    std::vector<mkldnn::primitive> matmul_primitives;
     std::vector<std::unordered_map<int, memory>> net_args;
 
     MklMatMulContext()
@@ -600,11 +597,12 @@ class MklMatMulPrimitive : public MklPrimitive {
           a_md(nullptr),
           b_md(nullptr),
           c_md(nullptr),
-          matmul_prim(nullptr),
           stream(nullptr) {}
   };
 
   void Setup(const MklMatMulParams& params) {
+    std::shared_ptr<mkldnn::primitive> matmul_primitive = nullptr;
+
     // Create MatMul descriptor and primitive descriptor.
     context_.a_md.reset(
         new memory::desc({params.a_dims}, MklDnnType<T>(), params.a_strides));
@@ -630,12 +628,12 @@ class MklMatMulPrimitive : public MklPrimitive {
         new mkldnn::memory(*context_.b_md, cpu_engine_, DummyData));
 
     // Create matmul primitive.
-    context_.matmul_prim.reset(new mkldnn::matmul(*context_.prim_desc));
+    matmul_primitive.reset(new mkldnn::matmul(*context_.prim_desc));
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.a_mem},
                                  {MKLDNN_ARG_WEIGHTS, *context_.b_mem},
                                  {MKLDNN_ARG_DST, *context_.c_mem}});
 
-    context_.matmul_primtimives.push_back(*context_.matmul_prim);
+    context_.matmul_primitives.push_back(*matmul_primitive);
     return;
   }
 
