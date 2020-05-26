@@ -242,7 +242,7 @@ TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt8) {
   QuantizedTestsNoActivation<TensorType_INT8, int8_t>();
 }
 
-TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt16Generic) {
+TEST(QuantizedSubOpModel, QuantizedTestsNoActivationGenericInt16) {
   QuantizedTestsNoActivation<TensorType_INT16, int16_t>();
 }
 
