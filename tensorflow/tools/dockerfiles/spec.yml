@@ -119,7 +119,7 @@ slice_sets:
               - ubuntu/version
               - ubuntu/devel-cpu
               - ubuntu/python
-              - ubuntu/bazelbuild
+              - ubuntu/bazelbuild-arm32v7
               - shell
           tests:
               - build-cpu.sh
@@ -135,7 +135,7 @@ slice_sets:
               - ubuntu/version
               - ubuntu/devel-cpu
               - ubuntu/python
-              - ubuntu/bazelbuild
+              - ubuntu/bazelbuild-arm64v8
               - shell
           tests:
               - build-cpu.sh
