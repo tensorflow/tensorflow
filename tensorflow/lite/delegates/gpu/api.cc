@@ -80,19 +80,19 @@ bool IsValid(const TensorObjectDef& def, const TensorObject& object) {
 bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
   switch (type) {
     case ObjectType::CPU_MEMORY:
-      return absl::get_if<CpuMemory>(&obj);
+      return absl::holds_alternative<CpuMemory>(obj);
     case ObjectType::OPENGL_SSBO:
-      return absl::get_if<OpenGlBuffer>(&obj);
+      return absl::holds_alternative<OpenGlBuffer>(obj);
     case ObjectType::OPENGL_TEXTURE:
-      return absl::get_if<OpenGlTexture>(&obj);
+      return absl::holds_alternative<OpenGlTexture>(obj);
     case ObjectType::OPENCL_BUFFER:
-      return absl::get_if<OpenClBuffer>(&obj);
+      return absl::holds_alternative<OpenClBuffer>(obj);
     case ObjectType::OPENCL_TEXTURE:
-      return absl::get_if<OpenClTexture>(&obj);
+      return absl::holds_alternative<OpenClTexture>(obj);
     case ObjectType::VULKAN_BUFFER:
-      return absl::get_if<VulkanBuffer>(&obj);
+      return absl::holds_alternative<VulkanBuffer>(obj);
     case ObjectType::VULKAN_TEXTURE:
-      return absl::get_if<VulkanTexture>(&obj);
+      return absl::holds_alternative<VulkanTexture>(obj);
     case ObjectType::UNKNOWN:
       return false;
   }
