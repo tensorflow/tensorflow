@@ -2297,26 +2297,17 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     NoSideEffect,
     ResultsBroadcastableShape,
     TFL_GpuTargetOp,
-    TFL_OperandHasRankAtMost<0, 4>,
-    TFL_OperandHasRankAtMost<1, 4>,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    PredOpTrait<"'alpha' should have one less rank than 'input'.",
-      Or<[TFL_OperandIsUnrankedPred<0>,
-          TFL_OperandIsUnrankedPred<1>,
-          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == "
-                "$_op.getOperand(1).getType().cast<ShapedType>().getRank() "
-                "+ 1">]>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
     Parameterized Relu operator
       x -> x >= 0 ? x : (alpha * x)
     where alpha is a trainable tensor.
-    alpha should have one less rank than the input as it doesn't have the batch
-    dimension, and the other dimensions either should be the same size as input
-    or size 1, where it is broadcasted in the second case.
+    input and alpha should be the same size as input or be broadcastable.
   }];
 
   let arguments = (
