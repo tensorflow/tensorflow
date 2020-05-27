@@ -104,6 +104,11 @@ Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
   return sharding.TileShape(shape);
 }
 
+int64 ShapeSizeInBytes(const Shape& shape) {
+  return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) *
+         ShapeUtil::ElementsIn(shape);
+}
+
 Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           const HloSharding& sharding,
                                           int64 partition_id) {
