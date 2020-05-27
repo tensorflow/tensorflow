@@ -4605,8 +4605,8 @@ HloInstruction* SpmdPartitioner::AllGatherShards(SpmdBuilder* b,
       xpose_permutation[i] = i + tiled_dims.size() - split_dims_added;
     } else {
       xpose_permutation[i] = split_dims_added;
+      xpose_permutation[i + 1] = i + tiled_dims.size() - split_dims_added;
       split_dims_added++;
-      xpose_permutation[i + 1] = i + tiled_dims.size();
       i++;
     }
   }
