@@ -119,6 +119,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/applications/xception/__init__.py",
     "keras/backend/__init__.py",
     "keras/callbacks/__init__.py",
+    "keras/callbacks/experimental/__init__.py",
     "keras/constraints/__init__.py",
     "keras/datasets/__init__.py",
     "keras/datasets/boston_housing/__init__.py",
