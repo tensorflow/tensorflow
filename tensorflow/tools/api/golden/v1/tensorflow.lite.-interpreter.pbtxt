@@ -36,7 +36,7 @@ tf_class {
   }
   member_method {
     name: "resize_tensor_input"
-    argspec: "args=[\'self\', \'input_index\', \'tensor_size\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_index\', \'tensor_size\', \'strict\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "set_tensor"

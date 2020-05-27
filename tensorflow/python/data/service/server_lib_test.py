@@ -22,20 +22,71 @@ from tensorflow.python.data.service import server_lib
 
 from tensorflow.python.platform import test
 
-PROTOCOL = "grpc"
-
 
 class ServerLibTest(test.TestCase):
 
   def testStartMaster(self):
-    master = server_lib.MasterServer(PROTOCOL)
-    self.assertRegex(master.target, PROTOCOL + "://.*:.*")
+    master = server_lib.MasterServer(0, start=False)
+    master.start()
+
+  def testMultipleStartMaster(self):
+    master = server_lib.MasterServer(0, start=True)
+    master.start()
 
   def testStartWorker(self):
-    master = server_lib.MasterServer(PROTOCOL)
-    worker = server_lib.WorkerServer(PROTOCOL,
-                                     master.target[len(PROTOCOL + "://"):])
-    self.assertRegex(worker.target, PROTOCOL + "://.*:.*")
+    master = server_lib.MasterServer(0)
+    worker = server_lib.WorkerServer(0, master._address, start=False)
+    worker.start()
+
+  def testMultipleStartWorker(self):
+    master = server_lib.MasterServer(0)
+    worker = server_lib.WorkerServer(0, master._address, start=True)
+    worker.start()
+
+  def testStopMaster(self):
+    master = server_lib.MasterServer(0)
+    master._stop()
+    master._stop()
+
+  def testStopWorker(self):
+    master = server_lib.MasterServer(0)
+    worker = server_lib.WorkerServer(0, master._address)
+    worker._stop()
+    worker._stop()
+
+  def testStopStartMaster(self):
+    master = server_lib.MasterServer(0)
+    master._stop()
+    with self.assertRaisesRegex(
+        RuntimeError, "Server cannot be started after it has been stopped"):
+      master.start()
+
+  def testStopStartWorker(self):
+    master = server_lib.MasterServer(0)
+    worker = server_lib.WorkerServer(0, master._address)
+    worker._stop()
+    with self.assertRaisesRegex(
+        RuntimeError, "Server cannot be started after it has been stopped"):
+      worker.start()
+
+  def testJoinMaster(self):
+    master = server_lib.MasterServer(0)
+    master._stop()
+    master.join()
+
+  def testJoinWorker(self):
+    master = server_lib.MasterServer(0)
+    worker = server_lib.WorkerServer(0, master._address)
+    worker._stop()
+    worker.join()
+
+  def testMasterNumWorkers(self):
+    master = server_lib.MasterServer(0)
+    self.assertEqual(0, master._num_workers())
+    worker1 = server_lib.WorkerServer(0, master._address)  # pylint: disable=unused-variable
+    self.assertEqual(1, master._num_workers())
+    worker2 = server_lib.WorkerServer(0, master._address)  # pylint: disable=unused-variable
+    self.assertEqual(2, master._num_workers())
 
 
 if __name__ == "__main__":

@@ -814,27 +814,6 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
   EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
 }
 
-TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
-  auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  builder.AddInstruction(
-      HloInstruction::CreateBitcast(constant0->shape(), constant0));
-  auto m = CreateNewVerifiedModule();
-  m->AddEntryComputation(builder.Build());
-
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
-  EXPECT_FALSE(error_status.ok());
-  EXPECT_THAT(
-      error_status.error_message(),
-      ::testing::HasSubstr(
-          "Unexpected bitcast operation seen during layout assignment"));
-}
-
 TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   // Pin non matching layouts to parameter and root.
   const char* module_str = R"(

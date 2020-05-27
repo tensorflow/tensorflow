@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {
@@ -29,15 +29,9 @@ namespace tflite {
 class SimpleMemoryAllocator {
  public:
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer_head,
-                        uint8_t* buffer_tail)
-      : error_reporter_(error_reporter),
-        buffer_head_(buffer_head),
-        buffer_tail_(buffer_tail),
-        head_(buffer_head),
-        tail_(buffer_tail) {}
+                        uint8_t* buffer_tail);
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer,
-                        size_t buffer_size)
-      : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
+                        size_t buffer_size);
 
   // Allocates memory starting at the head of the arena (lowest address and
   // moving upwards).
@@ -46,13 +40,17 @@ class SimpleMemoryAllocator {
   // moving downwards).
   uint8_t* AllocateFromTail(size_t size, size_t alignment);
 
-  uint8_t* GetHead() const { return head_; }
-  uint8_t* GetTail() const { return tail_; }
-  size_t GetAvailableMemory() const { return tail_ - head_; }
-  size_t GetUsedBytes() const { return GetBufferSize() - GetAvailableMemory(); }
+  uint8_t* GetHead() const;
+  uint8_t* GetTail() const;
+
+  size_t GetHeadUsedBytes() const;
+  size_t GetTailUsedBytes() const;
+
+  size_t GetAvailableMemory() const;
+  size_t GetUsedBytes() const;
 
  private:
-  size_t GetBufferSize() const { return buffer_tail_ - buffer_head_; }
+  size_t GetBufferSize() const;
 
   ErrorReporter* error_reporter_;
   uint8_t* buffer_head_;

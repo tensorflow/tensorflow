@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
-#include <cstdlib>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -536,6 +540,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params =
               op->builtin_options_as_ResizeNearestNeighborOptions()) {
         params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
+      } else {
+        params->align_corners = false;
+        params->half_pixel_centers = false;
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -834,8 +842,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* bmm_params =
               op->builtin_options_as_BatchMatMulOptions()) {
-        params->adjoint_lhs = bmm_params->adjoint_lhs();
-        params->adjoint_rhs = bmm_params->adjoint_rhs();
+        params->adj_x = bmm_params->adj_x();
+        params->adj_y = bmm_params->adj_y();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -913,6 +921,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SEGMENT_SUM:
       return kTfLiteOk;
   }
+  return kTfLiteError;
 }  // NOLINT[readability/fn_size]
 
 }  // namespace tflite

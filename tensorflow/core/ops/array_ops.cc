@@ -402,7 +402,7 @@ REGISTER_OP("Empty")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("init: bool = false")
-    .SetIsStateful()
+    .SetDoNotOptimize()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
@@ -744,7 +744,7 @@ REGISTER_OP("GuaranteeConst")
       return UnchangedShape(c);
     })
     // We don't want this to be optimized away.
-    .SetIsStateful();
+    .SetDoNotOptimize();
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")

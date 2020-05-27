@@ -31,12 +31,17 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.lang import special_functions
+from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.autograph.pyct.static_analysis import activity
+from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.platform import test
 
 
@@ -137,8 +142,7 @@ class TestCase(test.TestCase):
 
     if not isinstance(converter_module, (list, tuple)):
       converter_module = (converter_module,)
-    for i, m in enumerate(converter_module):
-      node = converter.standard_analysis(node, ctx, is_initial=not i)
+    for m in converter_module:
       node = m.transform(node, ctx)
 
     with self.compiled(node, namespace, tf_symbols) as result:
@@ -177,5 +181,16 @@ class TestCase(test.TestCase):
         namespace=namespace)
     ctx = transformer.Context(entity_info, namer, program_ctx)
     origin_info.resolve_entity(node, source, test_fn)
-    node = converter.standard_analysis(node, ctx, is_initial=True)
+
+    graphs = cfg.build(node)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx, None)
+    node = reaching_definitions.resolve(node, ctx, graphs)
+    anno.dup(
+        node,
+        {
+            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
+        },
+    )
+
     return node, ctx

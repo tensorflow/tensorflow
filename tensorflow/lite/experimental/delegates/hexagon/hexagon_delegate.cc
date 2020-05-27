@@ -221,6 +221,11 @@ TfLiteDelegate* TfLiteHexagonDelegateCreate(
   return tflite::CreateDelegate(options);
 }
 
+TfLiteHexagonDelegateOptions TfLiteHexagonDelegateOptionsDefault() {
+  TfLiteHexagonDelegateOptions result{0};
+  return result;
+}
+
 void TfLiteHexagonDelegateDelete(TfLiteDelegate* delegate) { delete delegate; }
 
 void TfLiteHexagonInit() { tflite::HexagonDelegateKernel::InitState(); }

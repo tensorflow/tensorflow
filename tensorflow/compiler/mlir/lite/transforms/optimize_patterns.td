@@ -29,6 +29,10 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
 
 // Checks value is not produce by a TLF_QUant with
 // different quantization attribute
@@ -352,7 +356,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
              // The result of the new "BinaryOp" will have the same shape as
              // `input`. In other words, the shape of the `Reshape` op are not
              // changed after the transformation.
-             (IsTailOfShape $rhs, $input)]>;
+             (IsTailOfShape $rhs, $input),
+             (HasRankAtMost<5> $input),
+             (HasRankAtMost<5> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -462,3 +468,21 @@ def : Pat<(TFL_AddOp
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Reorders adds to allow constant folding.
+// Add --> Add $input, $constantA
+//    \--> $constantB
+// To
+// Add --> $input
+//    \--> Add ($constantA, $constantB)
+foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
+  def : Pat<(TFL_AddOp
+              (TFL_AddOp:$first_output $input, (ConstantOp $a), TFL_AF_None),
+              (ConstantOp $b), ActFun),
+            (TFL_AddOp $input,
+              (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
+              ActFun),
+  [(HasOneUse $first_output)]>;
+}
+
+

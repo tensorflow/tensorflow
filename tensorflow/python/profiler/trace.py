@@ -18,27 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.profiler.internal import _pywrap_traceme
 from tensorflow.python.util.tf_export import tf_export
-
-
-def encode_metadata(metadata):
-  """Encodes the given metadata to a string.
-
-  Args:
-    metadata: in key-value pairs.
-
-  Returns:
-    The encoded string.
-  """
-  if not metadata:
-    return ''
-  content = []
-  for key, value in six.iteritems(metadata):
-    content.append('%s=%s'%(key, value))
-  return '#' + ','.join(content) + '#'
 
 
 @tf_export('profiler.experimental.Trace', v1=[])
@@ -92,14 +73,13 @@ class Trace(object):
       training step being traced.
     """
     if _pywrap_traceme.TraceMe.IsEnabled():
-      name += encode_metadata(kwargs)
-      self._traceme = _pywrap_traceme.TraceMe(name)
+      # Creating _pywrap_traceme.TraceMe starts the clock.
+      self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
       self._traceme = None
 
   def __enter__(self):
-    if self._traceme:
-      self._traceme.Enter()
+    # Starting the TraceMe clock here would require an extra Python->C++ call.
     return self
 
   def set_metadata(self, **kwargs):
@@ -134,9 +114,8 @@ class Trace(object):
     to measure the entire duration of call()).
     """
     if self._traceme and kwargs:
-      additional_metadata = encode_metadata(kwargs)
-      self._traceme.SetMetadata(additional_metadata)
+      self._traceme.SetMetadata(**kwargs)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    if self._traceme:
-      self._traceme.Exit()
+    # Deallocating _pywrap_traceme.TraceMe stops the clock.
+    self._traceme = None

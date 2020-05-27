@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -107,10 +108,9 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 
 // Creates islands per replica from `tf_device.replicate` region and remap
 // replicate results with new island outputs. A single island is created to
-// forward results from each replica island. Control dependencies of individual
-// replicas are added to the single island if the single island does not emit
-// a result from the respective replica. Devices are remapped from aliased
-// devices to explicit devices, for `tf_device.launch` ops.
+// forward control dependencies if there is a control dependency output from the
+// replicate island. Devices are remapped from aliased devices to explicit
+// devices, for `tf_device.launch` ops.
 //
 // For example, the following:
 //
@@ -156,12 +156,9 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 //   }) {device = "/DEVICE:3"} : () -> tensor<i1>
 //   tf_executor.yield %a1, %b1 : tensor<i1>, tensor<i1>
 // }
-// %6:2 = tf_executor.island(%3#2) {
-//   tf_executor.yield %0#0 : tensor<i1>
-// }
-LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
-                                         tf_executor::IslandOp island_op,
-                                         tf_device::ReplicateOp replicate_op) {
+void CreateIslandsFromReplicate(const Dialect* tf_dialect,
+                                tf_executor::IslandOp island_op,
+                                tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.n().getLimitedValue();
 
@@ -181,45 +178,38 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
           replica_result_and_idx.value();
 
   // Remap replicate results to per replica result.
-  replicate_op.replaceAllUsesWith(replicas_outputs);
+  for (auto result : llvm::zip(island_op.outputs(), replicas_outputs))
+    std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
-  // Collect per replica control dependency and add to island operand if replica
-  // island has no uses.
-  llvm::SmallVector<Value, 8> island_operands;
-  for (auto& replica : replicas)
-    if (replica.use_empty()) island_operands.push_back(replica.control());
+  // Add sink island to pin all replicas as a control dependency if there is a
+  // control dependency leading from the replicate originally.
+  if (!island_op.control().use_empty()) {
+    llvm::SmallVector<Value, 8> island_operands;
+    for (auto& replica : replicas) island_operands.push_back(replica.control());
 
-  // Create single island forwarding per replica result.
-  builder.setInsertionPoint(island_op);
-  auto island_sink = builder.create<tf_executor::IslandOp>(
-      island_op.getLoc(),
-      llvm::to_vector<8>(island_op.GetYield().fetches().getTypes()),
-      tf_executor::ControlType::get(island_op.getContext()), island_operands);
-  island_sink.body().push_back(new Block);
-
-  // Move replicate island YieldOp over to new single island.
-  island_op.GetYield().getOperation()->moveBefore(
-      &island_sink.GetBody(), island_sink.GetBody().begin());
-
-  // Remap island results.
-  island_op.replaceAllUsesWith(island_sink);
+    builder.setInsertionPoint(island_op);
+    auto island_sink = builder.create<tf_executor::IslandOp>(
+        island_op.getLoc(), llvm::ArrayRef<Type>{},
+        tf_executor::ControlType::get(island_op.getContext()), island_operands);
+    island_sink.body().push_back(new Block);
+    builder.setInsertionPointToEnd(&island_sink.GetBody());
+    builder.create<tf_executor::YieldOp>(island_op.getLoc(),
+                                         llvm::ArrayRef<Value>{});
+    island_op.control().replaceAllUsesWith(island_sink.control());
+  }
 
   island_op.erase();
-  return success();
 }
 
 // Finds islands with a single `tf_device.replicate` and create individual
 // islands per replica of the replicate.
-LogicalResult LowerSingleIslandReplicateToIslands(
-    const Dialect* tf_dialect, tf_executor::IslandOp island_op) {
-  if (!hasSingleElement(island_op.GetBody().without_terminator()))
-    return success();
+void LowerSingleIslandReplicateToIslands(const Dialect* tf_dialect,
+                                         tf_executor::IslandOp island_op) {
+  if (!island_op.WrapsSingleOp()) return;
 
   if (auto replicate_op =
           llvm::dyn_cast<tf_device::ReplicateOp>(&island_op.GetBody().front()))
-    return CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
-
-  return success();
+    CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
 }
 
 void ReplicateToIslandPass::runOnFunction() {
@@ -229,13 +219,9 @@ void ReplicateToIslandPass::runOnFunction() {
     getFunction().emitError() << "'tf' dialect is not registered";
   }
 
-  auto result = getFunction().walk([&](tf_executor::IslandOp island_op) {
-    if (failed(LowerSingleIslandReplicateToIslands(tf_dialect, island_op)))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
+  getFunction().walk([&](tf_executor::IslandOp island_op) {
+    LowerSingleIslandReplicateToIslands(tf_dialect, island_op);
   });
-
-  if (result.wasInterrupted()) return signalPassFailure();
 }
 }  // anonymous namespace
 

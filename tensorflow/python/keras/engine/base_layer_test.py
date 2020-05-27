@@ -1454,26 +1454,12 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
-    layer._supports_ragged_inputs = True
 
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
-
-  def test_supports_ragged_inputs_attribute_error(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'does not support RaggedTensors'):
-      ragged = ragged_tensor.RaggedTensor.from_row_splits(
-          values=array_ops.constant([1., 2., 3.], dtype='float32'),
-          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
-      model = sequential.Sequential([
-          input_layer.InputLayer(input_shape=(None,), ragged=True),
-          IdentityLayer()
-      ])
-      model.compile(rmsprop.RMSprop(0.001), loss='mse')
-      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

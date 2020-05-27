@@ -77,7 +77,7 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
 
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, tflite::internal::InitializeRuntimeTensor(
+      kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
                      &simple_allocator, *tensor, buffers, micro_test::reporter,
                      &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
@@ -103,7 +103,7 @@ TF_LITE_MICRO_TEST(TestInitializeQuantizedTensor) {
 
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, tflite::internal::InitializeRuntimeTensor(
+      kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
                      &simple_allocator, *tensor, buffers, micro_test::reporter,
                      &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
@@ -129,7 +129,7 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
 
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, tflite::internal::InitializeRuntimeTensor(
+      kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
                      &simple_allocator, *tensor, buffers, micro_test::reporter,
                      &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);

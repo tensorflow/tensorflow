@@ -44,6 +44,7 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -173,6 +174,10 @@ class DistributedIteratorTestBase(test.TestCase):
           iterator = dataset.make_initializable_iterator()
         else:
           self.skipTest("unsupported test combination")
+
+    if isinstance(iterator, composite_tensor.CompositeTensor):
+      nest.assert_same_structure(iterator, iterator._type_spec,
+                                 expand_composites=True)
 
     if iteration_type == "get_next":
       evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
@@ -1013,7 +1018,6 @@ class DistributedIteratorMultiWorkerTest(
           required_gpus=0))
   def testUnevenDatasetBatchesBetweenGraph(self, input_type, api_type,
                                            iteration_type, strategy_cls):
-    self.skipTest("broken test to be fixed")
     if api_type == "wrap_into_dataset" and input_type == "input_fn":
       self.skipTest("unsupported test combination.")
     if tf2.enabled():

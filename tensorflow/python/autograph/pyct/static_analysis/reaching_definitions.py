@@ -45,10 +45,12 @@ class Definition(object):
 
   Attributes:
     param_of: Optional[ast.AST]
+    directives: Dict, optional definition annotations
   """
 
   def __init__(self):
     self.param_of = None
+    self.directives = {}
 
   def __repr__(self):
     return '%s[%d]' % (self.__class__.__name__, id(self))
@@ -113,10 +115,6 @@ class Analyzer(cfg.GraphVisitor):
   def __init__(self, graph, definition_factory):
     self._definition_factory = definition_factory
     super(Analyzer, self).__init__(graph)
-    # This allows communicating that nodes have extra reaching definitions,
-    # e.g. those that a function closes over.
-    self.extra_in = {}
-
     self.gen_map = {}
 
   def init_state(self, _):
@@ -125,7 +123,7 @@ class Analyzer(cfg.GraphVisitor):
   def visit_node(self, node):
     prev_defs_out = self.out[node]
 
-    defs_in = _NodeState(self.extra_in.get(node.ast_node, None))
+    defs_in = _NodeState()
     for n in node.prev:
       defs_in |= self.out[n]
 
@@ -278,7 +276,7 @@ class TreeAnnotator(transformer.Base):
     return node
 
 
-def resolve(node, source_info, graphs, definition_factory):
+def resolve(node, source_info, graphs, definition_factory=Definition):
   """Resolves reaching definitions for each symbol.
 
   Args:

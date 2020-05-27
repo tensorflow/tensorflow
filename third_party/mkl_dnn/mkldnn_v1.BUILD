@@ -4,6 +4,7 @@ load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
     "if_mkl_v1_open_source_only",
+    "if_mkldnn_threadpool",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -18,15 +19,26 @@ config_setting(
     },
 )
 
+_DNNL_RUNTIME_OMP = {
+    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
+    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
+    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+}
+
+_DNNL_RUNTIME_THREADPOOL = {
+    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_THREADPOOL",
+    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_THREADPOOL",
+    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+}
+
 template_rule(
     name = "dnnl_config_h",
     src = "include/dnnl_config.h.in",
     out = "include/dnnl_config.h",
-    substitutions = {
-        "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
-        "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
-        "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
-    },
+    substitutions = if_mkldnn_threadpool(
+        _DNNL_RUNTIME_THREADPOOL,
+        if_false = _DNNL_RUNTIME_OMP,
+    ),
 )
 
 # Create the file mkldnn_version.h with MKL-DNN version numbers.
@@ -59,9 +71,10 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + if_mkl_v1_open_source_only([
+    ]) + [
         ":dnnl_config_h",
-    ]) + [":dnnl_version_h"],
+        ":dnnl_version_h",
+    ],
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",

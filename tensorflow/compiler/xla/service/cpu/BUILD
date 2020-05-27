@@ -35,6 +35,7 @@ filegroup(
     srcs = [
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
+        "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
@@ -49,6 +50,7 @@ filegroup(
         "runtime_fft_impl.h",
         "runtime_fp16.h",
         "runtime_key_value_sort.h",
+        "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
@@ -116,6 +118,9 @@ cc_library(
         ":target_machine_features",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:LLVMDialect",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
@@ -144,6 +149,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
+        "//tensorflow/compiler/xla/service:dynamic_padder",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -204,6 +210,7 @@ cc_library(
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
+        ":runtime_pow",
         ":runtime_conv2d",
         ":runtime_conv2d_mkl",
         ":runtime_fft",
@@ -242,6 +249,21 @@ cc_library(
     ],
     hdrs = [
         "runtime_fp16.h",
+    ],
+    copts = runtime_copts(),
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "runtime_pow",
+    srcs = [
+        "runtime_pow.cc",
+    ],
+    hdrs = [
+        "runtime_pow.h",
     ],
     copts = runtime_copts(),
     deps = [
@@ -347,6 +369,7 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -437,6 +460,7 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
+        ":mlir_emitter",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -455,6 +479,10 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:core",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -1049,5 +1077,26 @@ tf_cc_test(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
+    ],
+)
+
+cc_library(
+    name = "mlir_emitter",
+    srcs = ["mlir_emitter.cc"],
+    hdrs = ["mlir_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ipo",
+        "@llvm-project//llvm:linker",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:LinalgToLLVM",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:VectorToLLVM",
     ],
 )

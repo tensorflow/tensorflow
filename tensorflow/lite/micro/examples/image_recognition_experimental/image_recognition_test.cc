@@ -53,7 +53,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                                tflite::ops::micro::Register_SOFTMAX());
 
-  const int tensor_arena_size = 45 * 1024;
+  const int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
 
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,

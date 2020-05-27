@@ -44,6 +44,7 @@ enum KernelType {
 struct OpData {
   // The index of the temporary tensors where we store transposed LHS/RHS.
   int scratch_tensor_index;
+  bool rhs_transposed;
 };
 
 struct OpContext {
@@ -63,6 +64,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Creates two temp tensors to store the transposed LHS and/or RHS if
   // needed.
   auto* op_data = new OpData();
+  // If the RHS is constant, we only transpose once.
+  op_data->rhs_transposed = false;
   context->AddTensors(context, 2, &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -74,8 +77,8 @@ void Free(TfLiteContext* context, void* buffer) {
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const RuntimeShape& extended_lhs_shape,
                                 const RuntimeShape& extended_rhs_shape,
-                                bool adjoint_lhs, bool adjoint_rhs,
-                                int output_rank, TfLiteTensor* output) {
+                                bool adj_x, bool adj_y, int output_rank,
+                                TfLiteTensor* output) {
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
   // Fill in any broadcast dimensions.
   for (int i = 0; i < output_rank - 2; ++i) {
@@ -88,8 +91,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     output_shape->data[i] = broadcast_dim;
   }
   // Fill in the matmul dimensions.
-  int lhs_rows_index = adjoint_lhs ? output_rank - 1 : output_rank - 2;
-  int rhs_cols_index = adjoint_rhs ? output_rank - 2 : output_rank - 1;
+  int lhs_rows_index = adj_x ? output_rank - 1 : output_rank - 2;
+  int rhs_cols_index = adj_y ? output_rank - 2 : output_rank - 1;
 
   output_shape->data[output_rank - 2] = extended_lhs_shape.Dims(lhs_rows_index);
   output_shape->data[output_rank - 1] = extended_rhs_shape.Dims(rhs_cols_index);
@@ -107,7 +110,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   node->temporaries->data[0] = op_data->scratch_tensor_index;
   node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
   // Temp tensor for Transposed LHS;
-  if (op_context->params->adjoint_lhs) {
+  if (op_context->params->adj_x) {
     TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
     const TfLiteTensor* lhs = op_context->lhs;
     int lhs_rank = NumDimensions(lhs);
@@ -125,13 +128,12 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
                                                      scratch_buffer_size));
   }
 
-  // We need the RHS transposed in the standard case, so if the flag is set,
-  // we do nothing. If the flag is not set, we need this temporary space.
-  // Note: we assume that the RHS is an in-memory tensor. If RHS is from a
-  // constant buffer (e.g. a weights buffer) with allocation type
-  // kTfLiteMmapRo, then this logic must be updated (since a read-only buffer
-  // is in the opposite layout pattern).
-  if (!op_context->params->adjoint_rhs) {
+  // We need a temp buffer for the RHS if we need to transpose the RHS. We
+  // transpose by default, so that the two inputs (LHS and RHS) are in a proper
+  // layout for our fast matrix multiplication routines. If the transpose flag
+  // is set by the caller, the data is already in the desired layout.
+  const bool rhs_needs_temp = !(op_context->params->adj_y);
+  if (rhs_needs_temp) {
     TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/1);
     const TfLiteTensor* rhs = op_context->rhs;
     int rhs_rank = NumDimensions(rhs);
@@ -143,6 +145,11 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     scratch_buffer_size->data[rhs_rank - 2] = rhs->dims->data[rhs_rank - 1];
     scratch_buffer_size->data[rhs_rank - 1] = rhs->dims->data[rhs_rank - 2];
 
+    if (IsConstantTensor(op_context->rhs)) {
+      scratch_buffer->allocation_type = kTfLiteArenaRwPersistent;
+    } else {
+      scratch_buffer->allocation_type = kTfLiteArenaRw;
+    }
     scratch_buffer->type = op_context->rhs->type;
     scratch_buffer->allocation_type = kTfLiteArenaRw;
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
@@ -158,8 +165,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
-  bool adjoint_lhs = op_context.params->adjoint_lhs;
-  bool adjoint_rhs = op_context.params->adjoint_rhs;
+  bool adj_x = op_context.params->adj_x;
+  bool adj_y = op_context.params->adj_y;
 
   const TfLiteTensor* lhs_data = GetInput(context, node, kInputLHSTensor);
   const TfLiteTensor* rhs_data = GetInput(context, node, kInputRHSTensor);
@@ -192,15 +199,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
   // Ensure other dimensions work for matrix multiplication.
-  int accum_dim_lhs = adjoint_lhs ? extended_lhs_shape.Dims(output_rank - 2)
-                                  : extended_lhs_shape.Dims(output_rank - 1);
-  int accum_dim_rhs = adjoint_rhs ? extended_rhs_shape.Dims(output_rank - 1)
-                                  : extended_rhs_shape.Dims(output_rank - 2);
+  int accum_dim_lhs = adj_x ? extended_lhs_shape.Dims(output_rank - 2)
+                            : extended_lhs_shape.Dims(output_rank - 1);
+  int accum_dim_rhs = adj_y ? extended_rhs_shape.Dims(output_rank - 1)
+                            : extended_rhs_shape.Dims(output_rank - 2);
 
   TF_LITE_ENSURE_EQ(context, accum_dim_lhs, accum_dim_rhs);
   TfLiteStatus status =
-      ResizeOutputTensor(context, extended_lhs_shape, extended_rhs_shape,
-                         adjoint_lhs, adjoint_rhs, output_rank, output);
+      ResizeOutputTensor(context, extended_lhs_shape, extended_rhs_shape, adj_x,
+                         adj_y, output_rank, output);
   return status;
 }
 
@@ -244,33 +251,37 @@ RuntimeShape SwapRowColumnDims(const RuntimeShape& shape) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* lhs = GetInput(context, node, kInputLHSTensor);
   const TfLiteTensor* rhs = GetInput(context, node, kInputRHSTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   RuntimeShape orig_lhs_shape = GetTensorShape(lhs);
   RuntimeShape orig_rhs_shape = GetTensorShape(rhs);
 
-  bool adjoint_rhs = op_context.params->adjoint_rhs;
-  bool adjoint_lhs = op_context.params->adjoint_lhs;
+  bool adj_y = op_context.params->adj_y;
+  bool adj_x = op_context.params->adj_x;
 
-  const TfLiteTensor* rhs_tensor =
-      adjoint_rhs ? rhs : GetTemporary(context, node, 1);
-  const TfLiteTensor* lhs_tensor =
-      adjoint_lhs ? GetTemporary(context, node, 0) : lhs;
-  if (!adjoint_rhs) {
-    TransposeRowsColumns<float>(
-        rhs, GetTensorData<float>(rhs), GetTemporary(context, node, 1),
-        GetTensorData<float>(GetTemporary(context, node, 1)));
+  const TfLiteTensor* rhs_tensor = adj_y ? rhs : GetTemporary(context, node, 1);
+  const TfLiteTensor* lhs_tensor = adj_x ? GetTemporary(context, node, 0) : lhs;
+  if (!adj_y) {
+    // TODO(b/154760341) Constant tensors should already be transposed, but
+    // we transpose once if necessary for now.
+    if (!(IsConstantTensor(rhs) && op_data->rhs_transposed)) {
+      TransposeRowsColumns<float>(
+          rhs, GetTensorData<float>(rhs), GetTemporary(context, node, 1),
+          GetTensorData<float>(GetTemporary(context, node, 1)));
+      op_data->rhs_transposed = true;
+    }
   }
-  if (adjoint_lhs) {
+  if (adj_x) {
     TransposeRowsColumns<float>(
         lhs, GetTensorData<float>(lhs), GetTemporary(context, node, 0),
         GetTensorData<float>(GetTemporary(context, node, 0)));
   }
   RuntimeShape rhs_shape =
-      adjoint_rhs ? orig_rhs_shape : SwapRowColumnDims(orig_rhs_shape);
+      adj_y ? orig_rhs_shape : SwapRowColumnDims(orig_rhs_shape);
   RuntimeShape lhs_shape =
-      adjoint_lhs ? orig_lhs_shape : SwapRowColumnDims(orig_lhs_shape);
+      adj_x ? orig_lhs_shape : SwapRowColumnDims(orig_lhs_shape);
 
   switch (lhs->type) {
     case kTfLiteFloat32:

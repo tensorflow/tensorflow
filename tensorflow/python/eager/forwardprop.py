@@ -23,9 +23,9 @@ import threading
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import function
 
 from tensorflow.python.framework import ops
 
@@ -145,9 +145,15 @@ def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
 # trace-time Python logic).
-_jvp_relaxed_shapes = def_function.function(
+#
+# Using function.defun rather than def_function.function avoids
+# tf.config.run_functions_eagerly(True). `_jvp_helper` doesn't successfully run
+# eagerly (infinite recursion), and even if it did it would use extra memory and
+# run unnecessary computation. The function does not create variables, so the
+# two symbols are otherwise equivalent.
+_jvp_relaxed_shapes = function.defun(
     _jvp_helper, experimental_relax_shapes=True)
-_jvp_exact_shapes = def_function.function(
+_jvp_exact_shapes = function.defun(
     _jvp_helper, experimental_relax_shapes=False)
 
 # The maximum number of exact-shape traces to perform for a single op before

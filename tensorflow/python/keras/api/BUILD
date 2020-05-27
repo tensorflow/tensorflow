@@ -47,6 +47,7 @@ keras_packages = [
     "tensorflow.python.keras.engine.sequential",
     "tensorflow.python.keras.engine.training",
     "tensorflow.python.keras.estimator",
+    "tensorflow.python.keras.feature_column.sequence_feature_column",
     "tensorflow.python.keras.initializers",
     "tensorflow.python.keras.initializers.initializers_v1",
     "tensorflow.python.keras.initializers.initializers_v2",

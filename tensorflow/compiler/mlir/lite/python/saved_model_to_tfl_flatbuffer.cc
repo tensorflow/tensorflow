@@ -146,6 +146,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
+  if (exported_names.size() != 1) {
+    return errors::Unimplemented("Only support a single exported name.");
+  }
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,

@@ -246,6 +246,7 @@ cc_library(
         ":minimal_logging",
         ":simple_memory_arena",
         ":string",
+        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",
@@ -253,6 +254,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
@@ -310,6 +312,8 @@ cc_library(
     ],
 )
 
+# Link this library to inject XNNPACK delegate to TFLite runtime automatically
+# by utilizing the weak symbols if they're supported by the platform.
 cc_library(
     name = "tflite_with_xnnpack",
     srcs = ["tflite_with_xnnpack.cc"],
@@ -320,6 +324,35 @@ cc_library(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
+)
+
+# Enables applying XNNPACK delegate for float models in TFLite runtime.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_xnnpack_enabled",
+    values = {"define": "tflite_with_xnnpack=true"},
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_optional",
+    srcs = ["tflite_with_xnnpack_optional.cc"],
+    hdrs = [
+        "core/macros.h",
+        "tflite_with_xnnpack_optional.h",
+    ],
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    defines = select({
+        ":tflite_with_xnnpack_enabled": ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/lite/c:common",
+    ] + select({
+        ":tflite_with_xnnpack_enabled": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(
@@ -343,7 +376,9 @@ cc_test(
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)

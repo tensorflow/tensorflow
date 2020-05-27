@@ -369,6 +369,154 @@ TEST_F(SegmentTest, ExcludeReshapeWithDynamicNonBatchDimensionInOutput) {
   RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes, {});
 }
 
+TEST_F(SegmentTest, RankOneCannotUseImplicitBatch) {
+  Scope s = Scope::NewRootScope();
+  auto input_0_shape = ops::Placeholder::Shape(TensorShape({3}));
+  auto input_1_shape = ops::Placeholder::Shape(TensorShape({3}));
+  auto input_0 =
+      ops::Placeholder(s.WithOpName("input-0"), DT_FLOAT, input_0_shape);
+  auto input_1 =
+      ops::Placeholder(s.WithOpName("input-1"), DT_FLOAT, input_1_shape);
+  auto const_val = ops::Const(s.WithOpName("const-scalar"), 1.0f, {});
+  auto output_0 = ops::Add(s.WithOpName("output-0"), input_0, const_val);
+  auto output_1 = ops::Add(s.WithOpName("output-1"), input_1, const_val);
+
+  grappler::GrapplerItem item;
+  item.fetch.push_back("output-0");
+  item.fetch.push_back("output-1");
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+  grappler::GraphProperties static_graph_properties(item);
+  TF_EXPECT_OK(static_graph_properties.InferStatically(true));
+
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph, &g));
+
+  const std::set<string> all_nodes = {"const-scalar", "output-0", "output-1"};
+  EnableImplicitBatchModeForStaticEngine();
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes, {});
+}
+
+TEST_F(SegmentTest, TwoChainsDiffBatchSizes) {
+  Scope s = Scope::NewRootScope();
+  auto input_0_shape = ops::Placeholder::Shape(TensorShape({2, 3}));
+  auto input_1_shape = ops::Placeholder::Shape(TensorShape({5, 3}));
+  auto input_0 =
+      ops::Placeholder(s.WithOpName("input-0"), DT_FLOAT, input_0_shape);
+  auto input_1 =
+      ops::Placeholder(s.WithOpName("input-1"), DT_FLOAT, input_1_shape);
+  auto const_val = ops::Const(s.WithOpName("const-scalar"), 1.0f, {});
+  auto output_0 = ops::Add(s.WithOpName("output-0"), input_0, const_val);
+  auto output_1 = ops::Add(s.WithOpName("output-1"), input_1, const_val);
+
+  grappler::GrapplerItem item;
+  item.fetch.push_back("output-0");
+  item.fetch.push_back("output-1");
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+  grappler::GraphProperties static_graph_properties(item);
+  TF_EXPECT_OK(static_graph_properties.InferStatically(true));
+
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph, &g));
+
+  const std::set<string> all_nodes = {"const-scalar", "output-0", "output-1"};
+  EnableImplicitBatchModeForStaticEngine();
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
+          {{"output-0", "const-scalar"}});
+}
+
+TEST_F(SegmentTest, SameRankImplicitBroadcastingStaticBatchSize) {
+  Scope s = Scope::NewRootScope();
+  auto input_0_shape = ops::Placeholder::Shape(TensorShape({2, 3, 1}));
+  auto input_1_shape = ops::Placeholder::Shape(TensorShape({1, 3, 4}));
+  auto input_2_shape = ops::Placeholder::Shape(TensorShape({2, 3, 4}));
+  auto input_0 =
+      ops::Placeholder(s.WithOpName("input-0"), DT_FLOAT, input_0_shape);
+  auto input_1 =
+      ops::Placeholder(s.WithOpName("input-1"), DT_FLOAT, input_1_shape);
+  auto input_2 =
+      ops::Placeholder(s.WithOpName("input-2"), DT_FLOAT, input_2_shape);
+  auto multiple = ops::Mul(s.WithOpName("multiple"), input_2, input_2);
+  auto output_0 = ops::Add(s.WithOpName("output-0"), input_0, multiple);
+  auto output_1 = ops::Add(s.WithOpName("output-1"), input_1, multiple);
+
+  grappler::GrapplerItem item;
+  item.fetch.push_back("output-0");
+  item.fetch.push_back("output-1");
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+  grappler::GraphProperties static_graph_properties(item);
+  TF_EXPECT_OK(static_graph_properties.InferStatically(true));
+
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph, &g));
+
+  const std::set<string> all_nodes = {"multiple", "output-0", "output-1"};
+  EnableImplicitBatchModeForStaticEngine();
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
+          {all_nodes});
+}
+
+TEST_F(SegmentTest, SameRankImplicitBroadcastingDynamicBatchSize) {
+  Scope s = Scope::NewRootScope();
+  auto input_0_shape = ops::Placeholder::Shape(PartialTensorShape({-1, 2}));
+  auto input_1_shape = ops::Placeholder::Shape(TensorShape({1, 2}));
+  auto input_0 =
+      ops::Placeholder(s.WithOpName("input-0"), DT_FLOAT, input_0_shape);
+  auto input_1 =
+      ops::Placeholder(s.WithOpName("input-1"), DT_FLOAT, input_1_shape);
+  auto const_val = ops::Const(s.WithOpName("const-val"), 1.0f, {1, 1});
+  auto add_0 = ops::Add(s.WithOpName("add-0"), input_0, const_val);
+  auto output_0 = ops::Add(s.WithOpName("output-0"), input_0, add_0);
+
+  grappler::GrapplerItem item;
+  item.fetch.push_back("output-0");
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+  grappler::GraphProperties static_graph_properties(item);
+  TF_EXPECT_OK(static_graph_properties.InferStatically(true));
+
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph, &g));
+
+  const std::set<string> all_nodes = {"const-val", "add-0", "output-0"};
+  EnableImplicitBatchModeForStaticEngine();
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
+          {{"const-val", "add-0", "output-0"}});
+}
+
+TEST_F(SegmentTest, IncompatibleBatchSizes) {
+  Scope s = Scope::NewRootScope();
+  auto input_0_shape = ops::Placeholder::Shape(PartialTensorShape({-1, 2}));
+  auto input_1_shape = ops::Placeholder::Shape(TensorShape({2, 2}));
+  auto input_0 =
+      ops::Placeholder(s.WithOpName("input-0"), DT_FLOAT, input_0_shape);
+  auto input_1 =
+      ops::Placeholder(s.WithOpName("input-1"), DT_FLOAT, input_1_shape);
+  auto const_val = ops::Const(s.WithOpName("const-val"), 1.0f, {2, 2});
+  auto add_0 = ops::Add(s.WithOpName("add-0"), input_0, const_val);
+  auto output_0 = ops::Add(s.WithOpName("output-0"), input_0, add_0);
+
+  grappler::GrapplerItem item;
+  item.fetch.push_back("output-0");
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+  grappler::GraphProperties static_graph_properties(item);
+  TF_EXPECT_OK(static_graph_properties.InferStatically(true));
+
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph, &g));
+
+  const std::set<string> all_nodes = {"const-val", "add-0", "output-0"};
+  EnableImplicitBatchModeForStaticEngine();
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes, {});
+}
 }  // namespace test
 }  // namespace segment
 }  // namespace tensorrt

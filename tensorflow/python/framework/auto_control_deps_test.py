@@ -31,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -164,6 +165,16 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertNotIn(read_op4, c.ops_which_must_run)
       # Last write must be in `ops_which_must_run`.
       self.assertIn(assign_op4, c.ops_which_must_run)
+
+  def testSendInOpsWithMustRun(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies() as c:
+        send_op = gen_sendrecv_ops.send(v, "x", "/", 0, "/")
+
+      # Send must be in `ops_which_must_run`.
+      self.assertIn(send_op, c.ops_which_must_run)
 
   def _testVariableReadInFunctionalOp(self, build_functional_op, op_type):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -751,7 +762,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     grad = backprop.implicit_grad(lambda v: v**2)(v)
 
     with self.assertRaisesRegexp(TypeError,
-                                 '.*must return zero or more Tensors.*'):
+                                 ".*must return zero or more Tensors.*"):
       # TODO(akshayka): We might want to allow defun-ing Python functions
       # that return operations (and just execute the op instead of running it).
       optimizer.apply_gradients(grad)
@@ -803,6 +814,6 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertEqual(self.evaluate(outer()), 2.0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   ops.enable_eager_execution()
   test.main()

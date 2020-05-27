@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -29,6 +30,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 ALL_LOSSES = [
@@ -123,8 +125,10 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_softmax),
         atol=1e-5)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    # This test only runs in graph because the TF op layer is not supported yet
+    # for sparse ops.
     t = backend.placeholder()
     p = backend.placeholder()
     o = losses.sparse_categorical_crossentropy(t, p)
@@ -193,6 +197,35 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     # reduced_weighted_mse = (6 + 26) / 2 =
     self.assertAllClose(self.evaluate(loss), 16, 1e-2)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_loss_wrapper_autograph(self):
+    # Test that functions with control flow wrapped in a LossFunctionWrapper
+    # get autographed when in a tf.function
+    def loss_fn(y_true, y_pred):
+      mse_loss_fn = losses.get('mse')
+      if math_ops.reduce_mean(y_true) > 0:
+        return mse_loss_fn(y_true, y_pred)
+      else:
+        return mse_loss_fn(y_true, y_pred)
+
+    mse_obj = losses.LossFunctionWrapper(loss_fn)
+
+    y_true = constant_op.constant([[1., 9.], [2., 5.]])
+    y_pred = constant_op.constant([[4., 8.], [12., 3.]])
+    sample_weight = constant_op.constant([1.2, 0.5])
+
+    @def_function.function
+    def tf_functioned_loss_fn(y_true, y_pred, sample_weight=None):
+      return mse_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    loss = tf_functioned_loss_fn(y_true, y_pred, sample_weight=sample_weight)
+
+    # mse = [((4 - 1)^2 + (8 - 9)^2) / 2, ((12 - 2)^2 + (3 - 5)^2) / 2]
+    # mse = [5, 52]
+    # weighted_mse = [5 * 1.2, 52 * 0.5] = [6, 26]
+    # reduced_weighted_mse = (6 + 26) / 2 =
+    self.assertAllClose(self.evaluate(loss), 16, 1e-2)
+
   def test_invalid_reduction(self):
     with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Foo.'):
       losses.MeanSquaredError(reduction='Foo')
@@ -202,6 +235,10 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     mse_obj.reduction = 'Bar'
     with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Bar.'):
       mse_obj(y, y)
+
+  def test_deserialization_error(self):
+    with self.assertRaisesRegex(ValueError, 'Could not interpret loss'):
+      losses.get(0)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1577,6 +1614,56 @@ class HuberLossTest(test.TestCase):
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_loss_with_non_default_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/39004
+    self.setup()
+    h_obj = losses.Huber()
+    try:
+      backend.set_floatx('float64')
+      loss = h_obj(self.y_true, self.y_true)
+      self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+    finally:
+      backend.set_floatx('float32')
+
+
+class BinaryTruePositivesViaControlFlow(losses.Loss):
+
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO):
+    super(BinaryTruePositivesViaControlFlow, self).__init__(reduction=reduction)
+
+  def call(self, y_true, y_pred):
+    y_true = math_ops.cast(y_true, dtypes.bool)
+    y_pred = math_ops.cast(y_pred, dtypes.bool)
+
+    result = constant_op.constant(0.0)
+    for i in range(len(y_true)):
+      for j in range(len(y_true[i])):
+        if y_true[i][j] and y_pred[i][j]:
+          result = result + 1
+    return result
+
+
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class CustomLossTest(test.TestCase):
+
+  def test_autograph(self):
+    y_true = constant_op.constant([[0, 0.9, 0, 1, 0], [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0], [0, 0, 0, 0, 1.5]])
+    y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
+
+    @def_function.function
+    def loss_fn(y_true, y_pred):
+      loss_obj = BinaryTruePositivesViaControlFlow()
+      return loss_obj(y_true, y_pred)
+
+    loss = loss_fn(y_true, y_pred)
+    self.assertAllEqual(
+        self.evaluate(loss),
+        7.0,
+    )
 
 
 if __name__ == '__main__':

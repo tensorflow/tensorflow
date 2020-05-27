@@ -324,7 +324,10 @@ class Loader(object):
       restore_ops = position.restore_ops()
       if restore_ops:
         if resource_variable_ops.is_resource_variable(obj):
-          obj._initializer_op = restore_ops
+          if len(restore_ops) == 1:
+            obj._initializer_op = restore_ops[0]
+          else:
+            obj._initializer_op = control_flow_ops.group(*restore_ops)
         elif isinstance(obj, lookup_ops.LookupInterface):
           # We don't need to check for eager execution here, since this code
           # path should only be taken if we are restoring in graph mode.

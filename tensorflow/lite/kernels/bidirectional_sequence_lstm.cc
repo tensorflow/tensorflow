@@ -785,7 +785,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* fw_projection_weights =
         GetOptionalInputTensor(context, node, kFwProjectionWeightsTensor);
     if (fw_projection_weights != nullptr) {
-      fw_row_sums_rows += ceil(n_fw_output / n_fw_cell);
+      fw_row_sums_rows += ceil(static_cast<float>(n_fw_output) / n_fw_cell);
     }
     node->temporaries->data[kFwRowSums] =
         op_data->scratch_tensor_index + kFwRowSums;
@@ -808,7 +808,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* bw_projection_weights =
         GetOptionalInputTensor(context, node, kBwProjectionWeightsTensor);
     if (bw_projection_weights != nullptr) {
-      bw_row_sums_rows += ceil(n_bw_output / n_bw_cell);
+      bw_row_sums_rows += ceil(static_cast<float>(n_bw_output) / n_bw_cell);
     }
     node->temporaries->data[kBwRowSums] =
         op_data->scratch_tensor_index + kBwRowSums;

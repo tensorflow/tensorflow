@@ -20,28 +20,21 @@ from __future__ import print_function
 
 from absl import logging
 
-from tensorflow.compiler.xla.python import xla_client
-from tensorflow.compiler.xla.python import xla_extension as _xla
+# Import xla_client to load shared C++ extensions (just CompileOptions at the
+# time of writing).
+from tensorflow.compiler.xla.python import xla_client  # pylint: disable=unused-import
 from tensorflow.compiler.xla.python.tpu_driver.client import tpu_client_extension as _tpu_client
 
 
-class TpuBackend(xla_client.Backend):
+class TpuBackend(object):
   """XLA backend implemented using the Tpu driver API."""
 
   # Cache the backends to prevent double driver initializations.
   _local_backend = None
 
-  def __init__(self, client):
-    """Creates a new TpuBackend.
-
-    Args:
-      client: A _tpu_client.TpuClient object.
-    """
-    super(TpuBackend, self).__init__('tpu')
-    self.client = client
-
   @staticmethod
   def create(worker=None, force=False):
+    """Constructs a Cloud TPU backend."""
     # `force` == True will skip caching any backends (if applicable) and will
     # always try to create a new client.
     if worker is None:
@@ -56,52 +49,11 @@ class TpuBackend(xla_client.Backend):
       if worker == 'local':
         worker = 'local://'
       if force:
-        return TpuBackend(_tpu_client.TpuClient.Get(worker))
+        return _tpu_client.TpuClient.Get(worker)
       if TpuBackend._local_backend is None:
         logging.info('Starting the local TPU driver.')
-        TpuBackend._local_backend = TpuBackend(
-            _tpu_client.TpuClient.Get(worker))
+        TpuBackend._local_backend = _tpu_client.TpuClient.Get(worker)
       return TpuBackend._local_backend
     else:
       # We do not cache for non-local backends.
-      return TpuBackend(_tpu_client.TpuClient.Get(worker))
-
-  def device_count(self):
-    return self.client.device_count()
-
-  def local_device_count(self):
-    return self.client.local_device_count()
-
-  def local_devices(self):
-    return self.client.local_devices()
-
-  def devices(self):
-    return self.client.devices()
-
-  def host_id(self):
-    return self.client.host_id()
-
-  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    return self.client.buffer_from_pyval(pyval, device)
-
-  def compile(self, c_computation, compile_options=None):
-    compile_options = compile_options or xla_client.CompileOptions()
-    options = _xla.CompileOptions()
-    options.argument_layouts = compile_options.argument_layouts
-    options.parameter_is_tupled_arguments = compile_options.tuple_arguments
-    build_options = options.executable_build_options
-    build_options.num_replicas = compile_options.num_replicas
-    build_options.num_partitions = compile_options.num_partitions
-    if compile_options.result_layout:
-      build_options.result_layout = compile_options.result_layout
-    if compile_options.device_assignment:
-      build_options.device_assignment = compile_options.device_assignment
-    return self.client.compile(c_computation, options)
-
-  def get_default_device_assignment(self, num_replicas, num_partitions=None):
-    if num_partitions is not None:
-      return self.client.get_default_device_assignment(num_replicas,
-                                                       num_partitions)
-    else:
-      # TODO(henrytan): delete this case after all callers can handle 2D output
-      return self.client.get_default_device_assignment(num_replicas)
+      return _tpu_client.TpuClient.Get(worker)

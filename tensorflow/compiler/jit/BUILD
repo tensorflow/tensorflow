@@ -251,7 +251,7 @@ cc_library(
     visibility = [":friends"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:graph",
@@ -505,6 +505,7 @@ cc_library(
     name = "shape_inference",
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
+    visibility = [":friends"],
     deps = [
         ":shape_inference_helpers",
         "//tensorflow/compiler/xla:statusor",

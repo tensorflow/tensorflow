@@ -31,7 +31,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def HLOClient_Dialect : Dialect {
@@ -360,6 +360,11 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
+    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+  >];
 }
 
 #endif  // CHLO_OPS

@@ -854,6 +854,215 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // -----
 
+// Test invalid tf.Yield operation (parent should be IfRegion)
+func @testInvalidYieldOp(%arg0: f32) -> () {
+  // expected-error @+1 {{expects parent op 'tf.IfRegion'}}
+  "tf.Yield"(%arg0) : (f32) -> ()
+}
+
+// -----
+
+// Test valid tf.IfRegion operation
+// CHECK-LABEL: func @testValidIfRegionOp
+func @testValidIfRegionOp(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// Test valid tf.IfRegion operation with multiple results
+// CHECK-LABEL: func @testValidIfRegionOpWithMultipleResults
+func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0, %1, %2 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t0 = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     %t1 = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     %t2 = "tf.Acosh"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+    "tf.Yield"(%t0, %t1, %t2) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> ()
+    }, {
+     %e0 = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     %e1 = "tf.Relu"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     %e2 = "tf.Sin"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e0, %e1, %e2) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>)
+
+  %3 = "tf.Add"(%0, %1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %4 = "tf.Add"(%2, %3) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %4 : tensor<2xf32>
+}
+
+// -----
+
+// Test invalid type for operand #0 for tf.IfRegion operation
+func @testInvalidIfRegionOpType0(%arg0: f32, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{operand #0 must be tensor of tf.dtype values}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (f32, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// Test invalid type for operand #1 for tf.IfRegion operation
+func @testInvalidIfRegionOpType1(%arg0: tensor<i1>, %arg1: f32) -> f32 {
+  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = addf %arg1, %arg1 : f32
+     "tf.Yield"(%t) : (f32) -> ()
+    }, {
+     %e = mulf %arg1, %arg1 : f32
+     "tf.Yield"(%e) : (f32) -> ()
+    }) { is_stateless = false} : (tensor<i1>, f32) -> f32
+
+  return %0 : f32
+}
+
+// -----
+
+// tf.IfRegion operation should have 2 regions
+func @testInvalidIfRegionOp1Region(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{op expected 2 regions}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testInvalidIfRegionOpNoRegions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{op expected 2 regions}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testInvalidIfRegionOp3Regions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{op expected 2 regions}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %te = "tf.Relu"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%te) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// tf.IfRegion regions should be terminated with a tf.Yield
+func @testIfRegionThenTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
+  // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+   }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
+  // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// tf.Region yield number of results should match op number of results
+func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{then region should have 1 result}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t, %t) : (tensor<2xf32>, tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{else region should have 1 result}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e, %e) : (tensor<2xf32>, tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// tf.IfRegion yield types should match op result types
+func @testIfRegionOpYieldMismatchThen(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{then result type tensor<i1> is incompatible with tf.IfRegion result type tensor<2xf32> at index 0}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     "tf.Yield"(%arg0) : (tensor<i1>) -> ()
+    }, {
+     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfRegionOpYieldMismatchElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{else result type tensor<i1> is incompatible with tf.IfRegion result type tensor<2xf32> at index 0}}
+  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+     %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     "tf.Yield"(%arg0) : (tensor<i1>) -> ()
+    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // Test valid tf.MatrixBandPart
 // CHECK-LABEL: func @testValidMatrixBandPartOp
 func @testValidMatrixBandPartOp(%arg0: tensor<64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
@@ -881,20 +1090,29 @@ func @testValidMatrixBandPartOpUnranked(%arg0: tensor<*xbf16>, %arg1: tensor<i64
 
 // -----
 
-// Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
-  return %0 : tensor<64x64xbf16>
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpUnrankedBand
+func @testValidMatrixBandPartOpUnrankedBand(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpCompatibleDynamicShapes
+func @testValidMatrixBandPartOpCompatibleDynamicShapes(%arg0: tensor<?x10x?xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<?x?x8xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<?x10x?xbf16>, tensor<i64>, tensor<i64>) -> tensor<?x?x8xbf16>
+  return %0 : tensor<?x?x8xbf16>
 }
 
 // -----
 
 // Test invalid tf.MatrixBandPart
-func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
-  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
-  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
-  return %0 : tensor<*xbf16>
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have dynamically equal types}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
 }
 
 // -----
@@ -994,6 +1212,116 @@ func @testArgMismatch(%arg0: tensor<i32>) -> tensor<i32> {
 
 func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   return %arg0 : tensor<i32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Select
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.Select
+// CHECK-LABEL: func @testSelect
+func @testSelect(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<3x2xf16>) -> tensor<3x2xf16> {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<3x2xf16>) -> tensor<3x2xf16>
+  return %0: tensor<3x2xf16>
+}
+
+// -----
+
+func @testInvalidSelect(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
+  // expected-error @+1 {{requires that, when pred is a vector, the shape matches the first dimension of t and e}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
+  return %0: tensor<2x3xf16>
+}
+
+// -----
+
+// Test invalid tf.Select - broadcasting then/else parameters is not supported
+func @selectBroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  // expected-error @+1 {{requires t and e have compatible shapes}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+func @invalidSelect(%arg0: tensor<2xi1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires that t and e are nonscalar when pred is a vector}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// -----
+
+func @invalidSelect(%arg0: tensor<1x8xi1>, %arg1: tensor<1x8x8xi32>, %arg2: tensor<1x8x8xi32>) -> tensor<1x8x8xi32> {
+  // expected-error @+1 {{requires that pred is a scalar OR has the same rank as t and e OR is a vector}}
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<1x8xi1>, tensor<1x8x8xi32>, tensor<1x8x8xi32>) -> tensor<1x8x8xi32>
+  return %0: tensor<1x8x8xi32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.SelectV2
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.SelectV2
+// CHfaECK-LABEL: func @selectV2BroadcastThen
+func @selectV2BroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// Test valid tf.SelectV2
+// CHECK-LABEL: func @selectV2BroadcastElse
+func @selectV2BroadcastElse(%arg0: tensor<i1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<8x1xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x8x8xi32>, tensor<8x1xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// Test valid tf.SelectV2
+// CHECK-LABEL: func @selectV2BroadcastPred
+func @selectV2BroadcastPred(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
+  return %0: tensor<2x8x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2BroadcastAll
+func @selectV2BroadcastAll(%arg0: tensor<8x1x1xi1>, %arg1: tensor<1x8x1xi32>, %arg2: tensor<1x1x8xi32>) -> tensor<8x8x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8x1x1xi1>, tensor<1x8x1xi32>, tensor<1x1x8xi32>) -> tensor<8x8x8xi32>
+  return %0: tensor<8x8x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2DynamicRanked
+func @selectV2DynamicRanked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x?x8xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x?x8xi32>, tensor<2x8x8xi32>) -> tensor<2x?x8xi32>
+  return %0: tensor<2x?x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @selectV2Unranked
+func @selectV2Unranked(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
+}
+
+// -----
+
+// Test invalid tf.SelectV2: this is an invalid broadcast for the predicate
+func @testInvalidSelectV2(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<3x2xf16>) -> tensor<3x2xf16> {
+  // expected-error @+1 {{operands don't have broadcast-compatible shapes}}
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<3x2xf16>) -> tensor<3x2xf16>
+  return %0: tensor<3x2xf16>
 }
 
 // -----
@@ -1317,7 +1645,7 @@ func @testShapeMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 
 func @testShapeWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
+  // expected-warning @+1 {{has static shape result for unranked operand}}
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
@@ -1361,7 +1689,7 @@ func @testShapeNMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 
 func @testShapeNWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires dynamic shape result #1 for unranked operand #1}}
+  // expected-warning @+1 {{has static shape result #1 for unranked operand #1}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<2xi32>)
   return %0#1 : tensor<2xi32>
 }
@@ -1419,7 +1747,7 @@ func @testVariableShapeMismatchDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x1
 // -----
 
 func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32> {
-  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
+  // expected-warning @+1 {{has static shape result for unranked operand}}
   %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }

@@ -106,6 +106,9 @@ Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
                             bool use_implicit_batch, int batch_size,
                             TensorShape& shape);
 
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);
+
 // Returns a string that includes compile time TensorRT library version
 // information {Maj, Min, Patch}.
 string GetLinkedTensorRTVersion();

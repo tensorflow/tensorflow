@@ -32,6 +32,11 @@ class MergeConvolutionWithMul : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[0];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
+
     auto& mul_node = *sequence[1];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {
@@ -40,8 +45,9 @@ class MergeConvolutionWithMul : public SequenceTransformation {
 
     MultiplyAttributes mul_attr =
         absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param) &&
-        !absl::get_if<float>(&mul_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            mul_attr.param) &&
+        !absl::holds_alternative<float>(mul_attr.param)) {
       return {
           TransformStatus::DECLINED,
           "This fuse applicable only for broadcast or scalar multiplication."};
@@ -91,6 +97,10 @@ class MergeMulWithConvolution : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[1];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
     auto& mul_node = *sequence[0];
     if (mul_node.operation.type != ToString(OperationType::MUL) ||
         !mul_node.operation.attributes.has_value()) {
@@ -99,9 +109,9 @@ class MergeMulWithConvolution : public SequenceTransformation {
 
     MultiplyAttributes mul_attr =
         absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(
-            &mul_attr.param) &&
-        !absl::get_if<float>(&mul_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            mul_attr.param) &&
+        !absl::holds_alternative<float>(mul_attr.param)) {
       return {
           TransformStatus::DECLINED,
           "This fuse applicable only for broadcast or scalar multiplication."};

@@ -1101,6 +1101,15 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   }
 }
 
+const string& OpKernelContext::executor_type() const {
+  if (params_->executor_type) {
+    return *params_->executor_type;
+  } else {
+    static const string& kEmptyString = *new string("");
+    return kEmptyString;
+  }
+}
+
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {

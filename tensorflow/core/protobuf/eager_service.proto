@@ -69,6 +69,7 @@ message QueueItem {
     // enqueued in streaming call. Request with this item type waits for pending
     // nodes to finish on the remote executor and report status.
     SyncRemoteExecutorForStream sync_remote_executor_for_stream = 6;
+    SendPackedHandleOp send_packed_handle = 7;
   }
 }
 
@@ -236,6 +237,27 @@ message SendTensorOp {
 
   // The device on which the tensors should be resident.
   string device_name = 3;
+}
+
+// Send a packed TensorHandle to a remote worker.
+message SendPackedHandleOp {
+  // Op id of the remote packed TensorHandle.
+  int64 op_id = 1;
+
+  message LocalTensorHandle {
+    TensorProto tensor = 1;
+    // Device where the tensor is produced.
+    string device = 2;
+  }
+
+  message Handle {
+    oneof item {
+      LocalTensorHandle local_handle = 1;
+      RemoteTensorHandle remote_handle = 2;
+    }
+  }
+
+  repeated Handle handles = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

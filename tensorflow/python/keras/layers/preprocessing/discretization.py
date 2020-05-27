@@ -52,11 +52,20 @@ class Discretization(Layer):
       exclude the right boundary, so `bins=[0., 1., 2.]` generates bins
       `(-inf, 0.)`, `[0., 1.)`, `[1., 2.)`, and `[2., +inf)`.
     output_mode: One of 'int', 'binary'. Defaults to 'int'.
+
+  Examples:
+
+  Bucketize float values based on provided buckets.
+  >>> input = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
+  >>> layer = Discretization(bins=[0., 1., 2.])
+  >>> layer(input)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[0, 2, 3, 1],
+         [1, 3, 2, 1]], dtype=int32)>
   """
 
   def __init__(self, bins, output_mode=INTEGER, **kwargs):
     super(Discretization, self).__init__(**kwargs)
-    self._supports_ragged_inputs = True
     self.bins = bins
     self.output_mode = output_mode
 

@@ -98,7 +98,7 @@ class CustomLayerNoConfig(keras.layers.Layer):
         constant_op.constant(1.0, shape=input_shape[1:]), name=self.name+'_c')
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
     self.add_metric(self.sum_metric(inputs))
     self.add_metric(inputs, aggregation='mean', name='mean')
 

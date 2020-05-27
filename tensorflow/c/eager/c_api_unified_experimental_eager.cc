@@ -123,6 +123,17 @@ class EagerContext : public ExecutionContext {
     }
   }
 
+  AbstractTensor* AddParameter(TF_DataType dtype, TF_Status* s) override {
+    TF_SetStatus(s, TF_INVALID_ARGUMENT,
+                 "Can't add function parameter on an eager context.");
+    return nullptr;
+  }
+  AbstractFunction* Finalize(OutputList* outputs, TF_Status* s) override {
+    TF_SetStatus(s, TF_INVALID_ARGUMENT,
+                 "Can't use finalize function on an eager context.");
+    return nullptr;
+  }
+
   void RegisterFunction(AbstractFunction* afunc, TF_Status* s) override {
     auto* func = afunc->GetTfFunction(s);
     if (!func) {

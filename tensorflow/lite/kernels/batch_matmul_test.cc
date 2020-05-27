@@ -28,13 +28,13 @@ template <typename T>
 class BatchMatMulOpModel : public SingleOpModel {
  public:
   BatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
-                     bool adjoint_lhs = false, bool adjoint_rhs = false) {
+                     bool adj_x = false, bool adj_y = false) {
     lhs_id_ = AddInput(lhs);
     rhs_id_ = AddInput(rhs);
     output_id_ = AddOutput(lhs.type);
-    SetBuiltinOp(
-        BuiltinOperator_BATCH_MATMUL, BuiltinOptions_BatchMatMulOptions,
-        CreateBatchMatMulOptions(builder_, adjoint_lhs, adjoint_rhs).Union());
+    SetBuiltinOp(BuiltinOperator_BATCH_MATMUL,
+                 BuiltinOptions_BatchMatMulOptions,
+                 CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union());
     BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
   }
 

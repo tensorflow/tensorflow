@@ -959,7 +959,10 @@ void GenEagerPythonOp::AddDispatch(const string& prefix) {
 
   strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
   strings::StrAppend(&result_, prefix, "  result = _dispatch.dispatch(\n");
-  AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_, ", "));
+  AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_,
+                                  ", "
+                                  "(), dict("));
+  strings::StrAppend(&result_, prefix, "      )\n");
   strings::StrAppend(&result_, prefix,
                      "  if result is not "
                      "_dispatch.OpDispatcher.NOT_SUPPORTED:\n");

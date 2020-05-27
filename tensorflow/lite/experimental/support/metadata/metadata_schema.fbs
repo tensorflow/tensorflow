@@ -29,11 +29,31 @@ namespace tflite;
 // generate the model interface. It is recommended to fill in at least those
 // enties to boost the codegen performance.
 
-// This corresponds to the schema version.
+// LINT.IfChange
+
+// The Metadata schema is versioned by the Semantic versioning number, which
+// tracks the schema changes according to the Semantic versioning rules.
+//
+// ModelMetadata.min_parser_version indicates the minimum necessary metadata
+// parser version to fully understand all fields in a given metadata flatbuffer.
+//
+// New fields and types will have associated comments with the schema version for
+// which they were added.
+//
+// Schema Semantic version: 1.0.0
+
+// This indicates the flatbuffer compatibility. The number will bump up when a
+// break change is applied to the schema, such as removing fields or adding new
+// fields to the middle of a table.
 file_identifier "M001";
 // File extension of any written files.
 file_extension "tflitemeta";
 
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     /supportmetadata/java/src/java/org/tensorflow/lite/support/metadata/\
+//     MetadataExtractor.java)
+
+// LINT.IfChange
 enum AssociatedFileType : byte {
   UNKNOWN = 0,
   // Files such as readme.txt
@@ -195,7 +215,7 @@ enum CoordinateType : byte {
 
 table BoundingBoxProperties {
   // Denotes the order of the elements defined in each bounding box type. An
-  // empty index array represent the defualt order of each bounding box type.
+  // empty index array represent the default order of each bounding box type.
   // For example, to denote the default order of BOUNDARIES, {left, top, right,
   // bottom}, the index should be {0, 1, 2, 3}. To denote the order {left,
   // right, top, bottom}, the order should be {0, 2, 1, 3}.
@@ -297,12 +317,22 @@ table NormalizationOptions{
   // mean and std are normalization parameters. Tensor values are normalized
   // on a per-channel basis, by the formula
   //   (x - mean) / std.
-  // For example, a float MobileNet model will have
-  //   mean = 127.5f and std = 127.5f.
-  // A quantized MobileNet model will have
-  //   mean = 0.0f and std = 1.0f.
   // If there is only one value in mean or std, we'll propogate the value to
   // all channels.
+  //
+  // Quantized models share the same normalization parameters as their
+  // corresponding float models. For example, an image input tensor may have
+  // the normalization parameter of
+  //   mean = 127.5f and std = 127.5f.
+  // The image value will be normalized from [0, 255] to [-1, 1].
+  // Then, for quantized models, the image data should be further quantized
+  // according to the quantization parameters. In the case of uint8, the image
+  // data will be scaled back to [0, 255], while for int8, the image data will
+  // be scaled to [-128, 127].
+  //
+  // Both the normalization parameters and quantization parameters can be
+  // retrieved through the metadata extractor library.
+  // TODO(b/156644598): add link for the metadata extractor library.
 
   // Per-channel mean of the possible values used in normalization.
   //
@@ -498,6 +528,17 @@ table ModelMetadata {
 
   // A list of associated files of this model.
   associated_files:[AssociatedFile];
+
+  // The minimum metadata parser version that can fully understand the fields in
+  // the metadata flatbuffer. The version is effectively the largest version
+  // number among the versions of all the fields populated and the smallest
+  // compatible version indicated by the file identifier.
+  //
+  // This field is automaticaly populated by the MetadataPopulator when
+  // the metadata is populated into a TFLite model.
+  min_parser_version:string;
 }
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     support/metadata/cc/metadata_version.cc)
 
 root_type ModelMetadata;

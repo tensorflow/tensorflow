@@ -496,6 +496,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )

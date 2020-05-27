@@ -68,8 +68,8 @@ class HloPassFix : public Pass {
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
       if (iteration_count == kLimit) {
-        LOG(WARNING) << "Unexpectedly high number of iterations in HLO passes, "
-                        "exiting fixed point loop.";
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
+                   "exiting fixed point loop.";
         // Return false in case this is fixed point is nested.
         return false;
       }

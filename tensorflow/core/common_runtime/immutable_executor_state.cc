@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -38,9 +39,6 @@ ImmutableExecutorState::~ImmutableExecutorState() {
     if (item != nullptr) {
       params_.delete_kernel(item->kernel);
     }
-  }
-  for (auto fiter : frame_info_) {
-    delete fiter.second;
   }
 }
 
@@ -71,11 +69,16 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
 
 ImmutableExecutorState::FrameInfo* ImmutableExecutorState::EnsureFrameInfo(
     const string& fname) {
-  auto slot = &frame_info_[fname];
-  if (*slot == nullptr) {
-    *slot = new FrameInfo;
+  auto iter = frame_info_.find(fname);
+  if (iter != frame_info_.end()) {
+    return iter->second.get();
+  } else {
+    auto frame_info = absl::make_unique<FrameInfo>(fname);
+    absl::string_view fname_view = frame_info->name;
+    auto emplace_result =
+        frame_info_.emplace(fname_view, std::move(frame_info));
+    return emplace_result.first->second.get();
   }
-  return *slot;
 }
 
 Status ImmutableExecutorState::Initialize(const Graph& graph) {
@@ -89,7 +92,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     EnsureFrameInfo(it)->nodes =
         absl::make_unique<std::vector<const NodeItem*>>();
   }
-  root_frame_info_ = frame_info_[""];
+  root_frame_info_ = frame_info_[""].get();
 
   pending_ids_.resize(gview_.num_nodes());
 
@@ -157,6 +160,28 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
       TF_RETURN_IF_ERROR(
           GetNodeAttr(n->attrs(), "is_constant", &is_constant_enter));
       item->is_constant_enter = is_constant_enter;
+
+      string frame_name;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &frame_name));
+      FrameInfo* frame_info = frame_info_[frame_name].get();
+
+      int parallel_iterations;
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), "parallel_iterations", &parallel_iterations));
+
+      if (frame_info->parallel_iterations == -1) {
+        frame_info->parallel_iterations = parallel_iterations;
+      } else if (frame_info->parallel_iterations != parallel_iterations) {
+        LOG(WARNING) << "Loop frame \"" << frame_name
+                     << "\" had two different values for parallel_iterations: "
+                     << frame_info->parallel_iterations << " vs. "
+                     << parallel_iterations << ".";
+      }
+
+      if (enter_frame_info_.size() <= id) {
+        enter_frame_info_.resize(id + 1);
+      }
+      enter_frame_info_[id] = frame_info;
     } else {
       item->is_constant_enter = false;
     }

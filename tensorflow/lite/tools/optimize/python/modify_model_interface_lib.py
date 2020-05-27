@@ -74,6 +74,6 @@ def modify_model_interface(input_file, output_file, input_type, output_type):
   # Throw an exception if the return status is an error.
   if status != 0:
     raise RuntimeError(
-        'Error occured when trying to modify the model input type from float '
+        'Error occurred when trying to modify the model input type from float '
         'to {input_type} and output type from float to {output_type}.'.format(
             input_type=input_type, output_type=output_type))

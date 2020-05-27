@@ -40,10 +40,10 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Analysis/Verifier.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -57,6 +57,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
@@ -65,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -109,6 +112,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 
 namespace tensorflow {
+using mlir::NamedAttrList;
 using mlir::TensorType;
 using mlir::TF::VarHandleOp;
 using mlir::tf_saved_model::GlobalTensorOp;
@@ -306,9 +310,9 @@ class ImporterBase {
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
   // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
-  Status ConvertFunctionCallAttribute(
-      const std::string& base_name, const AttrValue& value,
-      llvm::SmallVector<mlir::NamedAttribute, 4>* attributes);
+  Status ConvertFunctionCallAttribute(const std::string& base_name,
+                                      const AttrValue& value,
+                                      NamedAttrList* attributes);
 
   // Helper to create either a tf_executor operation or a TF operation wrapped
   // in an island. When convert_to_legacy_call is true, converts the operation
@@ -974,7 +978,6 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
     if (dtype == DT_RESOURCE) {
       const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
       const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
-      LOG(INFO) << dtype_attr << " " << shape_attr;
       if (dtype_attr && shape_attr) {
         if (dtype_attr->list().type().empty()) {
           return errors::InvalidArgument(
@@ -1089,9 +1092,9 @@ StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
   return subtypes;
 }
 
-Status ImporterBase::ConvertFunctionCallAttribute(
-    const std::string& base_name, const AttrValue& value,
-    llvm::SmallVector<mlir::NamedAttribute, 4>* attributes) {
+Status ImporterBase::ConvertFunctionCallAttribute(const std::string& base_name,
+                                                  const AttrValue& value,
+                                                  NamedAttrList* attributes) {
   TF_ASSIGN_OR_RETURN(auto func_attr,
                       ConvertFunctionCallName(value.func().name()));
   attributes->push_back(builder_.getNamedAttr(base_name, func_attr));
@@ -1165,8 +1168,18 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
       return builder_.getArrayAttr(
           llvm::makeArrayRef(attrs.begin(), attrs.end()));
     }
-    case AttrValue::kFunc:
-      return errors::Unknown("kFunc type should be handled separately!");
+    case AttrValue::kFunc: {
+      // TODO(b/156546237): Unify kFunc/NameAttrList attribute representation.
+      // Currently kFunc/NameAttrList attributes in a kList/repeated AttrValue
+      // will not use this representation.
+      NamedAttrList attrs;
+      for (const auto& func_attr : value.func().attr()) {
+        TF_ASSIGN_OR_RETURN(auto attr, ConvertAttributeValue(func_attr.second));
+        attrs.push_back(builder_.getNamedAttr(func_attr.first, attr));
+      }
+      auto func_attrs = builder_.getDictionaryAttr(attrs);
+      return mlir::TF::FuncAttr::get(context_, value.func().name(), func_attrs);
+    }
     case AttrValue::VALUE_NOT_SET:
       return builder_.getUnitAttr();
     // kPlaceholder is not implemented.
@@ -1817,6 +1830,8 @@ Status ImporterBase::ConvertNode(const Node& node) {
   absl::c_stable_sort(in_edges, [](const Edge* e1, const Edge* e2) {
     if (e1->IsControlEdge() && !e2->IsControlEdge()) return false;
     if (!e1->IsControlEdge() && e2->IsControlEdge()) return true;
+    if (e1->IsControlEdge() && e2->IsControlEdge())
+      return e1->src()->id() < e2->src()->id();
     return e1->dst_input() < e2->dst_input();
   });
 
@@ -2426,8 +2441,8 @@ class SavedModelObjectGraphImporter : public ImporterBase {
   // Main entry point: converts all functions in the given meta graph to an MLIR
   // Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
-      SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-      absl::Span<std::string> exported_names, bool add_default_attributes);
+      SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
+      mlir::MLIRContext* context, bool add_default_attributes);
 
  private:
   explicit SavedModelObjectGraphImporter(
@@ -3127,8 +3142,8 @@ Status CreateSavedModelIR(
 }
 
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
-    SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, bool add_default_attributes) {
+    SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
+    mlir::MLIRContext* context, bool add_default_attributes) {
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
@@ -3205,17 +3220,20 @@ class SavedModelSignatureDefImporter {
  public:
   // Main entry point: converts all functions (specified by SignatureDefs) in
   // the given meta graph to an MLIR Module.
-  static StatusOr<mlir::OwningModuleRef> Convert(const SavedModelBundle& bundle,
-                                                 mlir::MLIRContext* context) {
-    SavedModelSignatureDefImporter importer(bundle, context);
+  static StatusOr<mlir::OwningModuleRef> Convert(
+      const SavedModelBundle& bundle, absl::Span<std::string> exported_names,
+      mlir::MLIRContext* context) {
+    SavedModelSignatureDefImporter importer(bundle, exported_names, context);
 
     return importer.ConvertSignatures();
   }
 
  private:
   SavedModelSignatureDefImporter(const SavedModelBundle& bundle,
+                                 absl::Span<std::string> exported_names,
                                  mlir::MLIRContext* context)
       : bundle_(bundle),
+        exported_names_(exported_names),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(context))) {}
 
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
@@ -3248,6 +3266,7 @@ class SavedModelSignatureDefImporter {
       const std::vector<std::pair<std::string, TensorInfo>>& inputs);
 
   const SavedModelBundle& bundle_;
+  absl::Span<std::string> exported_names_;
   mlir::OwningModuleRef module_;
 };
 
@@ -3263,6 +3282,9 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
   GraphDebugInfo debug_info;
   if (bundle_.debug_info != nullptr) debug_info = *bundle_.debug_info;
 
+  llvm::StringSet<> exported_name_set;
+  exported_name_set.insert(exported_names_.begin(), exported_names_.end());
+
   for (const auto& key_and_signature_def : signatures) {
     const std::string& sig_def_key = key_and_signature_def.first;
     const SignatureDef& signature_def = key_and_signature_def.second;
@@ -3270,6 +3292,10 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
     // It is safe to skip "__saved_model_init_op" since it is an internal
     // signature that is not user-accessible.
     if (sig_def_key == "__saved_model_init_op") {
+      continue;
+    }
+    if (!exported_name_set.empty() &&
+        exported_name_set.count(sig_def_key) == 0) {
       continue;
     }
 
@@ -3554,12 +3580,14 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, bool add_default_attributes) {
   return SavedModelObjectGraphImporter::Convert(
-      saved_model, context, exported_names, add_default_attributes);
+      saved_model, exported_names, context, add_default_attributes);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(
-    const SavedModelBundle& saved_model, mlir::MLIRContext* context) {
-  return SavedModelSignatureDefImporter::Convert(saved_model, context);
+    const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
+    mlir::MLIRContext* context) {
+  return SavedModelSignatureDefImporter::Convert(saved_model, exported_names,
+                                                 context);
 }
 
 std::string MlirModuleToString(mlir::ModuleOp module, bool show_debug_info) {

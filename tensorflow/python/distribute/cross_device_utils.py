@@ -337,10 +337,12 @@ def build_collective_reduce(input_tensors,
                             reduction_op='Add',
                             unary_op='Id',
                             communication_hint='AUTO',
-                            control_inputs=None):
+                            control_inputs=None,
+                            executors=None):
   """Build a subgraph that does one full all-reduce, using the collective Op.
 
-  This method must be called in graph mode or inside a tf.function.
+  If called in eager mode, it's required to supply a list of async executors for
+  each input Tensor.
 
   Args:
     input_tensors: tensors within a single worker graph that are to be reduced
@@ -355,6 +357,7 @@ def build_collective_reduce(input_tensors,
       implementation.
     control_inputs: if not None, add control edges between control_inputs and
       (index-wise) corresponding collective_reduce tensors
+    executors: a list of async executor. Required for eager execution.
 
   Returns:
     An array of final tensors, one per device, computed by the full reduction.
@@ -362,9 +365,11 @@ def build_collective_reduce(input_tensors,
   Raises:
     ValueError: There must be at least two tensors over all the workers.
   """
-  assert not context.executing_eagerly(), (
-      'build_collective_reduce can only be called in graph mode or inside '
-      'tf.function')
+  if context.executing_eagerly():
+    if (not executors or len(executors) != len(input_tensors) or
+        not all(e.is_async() for e in executors)):
+      raise ValueError(
+          'collectives requires async executors for each device in eager mode')
 
   group_size = len(input_tensors) * num_workers
   if group_size < 2:
@@ -375,15 +380,19 @@ def build_collective_reduce(input_tensors,
 
   out_tensors = []
   for idx, input_tensor in enumerate(input_tensors):
-    with ops.device(input_tensor.device):
-      with ops.control_dependencies(
-          _control_input(input_tensors, control_inputs, idx)):
-        out_tensor = collective_ops.all_reduce(input_tensor, group_size,
-                                               group_key, instance_key,
-                                               reduction_op, unary_op,
-                                               subdiv_offsets,
-                                               communication_hint)
-      out_tensors.append(out_tensor)
+    if context.executing_eagerly():
+      executor_scope = context.executor_scope(executors[idx])
+    else:
+      executor_scope = ops.NullContextmanager()
+    with executor_scope, \
+         ops.device(input_tensor.device), \
+         ops.control_dependencies(
+             _control_input(input_tensors, control_inputs, idx)):
+      out_tensor = collective_ops.all_reduce(input_tensor, group_size,
+                                             group_key, instance_key,
+                                             reduction_op, unary_op,
+                                             subdiv_offsets, communication_hint)
+    out_tensors.append(out_tensor)
   return out_tensors
 
 

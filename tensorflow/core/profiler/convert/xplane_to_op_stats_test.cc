@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -179,6 +183,18 @@ TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
   const auto& not_traced_mode = metrics.at(NOT_TRACED_MODE);
   EXPECT_EQ(not_traced_mode.count(), 1);
   EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
+}
+
+TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
+  XSpace space;
+  static constexpr char kError[] = "host: error";
+  *space.add_errors() = kError;
+  *space.add_errors() = kError;
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+
+  EXPECT_EQ(1, op_stats.errors_size());
+  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
 }
 
 }  // namespace

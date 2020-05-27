@@ -2979,6 +2979,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
+    self.assertListEqual([m.name for m in model.metrics],
+                         ['metric_1', 'metric_2'])
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(0.01),
@@ -2997,6 +2999,41 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.predict(x, batch_size=5)
     model.train_on_batch(x, y)
     model.test_on_batch(x, y)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_multiple_add_metric_calls_layer(self):
+
+    class TestLayer(layers_module.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__(name='test_layer')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
+        self.m1 = metrics_module.Mean(name='m_1')
+        self.m2 = [
+            metrics_module.Mean(name='m_2'),
+            metrics_module.Mean(name='m_3')
+        ]
+        self.m3 = {
+            'mean4': metrics_module.Mean(name='m_4'),
+            'mean5': metrics_module.Mean(name='m_5')
+        }
+
+      def call(self, x):
+        self.add_metric(self.m2[0](x))
+        self.add_metric(self.m2[1](x))
+        self.add_metric(self.m1(x))
+        self.add_metric(self.m3['mean4'](x))
+        self.add_metric(self.m3['mean5'](x))
+        self.add_metric(math_ops.reduce_sum(x), name='m_6', aggregation='mean')
+        return self.dense1(x)
+
+    layer = TestLayer()
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5'])
+
+    layer(np.ones((10, 10)))
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5', 'm_6'])
 
   @keras_parameterized.run_all_keras_modes
   def test_duplicate_metric_name_in_add_metric(self):

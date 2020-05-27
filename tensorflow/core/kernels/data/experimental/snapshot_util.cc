@@ -18,6 +18,7 @@ limitations under the License.
 #include <queue>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
@@ -43,6 +45,12 @@ namespace snapshot_util {
 
 /* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
 /* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+
+std::string GetCurrentCheckpointFile(const std::string& shard_directory,
+                                     const uint64 current_checkpoint_id) {
+  return io::JoinPath(shard_directory,
+                      absl::StrFormat("%08d.snapshot", current_checkpoint_id));
+}
 
 Writer::Writer(const std::string& filename, const std::string& compression_type,
                int version, const DataTypeVector& dtypes)
@@ -62,7 +70,7 @@ Status Writer::Create(Env* env, const std::string& filename,
 }
 
 Status Writer::Initialize(tensorflow::Env* env) {
-  TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 #if defined(IS_SLIM_BUILD)
   if (compression_type_ != io::compression::kNone) {
     LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
@@ -225,16 +233,17 @@ Status Reader::Create(Env* env, const std::string& filename,
 
 class Reader::Dataset : public DatasetBase {
  public:
-  explicit Dataset(const std::string& filename, const std::string& compression,
+  explicit Dataset(const std::string& shard_dir, const std::string& compression,
                    const int64 version, const DataTypeVector& dtypes,
                    const std::vector<PartialTensorShape>& shapes,
-                   DatasetContext::Params params)
+                   const int64 start_index, DatasetContext::Params params)
       : DatasetBase(DatasetContext(std::move(params))),
-        filename_(filename),
+        shard_dir_(shard_dir),
         compression_(compression),
         version_(version),
         dtypes_(dtypes),
-        shapes_(shapes) {}
+        shapes_(shapes),
+        start_index_(start_index) {}
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
 
@@ -252,7 +261,8 @@ class Reader::Dataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** node) const override {
-    // TODO(frankchn): Implement for serialization and checkpointing.
+    // Not necessary perform any serialization as this dataset is only
+    // constructed at runtime in C++ and will be reconstructed every time.
     return Status::OK();
   }
 
@@ -263,21 +273,29 @@ class Reader::Dataset : public DatasetBase {
   }
 
  private:
-  std::string filename_;
-  std::string compression_;
-  int64 version_;
-  DataTypeVector dtypes_;
-  std::vector<PartialTensorShape> shapes_;
+  const std::string shard_dir_;
+  const std::string compression_;
+  const int64 version_;
+  const DataTypeVector dtypes_;
+  const std::vector<PartialTensorShape> shapes_;
+  const int64 start_index_;
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<Dataset>(params), current_checkpoint_id_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return Reader::Create(ctx->env(), dataset()->filename_,
-                            dataset()->compression_, dataset()->version_,
-                            dataset()->dtypes_, &reader_);
+      TF_RETURN_IF_ERROR(Reader::Create(
+          ctx->env(), GetCurrentFilename(), dataset()->compression_,
+          dataset()->version_, dataset()->dtypes_, &reader_));
+      bool end_of_sequence;
+      for (int64 i = 0; i < dataset()->start_index_; ++i) {
+        // TODO(frankchn): Optimize this to not parse every single element.
+        std::vector<Tensor> unused;
+        TF_RETURN_IF_ERROR(GetNextInternal(ctx, &unused, &end_of_sequence));
+      }
+      return Status::OK();
     }
 
    protected:
@@ -286,27 +304,53 @@ class Reader::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       *end_of_sequence = false;
       Status s = reader_->ReadTensors(out_tensors);
-      if (errors::IsOutOfRange(s)) {
+      if (!errors::IsOutOfRange(s)) {
+        return s;
+      }
+      Status status = AdvanceToNextFile(ctx->env());
+      if (errors::IsNotFound(status)) {
         *end_of_sequence = true;
         return Status::OK();
+      } else {
+        return status;
       }
-      return s;
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      // TODO(frankchn): Implement for serialization and checkpointing.
+      // Not necessary to save any state as this iterator will be reconstructed
+      // from scratch when the parent snapshot dataset is restored from
+      // checkpoint.
       return Status::OK();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      // TODO(frankchn): Implement for serialization and checkpointing.
+      // Not necessary to restore any state as this iterator will be
+      // reconstructed from scratch when the parent snapshot dataset is restored
+      // from checkpoint.
       return Status::OK();
     }
 
    private:
     std::unique_ptr<Reader> reader_;
+
+    // Stores the id current checkpoint file that we are in the process of
+    // reading (e.g. if the file is currently 00000001.snapshot, then this will
+    // be 1).
+    uint64 current_checkpoint_id_;
+
+    std::string GetCurrentFilename() {
+      return GetCurrentCheckpointFile(dataset()->shard_dir_,
+                                      current_checkpoint_id_);
+    }
+
+    Status AdvanceToNextFile(Env* env) {
+      current_checkpoint_id_++;
+      TF_RETURN_IF_ERROR(env->FileExists(GetCurrentFilename()));
+      return Reader::Create(env, GetCurrentFilename(), dataset()->compression_,
+                            dataset()->version_, dataset()->dtypes_, &reader_);
+    }
   };
 };
 
@@ -337,7 +381,8 @@ class Reader::NestedDataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** node) const override {
-    // TODO(frankchn): Implement for serialization and checkpointing.
+    // Not necessary perform any serialization as this dataset is only
+    // constructed at runtime in C++ and will be reconstructed every time.
     return Status::OK();
   }
 
@@ -377,13 +422,17 @@ class Reader::NestedDataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      // TODO(frankchn): Implement for serialization and checkpointing.
+      // Not necessary to save any state as this iterator will be reconstructed
+      // from scratch when the parent snapshot dataset is restored from
+      // checkpoint.
       return Status::OK();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      // TODO(frankchn): Implement for serialization and checkpointing.
+      // Not necessary to restore any state as this iterator will be
+      // reconstructed from scratch when the parent snapshot dataset is restored
+      // from checkpoint.
       return Status::OK();
     }
 
@@ -393,20 +442,35 @@ class Reader::NestedDataset : public DatasetBase {
 };
 
 Status Reader::MakeNestedDataset(Env* env,
-                                 const std::vector<std::string>& filenames,
+                                 const std::vector<std::string>& shard_dirs,
                                  const string& compression_type, int version,
                                  const DataTypeVector& dtypes,
                                  const std::vector<PartialTensorShape>& shapes,
+                                 const int64 start_index,
                                  DatasetBase** output) {
   std::vector<DatasetBase*> datasets;
 
-  datasets.reserve(filenames.size());
-  for (const auto& filename : filenames) {
+  datasets.reserve(shard_dirs.size());
+  for (const auto& shard_dir : shard_dirs) {
+    // TODO(frankchn): The reading pattern could be controlled in a non-round
+    // robin fashion, so we cannot assume a round-robin manner when restoring.
+    int64 dataset_start_index = start_index / shard_dirs.size();
+    if (start_index % shard_dirs.size() > datasets.size()) {
+      dataset_start_index++;
+    }
+
     datasets.push_back(
-        new Dataset(filename, compression_type, version, dtypes, shapes,
+        new Dataset(shard_dir, compression_type, version, dtypes, shapes,
+                    dataset_start_index,
                     DatasetContext::Params({"snapshot_util::Reader::Dataset",
                                             "snapshot_util_reader_Dataset"})));
   }
+
+  // Rotate the vector such that the first dataset contains the next element
+  // to be produced.
+  std::rotate(datasets.begin(),
+              datasets.begin() + (start_index % shard_dirs.size()),
+              datasets.end());
 
   *output = new NestedDataset(
       datasets, DatasetContext::Params({"snapshot_util::Reader::NestedDataset",
@@ -463,6 +527,15 @@ Status Reader::Initialize(Env* env) {
   return Status::OK();
 }
 
+Status Reader::SkipRecords(int64 num_records) {
+  // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
+  for (int i = 0; i < num_records; ++i) {
+    std::vector<Tensor> unused_tensors;
+    TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
+  }
+  return Status::OK();
+}
+
 Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
   profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
@@ -503,12 +576,10 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
 #if defined(PLATFORM_GOOGLE)
-      auto tensor_proto_ptr = tensor_proto_str.release();
-      absl::Cord c;
-      c.AppendExternalMemory(
-          absl::string_view(tensor_proto_ptr, tensor_proto_size),
-          tensor_proto_ptr,
-          [](void* arg) { delete[] static_cast<char*>(arg); });
+      absl::string_view tensor_proto_view(tensor_proto_str.get(),
+                                          tensor_proto_size);
+      absl::Cord c = absl::MakeCordFromExternal(
+          tensor_proto_view, [s = std::move(tensor_proto_str)] {});
       if (!tp.ParseFromCord(c)) {
         return errors::Internal("Could not parse TensorProto");
       }
@@ -615,11 +686,9 @@ Status Reader::ReadRecord(absl::Cord* record) {
   } else {
     auto tmp_str = absl::make_unique<tstring>();
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
-    tstring* tmp_str_raw = tmp_str.release();
-    record->AppendExternalMemory(*tmp_str_raw, tmp_str_raw,
-                                 [](absl::string_view unused_data, void* arg) {
-                                   delete static_cast<tstring*>(arg);
-                                 });
+    absl::string_view tmp_str_view(*tmp_str);
+    record->Append(
+        absl::MakeCordFromExternal(tmp_str_view, [s = std::move(tmp_str)] {}));
     return Status::OK();
   }
 }

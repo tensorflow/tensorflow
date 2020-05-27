@@ -160,6 +160,11 @@ int main(int argc, char **argv) {
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
 
+    if (exported_names.size() != 1) {
+      llvm::errs() << "There should be only one exported name";
+      return kTrFailure;
+    }
+
     module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
                                           tags, exported_names, &context);
   } else {

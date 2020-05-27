@@ -782,4 +782,22 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   return graphdef;
 }
 
+stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
+    mlir::FuncOp func, const GraphExportConfig& configs,
+    FunctionDef* function_def) {
+  Dialect* tf_dialect = func.getContext()->getRegisteredDialect("tf");
+  FunctionDefLibrary flib;
+  TF_RETURN_IF_ERROR(
+      Exporter::ConvertLibFunction(configs, tf_dialect, func, &flib));
+  for (auto& func_def : flib.function()) {
+    if (func_def.signature().name() == func.getName()) {
+      *function_def = func_def;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument(
+      "Function couldn't be found in the FunctionDefLibrary after converting "
+      "from MLIR");
+}
+
 }  // namespace tensorflow

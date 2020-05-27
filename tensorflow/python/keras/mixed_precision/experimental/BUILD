@@ -251,6 +251,7 @@ py_test(
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",
