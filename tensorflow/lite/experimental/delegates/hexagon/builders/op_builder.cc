@@ -23,7 +23,8 @@ namespace tflite {
 namespace delegates {
 namespace hexagon {
 
-OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
+OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
+                                                     TfLiteNode* node) {
   switch (op_type) {
     case kTfLiteBuiltinAdd:
       return CreateArithmeticBuilder(this, OP_QuantizedAdd_8p8to8);
@@ -45,8 +46,14 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreatePadBuilder(this, OP_QuantizedPad_8);
     case kTfLiteBuiltinMirrorPad:
       return CreateMirrorPadBuilder(this, OP_MirrorPad_8);
-    case kTfLiteBuiltinFullyConnected:
-      return CreateMatMulBuilder(this, OP_QuantizedMatMul_8x8to32);
+    case kTfLiteBuiltinFullyConnected: {
+      const auto& weights_tensor = context_->tensors[node->inputs->data[1]];
+      if (weights_tensor.allocation_type == kTfLiteMmapRo)
+        return CreateMatMulWithConstWeightsOpBuilder(
+            this, OP_QuantizedMatMul_8x8to32);
+      else
+        return CreateMatMulOpBuilder(this, OP_Transpose_8);
+    }
     case kTfLiteBuiltinAveragePool2d:
       return CreatePool2DBuilder(this, OP_QuantizedAvgPool_8);
     case kTfLiteBuiltinMaxPool2d:
@@ -271,7 +278,7 @@ OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
 
 OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
                                              int tflite_node_index) {
-  OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
+  OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type, node);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
   op->SetTFLiteNodeId(tflite_node_index);

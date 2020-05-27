@@ -198,22 +198,20 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       if (!InputsWithCorrectTypes(node, context,
                                   {{kTfLiteUInt8, kTfLiteInt8},
                                    {kTfLiteUInt8, kTfLiteInt8},
-                                   {kTfLiteInt32, kTfLiteNoType}}))
+                                   {kTfLiteInt32, kTfLiteNoType}})) {
         return false;
+      }
 
-      const auto& weights_tensor = context->tensors[node->inputs->data[1]];
       bool bias_const_or_no_bias = true;
       if (node->inputs->data[2] != -1) {
         const auto& bias_tensor = context->tensors[node->inputs->data[2]];
         bias_const_or_no_bias = bias_tensor.allocation_type == kTfLiteMmapRo;
       }
-      const bool weights_const =
-          weights_tensor.allocation_type == kTfLiteMmapRo;
 
       const TfLiteFullyConnectedParams* matmul_params =
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
-      return (weights_const && bias_const_or_no_bias &&
+      return (bias_const_or_no_bias &&
               matmul_params->activation == kTfLiteActNone &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
