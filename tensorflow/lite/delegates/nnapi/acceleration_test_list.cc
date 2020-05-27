@@ -258,6 +258,8 @@ NegOpModel/.+,29
 QuantizedPadOpTest/.+,29
 QuantizedPadV2OpTest/.+,29
 PadOpTest/.+,29
+# 16-bit tests are not supported
+-QuantizedPadOpTest/Int16.+
 
 # pooling_test
 FloatPoolingOpTest/L2PoolActivationRelu.*,29
