@@ -98,6 +98,9 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
+      "https://www.tensorflow.org/guide/data_performance_analysis",
+      "Analyze tf.data performance with the TF Profiler");
+  *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
       "https://www.tensorflow.org/guide/"
       "data_performance",
       "Better performance with the tf.data API");
