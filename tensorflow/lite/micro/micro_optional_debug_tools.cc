@@ -122,9 +122,8 @@ void PrintModelData(const Model* model, ErrorReporter* error_reporter) {
   const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
     model->buffers();
   TF_LITE_REPORT_ERROR(error_reporter, "==== Model info: =====");
-  for (int i = 0; i < tensors->size(); ++i) {
+  for (size_t i = 0; i < tensors->size(); ++i) {
     const tflite::Tensor& flatbuffer_tensor = *tensors->Get(i);
-    auto* quantization = flatbuffer_tensor.quantization();
     size_t type_size, tensor_size;
     auto* buffer = (*buffers)[flatbuffer_tensor.buffer()];
     auto* array = buffer->data();

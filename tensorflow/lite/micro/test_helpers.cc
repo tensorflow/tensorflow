@@ -308,10 +308,8 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
       model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
                                /* version= */ 0);
 
-  int tensors[number_of_tensors];
-
   for (int i = 0; i < number_of_tensors; ++i) {
-    tensors[i] = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
+    model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   }
 
   for (int i = 0; i < num_conns; ++i) {

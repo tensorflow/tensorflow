@@ -292,7 +292,7 @@ size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
   if (buffer_count_ == 0) {
     return 0;
   }
-  ListEntry* entry = &buffers_sorted_by_offset_[0];
+  ListEntry* entry = &buffers_sorted_by_offset_[first_entry_index_];
   size_t max_size = 0;
   while (entry) {
     BufferRequirements* requirements =

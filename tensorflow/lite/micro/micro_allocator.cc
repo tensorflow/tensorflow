@@ -91,7 +91,7 @@ TfLiteStatus AllocateVariables(
 TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
                                         ErrorReporter* error_reporter) {
   if (model->metadata()) {
-    for (int i = 0; i < model->metadata()->size(); ++i) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
       if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
                   strlen(kOfflineMemAllocMetadata)) == 0) {
@@ -115,11 +115,11 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
                              "Offline planner metadata found, version %d, "
                              "subgraph %d, nbr offline offsets %d",
                              version, subgraph_idx, nbr_offline_offsets);
-        for (int i = 0; i < nbr_offline_offsets; ++i) {
+        for (int j = 0; j < nbr_offline_offsets; ++j) {
           TF_LITE_REPORT_ERROR(
               error_reporter,
-              "Offline planner tensor index %d, offline offset: %d", i,
-              offline_planner_offsets[i]);
+              "Offline planner tensor index %d, offline offset: %d", j,
+              offline_planner_offsets[j]);
         }
 
         if (version != 1) {
@@ -302,7 +302,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
     const Model* model, int32_t** offline_planner_offsets) {
   if (model->metadata()) {
-    for (int i = 0; i < model->metadata()->size(); ++i) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
       if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
                   strlen(kOfflineMemAllocMetadata)) == 0) {
@@ -311,7 +311,7 @@ TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
         auto* buffer = (*buffers)[metadata->buffer()];
         auto* array = buffer->data();
         const uint32_t* metadata_buffer = (uint32_t*)array->data();
-        const int32_t nbr_tensors = metadata_buffer[2];
+        const size_t nbr_tensors = (size_t)metadata_buffer[2];
         *offline_planner_offsets = (int32_t*)&metadata_buffer[3];
 
         if (tensor_count_ != nbr_tensors) {
@@ -339,6 +339,7 @@ TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
     current->first_created = handle->node_idx;
     current->last_used = handle->node_idx;
     current->needs_allocating = true;
+    current->offline_offset = kOnlinePlannedBuffer;
   }
   return kTfLiteOk;
 }
