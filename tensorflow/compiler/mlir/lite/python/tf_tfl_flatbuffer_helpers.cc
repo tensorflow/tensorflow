@@ -254,7 +254,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
   std::string error_message;
   auto output = mlir::openOutputFile(filename, &error_message);
   if (!error_message.empty()) {
-    return errors::InvalidArgument("Failed to open file in %s.", filename);
+    return errors::InvalidArgument("Failed to open file in ", filename);
   }
   mlir::PassManager pm(module.getContext());
   pm.addPass(mlir::createPrintOpGraphPass(output->os()));
