@@ -224,7 +224,10 @@ cc_library(
     hdrs = [
         "ir/tf_attributes.h",
     ],
-    deps = ["@llvm-project//mlir:IR"],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
 )
 
 cc_library(
@@ -427,6 +430,7 @@ cc_library(
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/readonly_references_to_resources.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
         "transforms/resource_device_inference.cc",
@@ -555,8 +559,7 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:Shape",
     ],
     alwayslink = 1,
 )
@@ -785,6 +788,9 @@ cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         ":tensorflow_types",
         "//tensorflow/core:framework",

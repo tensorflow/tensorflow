@@ -25,6 +25,7 @@ import itertools
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -358,7 +359,8 @@ class Functional(training_lib.Model):
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
     output_tensors = self._run_internal_graph(inputs, mask=mask)
-    return nest.map_structure(lambda t: t._keras_mask, output_tensors)
+    return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
+                              output_tensors)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -534,34 +536,38 @@ class Functional(training_lib.Model):
 
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
-    # Shape handling (only for non-CompositeTensors).
-    if isinstance(tensor, ops.Tensor) and isinstance(ref_input, ops.Tensor):
+    if isinstance(tensor, ops.Tensor):
       # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
       # shape specified by the `keras.Input`.
-      if tensor.shape.rank is not None and ref_input.shape.rank is not None:
-        should_squeeze_last_dim = (
-            tensor.shape.rank == ref_input.shape.rank + 1 and
-            tensor.shape[-1] == 1)
-        should_expand_last_dim = (
-            tensor.shape.rank == ref_input.shape.rank - 1 and
-            ref_input.shape[-1] == 1)
-        if should_squeeze_last_dim:
+      t_shape = tensor.shape
+      t_rank = t_shape.rank
+      ref_shape = ref_input.shape
+      ref_rank = ref_shape.rank
+      if t_rank is not None and ref_rank is not None:
+        # Should squeeze last dimension.
+        # True if tensor is (BATCH, ..., 1) and reference is (BATCH, ...).
+        if (t_rank == ref_rank + 1 and t_shape[-1] == 1):
           tensor = array_ops.squeeze_v2(tensor, axis=-1)
-        elif should_expand_last_dim:
+        # Should expand last_dimension.
+        # True if tensor is (BATCH, ...) and reference is (BATCH, ..., 1).
+        elif (t_rank == ref_rank - 1 and ref_shape[-1] == 1):
           tensor = array_ops.expand_dims_v2(tensor, axis=-1)
 
-      # Add shape hints to Tensors that might have None shape dims but have
-      # shapes defined by the `keras.Input`.
-      try:
-        tensor.set_shape(tensor.shape.merge_with(ref_input.shape))
-      except ValueError:
-        logging.warning(
-            'Model was constructed with shape {} for input {}, but it was '
-            'called on an input with incompatible shape {}.'.format(
-                ref_input.shape, ref_input, tensor.shape))
+      # Add shape hints to Tensors that may have None shape dims but have shapes
+      # defined by the `keras.Input` (not applicable in eager mode).
+      if not context.executing_eagerly():
+        try:
+          tensor.set_shape(tensor.shape.merge_with(ref_input.shape))
+        except ValueError:
+          logging.warning(
+              'Model was constructed with shape {} for input {}, but it was '
+              'called on an input with incompatible shape {}.'.format(
+                  ref_input.shape, ref_input, tensor.shape))
 
-    # Dtype handling.
-    if isinstance(ref_input, (ops.Tensor, composite_tensor.CompositeTensor)):
+      # Dtype casting.
+      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+    elif isinstance(tensor, composite_tensor.CompositeTensor):
+      # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
 
     return tensor

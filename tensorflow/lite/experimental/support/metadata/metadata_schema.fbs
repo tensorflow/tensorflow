@@ -317,12 +317,22 @@ table NormalizationOptions{
   // mean and std are normalization parameters. Tensor values are normalized
   // on a per-channel basis, by the formula
   //   (x - mean) / std.
-  // For example, a float MobileNet model will have
-  //   mean = 127.5f and std = 127.5f.
-  // A quantized MobileNet model will have
-  //   mean = 0.0f and std = 1.0f.
   // If there is only one value in mean or std, we'll propogate the value to
   // all channels.
+  //
+  // Quantized models share the same normalization parameters as their
+  // corresponding float models. For example, an image input tensor may have
+  // the normalization parameter of
+  //   mean = 127.5f and std = 127.5f.
+  // The image value will be normalized from [0, 255] to [-1, 1].
+  // Then, for quantized models, the image data should be further quantized
+  // according to the quantization parameters. In the case of uint8, the image
+  // data will be scaled back to [0, 255], while for int8, the image data will
+  // be scaled to [-128, 127].
+  //
+  // Both the normalization parameters and quantization parameters can be
+  // retrieved through the metadata extractor library.
+  // TODO(b/156644598): add link for the metadata extractor library.
 
   // Per-channel mean of the possible values used in normalization.
   //

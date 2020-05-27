@@ -1394,6 +1394,65 @@ def _error_prefix(name):
   return "" if name is None else "%s: " % name
 
 
+def pack_eager_tensors(tensors, ctx=None):
+  """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+  Args:
+    tensors: a list of EagerTensors to pack.
+    ctx: context.context().
+
+  Returns:
+    A packed EagerTensor.
+  """
+  if not isinstance(tensors, list):
+    raise TypeError("tensors must be a list or a tuple: %s" % tensors)
+
+  if not tensors:
+    raise ValueError("Empty tensors is unexpected for packing.")
+
+  dtype = tensors[0].dtype
+  shape = tensors[0].shape
+  handle_data = tensors[0]._handle_data  # pylint: disable=protected-access
+  is_resource = dtype == dtypes.resource
+  for i in range(len(tensors)):
+    t = tensors[i]
+    if not isinstance(t, EagerTensor):
+      raise TypeError("tensors must be a list of EagerTensors: %s" % t)
+
+    if t.dtype != dtype:
+      raise ValueError(
+          "All tensors being packed should have the same dtype %s, "
+          "but the %d-th tensor is of dtype %s" % (dtype, i, t.dtype))
+    if t.shape != shape:
+      raise ValueError(
+          "All tensors being packed should have the same shape %s, "
+          "but the %d-th tensor is of shape %s" % (shape, i, t.shape))
+    # pylint: disable=protected-access
+    if is_resource and t._handle_data != handle_data:
+      raise ValueError(
+          "All tensors being packed should have the same handle data %s, "
+          "but the %d-th tensor is of handle data %s" %
+          (handle_data, i, t._handle_data))
+    # pylint: enable=protected-access
+
+  if ctx is None:
+    ctx = context.context()
+
+  # Propogate handle data for resource variables
+  packed_tensor = ctx.pack_eager_tensors(tensors)
+  if handle_data is not None:
+    packed_tensor._handle_data = handle_data  # pylint: disable=protected-access
+
+  def grad_fun(_):
+    raise ValueError(
+        "Gradients through pack_eager_tensors are not supported yet.")
+
+  tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
+                        grad_fun)
+
+  return packed_tensor
+
+
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,

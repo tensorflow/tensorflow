@@ -17,5 +17,6 @@
     {
       "name": "file1"
     }
-  ]
+  ],
+  "min_parser_version": "1.0.0"
 }

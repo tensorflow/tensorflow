@@ -81,6 +81,8 @@ message OverviewPageRecommendation {
   // A statement for input that recommends the next steps for investigating the
   // bottleneck.
   string statement = 2;
+  // A list of tips for tackling input bottleneck.
+  repeated OverviewPageTip input_tips = 11;
   // A statement for output that recommends the next steps for investigating the
   // bottleneck.
   string output_statement = 9;

@@ -207,6 +207,68 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
+def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
+  let summary = "Yield operation";
+  let description = [{
+    The "yield" operation represents a return operation within the conditional
+    and body of structured control flow (e.g., if and while). The operation
+    takes a variable number of operands and produces no results. The number and
+    types of inputs must match the signature of the operation that contains the
+    region.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_IfRegionOp : TF_Op<"IfRegion",
+      [SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "output = cond ? then_branch output : else_branch output";
+
+  let description = [{
+"output = cond ? then_branch output : else_branch output"
+
+cond: A Tensor. If the tensor is a scalar of non-boolean type, the
+    scalar is converted to a boolean according to the
+    following rule: if the scalar is a numerical value, non-zero means
+    True and zero means False; if the scalar is a string, non-empty
+    means True and empty means False. If the tensor is not a scalar,
+    being empty means False and being non-empty means True.
+then_branch: A region that computes the outputs of the op if cond = true.
+    It returns a list of tensors using tf.yield (as the terminator). The
+    types of these returned tensors is same as that of the else_branch
+else_branch: A region that computes the outputs of the op if cond = false.
+    It returns a list of tensors using tf.yield (as the terminator). The
+    types of these returned tensors is same as that of the then_branch
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$cond,
+
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
+
+    // Used to map StatelessIf and If op defined in TensorFlow to a common op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 

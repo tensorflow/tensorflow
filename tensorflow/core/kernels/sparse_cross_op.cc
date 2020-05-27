@@ -15,6 +15,7 @@ limitations under the License.
 
 // Contains OP to generate sparse crosses.
 #include <assert.h>
+
 #include <limits>
 #include <string>
 #include <vector>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/strong_hash.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -42,7 +44,8 @@ class ColumnInterface {
   virtual int64 FeatureCount(int64 batch) const = 0;
 
   // Returns the fingerprint of nth feature from the specified batch.
-  virtual InternalType Feature(int64 batch, int64 n) const = 0;
+  virtual InternalType Feature(int64 batch, int64 n,
+                               bool strong_hash) const = 0;
 
   virtual ~ColumnInterface() {}
 };
@@ -63,7 +66,7 @@ class SparseTensorColumn : public ColumnInterface<InternalType> {
     return feature_counts_[batch];
   }
 
-  InternalType Feature(int64 batch, int64 n) const override;
+  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
 
   ~SparseTensorColumn() override {}
 
@@ -73,18 +76,69 @@ class SparseTensorColumn : public ColumnInterface<InternalType> {
   std::vector<int64> feature_start_indices_;
 };
 
+// A column that is backed by a sparse tensor.
+template <typename InternalType>
+class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
+ public:
+  KeyedSparseTensorColumn(const Tensor& values,
+                          std::vector<int64> feature_counts,
+                          std::vector<int64> feature_start_indices,
+                          std::vector<int64> key)
+      : values_(values),
+        feature_counts_(std::move(feature_counts)),
+        feature_start_indices_(std::move(feature_start_indices)) {
+    DCHECK_EQ(feature_counts_.size(), feature_start_indices_.size());
+    std::memcpy(key_, key.data(), sizeof(key_));
+  }
+
+  int64 FeatureCount(int64 batch) const override {
+    return feature_counts_[batch];
+  }
+
+  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+
+  ~KeyedSparseTensorColumn() override {}
+
+ private:
+  const Tensor& values_;
+  uint64 key_[2];
+  std::vector<int64> feature_counts_;
+  std::vector<int64> feature_start_indices_;
+};
+
 // InternalType is int64 only when using HashCrosser.
 template <>
-int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
+int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n,
+                                         bool strong_hash) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return Fingerprint64(values_.vec<tstring>().data()[start + n]);
   return values_.vec<int64>().data()[start + n];
 }
 
+template <>
+int64 KeyedSparseTensorColumn<int64>::Feature(int64 batch, int64 n,
+                                              bool strong_hash) const {
+  const int64 start = feature_start_indices_[batch];
+  if (strong_hash) {
+    if (DT_STRING == values_.dtype()) {
+      return StrongKeyedHash(key_, values_.vec<tstring>()(start + n));
+    }
+    return StrongKeyedHash(
+        key_, {reinterpret_cast<const char*>(&values_.vec<int64>()(start + n)),
+               sizeof(values_.dtype())});
+  }
+  if (DT_STRING == values_.dtype())
+    return Fingerprint64(values_.vec<tstring>()(start + n));
+  return Fingerprint64(
+      {reinterpret_cast<const char*>(&values_.vec<int64>()(start + n)),
+       sizeof(values_.dtype())});
+}
+
 // InternalType is string or StringPiece when using StringCrosser.
 template <>
-tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
+tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+                                             bool strong_hash) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return values_.vec<tstring>().data()[start + n];
@@ -92,8 +146,24 @@ tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
 }
 
 template <>
-StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
-                                                     int64 n) const {
+tstring KeyedSparseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+                                                  bool strong_hash) const {
+  const int64 start = feature_start_indices_[batch];
+  if (DT_STRING == values_.dtype())
+    return values_.vec<tstring>().data()[start + n];
+  return std::to_string(values_.vec<int64>().data()[start + n]);
+}
+
+template <>
+StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch, int64 n,
+                                                     bool strong_hash) const {
+  const int64 start = feature_start_indices_[batch];
+  return values_.vec<tstring>().data()[start + n];
+}
+
+template <>
+StringPiece KeyedSparseTensorColumn<StringPiece>::Feature(
+    int64 batch, int64 n, bool strong_hash) const {
   const int64 start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
 }
@@ -106,7 +176,7 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 
   int64 FeatureCount(int64 batch) const override { return tensor_.dim_size(1); }
 
-  InternalType Feature(int64 batch, int64 n) const override;
+  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
 
   ~DenseTensorColumn() override {}
 
@@ -114,9 +184,46 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
   const Tensor& tensor_;
 };
 
+// A column that is backed by a dense tensor.
+template <typename InternalType>
+class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
+ public:
+  explicit KeyedDenseTensorColumn(const Tensor& tensor, std::vector<int64> key)
+      : tensor_(tensor) {
+    std::memcpy(key_, key.data(), sizeof(key_));
+  }
+
+  int64 FeatureCount(int64 batch) const override { return tensor_.dim_size(1); }
+
+  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+
+  ~KeyedDenseTensorColumn() override {}
+
+ private:
+  const Tensor& tensor_;
+  uint64 key_[2];
+};
+
 // InternalType is int64 only when using HashCrosser.
 template <>
-int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
+int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n,
+                                        bool strong_hash) const {
+  if (DT_STRING == tensor_.dtype())
+    return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
+  return tensor_.matrix<int64>()(batch, n);
+}
+
+template <>
+int64 KeyedDenseTensorColumn<int64>::Feature(int64 batch, int64 n,
+                                             bool strong_hash) const {
+  if (strong_hash) {
+    if (DT_STRING == tensor_.dtype()) {
+      return StrongKeyedHash(key_, tensor_.matrix<tstring>()(batch, n));
+    }
+    return StrongKeyedHash(
+        key_, {reinterpret_cast<const char*>(tensor_.matrix<int64>()(batch, n)),
+               sizeof(tensor_.dtype())});
+  }
   if (DT_STRING == tensor_.dtype())
     return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
   return tensor_.matrix<int64>()(batch, n);
@@ -124,14 +231,28 @@ int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
-tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
+tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+                                            bool strong_hash) const {
   if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
   return std::to_string(tensor_.matrix<int64>()(batch, n));
 }
 
 template <>
-StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
-                                                    int64 n) const {
+tstring KeyedDenseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+                                                 bool strong_hash) const {
+  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
+  return std::to_string(tensor_.matrix<int64>()(batch, n));
+}
+
+template <>
+StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch, int64 n,
+                                                    bool strong_hash) const {
+  return tensor_.matrix<tstring>()(batch, n);
+}
+
+template <>
+StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
+    int64 batch, int64 n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
 
@@ -169,24 +290,24 @@ class StringCrosser {
  public:
   StringCrosser(const std::vector<
                     std::unique_ptr<ColumnInterface<InternalType>>>& columns,
-                const int64 num_buckets_unused, const uint64 hash_key_unused)
-      : columns_(columns) {}
+                const int64 num_buckets_unused, const uint64 hash_key_unused,
+                const tstring k_feature_separator)
+      : columns_(columns), k_feature_separator_(k_feature_separator) {}
 
-  string Generate(const int64 batch_index,
-                  const std::vector<int>& permutation) const {
-    static const auto k_feature_separator = "_X_";
-
+  string Generate(const int64 batch_index, const std::vector<int>& permutation,
+                  bool unused_strong_hash) const {
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
     for (int i = 0; i < permutation.size(); i++) {
-      cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i]);
+      cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i], false);
     }
     // TODO(zakaria): this will copy the string twice, might effect
     // performance.
-    return absl::StrJoin(cross_vec, k_feature_separator);
+    return absl::StrJoin(cross_vec, k_feature_separator_);
   }
 
  private:
   const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns_;
+  const tstring k_feature_separator_;
 };
 
 // Generates the sparse crosses as nested hash to avoid string manipulations.
@@ -194,15 +315,16 @@ class HashCrosser {
  public:
   HashCrosser(
       const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns,
-      const int64 num_buckets, const uint64 hash_key)
+      const int64 num_buckets, const uint64 hash_key,
+      const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets), hash_key_(hash_key) {}
 
-  int64 Generate(const int64 batch_index,
-                 const std::vector<int>& permutation) const {
+  int64 Generate(const int64 batch_index, const std::vector<int>& permutation,
+                 bool unused_strong_hash) const {
     // Do the fingerprint concatenation on uint64.
     uint64 hashed_output = hash_key_;
     for (size_t i = 0; i < permutation.size(); ++i) {
-      uint64 hash_i = columns_[i]->Feature(batch_index, permutation[i]);
+      uint64 hash_i = columns_[i]->Feature(batch_index, permutation[i], false);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
     // The return value is int64 based on the number of buckets.
@@ -218,6 +340,39 @@ class HashCrosser {
   const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns_;
   const int64 num_buckets_;
   const uint64 hash_key_;
+};
+
+// Generates the sparse crosses as nested hash to avoid string manipulations.
+class HashCrosserV2 {
+ public:
+  HashCrosserV2(
+      const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns,
+      const int64 num_buckets, const uint64 hash_key_unused,
+      const tstring k_feature_separator_unused)
+      : columns_(columns), num_buckets_(num_buckets) {}
+
+  int64 Generate(const int64 batch_index, const std::vector<int>& permutation,
+                 bool strong_hash) const {
+    // Do the fingerprint concatenation on uint64.
+    uint64 hashed_output =
+        columns_[0]->Feature(batch_index, permutation[0], strong_hash);
+    for (size_t i = 1; i < permutation.size(); ++i) {
+      uint64 hash_i =
+          columns_[i]->Feature(batch_index, permutation[i], strong_hash);
+      hashed_output = FingerprintCat64(hashed_output, hash_i);
+    }
+    // The return value is int64 based on the number of buckets.
+    if (num_buckets_ > 0) {
+      return hashed_output % num_buckets_;
+    } else {
+      // To prevent negative output we take modulo to max int64.
+      return hashed_output % std::numeric_limits<int64>::max();
+    }
+  }
+
+ private:
+  const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns_;
+  const int64 num_buckets_;
 };
 
 // ProductIterator generates cartesian products based on indices.
@@ -275,15 +430,263 @@ struct CrossTraits;
 template <typename InternalType>
 struct CrossTraits<false, InternalType> {
   typedef StringCrosser<InternalType> Crosser;
+  typedef StringCrosser<InternalType> CrosserV2;
   typedef OutputUpdater<tstring> Updater;
 };
 
 template <>
 struct CrossTraits<true, int64> {
   typedef HashCrosser Crosser;
+  typedef HashCrosserV2 CrosserV2;
   typedef OutputUpdater<int64> Updater;
 };
 }  // namespace
+
+// Calculate the batch size from either the shapes input or the dense input.
+int64 CalculateBatchSize(const OpInputList& shapes_list_in,
+                         const OpInputList& dense_list_in) {
+  if (shapes_list_in.size() > 0) {
+    return shapes_list_in[0].vec<int64>()(0);
+  }
+
+  if (dense_list_in.size() > 0) {
+    return dense_list_in[0].dim_size(0);
+  }
+
+  return 0;
+}
+
+// Validates input tensors.
+Status ValidateInput(const OpInputList& indices_list_in,
+                     const OpInputList& values_list_in,
+                     const OpInputList& shapes_list_in,
+                     const OpInputList& dense_list_in) {
+  const auto size = indices_list_in.size();
+  // Validates indices_list_in OpInputList.
+  for (int i = 0; i < size; i++) {
+    if (!TensorShapeUtils::IsMatrix(indices_list_in[i].shape())) {
+      return errors::InvalidArgument(
+          "Input indices should be a matrix but received shape ",
+          indices_list_in[i].shape().DebugString(), " at position ", i);
+    }
+    if (indices_list_in[i].shape().dim_size(1) != 2) {
+      return errors::InvalidArgument("Expected D2 of index to be 2 got ",
+                                     indices_list_in[i].shape().dim_size(1),
+                                     " at position ", i);
+    }
+  }
+
+  // Validates values_list_in OpInputList.
+  if (values_list_in.size() != size) {
+    return errors::InvalidArgument("Expected ", size, " input values, got ",
+                                   values_list_in.size());
+  }
+  for (int i = 0; i < size; i++) {
+    if (!TensorShapeUtils::IsVector(values_list_in[i].shape())) {
+      return errors::InvalidArgument(
+          "Input values should be a vector but received shape ",
+          values_list_in[i].shape().DebugString(), " at position ", i);
+    }
+    if (indices_list_in[i].shape().dim_size(0) !=
+        values_list_in[i].shape().dim_size(0)) {
+      return errors::InvalidArgument(
+          "Expected size of values to be ",
+          indices_list_in[i].shape().dim_size(0), " got ",
+          values_list_in[i].shape().dim_size(0), " at position ", i);
+    }
+  }
+
+  // Validates shapes_list_in OpInputList
+  if (shapes_list_in.size() != size) {
+    return errors::InvalidArgument("Expected ", size, " input shapes, got ",
+                                   shapes_list_in.size());
+  }
+  for (int i = 0; i < size; i++) {
+    if (!TensorShapeUtils::IsVector(shapes_list_in[i].shape())) {
+      return errors::InvalidArgument(
+          "Input shapes should be a vector but received shape ",
+          shapes_list_in[i].shape().DebugString(), " at position ", i);
+    }
+
+    if (shapes_list_in[i].vec<int64>().size() != 2) {
+      return errors::InvalidArgument("shape should imply a 2D tensor, but got ",
+                                     shapes_list_in[i].shape().DebugString(),
+                                     " at position ", i);
+    }
+  }
+
+  // Validates dense_list_in OpInputList
+  for (int i = 0; i < dense_list_in.size(); ++i) {
+    if (!TensorShapeUtils::IsMatrix(dense_list_in[i].shape())) {
+      return errors::InvalidArgument(
+          "Dense inputs should be a matrix but received shape ",
+          dense_list_in[i].shape().DebugString(), " at position ", i);
+    }
+  }
+
+  // Validates batch sizes.  (Note: we do this after validating the input
+  // shapes, because CalculateBatchSize() depends on inputs having valid
+  // shapes).
+  const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+  for (int i = 0; i < size; i++) {
+    if (shapes_list_in[i].vec<int64>()(0) != batch_size) {
+      return errors::InvalidArgument("Expected batch size ", batch_size,
+                                     " got ", shapes_list_in[i].vec<int64>()(0),
+                                     " at position ", i);
+    }
+  }
+  for (int i = 0; i < dense_list_in.size(); ++i) {
+    if (dense_list_in[i].dim_size(0) != batch_size) {
+      return errors::InvalidArgument("Expected batch size ", batch_size,
+                                     " got ", dense_list_in[i].dim_size(0),
+                                     " at dense tensor ", i);
+    }
+  }
+
+  return Status::OK();
+}
+
+// Extracts data about the features and populates feature data.
+void ExtractFeatureData(
+    const OpInputList& indices_list_in, int64 batch_size,
+    std::vector<std::vector<int64>>* feature_counts,
+    std::vector<std::vector<int64>>* feature_start_indices) {
+  gtl::InlinedVector<int64, 8> current_row(indices_list_in.size(), 0);
+  for (int b = 0; b < batch_size; b++) {
+    for (int i = 0; i < indices_list_in.size(); i++) {
+      const auto indices = indices_list_in[i].matrix<int64>();
+      int64 feature_count = 0;
+      int64 start_index = current_row[i];
+      // Loops until we reach next batch index for current feature column.
+      while (current_row[i] < indices_list_in[i].dim_size(0) &&
+             indices(current_row[i], 0) == b) {
+        feature_count++;
+        current_row[i]++;
+      }
+      (*feature_counts)[i].push_back(feature_count);
+      (*feature_start_indices)[i].push_back(start_index);
+    }
+  }
+}
+
+// Returns number of crosses for a given batch_index
+template <typename InternalType>
+int64 CrossCountByBatchIndex(
+    const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
+    int batch_index) {
+  int64 cross_count = 1;
+  for (int i = 0; i < columns.size(); i++) {
+    const auto feature_count = columns[i]->FeatureCount(batch_index);
+    // If one column is missing any feature, there won't be any cross.
+    if (feature_count == 0) {
+      return 0;
+    }
+    cross_count *= feature_count;
+  }
+  return cross_count;
+}
+
+// Generate the columns given the sparse and dense inputs.
+template <typename InternalType>
+std::vector<std::unique_ptr<ColumnInterface<InternalType>>>
+GenerateColumnsFromInput(const OpInputList& indices_list_in,
+                         const OpInputList& values_list_in,
+                         const OpInputList& shapes_list_in,
+                         const OpInputList& dense_list_in) {
+  std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns;
+  const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+  const int64 number_of_columns = shapes_list_in.size();
+
+  std::vector<std::vector<int64>> feature_counts(number_of_columns,
+                                                 std::vector<int64>());
+  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
+                                                        std::vector<int64>());
+
+  ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
+                     &feature_start_indices);
+
+  columns.reserve(values_list_in.size());
+  for (int i = 0; i < values_list_in.size(); ++i) {
+    columns.emplace_back(new SparseTensorColumn<InternalType>(
+        values_list_in[i], std::move(feature_counts[i]),
+        std::move(feature_start_indices[i])));
+  }
+  for (int i = 0; i < dense_list_in.size(); ++i) {
+    columns.emplace_back(new DenseTensorColumn<InternalType>(dense_list_in[i]));
+  }
+
+  return columns;
+}
+
+// Generate the columns given the sparse and dense inputs.
+template <typename InternalType>
+std::vector<std::unique_ptr<ColumnInterface<InternalType>>>
+GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
+                              const OpInputList& values_list_in,
+                              const OpInputList& shapes_list_in,
+                              const OpInputList& dense_list_in,
+                              std::vector<int64> keys) {
+  std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns;
+  const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+  const int64 number_of_columns = shapes_list_in.size();
+
+  std::vector<std::vector<int64>> feature_counts(number_of_columns,
+                                                 std::vector<int64>());
+  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
+                                                        std::vector<int64>());
+
+  ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
+                     &feature_start_indices);
+
+  columns.reserve(values_list_in.size());
+  for (int i = 0; i < values_list_in.size(); ++i) {
+    columns.emplace_back(new KeyedSparseTensorColumn<InternalType>(
+        values_list_in[i], std::move(feature_counts[i]),
+        std::move(feature_start_indices[i]), keys));
+  }
+  for (int i = 0; i < dense_list_in.size(); ++i) {
+    columns.emplace_back(
+        new KeyedDenseTensorColumn<InternalType>(dense_list_in[i], keys));
+  }
+
+  return columns;
+}
+
+// Allocates output tensors with proper size and sets the shape tensor of
+// the output SparseTensor.
+// It also output_start_indices which contains the start indices for each
+// input in the output SparseTensor.
+template <typename InternalType>
+Status CreateOutputTensors(
+    const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
+    int64 batch_size, OpKernelContext* context, Tensor** indices_out,
+    Tensor** values_out, Tensor** shape_out,
+    std::vector<int64>* output_start_indices) {
+  // Calculates dimensions for output tensors.
+  int64 cross_count_total = 0;
+  int64 max_cross_count = 0;
+  for (int64 b = 0; b < batch_size; b++) {
+    // For each input, sets starting indices in output SparseTensor
+    (*output_start_indices)[b] = cross_count_total;
+    const auto cross_count = CrossCountByBatchIndex(columns, b);
+    max_cross_count = std::max(max_cross_count, cross_count);
+    cross_count_total += cross_count;
+  }
+
+  // Allocates tensors.
+  TF_RETURN_IF_ERROR(context->allocate_output(
+      0, TensorShape({cross_count_total, 2}), indices_out));
+  TF_RETURN_IF_ERROR(context->allocate_output(
+      1, TensorShape({cross_count_total}), values_out));
+  TF_RETURN_IF_ERROR(context->allocate_output(2, TensorShape({2}), shape_out));
+
+  // Sets shape.
+  auto shape_vec = (*shape_out)->vec<int64>();
+  shape_vec(0) = batch_size;
+  shape_vec(1) = max_cross_count;
+
+  return Status::OK();
+}
 
 template <bool HASHED_OUTPUT, typename InternalType>
 class SparseCrossOp : public OpKernel {
@@ -312,11 +715,12 @@ class SparseCrossOp : public OpKernel {
                                           shapes_list_in, dense_list_in));
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
-        GenerateColumnsFromInput(indices_list_in, values_list_in,
-                                 shapes_list_in, dense_list_in);
+        GenerateColumnsFromInput<InternalType>(indices_list_in, values_list_in,
+                                               shapes_list_in, dense_list_in);
 
+    const tstring k_feature_separator = "_X_";
     typename CrossTraits<HASHED_OUTPUT, InternalType>::Crosser crosser(
-        columns, num_buckets_, hash_key_);
+        columns, num_buckets_, hash_key_, k_feature_separator);
     Tensor* indices_out;
     Tensor* values_out;
     Tensor* shape_out;
@@ -335,7 +739,8 @@ class SparseCrossOp : public OpKernel {
         int64 cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();
-          updater.Update(b, cross_count, crosser.Generate(b, permutation));
+          updater.Update(b, cross_count,
+                         crosser.Generate(b, permutation, false));
           cross_count++;
         }
       }
@@ -349,220 +754,136 @@ class SparseCrossOp : public OpKernel {
   }
 
  private:
-  // Validates input tensors.
-  Status ValidateInput(const OpInputList& indices_list_in,
-                       const OpInputList& values_list_in,
-                       const OpInputList& shapes_list_in,
-                       const OpInputList& dense_list_in) {
-    const auto size = indices_list_in.size();
-    // Validates indices_list_in OpInputList.
-    for (int i = 0; i < size; i++) {
-      if (!TensorShapeUtils::IsMatrix(indices_list_in[i].shape())) {
-        return errors::InvalidArgument(
-            "Input indices should be a matrix but received shape ",
-            indices_list_in[i].shape().DebugString(), " at position ", i);
-      }
-      if (indices_list_in[i].shape().dim_size(1) != 2) {
-        return errors::InvalidArgument("Expected D2 of index to be 2 got ",
-                                       indices_list_in[i].shape().dim_size(1),
-                                       " at position ", i);
-      }
-    }
-
-    // Validates values_list_in OpInputList.
-    if (values_list_in.size() != size) {
-      return errors::InvalidArgument("Expected ", size, " input values, got ",
-                                     values_list_in.size());
-    }
-    for (int i = 0; i < size; i++) {
-      if (!TensorShapeUtils::IsVector(values_list_in[i].shape())) {
-        return errors::InvalidArgument(
-            "Input values should be a vector but received shape ",
-            values_list_in[i].shape().DebugString(), " at position ", i);
-      }
-      if (indices_list_in[i].shape().dim_size(0) !=
-          values_list_in[i].shape().dim_size(0)) {
-        return errors::InvalidArgument(
-            "Expected size of values to be ",
-            indices_list_in[i].shape().dim_size(0), " got ",
-            values_list_in[i].shape().dim_size(0), " at position ", i);
-      }
-    }
-
-    // Validates shapes_list_in OpInputList
-    if (shapes_list_in.size() != size) {
-      return errors::InvalidArgument("Expected ", size, " input shapes, got ",
-                                     shapes_list_in.size());
-    }
-    for (int i = 0; i < size; i++) {
-      if (!TensorShapeUtils::IsVector(shapes_list_in[i].shape())) {
-        return errors::InvalidArgument(
-            "Input shapes should be a vector but received shape ",
-            shapes_list_in[i].shape().DebugString(), " at position ", i);
-      }
-
-      if (shapes_list_in[i].vec<int64>().size() != 2) {
-        return errors::InvalidArgument(
-            "shape should imply a 2D tensor, but got ",
-            shapes_list_in[i].shape().DebugString(), " at position ", i);
-      }
-    }
-
-    // Validates dense_list_in OpInputList
-    for (int i = 0; i < dense_list_in.size(); ++i) {
-      if (!TensorShapeUtils::IsMatrix(dense_list_in[i].shape())) {
-        return errors::InvalidArgument(
-            "Dense inputs should be a matrix but received shape ",
-            dense_list_in[i].shape().DebugString(), " at position ", i);
-      }
-    }
-
-    // Validates batch sizes.  (Note: we do this after validating the input
-    // shapes, because CalculateBatchSize() depends on inputs having valid
-    // shapes).
-    const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-    for (int i = 0; i < size; i++) {
-      if (shapes_list_in[i].vec<int64>()(0) != batch_size) {
-        return errors::InvalidArgument(
-            "Expected batch size ", batch_size, " got ",
-            shapes_list_in[i].vec<int64>()(0), " at position ", i);
-      }
-    }
-    for (int i = 0; i < dense_list_in.size(); ++i) {
-      if (dense_list_in[i].dim_size(0) != batch_size) {
-        return errors::InvalidArgument("Expected batch size ", batch_size,
-                                       " got ", dense_list_in[i].dim_size(0),
-                                       " at dense tensor ", i);
-      }
-    }
-
-    return Status::OK();
-  }
-
-  // Calculate the batch size from either the shapes input or the dense input.
-  int64 CalculateBatchSize(const OpInputList& shapes_list_in,
-                           const OpInputList& dense_list_in) {
-    if (shapes_list_in.size() > 0) {
-      return shapes_list_in[0].vec<int64>()(0);
-    }
-
-    if (dense_list_in.size() > 0) {
-      return dense_list_in[0].dim_size(0);
-    }
-
-    return 0;
-  }
-
-  // Generate the columns given the sparse and dense inputs.
-  std::vector<std::unique_ptr<ColumnInterface<InternalType>>>
-  GenerateColumnsFromInput(const OpInputList& indices_list_in,
-                           const OpInputList& values_list_in,
-                           const OpInputList& shapes_list_in,
-                           const OpInputList& dense_list_in) {
-    std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns;
-    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-    const int64 number_of_columns = shapes_list_in.size();
-
-    std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                   std::vector<int64>());
-    std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                          std::vector<int64>());
-
-    ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
-                       &feature_start_indices);
-
-    columns.reserve(values_list_in.size());
-    for (int i = 0; i < values_list_in.size(); ++i) {
-      columns.emplace_back(new SparseTensorColumn<InternalType>(
-          values_list_in[i], std::move(feature_counts[i]),
-          std::move(feature_start_indices[i])));
-    }
-    for (int i = 0; i < dense_list_in.size(); ++i) {
-      columns.emplace_back(
-          new DenseTensorColumn<InternalType>(dense_list_in[i]));
-    }
-
-    return columns;
-  }
-
-  // Extracts data about the features and populates feature data.
-  void ExtractFeatureData(
-      const OpInputList& indices_list_in, int64 batch_size,
-      std::vector<std::vector<int64>>* feature_counts,
-      std::vector<std::vector<int64>>* feature_start_indices) {
-    gtl::InlinedVector<int64, 8> current_row(indices_list_in.size(), 0);
-    for (int b = 0; b < batch_size; b++) {
-      for (int i = 0; i < indices_list_in.size(); i++) {
-        const auto indices = indices_list_in[i].matrix<int64>();
-        int64 feature_count = 0;
-        int64 start_index = current_row[i];
-        // Loops until we reach next batch index for current feature column.
-        while (current_row[i] < indices_list_in[i].dim_size(0) &&
-               indices(current_row[i], 0) == b) {
-          feature_count++;
-          current_row[i]++;
-        }
-        (*feature_counts)[i].push_back(feature_count);
-        (*feature_start_indices)[i].push_back(start_index);
-      }
-    }
-  }
-
-  // Allocates output tensors with proper size and sets the shape tensor of
-  // the output SparseTensor.
-  // It also output_start_indices which contains the start indices for each
-  // input in the output SparseTensor.
-  Status CreateOutputTensors(
-      const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
-          columns,
-      int64 batch_size, OpKernelContext* context, Tensor** indices_out,
-      Tensor** values_out, Tensor** shape_out,
-      std::vector<int64>* output_start_indices) {
-    // Calculates dimensions for output tensors.
-    int64 cross_count_total = 0;
-    int64 max_cross_count = 0;
-    for (int64 b = 0; b < batch_size; b++) {
-      // For each input, sets starting indices in output SparseTensor
-      (*output_start_indices)[b] = cross_count_total;
-      const auto cross_count = CrossCountByBatchIndex(columns, b);
-      max_cross_count = std::max(max_cross_count, cross_count);
-      cross_count_total += cross_count;
-    }
-
-    // Allocates tensors.
-    TF_RETURN_IF_ERROR(context->allocate_output(
-        0, TensorShape({cross_count_total, 2}), indices_out));
-    TF_RETURN_IF_ERROR(context->allocate_output(
-        1, TensorShape({cross_count_total}), values_out));
-    TF_RETURN_IF_ERROR(
-        context->allocate_output(2, TensorShape({2}), shape_out));
-
-    // Sets shape.
-    auto shape_vec = (*shape_out)->vec<int64>();
-    shape_vec(0) = batch_size;
-    shape_vec(1) = max_cross_count;
-
-    return Status::OK();
-  }
-
-  // Returns number of crosses for a given batch_index
-  int64 CrossCountByBatchIndex(
-      const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
-          columns,
-      int batch_index) {
-    int64 cross_count = 1;
-    for (int i = 0; i < columns.size(); i++) {
-      const auto feature_count = columns[i]->FeatureCount(batch_index);
-      // If one column is missing any feature, there won't be any cross.
-      if (feature_count == 0) {
-        return 0;
-      }
-      cross_count *= feature_count;
-    }
-    return cross_count;
-  }
   int64 num_buckets_;
   uint64 hash_key_;
+};
+
+class SparseCrossV2Op : public OpKernel {
+ public:
+  explicit SparseCrossV2Op(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    OpInputList indices_list_in;
+    OP_REQUIRES_OK(context, context->input_list("indices", &indices_list_in));
+    OpInputList values_list_in;
+    OP_REQUIRES_OK(context, context->input_list("values", &values_list_in));
+    OpInputList shapes_list_in;
+    OP_REQUIRES_OK(context, context->input_list("shapes", &shapes_list_in));
+    OpInputList dense_list_in;
+    OP_REQUIRES_OK(context,
+                   context->input_list("dense_inputs", &dense_list_in));
+
+    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
+                                          shapes_list_in, dense_list_in));
+
+    const Tensor* sep_t;
+    OP_REQUIRES_OK(context, context->input("sep", &sep_t));
+    const tstring separator = sep_t->scalar<tstring>()();
+
+    std::vector<std::unique_ptr<ColumnInterface<tstring>>> columns =
+        GenerateColumnsFromInput<tstring>(indices_list_in, values_list_in,
+                                          shapes_list_in, dense_list_in);
+    Tensor* indices_out;
+    Tensor* values_out;
+    Tensor* shape_out;
+    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+    std::vector<int64> output_start_indices(batch_size);
+    OP_REQUIRES_OK(
+        context,
+        CreateOutputTensors(columns, batch_size, context, &indices_out,
+                            &values_out, &shape_out, &output_start_indices));
+    StringCrosser<tstring> crosser(columns, 0, 0, separator);
+    OutputUpdater<tstring> updater(output_start_indices, indices_out,
+                                   values_out);
+    auto do_work = [&columns, crosser, updater](int64 begin, int64 end) {
+      for (int b = begin; b < end; b++) {
+        ProductIterator<tstring> product_iterator(columns, b);
+        int64 cross_count = 0;
+        while (product_iterator.HasNext()) {
+          const auto permutation = product_iterator.Next();
+          updater.Update(b, cross_count,
+                         crosser.Generate(b, permutation, false));
+          cross_count++;
+        }
+      }
+    };
+
+    auto* worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    // TODO(zakaria): optimize kCostPerUnit
+    const int kCostPerUnit = 5000 * indices_list_in.size();
+    Shard(worker_threads->num_threads, worker_threads->workers, batch_size,
+          kCostPerUnit, do_work);
+  }
+};
+
+class SparseCrossHashedOp : public OpKernel {
+ public:
+  explicit SparseCrossHashedOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    OpInputList indices_list_in;
+    OP_REQUIRES_OK(context, context->input_list("indices", &indices_list_in));
+    OpInputList values_list_in;
+    OP_REQUIRES_OK(context, context->input_list("values", &values_list_in));
+    OpInputList shapes_list_in;
+    OP_REQUIRES_OK(context, context->input_list("shapes", &shapes_list_in));
+    OpInputList dense_list_in;
+    OP_REQUIRES_OK(context,
+                   context->input_list("dense_inputs", &dense_list_in));
+
+    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
+                                          shapes_list_in, dense_list_in));
+
+    const Tensor* num_buckets_t;
+    OP_REQUIRES_OK(context, context->input("num_buckets", &num_buckets_t));
+    const int64 num_buckets = num_buckets_t->scalar<int64>()();
+
+    const Tensor* strong_hash_t;
+    OP_REQUIRES_OK(context, context->input("strong_hash", &strong_hash_t));
+    const bool strong_hash = strong_hash_t->scalar<bool>()();
+
+    const Tensor* salt_t;
+    OP_REQUIRES_OK(context, context->input("salt", &salt_t));
+    const auto salt = salt_t->flat<int64>();
+    std::vector<int64> key_{salt(0), salt(1)};
+
+    std::vector<std::unique_ptr<ColumnInterface<int64>>> columns =
+        GenerateKeyedColumnsFromInput<int64>(indices_list_in, values_list_in,
+                                             shapes_list_in, dense_list_in,
+                                             key_);
+    Tensor* indices_out;
+    Tensor* values_out;
+    Tensor* shape_out;
+    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+    std::vector<int64> output_start_indices(batch_size);
+    OP_REQUIRES_OK(
+        context,
+        CreateOutputTensors(columns, batch_size, context, &indices_out,
+                            &values_out, &shape_out, &output_start_indices));
+    const tstring unused_sep;
+    HashCrosserV2 crosser(columns, num_buckets, 0, unused_sep);
+    OutputUpdater<int64> updater(output_start_indices, indices_out, values_out);
+    auto do_work = [&columns, crosser, updater, strong_hash](int64 begin,
+                                                             int64 end) {
+      for (int b = begin; b < end; b++) {
+        ProductIterator<int64> product_iterator(columns, b);
+        int64 cross_count = 0;
+        while (product_iterator.HasNext()) {
+          const auto permutation = product_iterator.Next();
+          updater.Update(b, cross_count,
+                         crosser.Generate(b, permutation, strong_hash));
+          cross_count++;
+        }
+      }
+    };
+
+    auto* worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    // TODO(zakaria): optimize kCostPerUnit
+    const int kCostPerUnit = 5000 * indices_list_in.size();
+    Shard(worker_threads->num_threads, worker_threads->workers, batch_size,
+          kCostPerUnit, do_work);
+  }
 };
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
@@ -588,5 +909,11 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .TypeConstraint<int64>("out_type")
                             .TypeConstraint<int64>("internal_type"),
                         SparseCrossOp<true, int64>);
+
+REGISTER_KERNEL_BUILDER(Name("SparseCrossV2").Device(DEVICE_CPU),
+                        SparseCrossV2Op);
+
+REGISTER_KERNEL_BUILDER(Name("SparseCrossHashed").Device(DEVICE_CPU),
+                        SparseCrossHashedOp);
 
 }  // namespace tensorflow

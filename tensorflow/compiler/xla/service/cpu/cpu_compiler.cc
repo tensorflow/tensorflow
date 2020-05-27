@@ -42,6 +42,8 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -158,6 +160,8 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
+
+  mlir::registerAllDialects();
 }
 
 namespace {
@@ -606,9 +610,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                        user_post_optimization_hook_);
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = absl::make_unique<llvm::LLVMContext>();
-  auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
+  mlir::MLIRContext mlir_context;
+  auto llvm_module = absl::make_unique<llvm::Module>(
+      "__compute_module",
+      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
+          ->getLLVMContext());
 
   auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
@@ -662,7 +668,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // before a caller computation.
 
   LLVMTargetMachineFeatures target_machine_features(jit->target_machine());
-  IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
                        &target_machine_features,
@@ -816,8 +822,11 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  llvm::LLVMContext llvm_context;
-  llvm::Module llvm_module("__compute_module", llvm_context);
+  mlir::MLIRContext mlir_context;
+  llvm::Module llvm_module(
+      "__compute_module",
+      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
+          ->getLLVMContext());
   llvm_module.setDataLayout(target_machine->createDataLayout());
   llvm_module.setTargetTriple(triple.getTriple());
   if (pic_level != llvm::PICLevel::NotPIC) {
@@ -866,7 +875,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
-    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
+    IrEmitter ir_emitter(&mlir_context, *module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
                          &target_machine_features,

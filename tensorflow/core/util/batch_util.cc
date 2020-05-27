@@ -216,6 +216,79 @@ Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
   }
 }
 
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst) {
+  if (src.dtype() != dst->dtype()) {
+    return errors::FailedPrecondition(
+        "CopyContiguousSlices cannot perform copy: src and dst have different "
+        "dtypes. Source dtype: ",
+        src.dtype(), " dstination dtype: ", dst->dtype(), ".");
+  }
+  if (src.dims() < 1) {
+    return errors::FailedPrecondition(
+        "CopyContiguousSlices cannot perform copy: src has to be a tensor with "
+        "rank >= 1. Source shape: ",
+        src.shape().DebugString());
+  }
+
+  if (dst->dims() < 1) {
+    return errors::FailedPrecondition(
+        "CopyContiguousSlices cannot perform copy: dst has to be a tensor "
+        "with rank >= 1. Dest shape: ",
+        dst->shape().DebugString());
+  }
+
+  const int64 src_dim0 = src.dim_size(0);
+  const int64 dst_dim0 = dst->dim_size(0);
+  int64 src_chip_size = 1;
+  int64 dst_chip_size = 1;
+  for (int i = 1; i < src.dims(); ++i) {
+    src_chip_size *= src.dim_size(i);
+  }
+  for (int i = 1; i < dst->dims(); ++i) {
+    dst_chip_size *= dst->dim_size(i);
+  }
+
+  if (src_chip_size != dst_chip_size) {
+    return errors::FailedPrecondition(
+        "CopyContiguousSlices cannot perform copy: source and dst shapes are"
+        "not compatible. Source shape: ",
+        src.shape().DebugString(), ", dst shape: ", dst->shape().DebugString());
+  }
+
+  if (src_chip_size == 0 && dst_chip_size == 0) {
+    return Status::OK();
+  }
+
+  if (src_offset < 0 || src_offset + num_slices > src_dim0 || dst_offset < 0 ||
+      dst_offset + num_slices > dst_dim0) {
+    return errors::FailedPrecondition(
+        "CopyContiguousSlices cannot perform copy: index out of range. "
+        "src_offset: ",
+        src_offset, ", num_slices: ", num_slices, ", src_dim0: ", src_dim0,
+        ", dst_offset: ", dst_offset, ", dst_dim0: ", dst_dim0, ".");
+  }
+
+#define HANDLE_TYPE(T)                                                 \
+  case DataTypeToEnum<T>::value: {                                     \
+    const T* src_p = src.base<T>() + (src_chip_size * src_offset);     \
+    T* dst_p = dst->base<T>() + (dst_chip_size * dst_offset);          \
+    HandleSliceToElement<T>(src_p, dst_p, src_chip_size * num_slices); \
+    return Status::OK();                                               \
+  }
+
+  switch (src.dtype()) {
+    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+    TF_CALL_uint32(HANDLE_TYPE);
+    TF_CALL_uint64(HANDLE_TYPE);
+#undef HANDLE_TYPE
+    default:
+      return errors::Unimplemented("CopyContiguousSlices unhandled data type: ",
+                                   src.dtype());
+  }
+}
+
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 //
 // NOTE(mrry): The implementation may be able to optimize the copy to a move.

@@ -73,7 +73,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(true);
   // TODO(b/155295372): disable ptxas fallback by default.
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(false);
 
   return opts;
 }
@@ -567,15 +566,6 @@ static void AllocateFlags() {
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_unsafe_fallback_to_driver_on_ptxas_error",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error),
-      flag_values->xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(),
-      "If true, XLA GPU falls back to the driver if there is an error when "
-      "running ptxas. Note that falling back to the driver can have drawbacks "
-      "like using more memory and/or other bugs during compilation, so we "
-      "recommend setting this flag to false."));
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 

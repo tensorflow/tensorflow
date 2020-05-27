@@ -29,6 +29,10 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -347,7 +351,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
              // The result of the new "BinaryOp" will have the same shape as
              // `input`. In other words, the shape of the `Reshape` op are not
              // changed after the transformation.
-             (IsTailOfShape $rhs, $input)]>;
+             (IsTailOfShape $rhs, $input),
+             (HasRankAtMost<5> $input),
+             (HasRankAtMost<5> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,

@@ -294,6 +294,8 @@ class TRT_TensorOrWeights {
 
   nvinfer1::Dims GetTrtDims() const;
 
+  Status GetTfType(DataType* tf_type) const;
+
   int batch_size() const { return batch_size_; }
 
   string DebugString() const;

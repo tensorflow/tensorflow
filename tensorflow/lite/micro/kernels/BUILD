@@ -201,7 +201,7 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -214,7 +214,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -228,7 +227,6 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -242,7 +240,6 @@ tflite_micro_cc_test(
         ":portable_optimized_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -269,7 +266,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -282,7 +278,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -295,7 +290,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -308,7 +302,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -322,7 +315,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -335,7 +327,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -348,7 +339,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -361,7 +351,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -374,7 +363,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -387,7 +375,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -400,7 +387,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -412,9 +398,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -426,9 +410,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -441,7 +423,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -454,7 +435,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -467,7 +447,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -480,7 +459,7 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -493,7 +472,7 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -506,7 +485,7 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -552,7 +531,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -566,7 +544,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -602,7 +579,6 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -614,9 +590,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -666,7 +640,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -679,7 +652,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

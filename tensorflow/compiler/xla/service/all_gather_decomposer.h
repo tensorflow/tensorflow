@@ -26,15 +26,12 @@ namespace xla {
 // dynamic-update-slices and all-reduces.
 class AllGatherDecomposer : public HloModulePass {
  public:
-  AllGatherDecomposer(
-      std::function<bool(const HloAllGatherInstruction&)> should_decompose,
-      int64 partition_count)
-      : should_decompose_(std::move(should_decompose)),
-        partition_count_(partition_count) {}
-  explicit AllGatherDecomposer(int64 partition_count)
+  explicit AllGatherDecomposer(
+      std::function<bool(const HloAllGatherInstruction&)> should_decompose)
+      : should_decompose_(std::move(should_decompose)) {}
+  AllGatherDecomposer()
       : should_decompose_(
-            [](const HloAllGatherInstruction& ag) { return true; }),
-        partition_count_(partition_count) {}
+            [](const HloAllGatherInstruction& ag) { return true; }) {}
   absl::string_view name() const override { return "all_gather_decomposer"; }
 
   // Run AllGatherDecomposer pass on computations in 'module'.

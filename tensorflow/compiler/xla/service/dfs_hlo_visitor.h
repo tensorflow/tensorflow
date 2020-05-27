@@ -120,6 +120,8 @@ class DfsHloVisitorBase {
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermuteDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;

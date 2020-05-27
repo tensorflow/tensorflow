@@ -165,35 +165,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
-    const float batch_scaling_factor = scaling_factors[batch];
-    const float batch_offset = input_offset[batch];
-    const int8_t* row_ptr = matrix;
-    for (int row = 0; row < m_rows; ++row) {
-      int32_t dotprod = 0;
-      float scale = batch_scaling_factor;
-      if (per_channel_scale) {
-        scale *= per_channel_scale[row];
-      }
-#if defined(__GNUC__)
-      // Prefetch the row to cache.
-      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
-                         3 /* temporal locality */);
-#endif
-      for (int col = 0; col < m_cols; ++col, ++row_ptr) {
-        dotprod += (*row_ptr) * (vectors[col] - batch_offset);
-      }  // for col
-      *result += dotprod * scale;
-      ++result;
-    }  // for row
-  }    // for batch
-}
-
-void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
   if (input_offset == nullptr) {

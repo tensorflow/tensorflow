@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <EGL/eglext.h>
+
 #include <algorithm>
 #include <cstring>
 
-#include <EGL/eglext.h>
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"

@@ -33,6 +33,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
@@ -1213,9 +1214,14 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       f_merged = keras.backend.function([inputs], layer(inputs))
       f_forward = keras.backend.function([inputs],
                                          layer.forward_layer(inputs))
+
+      # TODO(kaftan): after KerasTensor refactor TF op layers should work
+      # with many composite tensors, and this shouldn't need to be a lambda
+      # layer.
+      reverse_layer = core.Lambda(array_ops.reverse, arguments=dict(axis=[1]))
       f_backward = keras.backend.function(
           [inputs],
-          array_ops.reverse(layer.backward_layer(inputs), axis=[1]))
+          reverse_layer(layer.backward_layer(inputs)))
 
       y_merged = f_merged(x)
       y_expected = merge_func(

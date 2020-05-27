@@ -702,7 +702,6 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
-            timeout = "long",
         )
 
 def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):

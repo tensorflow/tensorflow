@@ -100,6 +100,7 @@ class PackedTensorHandleTest : public ::testing::Test {
     for (const char* name : device_names_) {
       devices.emplace_back(CreateDevice("GPU", name));
     }
+    devices.emplace_back(CreateDevice("CPU", host_name_));
     device_mgr_ = new StaticDeviceMgr(std::move(devices));
 
     context_ = new EagerContext(
@@ -131,6 +132,8 @@ class PackedTensorHandleTest : public ::testing::Test {
       "/job:worker/replica:0/task:0/device:GPU:1",
       "/job:worker/replica:0/task:1/device:GPU:0",
       "/job:worker/replica:0/task:1/device:GPU:1"};
+
+  const char* host_name_ = "/job:worker/replica:0/task:0/device:CPU:0";
 
   StaticDeviceMgr* device_mgr_;
   EagerContext* context_;

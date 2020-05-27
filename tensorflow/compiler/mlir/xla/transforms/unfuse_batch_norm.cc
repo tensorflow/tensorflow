@@ -135,8 +135,8 @@ class UnfuseBatchNormInferencePattern
     if (!epsilon) {
       return failure();
     }
-    Value stddev = rewriter.create<xla_hlo::AddOp>(
-        bn_op.getLoc(), bn_op.variance(), epsilon, /*broadcast_dims=*/nullptr);
+    Value stddev = rewriter.create<xla_hlo::AddOp>(bn_op.getLoc(),
+                                                   bn_op.variance(), epsilon);
     stddev = rewriter.create<xla_hlo::SqrtOp>(bn_op.getLoc(), stddev);
 
     // Broadcast all terms.
@@ -160,13 +160,13 @@ class UnfuseBatchNormInferencePattern
     // Compute:
     // scale * (input - mean) / stddev + offset
     Value result = rewriter.create<xla_hlo::SubOp>(
-        bn_op.getLoc(), bn_op.operand(), broadcast_mean, nullptr);
+        bn_op.getLoc(), bn_op.operand(), broadcast_mean);
     result = rewriter.create<xla_hlo::MulOp>(bn_op.getLoc(), result,
-                                             broadcast_scale, nullptr);
+                                             broadcast_scale);
     result = rewriter.create<xla_hlo::DivOp>(bn_op.getLoc(), result,
-                                             broadcast_stddev, nullptr);
-    rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(bn_op, result, broadcast_offset,
-                                                nullptr);
+                                             broadcast_stddev);
+    rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(bn_op, result,
+                                                broadcast_offset);
 
     return success();
   }

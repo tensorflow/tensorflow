@@ -36,9 +36,9 @@ class SinkConstantsToControlFlow
       if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
         SinkToRegion(&while_op.body());
         SinkToRegion(&while_op.cond());
-      } else if (auto cond_op = llvm::dyn_cast<ConditionalOp>(op)) {
-        SinkToRegion(&cond_op.true_branch());
-        SinkToRegion(&cond_op.false_branch());
+      } else if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
+        SinkToRegion(&if_op.true_branch());
+        SinkToRegion(&if_op.false_branch());
       }
     });
   }

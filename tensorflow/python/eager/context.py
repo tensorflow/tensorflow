@@ -1123,6 +1123,22 @@ class Context(object):
     pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
                                            device_name, device_info_capsule)
 
+  def pack_eager_tensors(self, tensors):
+    """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+    Args:
+      tensors: a list of EagerTensors to pack.
+
+    Returns:
+      A packed EagerTensor.
+    """
+    self.ensure_initialized()
+    if self._lazy_remote_inputs_copy is not None and (
+        not self._lazy_remote_inputs_copy):
+      raise ValueError("Packing eager tensors is not supported when "
+                       "lazy_remote_inputs_copy is disabled.")
+    return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
   def remove_function(self, name):
     """Remove a function from the context.
 

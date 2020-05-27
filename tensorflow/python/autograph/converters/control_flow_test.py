@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -453,6 +454,17 @@ class IfStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), 5)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
+  def test_local_remains_local(self):
+
+    def test_fn(n):
+      if n > 0:
+        b = 4
+        n = b + 1
+      return n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(1), 5)
+    self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
+
   def test_no_outputs(self):
 
     def test_fn(n):
@@ -464,6 +476,85 @@ class IfStatementTest(ControlFlowTestBase):
     # but that will be pruned at execution.
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
+
+  def test_created_outputs(self):
+
+    def test_fn(i):
+      if i == 0:
+        result = i - 1
+      else:
+        result = i + 1
+      return result
+
+    self.assertTransformedResult(test_fn, 0, -1)
+    self.assertTransformedResult(test_fn, 1, 2)
+
+  def test_created_loop_local_outputs(self):
+
+    def test_fn(n, x):
+      for i in n:
+        if i == 0:
+          result = i - 1
+        else:
+          result = i + 1
+        if result > 0:
+          x += 1
+      return x
+
+    self.assertTransformedResult(test_fn, (range(5), 10), 14)
+
+  def test_created_loop_variable(self):
+
+    def test_fn(n, x):
+      for i in n:
+        if i == 0:
+          result = i - 1
+        if i > 0:  # Using the result from previous iteration.
+          if result < 0:
+            x += 1
+      return x
+
+    self.assertTransformedResult(test_fn, (range(5), 10), 14)
+
+  def test_unaffected_global(self):
+
+    def test_fn(i):
+      global g  # pylint:disable=global-variable-undefined
+      if i == 0:
+        g = i - 1
+      return g
+
+    self.assertTransformedResult(test_fn, 1, 3, symbols={'g': 3})
+    self.assertTransformedResult(test_fn, 0, -1, symbols={'g': 3})
+
+  def test_unaffected_nonlocal(self):
+
+    def test_fn(i):
+      def inner_fn():
+        nonlocal n
+        if i == 0:
+          n = i - 1
+
+      n = 3
+      inner_fn()
+      return n
+
+    self.assertTransformedResult(test_fn, 1, 3)
+    self.assertTransformedResult(test_fn, 0, -1)
+
+  def test_output_defined_in_prior_except(self):
+
+    def test_fn(i):
+      try:
+        raise ValueError()
+      except ValueError:
+        x = 1
+      if i == 0:
+        x = i - 1
+      return x
+
+    self.assertTransformedResult(test_fn, 1, 1)
+    self.assertTransformedResult(test_fn, 0, -1)
 
   def test_unbalanced_multiple_composites(self):
 

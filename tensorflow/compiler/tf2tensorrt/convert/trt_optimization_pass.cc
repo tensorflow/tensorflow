@@ -228,9 +228,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                 << "This can result in poor performance.";
     }
   }
-  grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  ConversionParams cp;
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
@@ -255,7 +252,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     }
     nodes_to_preserve.push_back(s);
   }
-  cp.input_graph_def = &item.graph;
+
+  ConversionParams cp;
+  cp.grappler_item = &item;
   cp.output_names = &nodes_to_preserve;
   cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
@@ -263,7 +262,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.output_graph_def = optimized_graph;
   cp.precision_mode = precision_mode_;
   cp.minimum_segment_size = minimum_segment_size_;
-  cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;

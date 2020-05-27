@@ -56,6 +56,7 @@ objc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/experimental/delegates/coreml/builders:op_builder",
     ],
 )
