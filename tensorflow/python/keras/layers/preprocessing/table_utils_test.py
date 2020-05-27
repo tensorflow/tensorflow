@@ -108,6 +108,15 @@ class CategoricalEncodingInputTest(
 
     self.assertAllEqual(expected_output, output_data)
 
+  def test_tensor_multi_dim_values_fails(self):
+    key_data = np.array([0, 1], dtype=np.int64)
+    value_data = np.array([[11, 12], [21, 22]])
+
+    table = get_table(dtype=dtypes.int64, oov_tokens=[1, 2])
+
+    with self.assertRaisesRegexp(ValueError, "must be 1-dimensional"):
+      table.insert(key_data, value_data)
+
 
 @keras_parameterized.run_all_keras_modes
 class CategoricalEncodingMultiOOVTest(

@@ -58,6 +58,86 @@ class StringLookup(index_lookup.IndexLookup):
       one token per line. If the list or file contains the same token multiple
       times, an error will be thrown.
     encoding: The Python string encoding to use. Defaults to `'utf-8'`.
+    invert: If true, this layer will map indices to vocabulary items instead
+      of mapping vocabulary items to indices.
+
+  Examples:
+
+  Creating a lookup layer with a known vocabulary
+
+  This example creates a lookup layer with a pre-existing vocabulary.
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
+  >>> layer = StringLookup(vocabulary=vocab)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[2, 4, 5],
+         [5, 1, 3]])>
+
+
+  Creating a lookup layer with an adapted vocabulary
+
+  This example creates a lookup layer and generates the vocabulary by analyzing
+  the dataset.
+
+  >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
+  >>> layer = StringLookup()
+  >>> layer.adapt(data)
+  >>> layer.get_vocabulary()
+  ['', '[OOV]', 'd', 'z', 'c', 'b', 'a']
+
+  Note how the mask token '' and the OOV token [OOV] have been added to the
+  vocabulary. The remaining tokens are sorted by frequency ('d', which has
+  2 occurrences, is first) then by inverse sort order.
+
+  >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
+  >>> layer = StringLookup()
+  >>> layer.adapt(data)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[6, 4, 2],
+         [2, 3, 5]])>
+
+
+  Inverse lookup
+
+  This example demonstrates how to map indices to strings using this layer. (You
+  can also use adapt() with inverse=True, but for simplicity we'll pass the
+  vocab in this example.)
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant([[1, 3, 4], [4, 5, 2]])
+  >>> layer = StringLookup(vocabulary=vocab, invert=True)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=string, numpy=
+  array([[b'a', b'c', b'd'],
+         [b'd', b'[OOV]', b'b']], dtype=object)>
+
+  Note that the integer 5, which is out of the vocabulary space, returns an OOV
+  token.
+
+
+  Forward and inverse lookup pairs
+
+  This example demonstrates how to use the vocabulary of a standard lookup
+  layer to create an inverse lookup layer.
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
+  >>> layer = StringLookup(vocabulary=vocab)
+  >>> i_layer = StringLookup(vocabulary=layer.get_vocabulary(), invert=True)
+  >>> int_data = layer(data)
+  >>> i_layer(int_data)
+  <tf.Tensor: shape=(2, 3), dtype=string, numpy=
+  array([[b'a', b'c', b'd'],
+         [b'd', b'[OOV]', b'b']], dtype=object)>
+
+  In this example, the input value 'z' resulted in an output of '[OOV]', since
+  1000 was not in the vocabulary - it got represented as an OOV, and all OOV
+  values are returned as '[OOV}' in the inverse layer. Also, note that for the
+  inverse to work, you must have already set the forward layer vocabulary
+  either directly or via fit() before calling get_vocabulary().
   """
 
   def __init__(self,
@@ -67,6 +147,7 @@ class StringLookup(index_lookup.IndexLookup):
                oov_token="[OOV]",
                vocabulary=None,
                encoding="utf-8",
+               invert=False,
                **kwargs):
     allowed_dtypes = [dtypes.string]
 
@@ -89,6 +170,7 @@ class StringLookup(index_lookup.IndexLookup):
         mask_token=mask_token,
         oov_token=oov_token,
         vocabulary=vocabulary,
+        invert=invert,
         **kwargs)
 
   def get_config(self):

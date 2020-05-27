@@ -204,7 +204,7 @@ class HloModuleConfig {
 
   std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
 
-  absl::Span<const std::vector<std::vector<int64>>> layout_config() const {
+  const std::vector<std::vector<std::vector<int64>>>& layout_config() const {
     return layout_config_;
   }
 

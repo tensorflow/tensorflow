@@ -162,6 +162,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(
         mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    if (pass_config.shape_inference) {
+      // Add a shape inference pass to optimize away the unnecessary casts.
+      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    }
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());

@@ -575,8 +575,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=[strategy_combinations.one_device_strategy] +
-          tpu_strategies,
+          distribution=[strategy_combinations.one_device_strategy],
           mode=['graph', 'eager']))
   def test_optimizer_in_cross_replica_context_raises_error(self, distribution):
 
@@ -1070,6 +1069,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(all_strategy_combinations())
   def test_on_dataset_with_unknown_cardinality_without_steps(
       self, distribution, mode):
+    # TODO(b/155867206): Investigate why this test occasionally segfaults on TPU
+    # in eager mode.
+    if mode == 'eager' and isinstance(
+        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest('caused segfault with TPU in eager mode.')
 
     if mode == 'graph' and isinstance(
         distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):

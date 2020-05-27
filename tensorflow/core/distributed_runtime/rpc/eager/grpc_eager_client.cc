@@ -240,6 +240,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   Status GetClient(const string& target,
                    core::RefCountPtr<EagerClient>* client) override {
+    mutex_lock l(clients_mu_);
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
@@ -281,7 +282,9 @@ class GrpcEagerClientCache : public EagerClientCache {
   }
 
   std::shared_ptr<tensorflow::GrpcChannelCache> cache_;
-  std::unordered_map<string, core::RefCountPtr<EagerClient>> clients_;
+  mutable mutex clients_mu_;
+  std::unordered_map<string, core::RefCountPtr<EagerClient>> clients_
+      TF_GUARDED_BY(clients_mu_);
   std::vector<core::RefCountPtr<GrpcEagerClientThread>> threads_;
 };
 

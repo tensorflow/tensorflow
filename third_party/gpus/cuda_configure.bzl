@@ -66,8 +66,6 @@ _TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
 _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
-
 def to_list_of_strings(elements):
     """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
 
@@ -410,18 +408,40 @@ _NVCC_VERSION_PREFIX = "Cuda compilation tools, release "
 _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
 
 def compute_capabilities(repository_ctx):
-    """Returns a list of strings representing cuda compute capabilities."""
-    capabilities_str = get_host_environ(repository_ctx, _TF_CUDA_COMPUTE_CAPABILITIES)
-    if capabilities_str == None:
-        return _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-    capabilities = capabilities_str.split(",")
-    for capability in capabilities:
-        # Workaround for Skylark's lack of support for regex. This check should
-        # be equivalent to checking:
-        #     if re.match("[0-9]+.[0-9]+", capability) == None:
+    """Returns a list of strings representing cuda compute capabilities.
+
+    Args:
+      repository_ctx: the repo rule's context.
+    Returns: list of cuda architectures to compile for. 'compute_xy' refers to
+      both PTX and SASS, 'sm_xy' refers to SASS only.
+    """
+    capabilities = get_host_environ(
+        repository_ctx,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+        "compute_35,compute_52",
+    ).split(",")
+
+    # Map old 'x.y' capabilities to 'compute_xy'.
+    for i, capability in enumerate(capabilities):
         parts = capability.split(".")
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        if len(parts) != 2:
+            continue
+        capabilities[i] = "compute_%s%s" % (parts[0], parts[1])
+
+    # Make list unique
+    capabilities = dict(zip(capabilities, capabilities)).keys()
+
+    # Validate capabilities.
+    for capability in capabilities:
+        if not capability.startswith(("compute_", "sm_")):
             auto_configure_fail("Invalid compute capability: %s" % capability)
+        for prefix in ["compute_", "sm_"]:
+            if not capability.startswith(prefix):
+                continue
+            if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
+                continue
+            auto_configure_fail("Invalid compute capability: %s" % capability)
+
     return capabilities
 
 def lib_name(base_name, cpu_value, version = None, static = False):
@@ -809,6 +829,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
     cmd = \"""%s \""",
 )""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
+<<<<<<< HEAD
 def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions=None):
     """Returns a rule to recursively copy a directory."""
     src_dir = _norm_path(src_dir)
@@ -817,13 +838,35 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions=None):
     post_cmd=''
     if exceptions!=None:
       outs = [x for x in outs if not any([x.startswith(y) for y in exceptions])]
+=======
+def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None):
+    """Returns a rule to recursively copy a directory.
+    If exceptions is not None, it must be a list of files or directories in
+    'src_dir'; these will be excluded from copying.
+    """
+    src_dir = _norm_path(src_dir)
+    out_dir = _norm_path(out_dir)
+    outs = read_dir(repository_ctx, src_dir)
+    post_cmd = ""
+    if exceptions != None:
+        outs = [x for x in outs if not any([
+            x.startswith(src_dir + "/" + y)
+            for y in exceptions
+        ])]
+>>>>>>> upstream/master
     outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
+<<<<<<< HEAD
     if exceptions!=None:
       for x in exceptions:
         post_cmd+=" ; rm -fR " + x.replace(src_dir, out_dir)
+=======
+    if exceptions != None:
+        for x in exceptions:
+            post_cmd += " ; rm -fR " + out_dir + "/" + x
+>>>>>>> upstream/master
     return """genrule(
     name = "%s",
     outs = [
@@ -842,21 +885,14 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    capability_flags = [
-        "--cuda-gpu-arch=sm_" + cap.replace(".", "")
-        for cap in compute_capabilities
-    ]
+    capability_flags = ["--no-cuda-include-ptx=all"]
+    for capability in compute_capabilities:
+        if capability.startswith("compute_"):
+            capability = capability.replace("compute_", "sm_")
+            capability_flags.append("--cuda-include-ptx=%s" % capability)
+        capability_flags.append("--cuda-gpu-arch=%s" % capability)
+
     return str(capability_flags)
-
-def _compute_cuda_gpu_architectures(repository_ctx, compute_capabilities):
-    gpu_architectures = [
-        "sm_" + capability.replace(".", "")
-        for capability in compute_capabilities
-    ]
-
-    # Make the list unique.
-    gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
-    return str(gpu_architectures)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
@@ -989,10 +1025,7 @@ def _create_local_cuda_repository(repository_ctx):
                 repository_ctx,
                 cuda_config.compute_capabilities,
             ),
-            "%{cuda_gpu_architectures}": _compute_cuda_gpu_architectures(
-                repository_ctx,
-                cuda_config.compute_capabilities,
-            ),
+            "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
         },
     )
 

@@ -118,6 +118,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",

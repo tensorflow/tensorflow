@@ -7898,16 +7898,16 @@ inline void MaximumElementwise(int size, const ArithmeticParams& params,
                                const int8* input1_data, const int8* input2_data,
                                int8* output_data) {
   ruy::profiler::ScopeLabel label("MaximumElementwiseInt8/8bit");
-
   int i = 0;
 #ifdef USE_NEON
-  for (; i <= size - 8; i += 8) {
-    const int8x8_t input1_val_original = vld1_s8(input1_data + i);
-    const int8x8_t input2_val_original = vld1_s8(input2_data + i);
-    const int8x8_t max_data = vmax_s8(input1_val_original, input2_val_original);
-    vst1_s8(output_data + i, max_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input1_val_original = vld1q_s8(input1_data + i);
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
   }
-#endif  // NEON
+#endif  // USE_NEON
   for (; i < size; ++i) {
     const int8 input1_val = input1_data[i];
     const int8 input2_val = input2_data[i];
@@ -7922,13 +7922,14 @@ inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
   int i = 0;
 
 #ifdef USE_NEON
-  const int8x8_t input1_val_original = vdup_n_s8(input1_data);
-  for (; i <= size - 8; i += 8) {
-    const int8x8_t input2_val_original = vld1_s8(input2_data + i);
-    const int8x8_t max_data = vmax_s8(input1_val_original, input2_val_original);
-    vst1_s8(output_data + i, max_data);
+  const int8x16_t input1_val_original = vdupq_n_s8(input1_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
   }
-#endif  // NEON
+#endif  // USE_NEON
   for (; i < size; ++i) {
     const int8 input2_val = input2_data[i];
     output_data[i] = std::max(input1_data, input2_val);
@@ -7939,6 +7940,7 @@ inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
 inline void MinimumElementwise(int size, const ArithmeticParams& params,
                                const int8* input1_data, const int8* input2_data,
                                int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumElementwiseInt8/8bit");
   int i = 0;
 #ifdef USE_NEON
   for (; i <= size - 16; i += 16) {
@@ -7959,6 +7961,7 @@ inline void MinimumElementwise(int size, const ArithmeticParams& params,
 inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
                                    int8 input1_data, const int8* input2_data,
                                    int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumScalarBroadcastInt8/8bit");
   int i = 0;
 
 #ifdef USE_NEON
@@ -7985,10 +7988,7 @@ inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
                                     const RuntimeShape& output_shape,
                                     int8* output_data,
                                     ElementwiseF elementwise_f,
-                                    ScalarBroadcastF scalar_broadcast_f,
-                                    const std::string& label_name) {
-  ruy::profiler::ScopeLabel label(label_name);
-
+                                    ScalarBroadcastF scalar_broadcast_f) {
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
   switched_params.input1_multiplier = unswitched_params.input2_multiplier;
@@ -8090,8 +8090,7 @@ inline void BroadcastMaximumDispatch(const ArithmeticParams& params,
 
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
-                          MaximumElementwise, MaximumScalarBroadcast,
-                          "BroadcastMaximumFivefoldInt8/8bit");
+                          MaximumElementwise, MaximumScalarBroadcast);
 }
 
 template <typename Op>
@@ -8110,8 +8109,7 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
 
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
-                          MinimumElementwise, MinimumScalarBroadcast,
-                          "BroadcastMinimumFivefoldInt8/8bit");
+                          MinimumElementwise, MinimumScalarBroadcast);
 }
 
 }  // namespace optimized_ops

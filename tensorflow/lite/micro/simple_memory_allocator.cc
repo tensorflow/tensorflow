@@ -23,6 +23,20 @@ limitations under the License.
 
 namespace tflite {
 
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer_head,
+                                             uint8_t* buffer_tail)
+    : error_reporter_(error_reporter),
+      buffer_head_(buffer_head),
+      buffer_tail_(buffer_tail),
+      head_(buffer_head),
+      tail_(buffer_tail) {}
+
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer,
+                                             size_t buffer_size)
+    : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
+
 SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
     ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size) {
   SimpleMemoryAllocator tmp =
@@ -62,6 +76,30 @@ uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
   }
   tail_ = aligned_result;
   return aligned_result;
+}
+
+uint8_t* SimpleMemoryAllocator::GetHead() const { return head_; }
+
+uint8_t* SimpleMemoryAllocator::GetTail() const { return tail_; }
+
+size_t SimpleMemoryAllocator::GetHeadUsedBytes() const {
+  return head_ - buffer_head_;
+}
+
+size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
+  return buffer_tail_ - tail_;
+}
+
+size_t SimpleMemoryAllocator::GetAvailableMemory() const {
+  return tail_ - head_;
+}
+
+size_t SimpleMemoryAllocator::GetUsedBytes() const {
+  return GetBufferSize() - GetAvailableMemory();
+}
+
+size_t SimpleMemoryAllocator::GetBufferSize() const {
+  return buffer_tail_ - buffer_head_;
 }
 
 }  // namespace tflite

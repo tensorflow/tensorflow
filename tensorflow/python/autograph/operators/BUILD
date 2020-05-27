@@ -22,6 +22,7 @@ py_library(
     name = "operators",
     srcs = [
         "__init__.py",
+        "conditional_expressions.py",
         "control_flow.py",
         "control_flow_deprecated_py2.py",
         "data_structures.py",
@@ -56,6 +57,20 @@ py_test(
     srcs = ["data_structures_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "conditional_expressions_test",
+    srcs = ["conditional_expressions_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss_py2",
+    ],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",

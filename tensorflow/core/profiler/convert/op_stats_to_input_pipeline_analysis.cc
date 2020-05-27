@@ -752,5 +752,17 @@ std::string GetSummaryNextStep(absl::string_view input_classification,
   return summary_next_step;
 }
 
+double HostToDeviceTransferAsPercentOfInputTime(
+    const InputTimeBreakdown& breakdown) {
+  // Thanks to the scaling trick we did in GenerateHostResult(), we can
+  // estimate the percentage of input-time spent on host-to-device transfer in
+  // the following way.
+  double total_input_time_us =
+      breakdown.demanded_file_read_us() + breakdown.advanced_file_read_us() +
+      breakdown.preprocessing_us() + breakdown.enqueue_us() +
+      breakdown.unclassified_non_enqueue_us();
+  return 100.0 * SafeDivide(breakdown.enqueue_us(), total_input_time_us);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

@@ -55,7 +55,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
+GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
     : worker_env_(worker_env), device_mgr_(device_mgr), table_(5) {
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.

@@ -1831,9 +1831,9 @@ class ConcreteFunction(object):
       `args` and `kwargs`.
     """
     return self._call_flat(
-        (t for t in nest.flatten((args, kwargs), expand_composites=True)
+        [t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.BaseResourceVariable))),
+                           resource_variable_ops.BaseResourceVariable))],
         captured_inputs=self.captured_inputs,
         cancellation_manager=cancellation_manager)
 
@@ -1854,7 +1854,6 @@ class ConcreteFunction(object):
     Raises:
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
-    args = list(args)
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 

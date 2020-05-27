@@ -66,7 +66,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")
 class NumericsTest(test.TestCase):
 
   def testInf(self):

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -369,6 +370,28 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
     multiplier *= dimensions[i];
+  }
+  return logical_linear_index;
+}
+
+llvm::Value* IrArray::Index::Linearize(
+    const std::vector<llvm::Value*>& dynamic_dims,
+    llvm::IRBuilder<>* builder) const {
+  // Each dimension is multiplied by the product of the sizes of all
+  // earlier dimensions and added to the accumulator logical_linear_index.
+  CHECK_EQ(size(), dynamic_dims.size());
+  llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
+  llvm::Value* multiplier = GetConstantWithIndexType(1);
+  for (ssize_t i = size() - 1; i >= 0; --i) {
+    llvm::Value* addend = builder->CreateMul((*this)[i], multiplier, "",
+                                             /*HasNUW=*/true, /*HasNSW=*/true);
+    addend = builder->CreateZExtOrTrunc(addend, index_type_);
+    logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
+                                              /*HasNUW=*/true, /*HasNSW=*/true);
+    if (i) {
+      multiplier = builder->CreateMul(multiplier, dynamic_dims[i],
+                                      /*Name=*/"multiplier");
+    }
   }
   return logical_linear_index;
 }

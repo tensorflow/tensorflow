@@ -28,6 +28,7 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #endif
+#include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
 namespace tensorflow {
 namespace profiler {
@@ -123,13 +124,20 @@ class TraceMe {
   explicit TraceMe(const char* raw, int level = 1)
       : TraceMe(absl::string_view(raw), level) {}
 
-  // This overload only generates the activity name if tracing is enabled.
-  // Useful for avoiding things like string concatenation when tracing is
-  // disabled. The |name_generator| may be a lambda or functor that returns a
-  // type that the string() constructor can take.
+  // This overload only generates the name (and possibly metadata) if tracing is
+  // enabled. Useful for avoiding expensive operations (e.g., string
+  // concatenation) when tracing is disabled.
+  // name_generator may be a lambda or functor that returns a type that the
+  // string() constructor can take, e.g., the result of TraceMeEncode.
   // name_generator is templated, rather than a std::function to avoid
   // allocations std::function might make even if never called.
-  // Usage: profiler::TraceMe([&]{ return StrCat(prefix, ":", postfix); });
+  // Example Usage:
+  //   TraceMe op_trace_me([&]() {
+  //     return StrCat(op_name, ":", op_type);
+  //   }
+  //   TraceMe trace_me_with_metadata([&value1]() {
+  //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
+  //   });
   template <typename NameGeneratorT>
   explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
@@ -167,21 +175,22 @@ class TraceMe {
 #endif
   }
 
-  // Sets new_metadata in the metadata part of no_init_.name.
-  void SetMetadata(absl::string_view new_metadata) {
+  // Appends new_metadata to the TraceMe name passed to the constructor.
+  // metadata_generator may be a lambda or functor that returns a type that the
+  // string() constructor can take, e.g., the result of TraceMeEncode.
+  // metadata_generator is only evaluated when tracing is enabled.
+  // metadata_generator is templated, rather than a std::function to avoid
+  // allocations std::function might make even if never called.
+  // Example Usage:
+  //   trace_me.AppendMetadata([&value1]() {
+  //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
+  //   });
+  template <typename MetadataGeneratorT>
+  void AppendMetadata(MetadataGeneratorT metadata_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        std::string& name = no_init_.name;
-        DCHECK(!name.empty());
-        DCHECK(!new_metadata.empty());
-        if (name.back() == '#') {  // name already has metadata
-          name.back() = ',';
-          if (TF_PREDICT_TRUE(new_metadata.front() == '#')) {
-            new_metadata.remove_prefix(1);
-          }
-        }
-        name.append(new_metadata.data(), new_metadata.size());
+        traceme_internal::AppendMetadata(&no_init_.name, metadata_generator());
       }
     }
 #endif
@@ -223,6 +232,14 @@ class TraceMe {
     return TraceMeRecorder::Active(level);
 #else
     return false;
+#endif
+  }
+
+  static uint64 NewActivityId() {
+#if !defined(IS_MOBILE_PLATFORM)
+    return TraceMeRecorder::NewActivityId();
+#else
+    return 0;
 #endif
   }
 

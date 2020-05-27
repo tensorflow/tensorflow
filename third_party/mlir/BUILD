@@ -175,6 +175,7 @@ filegroup(
 filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
@@ -202,6 +203,26 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Affine/IR/AffineOps.td",
+    td_srcs = [
+        ":AffineOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "AffineMemoryOpInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
     td_srcs = [
         ":AffineOpsTdFiles",
     ],
@@ -462,6 +483,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":AffineMemoryOpInterfacesIncGen",
         ":AffineOpsIncGen",
         ":EDSC",
         ":IR",
@@ -677,6 +699,7 @@ cc_library(
     deps = [
         ":CallOpInterfaces",
         ":CommonFolders",
+        ":ControlFlowInterfaces",
         ":Dialect",
         ":IR",
         ":InferTypeOpInterface",
@@ -1153,6 +1176,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "GPURuntimeTransforms",
+    srcs = [
+        "lib/Conversion/GPUCommon/ConvertLaunchFuncToRuntimeCalls.cpp",
+        "lib/Conversion/PassDetail.h",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/GPUCommon/GPUCommonPass.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":GPUDialect",
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":Support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+)
+
 gentbl(
     name = "GPUToNVVMGen",
     strip_include_prefix = "lib/Conversion/GPUToNVVM",
@@ -1265,7 +1310,6 @@ cc_library(
     name = "GPUToCUDATransforms",
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
-        "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
         "lib/Conversion/PassDetail.h",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
@@ -2446,6 +2490,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Analysis",
+        ":GPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
@@ -2525,6 +2570,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUDialect",
         ":GPUPassIncGen",
+        ":GPURuntimeTransforms",
         ":GPUToCUDATransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
@@ -2583,6 +2629,7 @@ cc_library(
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
+    copts = ["-DMLIR_INCLUDE_TESTS"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":Analysis",
@@ -2679,6 +2726,7 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
     linkshared = True,
     deps = [
+        ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
         "//third_party/gpus/cuda:cuda_runtime",
         "//third_party/gpus/cuda:libcuda",
@@ -2728,6 +2776,7 @@ cc_binary(
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
         ":GPUDialect",
+        ":GPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUTransforms",

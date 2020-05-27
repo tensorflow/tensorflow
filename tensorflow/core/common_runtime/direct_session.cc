@@ -349,12 +349,12 @@ DirectSession::DirectSession(const SessionOptions& options,
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
+    string msg;
     if (mapping_str.empty()) {
-      printf("Device mapping: no known devices.\n");
+      msg = "Device mapping: no known devices.";
     } else {
-      printf("Device mapping:\n%s", mapping_str.c_str());
+      msg = strings::StrCat("Device mapping:\n", mapping_str);
     }
-    string msg = strings::StrCat("Device mapping:\n", mapping_str);
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
