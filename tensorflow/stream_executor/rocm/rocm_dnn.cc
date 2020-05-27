@@ -3104,15 +3104,47 @@ port::Status MIOpenSupport::DoConvolve(
     }
   }
 
+  std::unique_ptr<TemporaryDeviceMemory<uint8>> local_scratch;
+  uint8* scratch_memory_ptr = reinterpret_cast<uint8*>(scratch_memory.opaque());
+  size_t scratch_memory_size = scratch_memory.size();
+
   miopenStatus_t status = miopenStatusSuccess;
+  size_t required_scratch_memory_size=0;
+
+    // On the first call with XLA without autotune, required scratch size is 
+    // unknown, and we're getting the ScratchAllocator with internal capacity
+    // zero. Therefore we have to fall back on alternate means to allocate
+    // any scratch memory actually needed.
+  if(kind == dnn::ConvolutionKind::FORWARD)
+    status = wrap::miopenConvolutionForwardGetWorkSpaceSize(miopen.handle(), 
+      filter.handle(), input_nd.handle(), conv.handle(), output_nd.handle(),
+      &required_scratch_memory_size);
+  else if (kind == dnn::ConvolutionKind::BACKWARD_DATA)
+    status = wrap::miopenConvolutionBackwardDataGetWorkSpaceSize(miopen.handle(), 
+      filter.handle(), input_nd.handle(), conv.handle(), output_nd.handle(),
+      &required_scratch_memory_size);
+  else if (kind == dnn::ConvolutionKind::BACKWARD_FILTER)
+      status = wrap::miopenConvolutionBackwardWeightsGetWorkSpaceSize(
+          miopen.handle(), output_nd.handle(), input_nd.handle(), conv.handle(),
+          filter.handle(), &required_scratch_memory_size);
+
+  if(status != miopenStatusSuccess)
+    return port::Status(port::error::INTERNAL, "Failed to calculate workspace size");
+  
+  if(required_scratch_memory_size > scratch_memory_size) {
+    local_scratch = stream->AllocateTemporaryArray<uint8>
+      (required_scratch_memory_size).ConsumeValueOrDie();
+    scratch_memory_ptr = reinterpret_cast<uint8*>(local_scratch->mutable_device_memory()->opaque());
+    scratch_memory_size = required_scratch_memory_size;
+  }
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
       if (use_immediate_mode_) {
         status = wrap::miopenConvolutionForwardImmediate(
             miopen.handle(), filter.handle(), filter_data.opaque(),
             input_nd.handle(), input_data.opaque(), conv.handle(),
-            output_nd.handle(), output_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
+            output_nd.handle(), output_data.opaque(), scratch_memory_ptr,
+            scratch_memory_size,
             static_cast<uint64_t>(algorithm_desc.algo_id()));
       } else {
         status = wrap::miopenConvolutionForward(
@@ -3120,7 +3152,7 @@ port::Status MIOpenSupport::DoConvolve(
             filter.handle(), filter_data.opaque(), conv.handle(),
             static_cast<miopenConvFwdAlgorithm_t>(algorithm_desc.algo_id()),
             &beta, output_nd.handle(), output_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
+            scratch_memory_ptr, scratch_memory_size);
       }
 
       break;
@@ -3138,8 +3170,8 @@ port::Status MIOpenSupport::DoConvolve(
         status = wrap::miopenConvolutionBackwardDataImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
             filter.handle(), filter_data.opaque(), conv.handle(),
-            input_nd.handle(), input_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
+            input_nd.handle(), input_data.opaque(), scratch_memory_ptr, 
+            scratch_memory_size,
             static_cast<uint64_t>(algorithm_desc.algo_id()));
       } else {
         status = wrap::miopenConvolutionBackwardData(
@@ -3147,7 +3179,7 @@ port::Status MIOpenSupport::DoConvolve(
             filter.handle(), filter_data.opaque(), conv.handle(),
             static_cast<miopenConvBwdDataAlgorithm_t>(algorithm_desc.algo_id()),
             &beta, input_nd.handle(), input_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
+            scratch_memory_ptr, scratch_memory_size);
       }
       break;
     }
@@ -3164,8 +3196,8 @@ port::Status MIOpenSupport::DoConvolve(
         status = wrap::miopenConvolutionBackwardWeightsImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
             input_nd.handle(), input_data.opaque(), conv.handle(),
-            filter.handle(), filter_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
+            filter.handle(), filter_data.opaque(), scratch_memory_ptr, 
+            scratch_memory_size,
             static_cast<uint64_t>(algorithm_desc.algo_id()));
       } else {
         status = wrap::miopenConvolutionBackwardWeights(
@@ -3174,7 +3206,7 @@ port::Status MIOpenSupport::DoConvolve(
             static_cast<miopenConvBwdWeightsAlgorithm_t>(
                 algorithm_desc.algo_id()),
             &beta, filter.handle(), filter_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
+            scratch_memory_ptr, scratch_memory_size);
       }
       break;
     }
@@ -3193,7 +3225,7 @@ port::Status MIOpenSupport::DoConvolve(
       output_profile_result->set_algorithm(algotype);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
+      output_profile_result->set_scratch_size(scratch_memory_size);
     }
     timer->Destroy();
   }
