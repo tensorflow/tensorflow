@@ -4683,7 +4683,9 @@ Status ConvertCast(OpConverterParams* params) {
   }
 
   DataType output_type;
-  TF_RETURN_IF_ERROR(GetOutputTfType(*params, &output_type));
+  TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
+                                      kCastOutputTypeAttrName));
+
   if (output_type != DataType::DT_FLOAT) {
     return unsupport_cast_error();
   }
