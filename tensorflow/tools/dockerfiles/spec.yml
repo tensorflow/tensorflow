@@ -50,7 +50,7 @@ releases:
             - "{ubuntu-devel-ppc64le}{jupyter}"
             - "{ubuntu-horovod}{jupyter}"
             - "{ubuntu-devel-horovod}{jupyter}"
-            - "{ubuntu-devel-aarch64}{jupyter}"
+            - "{ubuntu-devel-arm64v8}{jupyter}"
 
 slice_sets:
 
@@ -111,9 +111,9 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
 
     ubuntu-devel-aarch64:
-        - add_to_name: "devel-aarch64"
-          dockerfile_exclusive_name: "devel-cpu-aarch64"
-          dockerfile_subdirectory: "aarch64"
+        - add_to_name: "devel-arm64v8"
+          dockerfile_exclusive_name: "devel-cpu-arm64v8"
+          dockerfile_subdirectory: "arm64v8"
           partials:
               - ubuntu/version
               - ubuntu/devel-cpu
