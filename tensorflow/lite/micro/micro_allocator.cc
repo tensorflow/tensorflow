@@ -46,6 +46,10 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
+// Static instance of a zero-length int to pass as tensor dims for a flatbuffer
+// Tensor with no shape.
+constexpr TfLiteIntArray kZeroLengthIntArray = {0, {}};
+
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
@@ -311,11 +315,17 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
   // TFLM doesn't allow reshaping the tensor which requires dynamic memory
-  // allocation so it is safe to drop the const qualifier. In the future, if we
-  // really want to update the tensor shape, we can always pass in a new
+  // allocation so it is safe to drop the const qualifier. In the future, if
+  // we really want to update the tensor shape, we can always pass in a new
   // TfLiteIntArray - especially we have to do so if the dimension is changed.
-  result->dims = const_cast<TfLiteIntArray*>(
-      reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+  if (flatbuffer_tensor.shape() == nullptr) {
+    // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
+    // tensor.
+    result->dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  } else {
+    result->dims = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+  }
 
   // Copy the quantization information from the serialized data.
   const auto* src_quantization = flatbuffer_tensor.quantization();
