@@ -42,6 +42,9 @@ namespace tflite {
 
 class InterpreterTest;
 class TestDelegate;
+namespace delegates {
+class InterpreterUtils;  // Class for friend declarations.
+}  // namespace delegates
 
 namespace impl {
 
@@ -529,6 +532,7 @@ class Interpreter {
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::TestDelegate;
+  friend class tflite::delegates::InterpreterUtils;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -541,6 +545,15 @@ class Interpreter {
   // Remove delegates (for fallback behaviour). The interpreter is invokable
   // afterwards.
   TfLiteStatus RemoveAllDelegates();
+
+  // Returns true if delegates have been applied.
+  bool HasDelegates();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
+
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

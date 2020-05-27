@@ -32,6 +32,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "interpreter_utils",
+    srcs = ["interpreter_utils.cc"],
+    hdrs = ["interpreter_utils.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:framework",
+    ],
+)
+
 cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
@@ -53,6 +63,7 @@ cc_test(
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
+        ":interpreter_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",
