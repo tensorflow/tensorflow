@@ -106,6 +106,7 @@ public final class Interpreter implements AutoCloseable {
      * {@link org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
      *
      */
+    @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
       this.allowFp16PrecisionForFp32 = allow;
       return this;
