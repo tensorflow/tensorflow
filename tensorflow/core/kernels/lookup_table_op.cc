@@ -459,12 +459,28 @@ class MutableDenseHashTable final : public LookupInterface {
                                      expected_shape.DebugString(), " got ",
                                      key.shape().DebugString());
     }
+
+    const int64 key_size = key_shape_.num_elements();
+    const auto key_matrix = key.shaped<K, 2>({batch_size, key_size});
+    const auto empty_key_tensor =
+        empty_key_.AccessTensor(ctx)->template shaped<K, 2>({1, key_size});
+
+    int64 key_entries = 0;
+    for (int64 i = 0; i < batch_size; ++i) {
+      const uint64 key_hash = HashKey(key_matrix, i);
+      if (empty_key_hash_ == key_hash &&
+          IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
+        continue;
+      }
+      key_entries++;
+    }
+
     mutex_lock l(mu_);
     // For simplicity we assume that all keys in the input result in inserts
     // rather than updates. That means we may grow the table even though we
     // don't need to. As long as the number of keys inserted in one call is
     // small compared to the size of the map, the impact of this is minimal.
-    const int64 pending_num_entries = num_entries_ + batch_size;
+    const int64 pending_num_entries = num_entries_ + key_entries;
     if (pending_num_entries > num_buckets_ * max_load_factor_) {
       int64 new_num_buckets = num_buckets_;
       do {
