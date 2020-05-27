@@ -287,7 +287,9 @@ QuantizeOpTest/UINT8,29
 -ConstUint8(Mean|Sum)OpTest/.+
 ConstUint8(Max|Min)OpTest/.+,29
 ConstUint8(Mean)OpTest/.+
-Constint8(Mean|Max|Min)OpTest/.+
+Constint8(Max|Min)OpTest/.+
+ConstMeanOpTest.+/.+Int8
+MeanOpTest.+/.+Int8
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims

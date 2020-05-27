@@ -198,6 +198,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     case kTfLiteInt8:
       temp_sum->type = kTfLiteInt32;
       break;
+    case kTfLiteInt16:
+      temp_sum->type = kTfLiteInt32;
+      break;
     case kTfLiteBool:
       temp_sum->type = kTfLiteBool;
       break;
@@ -242,7 +245,8 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
 
   // reduce_mean requires a buffer to store intermediate sum result.
   OpContext op_context(context, node);
-  if (op_context.input->type == kTfLiteInt8) {
+  if (op_context.input->type == kTfLiteInt8 ||
+       op_context.input->type == kTfLiteInt16) {
     const double real_multiplier =
         static_cast<double>(op_context.input->params.scale) /
         static_cast<double>(op_context.output->params.scale);
@@ -267,6 +271,56 @@ void ResolveAxis(const int* axis_data, int axis_count,
   }
   for (; i < 4; ++i) {
     op_params->axis[i] = 1;
+  }
+}
+
+template <typename integer_type>
+TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
+                                  const OpContext& op_context, int num_axis,
+                                  OpData* data, TfLiteTensor* temp_index,
+                                  TfLiteTensor* resolved_axis,
+                                  TfLiteTensor* temp_sum) {
+  tflite::MeanParams op_params;
+  op_params.axis_count = num_axis;
+  ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+  const TfLiteTensor* input = op_context.input;
+  // TODO(b/139102329): Handle all the cases in the combined reference
+  // method.
+  if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
+      op_params.axis_count == 2 &&
+      ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+       (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
+    reference_integer_ops::Mean(
+        op_params, data->multiplier, data->shift, GetTensorShape(input),
+        GetTensorData<integer_type>(input), op_context.input->params.zero_point,
+        GetTensorShape(op_context.output),
+        GetTensorData<integer_type>(op_context.output),
+        op_context.output->params.zero_point);
+  } else if (input->params.zero_point == op_context.output->params.zero_point &&
+             input->params.scale == op_context.output->params.scale) {
+    TF_LITE_ENSURE(
+        context,
+        reference_ops::Mean(
+            GetTensorData<integer_type>(input), input->dims->data,
+            input->dims->size, GetTensorData<integer_type>(op_context.output),
+            op_context.output->dims->data, op_context.output->dims->size,
+            GetTensorData<int>(op_context.axis), num_axis,
+            op_context.params->keep_dims, GetTensorData<int>(temp_index),
+            GetTensorData<int>(resolved_axis), GetTensorData<int>(temp_sum)));
+  } else {
+    TF_LITE_ENSURE(
+        context,
+        reference_ops::QuantizedMeanOrSum<>(
+            GetTensorData<integer_type>(input), input->params.zero_point,
+            input->params.scale, input->dims->data, input->dims->size,
+            GetTensorData<integer_type>(op_context.output),
+            op_context.output->params.zero_point,
+            op_context.output->params.scale, op_context.output->dims->data,
+            op_context.output->dims->size, GetTensorData<int>(op_context.axis),
+            num_axis, op_context.params->keep_dims,
+            GetTensorData<int>(temp_index), GetTensorData<int>(resolved_axis),
+            GetTensorData<int>(temp_sum),
+            /*compute_sum=*/false));
   }
 }
 
@@ -397,50 +451,12 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
               GetTensorData<int64_t>(temp_sum)));
       break;
     case kTfLiteInt8: {
-      tflite::MeanParams op_params;
-      op_params.axis_count = num_axis;
-      ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
-      const TfLiteTensor* input = op_context.input;
-      // TODO(b/139102329): Handle all the cases in the combined reference
-      // method.
-      if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
-          op_params.axis_count == 2 &&
-          ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-           (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
-        reference_integer_ops::Mean(
-            op_params, data->multiplier, data->shift, GetTensorShape(input),
-            GetTensorData<int8_t>(input), op_context.input->params.zero_point,
-            GetTensorShape(op_context.output),
-            GetTensorData<int8_t>(op_context.output),
-            op_context.output->params.zero_point);
-      } else if (input->params.zero_point ==
-                     op_context.output->params.zero_point &&
-                 input->params.scale == op_context.output->params.scale) {
-        TF_LITE_ENSURE(
-            context,
-            reference_ops::Mean(
-                GetTensorData<int8_t>(input), input->dims->data,
-                input->dims->size, GetTensorData<int8_t>(op_context.output),
-                op_context.output->dims->data, op_context.output->dims->size,
-                GetTensorData<int>(op_context.axis), num_axis,
-                op_context.params->keep_dims, GetTensorData<int>(temp_index),
-                GetTensorData<int>(resolved_axis),
-                GetTensorData<int>(temp_sum)));
-      } else {
-        TF_LITE_ENSURE(
-            context,
-            reference_ops::QuantizedMeanOrSum<>(
-                GetTensorData<int8_t>(input), input->params.zero_point,
-                input->params.scale, input->dims->data, input->dims->size,
-                GetTensorData<int8_t>(op_context.output),
-                op_context.output->params.zero_point,
-                op_context.output->params.scale, op_context.output->dims->data,
-                op_context.output->dims->size,
-                GetTensorData<int>(op_context.axis), num_axis,
-                op_context.params->keep_dims, GetTensorData<int>(temp_index),
-                GetTensorData<int>(resolved_axis), GetTensorData<int>(temp_sum),
-                /*compute_sum=*/false));
-      }
+      EvalMeanReferenceOps<int8_t>(context, op_context, num_axis, data,
+                                   temp_index, resolved_axis, temp_sum);
+    } break;
+    case kTfLiteInt16: {
+      EvalMeanReferenceOps<int16_t>(context, op_context, num_axis, data,
+                                    temp_index, resolved_axis, temp_sum);
     } break;
     case kTfLiteUInt8: {
       // TODO(b/139102329): Handle all the cases in the combined reference

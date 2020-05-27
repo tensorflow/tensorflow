@@ -229,7 +229,14 @@ class AnyOpDynamicModel : public BaseOpModel {
 };
 
 // for quantized Add, the error shouldn't exceed step
-float GetTolerance(int min, int max) { return (max - min) / 255.0; }
+template <typename integer_type = int8_t>
+float GetTolerance(int min, int max) {
+  if (std::is_same<int16_t, integer_type>::value) {
+    return (max - min) / 65536.0;
+  } else {
+    return (max - min) / 255.0;
+  }
+}
 
 // Tests for reduce_mean
 TEST(ConstFloatMeanOpTest, NotKeepDims) {
@@ -426,63 +433,123 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
       ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
 }
 
-TEST(ConstInt8MeanOpTest, NonSpecialAxisSameScale) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+template <typename integer_type, TensorType tensor_dtype>
+void MeanOpConstModelTest() {
+  float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
   std::vector<float> data = {105.0, 71.0, 233.0, 92.0, 227.0, 11.0, 14.0, 43.0};
-  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, 0.0, 255.0},
-                     {TensorType_INT8, {1, 2, 4}, 0.0, 255.0}, {1}, {1}, false);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+
+  float scale = tensor_dtype == TensorType_INT16 ? 255 / 32767.0f : 0.0f;
+
+  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, 0.0, 255.0, scale, 0},
+                     {tensor_dtype, {1, 2, 4}, 0.0, 255.0, scale, 0}, {1}, {1},
+                     false);
+  m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+  EXPECT_THAT(m.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(data, kQuantizedTolerance)));
 }
 
-TEST(ConstInt8MeanOpTest, NonSpecialAxisNonSameScale) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+class ConstMeanOpTestSameScale : public ::testing::Test {};
+
+TEST_F(ConstMeanOpTestSameScale, NonSpecialAxisSameScaleInt8) {
+  MeanOpConstModelTest<int8_t, TensorType_INT8>();
+}
+
+TEST_F(ConstMeanOpTestSameScale, NonSpecialAxisSameScaleInt16) {
+  MeanOpConstModelTest<int16_t, TensorType_INT16>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void ConstMeanOpTestNonSameScale() {
+  float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8};
-  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, -1.0, 1.0},
-                     {TensorType_INT8, {1, 2}, -5.0, 5.0}, {2}, {1, 3}, false);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+
+  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
+
+  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, -1.0, 1.0, scale, 0},
+                     {tensor_dtype, {1, 2}, -5.0, 5.0, scale, 0}, {2}, {1, 3},
+                     false);
+  m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<int8_t>(),
+      m.GetDequantizedOutput<integer_type>(),
       ElementsAreArray(ArrayFloatNear({0.25, 0.65}, kQuantizedTolerance)));
 }
 
-TEST(ConstInt8MeanOpTest, QuantizedSameScale) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+class ConstMeanOpTestNonSameScale : public ::testing::Test {};
+
+TEST_F(ConstMeanOpTestNonSameScale, NonSpecialAxisNonSameScaleInt8) {
+  MeanOpConstModelTest<int8_t, TensorType_INT8>();
+}
+
+TEST_F(ConstMeanOpTestNonSameScale, NonSpecialAxisNonSameScaleInt16) {
+  MeanOpConstModelTest<int16_t, TensorType_INT16>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void MeanOpTestQuantizedSameScale() {
+  float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
+
+  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
+
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
                              0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
                              0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
                              0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
-  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 9}, -1.0, 1.0},
-                     {TensorType_INT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0, scale, 0},
+                     {tensor_dtype, {2}, -1.0, 1.0, scale, 0}, {2}, {1, 2},
+                     true);
+  m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+  EXPECT_THAT(m.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
                   kQuantizedTolerance)));
 }
 
-TEST(ConstInt8MeanOpTest, QuantizedDifferentScale) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+class MeanOpTestQuantizedSameScale : public ::testing::Test {};
+
+TEST_F(MeanOpTestQuantizedSameScale, QuantizedSameScaleInt8) {
+  MeanOpConstModelTest<int8_t, TensorType_INT8>();
+}
+
+TEST_F(MeanOpTestQuantizedSameScale, QuantizedSameScaleInt16) {
+  MeanOpConstModelTest<int16_t, TensorType_INT16>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void MeanOpTestQuantizedDifferentScale() {
+  float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
+
+  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
+
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
                              0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
                              0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
                              0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
-  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 9}, -1.0, 1.0},
-                     {TensorType_INT8, {2}, -4.0, 4.0}, {2}, {1, 2}, true);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0, scale, 0},
+                     {tensor_dtype, {2}, -4.0, 4.0, scale, 0}, {2}, {1, 2},
+                     true);
+  m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+  EXPECT_THAT(m.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
                   kQuantizedTolerance)));
+}
+
+class MeanOpTestQuantizedDifferentScale : public ::testing::Test {};
+
+TEST_F(MeanOpTestQuantizedDifferentScale, QuantizedDifferentScaleInt8) {
+  MeanOpConstModelTest<int8_t, TensorType_INT8>();
+}
+
+TEST_F(MeanOpTestQuantizedDifferentScale, QuantizedDifferentScaleInt16) {
+  MeanOpConstModelTest<int16_t, TensorType_INT16>();
 }
 
 TEST(ConstFloatMeanOpTest, KeepDims4DMeanLargeDepthInt8) {
