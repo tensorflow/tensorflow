@@ -33,11 +33,10 @@ def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
-
 // Checks value is not produce by a TLF_QUant with
 // different quantization attribute
-
 def NotFromQuantOpDifferentQuant : Constraint<CPred<"NotFromQuantOpDifferentQuant($0,$1)">>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -169,7 +168,10 @@ foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
 // This pattern applies when the same quantize/dequantize have been used twice
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
-def eliminate_dq_q_pairs : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in), [(NotFromQuantOpDifferentQuant $in, $qt)]>;
+def eliminate_dq_q_pairs : Pat<
+  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), 
+  (replaceWithValue $in), 
+  [(NotFromQuantOpDifferentQuant $in, $qt)]>;
 
 
 // Constraint that makes sure both operands are the same operands.
