@@ -49,6 +49,9 @@ constexpr char kModePassthrough[] = "passthrough";
 
 enum Mode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
+std::string GetCurrentCheckpointFile(const std::string& shard_directory,
+                                     const uint64 current_checkpoint_id);
+
 class Writer {
  public:
   static constexpr const size_t kHeaderSize = sizeof(uint64);
@@ -126,7 +129,7 @@ class Reader {
   // dataset. Each element within the nested dataset is itself a dataset, and
   // contains all the elements written out to each individual snapshot file.
   static Status MakeNestedDataset(Env* env,
-                                  const std::vector<std::string>& filenames,
+                                  const std::vector<std::string>& shard_dirs,
                                   const string& compression_type, int version,
                                   const DataTypeVector& dtypes,
                                   const std::vector<PartialTensorShape>& shapes,
