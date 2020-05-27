@@ -23,7 +23,7 @@ cc_library(
 cc_library(
     name = "person_detect_model_data",
     srcs = [
-        "person_detect_model_data.cc",
+        "@person_detect_data//:person_detect_model_data",
     ],
     hdrs = [
         "person_detect_model_data.h",
@@ -117,4 +117,10 @@ cc_binary(
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+sh_test(
+    name = "person_detection_binary_test",
+    srcs = ["person_detection_binary_test.sh"],
+    data = [":person_detection"],
 )

@@ -49929,6 +49929,13 @@ op {
       i: -1
     }
   }
+  attr {
+    name: "is_packed"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TPUReplicatedOutput"

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
+#define EIGEN_USE_THREADS
 
-#include "pybind11/attr.h"
-#include "pybind11/pybind11.h"
+#include "tensorflow/core/kernels/tile_functor_cpu.h"
 
-namespace py = ::pybind11;
+namespace tensorflow {
+namespace functor {
 
-using ::tensorflow::profiler::TraceMeWrapper;
+typedef Eigen::ThreadPoolDevice CPUDevice;
 
-PYBIND11_MODULE(_pywrap_traceme, m) {
-  py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
-      .def(py::init<const py::str&, const py::kwargs&>())
-      .def("SetMetadata", &TraceMeWrapper::SetMetadata)
-      .def_static("IsEnabled", &TraceMeWrapper::IsEnabled);
-};
+template struct Tile<CPUDevice, uint32, int32>;
+template struct Tile<CPUDevice, uint32, int64>;
+
+}  // end namespace functor
+}  // end namespace tensorflow

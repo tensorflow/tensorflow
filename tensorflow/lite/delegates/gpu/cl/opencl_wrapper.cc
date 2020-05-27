@@ -26,44 +26,51 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+#ifdef __ANDROID__
 #define LoadFunction(function)                                                 \
   if (is_pixel) {                                                              \
     function = reinterpret_cast<PFN_##function>(loadOpenCLPointer(#function)); \
   } else {                                                                     \
     function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));  \
   }
+#else
+#define LoadFunction(function) \
+  function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
+#endif
 
 absl::Status LoadOpenCL() {
   void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
-  } else {
-    // record error
-    std::string error(dlerror());
-    // Pixel phone?
-    libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
-    if (libopencl) {
-      typedef void (*enableOpenCL_t)();
-      enableOpenCL_t enableOpenCL =
-          reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
-      enableOpenCL();
-      LoadOpenCLFunctions(libopencl, true);
-      return absl::OkStatus();
-    } else {
-      return absl::UnknownError(
-          absl::StrCat("Can not open OpenCL library on this device - ", error));
-    }
   }
+  // record error
+  std::string error(dlerror());
+#ifdef __ANDROID__
+  // Pixel phone?
+  libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+  if (libopencl) {
+    typedef void (*enableOpenCL_t)();
+    enableOpenCL_t enableOpenCL =
+        reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
+    enableOpenCL();
+    LoadOpenCLFunctions(libopencl, true);
+    return absl::OkStatus();
+  }
+#endif
+  return absl::UnknownError(
+      absl::StrCat("Can not open OpenCL library on this device - ", error));
 }
 
 void LoadOpenCLFunctions(void* libopencl, bool is_pixel) {
+#ifdef __ANDROID__
   typedef void* (*loadOpenCLPointer_t)(const char* name);
   loadOpenCLPointer_t loadOpenCLPointer;
   if (is_pixel) {
     loadOpenCLPointer = reinterpret_cast<loadOpenCLPointer_t>(
         dlsym(libopencl, "loadOpenCLPointer"));
   }
+#endif
 
   LoadFunction(clGetPlatformIDs);
   LoadFunction(clGetPlatformInfo);

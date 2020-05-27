@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
-#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -572,10 +571,6 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
 
-  bool is_inside_mustcompile;
-  TryGetNodeAttr(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
-                 &is_inside_mustcompile);
-
   // Performs a first function inlining pass before shape inference, since
   // otherwise shape inference can't see inside functions and a comprehensive
   // shape_map, including function ops, is needed to constant-propagate Shape
@@ -627,8 +622,6 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   graph_optimizer_options.inline_multi_device_functions = true;
   graph_optimizer_options.inline_impl_selection_group_functions = true;
   graph_optimizer_options.inline_with_single_device_body_placer = true;
-  graph_optimizer_options.ignore_noinline = is_inside_mustcompile;
-
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 

@@ -500,6 +500,8 @@ class TileTest(test.TestCase, parameterized.TestCase):
         "int16": (dtypes.int16, int),
         "int32": (dtypes.int32, int),
         "int64": (dtypes.int64, int),
+        "uint32": (dtypes.uint32, int),
+        "uint64": (dtypes.uint64, int),
         bytes: (dtypes.string, bytes)
     }
     for dtype_np, (dtype_tf, cast) in types_to_test.items():
