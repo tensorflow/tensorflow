@@ -47,7 +47,6 @@ from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 
-
 FLAGS = flags.FLAGS
 
 _did_connect_to_cluster = False
@@ -58,16 +57,26 @@ def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
   def _create_tpu_strategy():
     global _did_connect_to_cluster
 
-    # These flags will be defined by tpu_test_wrapper.py.
-    resolver = tpu_cluster_resolver.TPUClusterResolver(
-        tpu=hasattr(FLAGS, "tpu") and FLAGS.tpu or "",
-        zone=hasattr(FLAGS, "zone") and FLAGS.zone or None,
-        project=hasattr(FLAGS, "project") and FLAGS.project or None,
-    )
+    try:
+      # Attempt to locally discover the TPU. This will fail for Cloud TPU, in
+      # which case we fall back to the values passed as flags.
+      resolver = tpu_cluster_resolver.TPUClusterResolver()
+      did_automatically_resolve = True
+    except ValueError:
+      did_automatically_resolve = False
+
+      # These flags will be defined by tpu_test_wrapper.py.
+      resolver = tpu_cluster_resolver.TPUClusterResolver(
+          tpu=hasattr(FLAGS, "tpu") and FLAGS.tpu or "",
+          zone=hasattr(FLAGS, "zone") and FLAGS.zone or None,
+          project=hasattr(FLAGS, "project") and FLAGS.project or None,
+      )
+
     # Only connect once per process, rather than per test method.
-    if hasattr(FLAGS, "tpu") and FLAGS.tpu and not _did_connect_to_cluster:
-      remote.connect_to_cluster(resolver)
-      _did_connect_to_cluster = True
+    if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
+      if not _did_connect_to_cluster:
+        remote.connect_to_cluster(resolver)
+        _did_connect_to_cluster = True
 
     topology = tpu_strategy_util.initialize_tpu_system(resolver)
     device_assignment = None
