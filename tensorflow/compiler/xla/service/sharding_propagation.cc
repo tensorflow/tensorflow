@@ -1281,8 +1281,8 @@ StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
             [](const HloSharding& s) { return !s.HasUniqueDevice(); });
       }
       if (is_spatially_partitioned) {
-        for (HloInstruction* domain : domain.exit_domains) {
-          domain->mutable_operand(0)->set_sharding(*sharding);
+        for (HloInstruction* d : domain.exit_domains) {
+          d->mutable_operand(0)->set_sharding(*sharding);
         }
         return Status::OK();
       }
