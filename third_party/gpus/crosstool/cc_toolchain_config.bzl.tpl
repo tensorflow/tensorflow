@@ -293,7 +293,7 @@ def _cuda_set(cuda_path, actions):
         return []
 
 def _nologo():
-  return flag_group(flags = ["/nologo"])
+    return flag_group(flags = ["/nologo"])
 
 def _features(cpu, compiler, ctx):
     if cpu in ["local", "darwin"]:
@@ -497,6 +497,11 @@ def _features(cpu, compiler, ctx):
                     flag_set(
                         actions = all_link_actions(),
                         flag_groups = [
+                            flag_group(flags = (
+                                ["-Wl,-no-as-needed"] if cpu == "local" else []
+                            ) + [
+                                "-B" + ctx.attr.linker_bin_path,
+                            ]),
                             flag_group(
                                 flags = ["@%{linker_param_file}"],
                                 expand_if_available = "linker_param_file",
@@ -551,27 +556,17 @@ def _features(cpu, compiler, ctx):
                             "-Wl,-z,relro,-z,now",
                         ])],
                     ),
-                ] if cpu == "local" else []) + [
-                    flag_set(
-                        actions = all_link_actions(),
-                        flag_groups = [flag_group(flags = ["-Wl,-no-as-needed"])],
-                        with_features = [with_feature_set(features = ["alwayslink"])],
-                    ),
+                ] if cpu == "local" else []) + ([
                     flag_set(
                         actions = all_link_actions(),
                         flag_groups = [
-                            flag_group(flags = ["-B" + ctx.attr.linker_bin_path]),
+                            flag_group(flags = ["-Wl,--gc-sections"]),
+                            flag_group(
+                                flags = ["-Wl,--build-id=md5", "-Wl,--hash-style=gnu"],
+                            ),
                         ],
                     ),
-                ] + ([flag_set(
-                    actions = all_link_actions(),
-                    flag_groups = [
-                        flag_group(flags = ["-Wl,--gc-sections"]),
-                        flag_group(
-                            flags = ["-Wl,--build-id=md5", "-Wl,--hash-style=gnu"],
-                        ),
-                    ],
-                )] if cpu == "local" else []) + ([
+                ] if cpu == "local" else []) + ([
                     flag_set(
                         actions = all_link_actions(),
                         flag_groups = [flag_group(flags = ["-undefined", "dynamic_lookup"])],
@@ -588,7 +583,6 @@ def _features(cpu, compiler, ctx):
                     ),
                 ],
             ),
-            feature(name = "alwayslink", enabled = cpu == "local"),
             feature(name = "opt"),
             feature(name = "fastbuild"),
             feature(name = "dbg"),
