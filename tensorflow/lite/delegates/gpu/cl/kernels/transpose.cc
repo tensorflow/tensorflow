@@ -115,8 +115,7 @@ std::string GetTransposeCode(
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", batch_id);
   c += "}\n";
-  args->ResolveArgsPass(&c);
-  return absl::Substitute(c, args->GetListOfArgs());
+  return c;
 }
 }  // namespace
 
@@ -139,8 +138,10 @@ Transpose& Transpose::operator=(Transpose&& operation) {
 }
 
 absl::Status Transpose::Compile(const CreationContext& creation_context) {
-  const auto code =
+  std::string code =
       GetTransposeCode(definition_, attr_, linked_operations_, &args_);
+  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
+  code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
