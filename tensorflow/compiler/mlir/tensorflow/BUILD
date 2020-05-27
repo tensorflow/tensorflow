@@ -788,6 +788,9 @@ cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         ":tensorflow_types",
         "//tensorflow/core:framework",
