@@ -56,6 +56,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
+    "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
 package(
