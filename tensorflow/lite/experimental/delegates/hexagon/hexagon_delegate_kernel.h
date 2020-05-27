@@ -100,12 +100,6 @@ class HexagonDelegateKernel {
   std::vector<int> nodes_;
   ::TfLiteHexagonDelegateOptions params_;
 
-  // Used to support int8 TFLite *input* tensors.
-  // This vector, for every node-input, contains:
-  // 1. Pointer to Uint8 version if tensor is non-constant & type is Int8.
-  // 2. nullptr otherwise.
-  std::vector<TfLiteTensor*> int8_to_uint8_tensors_;
-
   // Whether the Hexagon graph is prepared or not.
   bool graph_prepared_ = false;
 };

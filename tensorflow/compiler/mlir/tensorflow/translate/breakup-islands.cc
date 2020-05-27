@@ -113,7 +113,7 @@ void BreakUpIslands::runOnFunction() {
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getAttrList());
+    new_op->setAttrs(item.getMutableAttrDict());
     item.erase();
   }
 }

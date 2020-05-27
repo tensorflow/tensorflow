@@ -44,10 +44,10 @@ namespace data {
 /* static */ constexpr const char* const ShuffleDatasetOpBase::kSeed2;
 /* static */ constexpr const char* const ShuffleDatasetOpBase::kOutputTypes;
 /* static */ constexpr const char* const ShuffleDatasetOpBase::kOutputShapes;
+/* static */ constexpr const char* const
+    ShuffleDatasetOpBase::kReshuffleEachIteration;
 
 /* static */ constexpr const char* const ShuffleDatasetOp::kDatasetType;
-/* static */ constexpr const char* const
-    ShuffleDatasetOp::kReshuffleEachIteration;
 
 /* static */ constexpr const char* const
     ShuffleAndRepeatDatasetOp::kDatasetType;
@@ -72,6 +72,8 @@ constexpr char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 constexpr char kShuffleDatasetV1[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
 constexpr char kShuffleDatasetV3[] = "ShuffleDatasetV3";
+constexpr char kShuffleAndRepeatDatasetV1[] = "ShuffleAndRepeatDatasetV1";
+constexpr char kShuffleAndRepeatDatasetV2[] = "ShuffleAndRepeatDatasetV2";
 
 ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}
@@ -225,6 +227,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         while (!slices_.empty() &&
                slices_.front()->start == slices_.front()->end) {
           slices_.pop_front();
+          // Reinitialize the RNG state for the next epoch.
+          num_random_samples_ = 0;
+          seed_generator_->GenerateSeeds(&seed_, &seed2_);
+          ResetRngs();
         }
         DCHECK(!slices_.empty());
         // Choose an element to produce uniformly at random from the first
@@ -663,6 +669,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     RandomSeeds seeds(seed, seed2);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {
+      owns_resource = true;
       OP_REQUIRES_OK(
           ctx,
           ctx->resource_manager()->LookupOrCreate<SeedGeneratorManager>(
@@ -679,7 +686,6 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                 return Status::OK();
               }));
       handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
-      owns_resource = true;
     } else {
       OP_REQUIRES_OK(ctx, s);
     }
@@ -695,6 +701,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
         handle.container(), handle.name(), &manager);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {
+      owns_resource = true;
       LOG(WARNING) << "Failed to find seed generator resource. Falling back to "
                       "using a non-deterministically seeded generator and "
                       "reshuffling each iteration.";
@@ -708,7 +715,6 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                      return Status::OK();
                    }));
       handle = MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
-      owns_resource = true;
     } else {
       OP_REQUIRES_OK(ctx, s);
     }
@@ -790,9 +796,13 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed(), &seed));
     TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed2(), &seed2));
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
+    AttrValue reshuffle_each_iteration;
+    b->BuildAttrValue(seed_generator_->reshuffle_each_iteration(),
+                      &reshuffle_each_iteration);
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2, count},  // Inputs
-        {},                                                         // Attrs
+        {std::make_pair(kReshuffleEachIteration,
+                        reshuffle_each_iteration)},  // Attrs
         output));
     return Status::OK();
   }
@@ -804,8 +814,83 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
   const RandomSeeds seeds_;
 };
 
+class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
+ public:
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
+            int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+            ResourceHandle&& resource_handle, bool owns_resource)
+      : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
+        manager_(manager),
+        owns_resource_(owns_resource),
+        resource_handle_(std::move(resource_handle)),
+        resource_mgr_(ctx->resource_manager()),
+        seeds_(std::move(seeds)) {}
+
+  ~DatasetV2() override {
+    manager_->Unref();
+    if (owns_resource_) {
+      Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+          resource_handle_.container(), resource_handle_.name());
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
+      }
+    }
+  }
+
+  string op_type() const override { return kDatasetType; }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* input_graph_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+    Node* buffer_size_node = nullptr;
+    Node* seed_node = nullptr;
+    Node* seed2_node = nullptr;
+    Node* count_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size_node));
+    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed(), &seed_node));
+    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed2(), &seed2_node));
+    TF_RETURN_IF_ERROR(b->AddScalar(count_, &count_node));
+    Node* resource_handle_node = nullptr;
+    Tensor handle(DT_RESOURCE, TensorShape({}));
+    handle.scalar<ResourceHandle>()() = resource_handle_;
+    TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
+    AttrValue reshuffle_each_iteration;
+    b->BuildAttrValue(seed_generator_->reshuffle_each_iteration(),
+                      &reshuffle_each_iteration);
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this,
+                      {input_graph_node, buffer_size_node, seed_node,
+                       seed2_node, count_node, resource_handle_node},  // Inputs
+                      {std::make_pair(kReshuffleEachIteration,
+                                      reshuffle_each_iteration)},  // Attrs
+                      output));
+    return Status::OK();
+  }
+
+ private:
+  SeedGeneratorManager* const manager_;  // Owned
+  const bool owns_resource_;
+  const ResourceHandle resource_handle_;
+  ResourceMgr* const resource_mgr_;  // Not owned.
+  const RandomSeeds seeds_;
+};
+
 ShuffleAndRepeatDatasetOp::ShuffleAndRepeatDatasetOp(OpKernelConstruction* ctx)
-    : ShuffleDatasetOpBase(ctx) {}
+    : ShuffleDatasetOpBase(ctx) {
+  auto& op_name = ctx->def().op();
+  if (op_name == kShuffleAndRepeatDatasetV2) {
+    op_version_ = 2;
+  } else if (op_name == kShuffleAndRepeatDatasetV1) {
+    op_version_ = 1;
+  }
+  if (ctx->HasAttr(kReshuffleEachIteration)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kReshuffleEachIteration, &reshuffle_each_iteration_));
+  }
+}
 
 void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                                             DatasetBase* input,
@@ -826,29 +911,76 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64 count;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
 
-  RandomSeeds seeds(seed, seed2);
-
   OP_REQUIRES(ctx, count > 0 || count == -1,
               errors::InvalidArgument(
                   "count must be greater than zero or equal to -1."));
+
+  RandomSeeds seeds(seed, seed2);
 
   static std::atomic<int64> resource_id_counter(0);
   const string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
-  SeedGeneratorManager* manager;
-  OP_REQUIRES_OK(
-      ctx,
-      ctx->resource_manager()->LookupOrCreate<SeedGeneratorManager>(
-          container, name, &manager, [&seeds](SeedGeneratorManager** manager) {
-            *manager = new SeedGeneratorManager(new RandomSeedGenerator(seeds));
-            return Status::OK();
-          }));
-  auto handle = MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
+  if (op_version_ == 2) {
+    auto handle = HandleFromInput(ctx, 5);
+    SeedGeneratorManager* manager = nullptr;
+    Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
+        handle.container(), handle.name(), &manager);
+    bool owns_resource = false;
+    if (errors::IsNotFound(s)) {
+      owns_resource = true;
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->resource_manager()->LookupOrCreate<SeedGeneratorManager>(
+              container, name, &manager,
+              [reshuffle = reshuffle_each_iteration_,
+               &seeds](SeedGeneratorManager** manager) {
+                if (reshuffle) {
+                  *manager =
+                      new SeedGeneratorManager(new RandomSeedGenerator(seeds));
+                } else {
+                  *manager =
+                      new SeedGeneratorManager(new FixedSeedGenerator(seeds));
+                }
+                return Status::OK();
+              }));
+      handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
+    } else {
+      OP_REQUIRES_OK(ctx, s);
+    }
 
-  // Ownership of manager is transferred onto `Dataset`.
-  *output = new Dataset(ctx, input, buffer_size, std::move(seeds), manager,
-                        count, std::move(handle));
+    // Ownership of manager is transferred onto `DatasetV2`.
+    *output = new ShuffleAndRepeatDatasetOp::DatasetV2(
+        ctx, input, buffer_size, count, std::move(seeds), manager,
+        std::move(handle), owns_resource);
+  } else {
+    if (op_version_ != 1) {
+      LOG(WARNING) << "Unsupported version of shuffle dataset op: "
+                   << op_version_ << ". Defaulting to version 1.";
+    }
+    SeedGeneratorManager* manager;
+    OP_REQUIRES_OK(
+        ctx,
+        ctx->resource_manager()->LookupOrCreate<SeedGeneratorManager>(
+            container, name, &manager,
+            [reshuffle = reshuffle_each_iteration_,
+             &seeds](SeedGeneratorManager** manager) {
+              if (reshuffle) {
+                *manager =
+                    new SeedGeneratorManager(new RandomSeedGenerator(seeds));
+              } else {
+                *manager =
+                    new SeedGeneratorManager(new FixedSeedGenerator(seeds));
+              }
+              return Status::OK();
+            }));
+    auto handle =
+        MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
+
+    // Ownership of manager is transferred onto `Dataset`.
+    *output = new Dataset(ctx, input, buffer_size, std::move(seeds), manager,
+                          count, std::move(handle));
+  }
 }
 
 namespace {
@@ -862,6 +994,9 @@ REGISTER_KERNEL_BUILDER(Name("ShuffleDatasetV3").Device(DEVICE_CPU),
                         ShuffleDatasetOp);
 
 REGISTER_KERNEL_BUILDER(Name("ShuffleAndRepeatDataset").Device(DEVICE_CPU),
+                        ShuffleAndRepeatDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ShuffleAndRepeatDatasetV2").Device(DEVICE_CPU),
                         ShuffleAndRepeatDatasetOp);
 }  // namespace
 }  // namespace data

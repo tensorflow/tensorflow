@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -56,6 +58,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -106,48 +109,6 @@ static inline bool HasRankAtLeast(Value value, int64_t rank) {
 static inline bool HasRankAtMost(Value value, int64_t rank) {
   RankedTensorType type = GetRankedTensorTypeForOperand(value);
   return !type || type.getRank() <= rank;
-}
-
-// Returns true if the given pair of TensorFlow types can be cast to one
-// another. In other words, a single run-time value is legal for both the types.
-// For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
-static bool AreCastCompatible(Type a, Type b) {
-  if (TensorCastOp::areCastCompatible(a, b)) return true;
-
-  // Resource types may optionally contain subtypes information that does not
-  // match. Check subtypes compatibility when possible, otherwise treat them as
-  // compatible.
-  auto a_or_element_type = getElementTypeOrSelf(a);
-  auto b_or_element_type = getElementTypeOrSelf(b);
-
-  auto a_kind = a_or_element_type.getKind();
-  auto b_kind = b_or_element_type.getKind();
-
-  if (a_kind == TensorFlowTypes::RESOURCE &&
-      b_kind == TensorFlowTypes::RESOURCE) {
-    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
-    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
-    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
-    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
-
-    if (!a_has_subtype || !b_has_subtype) return true;
-
-    assert(a_resource_type.getSubtypes().size() <= 1 &&
-           "Resource type must have at most one subtype");
-    assert(b_resource_type.getSubtypes().size() <= 1 &&
-           "Resource type must have at most one subtype");
-
-    return TensorCastOp::areCastCompatible(
-        a_resource_type.getSubtypes().front(),
-        b_resource_type.getSubtypes().front());
-  }
-
-  // Variant types may optionally contain subtypes information that need not
-  // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them. So, accept all
-  // pairs of variant types.
-  return a_kind == TensorFlowTypes::VARIANT &&
-         b_kind == TensorFlowTypes::VARIANT;
 }
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
@@ -289,6 +250,39 @@ static LogicalResult VerifyTypesCompatibility(
     }
   }
   return success();
+}
+
+// This is a helper for the Select to SelectV2 canonicalization. The `data` rank
+// refers to the rank of `t`/`e` (these two inputs have equal rank; this is
+// checked in the verifier).
+//
+// In most cases, the predicate for Select can be used directly as the predicate
+// for SelectV2. However, there is one case that varies, which is when the
+// predicate is a tensor and the data is multidimensional. In this case, Select
+// op semantics dictate that the predicate tensor length must match the size of
+// the first data dimension. This varies from normal broadcasting semantics
+// (which are used in SelectV2), so we must reshape the tensor in this case to
+// be compatible.
+static Value ReshapeSelectPredIfNecessary(OpBuilder *builder, Location loc,
+                                          Value cond, int data_rank) {
+  auto cond_tensor = cond.getType().cast<RankedTensorType>();
+  // Reshape is only needed in the case that the cond rank is 1 (i.e. it is
+  // a vector) AND t/e rank is > 1.
+  if (cond_tensor.getRank() != 1 || data_rank <= 1) {
+    // No reshape necessary. Leave cond as it is.
+    return cond;
+  }
+
+  // This is the case where a reshape is needed. We want to construct the
+  // shape [x,1,...1], where x is the value in the pred tensor and the
+  // length of the shape is equal to data_rank.
+  SmallVector<int64_t, 8> shape(data_rank, 1);
+  shape[0] = cond_tensor.getShape().front();
+  auto new_shape_type =
+      RankedTensorType::get({data_rank}, builder->getIntegerType(64));
+  auto shape_attr = DenseIntElementsAttr::get(new_shape_type, shape);
+  auto new_shape = builder->create<ConstOp>(loc, shape_attr);
+  return builder->create<ReshapeOp>(loc, cond, new_shape);
 }
 
 //===----------------------------------------------------------------------===//
@@ -494,6 +488,65 @@ LogicalResult FoldOperandsPermutation(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Rewrite Pattern for removing trivial Arithmetic op.
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Folder that returns LHS of an Arithmetic Op if the RHS is a constant
+// known to be Identity (e.g X+0)
+template <
+    typename OpT,
+    typename std::enable_if<llvm::is_one_of<
+        OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
+OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
+                                        ArrayRef<Attribute> operands) {
+  auto result_op_type = arithmetic_op.getResult().getType();
+  auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
+  if (!result_op_type.template cast<ShapedType>().hasStaticShape()) return {};
+
+  // We only handle non-broadcastable case.
+  if (result_op_type != lhs_type) {
+    return {};
+  }
+
+  // Mul and Div ops have identity value one while AddV2 and SubOp have identity
+  // value zero.
+  int identity =
+      (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
+       std::is_same<OpT, RealDivOp>::value);
+
+  Type element_ty = lhs_type.getElementType();
+  Attribute identity_attr;
+  if (auto ty = element_ty.template dyn_cast<FloatType>()) {
+    identity_attr = FloatAttr::get(ty, static_cast<double>(identity));
+  } else if (auto ty = element_ty.template dyn_cast<IntegerType>()) {
+    identity_attr = IntegerAttr::get(ty, static_cast<int64_t>(identity));
+  } else {
+    return {};
+  }
+
+  if (auto attr = operands[1].dyn_cast_or_null<DenseElementsAttr>()) {
+    if (attr.isSplat() && attr.getSplatValue() == identity_attr)
+      return arithmetic_op.x();
+  }
+
+  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  // TODO(chhe): we could fold and add an identity to force the broadcast.
+  if (result_op_type != rhs_type) {
+    return {};
+  }
+
+  bool is_symmetric =
+      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+  if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
+    if (is_symmetric && attr.isSplat() && attr.getSplatValue() == identity_attr)
+      return arithmetic_op.y();
+  }
+  return {};
+}
+}  // namespace
+
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -523,6 +576,10 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+}
+
+OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<AddV2Op>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -927,20 +984,17 @@ void ConstOp::build(OpBuilder &builder, OperationState &result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  for (NamedAttribute named_attr : attributes) {
-    if (named_attr.first.strref() != "value") continue;
-    auto value = named_attr.second;
-    if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
-      inferredReturnTypes.assign({elem_attr.getType()});
-      return success();
-    }
-    return emitOptionalError(location,
-                             "attribute 'value' failed to satisfy constraint: "
-                             "constant vector/tensor");
+  auto value = attributes.get("value");
+  if (!value) return emitOptionalError(location, "missing attribute 'value'");
+  if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
+    inferredReturnTypes.assign({elem_attr.getType()});
+    return success();
   }
-  return emitOptionalError(location, "missing attribute 'value'");
+  return emitOptionalError(location,
+                           "attribute 'value' failed to satisfy constraint: "
+                           "constant vector/tensor");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1243,8 +1297,8 @@ static LogicalResult Verify(DataFormatVecPermuteOp op) {
 
   if (rank == 1) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
-      return op.emitOpError("requires 1D input of size 4");
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4 && dim0 != 2)
+      return op.emitOpError("requires 1D input of size 4 or size 2");
   }
 
   if (rank == 2) {
@@ -1269,6 +1323,10 @@ static LogicalResult Verify(DataFormatVecPermuteOp op) {
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<DivWithSqrtDivisor>(context);
+}
+
+OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<DivOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1355,7 +1413,7 @@ static LogicalResult Verify(DynamicStitchOp op) {
       auto expected_out_ty =
           RankedTensorType::get(expected_shape, out_ty.getElementType());
 
-      if (!AreCastCompatible(out_ty, expected_out_ty)) {
+      if (!AreCastCompatible({out_ty, expected_out_ty})) {
         return op.emitOpError() << "has invalid output type; should be "
                                    "compatible with inferred type "
                                 << expected_out_ty;
@@ -1379,6 +1437,43 @@ static LogicalResult Verify(EinsumOp op) {
     return op.emitOpError("supports at most two operands");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EmptyOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "empty op has one operand");
+
+  Attribute attr = operands.front();
+  if (!attr) return {};
+
+  auto int_attr = attr.cast<DenseIntElementsAttr>();
+  SmallVector<int64_t, 6> out_shape;
+  for (const auto val : int_attr.getValues<int32_t>()) {
+    out_shape.push_back(val);
+  }
+
+  auto type = getResult().getType().cast<ShapedType>();
+  auto etype = type.getElementType();
+
+  // We can not fold if the result is not static.
+  if (!type.hasStaticShape()) return {};
+
+  if (auto float_type = etype.dyn_cast<FloatType>()) {
+    auto out_type = RankedTensorType::get(out_shape, float_type);
+    return DenseElementsAttr::get(out_type,
+                                  {APFloat(float_type.getFloatSemantics())});
+  }
+
+  if (auto int_type = etype.dyn_cast<IntegerType>()) {
+    auto out_type = RankedTensorType::get(out_shape, etype);
+    APInt val(int_type.getWidth(), 0, int_type.getSignedness());
+    return DenseElementsAttr::get(out_type, val);
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1552,7 +1647,7 @@ static ShapedType InferFillOpType(Value dims, Value value) {
 
   llvm::SmallVector<int64_t, 4> shape;
   shape.reserve(dims_attr.getNumElements());
-  for (const APInt &dim : dims_attr.getValues<APInt>()) {
+  for (const APInt dim : dims_attr.getValues<APInt>()) {
     shape.push_back(dim.getSExtValue());
   }
   return RankedTensorType::get(shape, etype);
@@ -1561,6 +1656,35 @@ static ShapedType InferFillOpType(Value dims, Value value) {
 void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
                    Value value) {
   FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
+}
+
+OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "fill op has two operand");
+
+  auto type = getType().cast<ShapedType>();
+  // DenseElementsAttr that is used in this folder only supports int and float
+  // types.
+  // TODO(hinsu): Handle complex types once there is a attribute kind for
+  // complex.
+  if (!type.getElementType().isIntOrFloat()) return {};
+
+  auto value = operands[1].dyn_cast_or_null<ElementsAttr>();
+  if (!value) return {};
+
+  if (type.hasStaticShape())
+    return DenseElementsAttr::get(type, value.getValue({}));
+
+  auto dims = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!dims) return {};
+
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.reserve(dims.getNumElements());
+  for (const APInt dim : dims.getValues<APInt>()) {
+    shape.push_back(dim.getSExtValue());
+  }
+  type = RankedTensorType::get(shape, type.getElementType());
+
+  return DenseElementsAttr::get(type, value.getValue({}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1697,72 +1821,122 @@ static LogicalResult Verify(GatherV2Op op) {
 
 static LogicalResult Verify(IfOp op) {
   auto module = op.getParentOfType<ModuleOp>();
-  auto thenFn = module.lookupSymbol<FuncOp>(op.then_branch());
-  if (!thenFn)
+  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
+  if (!then_fn)
     return op.emitOpError("then_branch refers to an undefined function : ")
            << op.then_branch();
-  auto elseFn = module.lookupSymbol<FuncOp>(op.else_branch());
-  if (!elseFn)
+  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
+  if (!else_fn)
     return op.emitOpError("else_branch refers to an undefined function : ")
            << op.else_branch();
-  auto thenFuncType = thenFn.getType();
-  auto elseFuncType = elseFn.getType();
+  auto then_fn_type = then_fn.getType();
+  auto else_fn_type = else_fn.getType();
 
   // Non-conditional operands starting with the second operand are passed to
   // branches and should be pair-wise compatible with branches' inputs.
-  unsigned expectedNumInputs = op.getNumOperands() - 1;
-  if (thenFuncType.getNumInputs() != expectedNumInputs ||
-      elseFuncType.getNumInputs() != expectedNumInputs)
-    return op.emitError("branches should have " + Twine(expectedNumInputs) +
+  unsigned expected_num_inputs = op.getNumOperands() - 1;
+  if (then_fn_type.getNumInputs() != expected_num_inputs ||
+      else_fn_type.getNumInputs() != expected_num_inputs)
+    return op.emitError("branches should have " + Twine(expected_num_inputs) +
                         " inputs");
 
-  for (unsigned i = 0; i < expectedNumInputs; ++i) {
-    auto operandType = op.getOperand(i + 1).getType().cast<TensorType>();
-    auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible(operandType, thenInputType))
+  for (unsigned i = 0; i < expected_num_inputs; ++i) {
+    auto operand_type = op.getOperand(i + 1).getType().cast<TensorType>();
+    auto then_input_type = then_fn_type.getInput(i).cast<TensorType>();
+    if (!AreCastCompatible({operand_type, then_input_type}))
       return op.emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
-                        thenInputType, operandType, i));
+                        then_input_type, operand_type, i));
 
-    auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible(operandType, elseInputType))
+    auto else_input_type = else_fn_type.getInput(i).cast<TensorType>();
+    if (!AreCastCompatible({operand_type, else_input_type}))
       return op.emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
-                        elseInputType, operandType, i));
+                        else_input_type, operand_type, i));
 
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
-    if (!AreCastCompatible(thenInputType, elseInputType))
+    if (!AreCastCompatible({then_input_type, else_input_type}))
       return op.emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
-          thenInputType, elseInputType, i));
+          then_input_type, else_input_type, i));
   }
 
   // Branches' results should be pair-wise compatible with the op results.
-  unsigned expectedNumResults = op.getNumResults();
-  if (thenFuncType.getNumResults() != expectedNumResults ||
-      elseFuncType.getNumResults() != expectedNumResults)
-    return op.emitError("branches should have " + Twine(expectedNumResults) +
+  unsigned expected_num_results = op.getNumResults();
+  if (then_fn_type.getNumResults() != expected_num_results ||
+      else_fn_type.getNumResults() != expected_num_results)
+    return op.emitError("branches should have " + Twine(expected_num_results) +
                         " results");
 
-  for (unsigned i = 0; i < expectedNumResults; ++i) {
-    auto resultType = op.getResult(i).getType().cast<TensorType>();
-    auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible(thenResultType, resultType))
+  for (unsigned i = 0; i < expected_num_results; ++i) {
+    auto result_type = op.getResult(i).getType().cast<TensorType>();
+    auto then_result_type = then_fn_type.getResult(i).cast<TensorType>();
+    if (!AreCastCompatible({then_result_type, result_type}))
       return op.emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
-                        thenResultType, resultType, i));
+                        then_result_type, result_type, i));
 
-    auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible(elseResultType, resultType))
+    auto else_result_type = else_fn_type.getResult(i).cast<TensorType>();
+    if (!AreCastCompatible({else_result_type, result_type}))
       return op.emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
-                        elseResultType, resultType, i));
+                        else_result_type, result_type, i));
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(YieldOp op) {
+  auto parent = op.getParentOp();
+  // A YieldOp should be contained within an IfRegion op
+  // (and WhileRegion in future)
+  if (!isa<IfRegionOp>(parent))
+    op.emitError() << " expects parent op "
+                   << "'" << IfRegionOp::getOperationName() << "' but got '"
+                   << parent->getName().getStringRef() << "'";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfRegionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult VerifyRegionResults(Operation *op, Region &region,
+                                  StringRef region_name) {
+  auto op_name = op->getName().getStringRef();
+  // verify that op outputs match yield inputs
+  YieldOp yield = cast<YieldOp>(region.front().getTerminator());
+  unsigned expected_num_results = op->getNumResults();
+  if (yield.getNumOperands() != expected_num_results)
+    return op->emitError(region_name + " region should have " +
+                         Twine(expected_num_results) + " results");
+
+  for (int idx : llvm::seq<int>(0, expected_num_results)) {
+    auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
+    auto region_result_type =
+        yield.getOperand(idx).getType().cast<TensorType>();
+    if (!AreCastCompatible({region_result_type, op_result_type}))
+      return op->emitError(llvm::formatv(
+          "{0} result type {1} is incompatible with {2} "
+          "result type {3} at index {4}",
+          region_name, region_result_type, op_name, op_result_type, idx));
+  }
+  return success();
+}
+
+static LogicalResult Verify(IfRegionOp op) {
+  if (failed(VerifyRegionResults(op, op.then_branch(), "then")))
+    return failure();
+  if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
+    return failure();
   return success();
 }
 
@@ -1934,6 +2108,14 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   setOperand(1, shuffled_reduction_op);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MulOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2323,6 +2505,10 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<RealDivWithSqrtDivisor>(context);
 }
 
+OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
+}
+
 //===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
@@ -2455,6 +2641,81 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<SelectToSelectV2>(context);
+}
+
+// Verifies a few extra requirements on SelectOp:
+// (1) `then` and `else` must have same shape
+// (2) At least one of the following must be true:
+//     (a) `cond` has the same rank as `then` and `else`
+//     (b) `cond` is a scalar
+//     (c) `cond` is a vector AND `then` and `else` are non-scalar with their
+//         first dimension equal to `cond`.
+static LogicalResult Verify(SelectOp op) {
+  auto then_tensor = op.t().getType().cast<TensorType>();
+  auto else_tensor = op.e().getType().cast<TensorType>();
+  // Check (1).
+  if (!AreCastCompatible({then_tensor, else_tensor}))
+    return op.emitOpError() << "requires t and e have compatible shapes";
+
+  // Get data rank (if exists).
+  int data_rank;
+  // If data is unranked or data_rank is 0, this will remain -2. Otherwise
+  // refers to first dimension of then and/or else.
+  int data_first_dim = -2;
+  bool then_has_rank = then_tensor.hasRank();
+  bool else_has_rank = else_tensor.hasRank();
+  if (then_has_rank && else_has_rank) {
+    data_rank = then_tensor.getRank();
+    if (then_tensor.getRank() > 0)
+      data_first_dim = then_tensor.getShape().front();
+    if (else_tensor.getRank() > 0)
+      data_first_dim = std::max(
+          static_cast<int>(else_tensor.getShape().front()), data_first_dim);
+  } else if (then_has_rank) {
+    data_rank = then_tensor.getRank();
+    if (then_tensor.getRank() > 0)
+      data_first_dim = then_tensor.getShape().front();
+  } else if (else_has_rank) {
+    data_rank = else_tensor.getRank();
+    if (else_tensor.getRank() > 0)
+      data_first_dim = else_tensor.getShape().front();
+  } else {
+    // Neither has a rank.
+    return success();
+  }
+
+  auto cond_tensor = op.condition().getType().dyn_cast<RankedTensorType>();
+  if (!cond_tensor) return success();
+  auto cond_rank = cond_tensor.getRank();
+  // Check (2a) and (2b).
+  if (cond_rank == 0 || cond_rank == data_rank) return success();
+  // Check (2c).
+  if (cond_rank == 1) {
+    auto cond_shape = cond_tensor.getShape().front();
+    if (data_rank == 0) {
+      return op.emitOpError()
+             << "requires that t and e are nonscalar when pred is a vector";
+    }
+    // We know `data` tensor has a rank of at least 1.
+    if (data_first_dim != -1 && cond_shape != -1 &&
+        data_first_dim != cond_shape) {
+      return op.emitOpError() << "requires that, when pred is a vector, the "
+                                 "shape matches the first dimension of t and e";
+    }
+    return success();
+  }
+  // None of (2a,b,c) were true; fail.
+  return op.emitOpError() << "requires that pred is a scalar OR has the same "
+                             "rank as t and e OR is a vector";
+}
+
+//===----------------------------------------------------------------------===//
 // SelectV2Op
 //===----------------------------------------------------------------------===//
 
@@ -2513,9 +2774,12 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
              << variadic_idx_str << " to match rank of operand"
              << variadic_idx_str;
   } else if (result_ranked_type.hasStaticShape()) {
-    // The operand is an unranked tensor, verify that the result is dynamic.
-    return op->emitOpError("requires dynamic shape result")
-           << variadic_idx_str << " for unranked operand" << variadic_idx_str;
+    // The operand is an unranked tensor, print a warning if the result
+    // is static.
+    // Note: We do not handle this situation as an error, this would be too
+    // restrictive due to incompleteness of shape inference at this point.
+    op->emitWarning("has static shape result")
+        << variadic_idx_str << " for unranked operand" << variadic_idx_str;
   }
 
   Type element_type = result_ranked_type.getElementType();
@@ -2902,6 +3166,10 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<SubOfNeg>(context);
+}
+
+OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
+  return IdentityArithmeticOpFolder<SubOp>(*this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3462,10 +3730,18 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
   if (!const_perm) return {};
 
   auto const_value = const_perm.value();
-  const auto &elements = const_value.getValues<APInt>();
+  const auto elements = const_value.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
+  }
+
+  // TODO(jpienaar): Remove if/when we handle this more generally.
+  if (op.getType() != op.x().getType()) {
+    // If the types don't match then only fold if all the operands are in the TF
+    // dialect.
+    for (auto user : op.getOperation()->getUsers())
+      if (user->getDialect() != op.getDialect()) return {};
   }
 
   return op.x();
@@ -3611,36 +3887,37 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult Verify(WhileOp op) {
   auto module = op.getParentOfType<ModuleOp>();
-  auto condFn = module.lookupSymbol<FuncOp>(op.cond());
-  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
-  if (!condFn) {
+  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
+  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
+  if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
   }
-  if (!bodyFn) {
+  if (!body_fn) {
     return op.emitOpError("body refers to an undefined function : ")
            << op.body();
   }
 
-  auto condFuncType = condFn.getType();
-  auto bodyFuncType = bodyFn.getType();
+  auto cond_fn_type = cond_fn.getType();
+  auto body_fn_type = body_fn.getType();
 
   // Verify that the cond function has exactly one result.
-  if (condFuncType.getNumResults() != 1)
+  if (cond_fn_type.getNumResults() != 1)
     return op.emitOpError("requires cond function to have exactly one result");
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
-  int numTypeLists = 5;
-  std::pair<std::string, ArrayRef<Type>> typeLists[] = {
-      {"operand", operands},
-      {"body function result", bodyFuncType.getResults()},
-      {"result", op.getResultTypes()},
-      {"cond function input", condFuncType.getInputs()},
-      {"body function input", bodyFuncType.getInputs()},
-  };
+  constexpr int kNumTypeLists = 5;
+  const std::array<std::pair<std::string, ArrayRef<Type>>, kNumTypeLists>
+      type_lists = {{
+          {"operand", operands},
+          {"body function result", body_fn_type.getResults()},
+          {"result", op.getResultTypes()},
+          {"cond function input", cond_fn_type.getInputs()},
+          {"body function input", body_fn_type.getInputs()},
+      }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
@@ -3664,28 +3941,28 @@ static LogicalResult Verify(WhileOp op) {
   // never converted from one to the another nor there is a common source
   // tensors.  Compatibility requirement is not transitive.
 
-  for (int i = 0; i < numTypeLists; ++i) {
+  for (int i = 0; i < kNumTypeLists; ++i) {
     // Skip the first pair as the While op operands and body function results
     // does not need to be compatible with each other.
-    for (int j = std::max(2, i + 1); j < numTypeLists; ++j) {
-      auto &a = typeLists[i];
-      auto &b = typeLists[j];
+    for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
+      auto &a = type_lists[i];
+      auto &b = type_lists[j];
 
-      int aSize = a.second.size();
-      if (aSize != b.second.size())
+      int a_size = a.second.size();
+      if (a_size != b.second.size())
         return op.emitOpError(
             llvm::formatv("requires the number of {0}s to be equal to the "
                           "number of {1}s. Found {2} and {3}, respectively",
-                          a.first, b.first, aSize, b.second.size()));
+                          a.first, b.first, a_size, b.second.size()));
 
-      for (int idx = 0; idx < aSize; ++idx) {
-        auto aType = a.second[idx];
-        auto bType = b.second[idx];
+      for (int idx = 0; idx < a_size; ++idx) {
+        auto a_type = a.second[idx];
+        auto b_type = b.second[idx];
 
-        if (!AreCastCompatible(aType, bType))
+        if (!AreCastCompatible({a_type, b_type}))
           return op.emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
-              a.first, aType, b.first, bType, idx));
+              a.first, a_type, b.first, b_type, idx));
       }
     }
   }
@@ -3767,7 +4044,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
   addInterfaces<TFInlinerInterface>();
-  addAttributes<ShapeAttr>();
+  addAttributes<ShapeAttr, FuncAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
@@ -3822,6 +4099,49 @@ void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
   os << ">";
 }
 
+// Parses a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+//
+// where the first element is a SymbolRefAttr and the second element is a
+// DictionaryAttr.
+FuncAttr ParseFuncAttr(MLIRContext *context, StringRef spec, Location loc) {
+  auto emit_error = [&, spec]() {
+    emitError(loc, "invalid TensorFlow func attribute: ") << spec;
+    return nullptr;
+  };
+
+  if (!spec.consume_front("func<")) return emit_error();
+
+  size_t func_name_num_read = 0;
+  Attribute func_name_attr =
+      mlir::parseAttribute(spec, context, func_name_num_read);
+  if (!func_name_attr || !func_name_attr.isa<SymbolRefAttr>())
+    return emit_error();
+  spec = spec.drop_front(func_name_num_read);
+
+  if (!spec.consume_front(", ")) return emit_error();
+
+  size_t func_attrs_num_read = 0;
+  Attribute func_attrs_attr =
+      mlir::parseAttribute(spec, context, func_attrs_num_read);
+  if (!func_attrs_attr || !func_attrs_attr.isa<DictionaryAttr>())
+    return emit_error();
+  spec = spec.drop_front(func_attrs_num_read);
+
+  if (!spec.consume_front(">")) return emit_error();
+
+  return mlir::TF::FuncAttr::get(context, func_name_attr.cast<SymbolRefAttr>(),
+                                 func_attrs_attr.cast<DictionaryAttr>());
+}
+
+// Prints a #tf.func attribute of the following format:
+//
+//   #tf.func<@symbol, {attr = "value"}>
+void PrintFuncAttr(FuncAttr attr, DialectAsmPrinter &os) {
+  os << "func<" << attr.GetName() << ", " << attr.GetAttrs() << ">";
+}
+
 }  // namespace
 
 Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
@@ -3831,6 +4151,8 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
   if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
 
+  if (spec.startswith("func")) return ParseFuncAttr(getContext(), spec, loc);
+
   return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
 }
 
@@ -3839,6 +4161,9 @@ void TensorFlowDialect::printAttribute(Attribute attr,
   switch (attr.getKind()) {
     case AttrKind::SHAPE:
       PrintShapeAttr(attr.cast<ShapeAttr>(), os);
+      break;
+    case AttrKind::FUNC:
+      PrintFuncAttr(attr.cast<FuncAttr>(), os);
       break;
     default:
       llvm_unreachable("unexpected tensorflow attribute kind");

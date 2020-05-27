@@ -62,7 +62,7 @@ namespace {
 // TensorFlow resource variable and returns new value:
 //
 // %resource_handle = "tf.VarHandleOp"()
-// %1 = "tf_device.launch"() ( {
+// %1 = "tf_device.cluster"() ( {
 //   %init_value = "tf.ReadVariableOp"(%resource_handle)
 //   "tf.AssignAddVariableOp"(%resource_handle, %init_value)
 //   %new_value = "tf.ReadVariableOp"(%resource_handle)
@@ -73,7 +73,7 @@ namespace {
 //
 // %resource_handle = "tf.VarHandleOp"()
 // %init_value = "tf.ReadVariableOp"(%resource_handle)
-// %1:2 = "tf_device.launch"() ( {
+// %1:2 = "tf_device.cluster"() ( {
 //   %new_value = "tf.AddV2"(%init_value, %init_value)
 //   tf_device.return %new_value, %new_value
 // })
@@ -81,7 +81,7 @@ namespace {
 //
 // You can see that there are a few main changes applied:
 // 1) All the resource variable reads and writes are now outside of
-//    tf_device.launch op.
+//    tf_device.cluster op.
 // 2) Instead of taking resource handles as input, this device computation now
 //    takes snapshotted values of that device.
 // 3) Some resource load operations are eliminated with store-load forwarding.
@@ -89,13 +89,13 @@ namespace {
 //    external resource store operations so that resources are still updated
 //    after the computation.
 //
-// If the launch body contains functional control flow, the pass first lifts the
-// loads/stores in the body/cond/branch functions to the launch body, then
+// If the cluster body contains functional control flow, the pass first lifts
+// the loads/stores in the body/cond/branch functions to the cluster body, then
 // performs the above lifting. E.g.,
 //
-// func @launch_with_loop() -> () {
+// func @cluster_with_loop() -> () {
 //   %0 = "tf.VarHandleOp"() ...
-//   "tf_device.launch"() ( {
+//   "tf_device.cluster"() ( {
 //      %1 = "tf.While"(%0) {body = @while_body, cond = @while_cond}
 //      tf_device.return
 //   })
@@ -113,10 +113,10 @@ namespace {
 //
 // will be be transformed to:
 //
-// func @launch_with_loop() {
+// func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
 //   %1 = "tf.ReadVariableOp"(%0)
-//   %2 = "tf_device.launch"() ( {
+//   %2 = "tf_device.cluster"() ( {
 //     %3 = "tf.While"(%1) {body = @while_body, cond = @while_cond}
 //     tf_device.return %3 : tensor<f32>
 //   }) : () -> tensor<f32>
@@ -140,7 +140,7 @@ struct ResourceOpLiftingPass
 // such nodes to carry information.
 void RemoveIdentity(Block* block) {
   for (auto& op : llvm::make_early_inc_range(*block)) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (isa<TF::IdentityOp>(&op) || isa<TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     }
@@ -241,7 +241,7 @@ bool AppendResourceStoreValueToReturn(Block* body) {
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
-    // of launch_op.
+    // of cluster.
     new_return_operands.push_back(assign_variable_op.value());
     has_resource_store = true;
   }
@@ -256,81 +256,78 @@ bool AppendResourceStoreValueToReturn(Block* body) {
   return true;
 }
 
-// Moves resource store operations to after launch_op. This assumes load-store
-// forwarding has been performed on this launch_op such that there is at most
-// one resource store operation carrying its final value.
-tf_device::LaunchOp SinkResourceStores(tf_device::LaunchOp launch_op,
-                                       OpBuilder* builder) {
-  // Update ReturnOp inside launch_op's body to output final values of updated
+// Moves resource store operations to after cluster. This assumes load-store
+// forwarding has been performed on this cluster such that there is at most one
+// resource store operation carrying its final value.
+tf_device::ClusterOp SinkResourceStores(tf_device::ClusterOp cluster,
+                                        OpBuilder* builder) {
+  // Update ReturnOp inside cluster's body to output final values of updated
   // external resources.
-  if (!AppendResourceStoreValueToReturn(&launch_op.GetBody())) return launch_op;
+  if (!AppendResourceStoreValueToReturn(&cluster.GetBody())) return cluster;
 
-  auto new_return_op = launch_op.GetBody().getTerminator();
-  llvm::SmallVector<Type, 4> new_launch_return_types(
-      new_return_op->getOperandTypes());
+  auto new_return_op = cluster.GetBody().getTerminator();
+  llvm::SmallVector<Type, 4> new_return_types(new_return_op->getOperandTypes());
 
-  builder->setInsertionPoint(launch_op);
-  auto new_launch_op = builder->create<tf_device::LaunchOp>(
-      launch_op.getLoc(), new_launch_return_types,
-      /*operands=*/llvm::SmallVector<Value, 4>(), launch_op.getAttrs());
-  new_launch_op.body().takeBody(launch_op.body());
+  builder->setInsertionPoint(cluster);
+  auto new_cluster = builder->create<tf_device::ClusterOp>(
+      cluster.getLoc(), new_return_types,
+      /*operands=*/llvm::SmallVector<Value, 4>(), cluster.getAttrs());
+  new_cluster.body().takeBody(cluster.body());
 
-  // Replace uses of old launch_op results with those of new_launch_op.
-  for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
-  }
+  // Replace uses of old cluster results with those of new_cluster.
+  for (auto result : llvm::zip(cluster.getResults(), new_cluster.getResults()))
+    std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
-  // Create a mapping from operands of new_return_op operands to new_launch_op
+  // Create a mapping from operands of new_return_op operands to new_cluster
   // results.
   BlockAndValueMapping mapper;
-  for (auto p :
-       llvm::zip(new_return_op->getOperands(), new_launch_op.getResults())) {
-    mapper.map(std::get<0>(p), std::get<1>(p));
-  }
+  for (auto operand_result :
+       llvm::zip(new_return_op->getOperands(), new_cluster.getResults()))
+    mapper.map(std::get<0>(operand_result), std::get<1>(operand_result));
 
   // Clone all resource store ops and map their operands to values returned from
-  // new_launch_op.
-  for (Operation& op : llvm::make_early_inc_range(new_launch_op.GetBody())) {
-    if (dyn_cast<TF::AssignVariableOp>(&op)) {
+  // new_cluster.
+  for (Operation& op : llvm::make_early_inc_range(new_cluster.GetBody())) {
+    if (isa<TF::AssignVariableOp>(op)) {
       builder->clone(op, mapper);
       op.erase();
     }
   }
 
-  launch_op.erase();
-  return new_launch_op;
+  cluster.erase();
+  return new_cluster;
 }
 
-// Hoists resource variable loads and sinks stores from launch_op.
-LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
-  ModuleOp m = launch_op.getParentOfType<ModuleOp>();
-  OpBuilder builder(m);
+// Hoists resource variable loads and sinks stores from cluster.
+LogicalResult HoistResourceOpsFromCluster(tf_device::ClusterOp cluster,
+                                          ModuleOp module) {
+  OpBuilder builder(module);
 
   // Remove identity nodes to avoid aliasing.
-  RemoveIdentity(&launch_op.GetBody());
+  RemoveIdentity(&cluster.GetBody());
 
   // Perform store-load forwarding. So that each resource is only loaded with
   // its initial value and is only stored with its final value.
-  ForwardStoreToLoad(&launch_op.GetBody());
+  ForwardStoreToLoad(&cluster.GetBody());
 
-  // Move loads of external resources, if any, to before launch_op.
-  // (Skipping resources created inside of launch_op.)
+  // Move loads of external resources, if any, to before cluster.
+  // (Skipping resources created inside of cluster.)
   HoistResourceLoads(
-      &launch_op.GetBody(),
+      &cluster.GetBody(),
       /*skip_load=*/
       [&](TF::ReadVariableOp read) {
-        return read.resource().getParentRegion() == &launch_op.body();
+        return read.resource().getParentRegion() == &cluster.body();
       },
       /*move_load=*/
       [&](TF::ReadVariableOp read) {
-        read.getOperation()->moveBefore(launch_op);
+        read.getOperation()->moveBefore(cluster);
       });
 
-  // Move stores of external resources, if any, to after launch_op.
-  auto new_launch_op = SinkResourceStores(launch_op, &builder);
+  // Move stores of external resources, if any, to after cluster.
+  auto new_cluster = SinkResourceStores(cluster, &builder);
 
   llvm::SetVector<Value> captured_values;
-  getUsedValuesDefinedAbove(new_launch_op.body(), new_launch_op.body(),
+  getUsedValuesDefinedAbove(new_cluster.body(), new_cluster.body(),
                             captured_values);
 
   for (Value v : captured_values) {
@@ -338,7 +335,7 @@ LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
     if (!tensor_type) continue;
     if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
 
-    return new_launch_op.emitOpError()
+    return new_cluster.emitOpError()
            << "has remaining resource inputs that can not be lifted";
   }
 
@@ -378,8 +375,7 @@ LogicalResult FindResourceArgUseInfo(
         info.data_type = assign.value().getType();
         continue;
       }
-      if (llvm::isa<TF::StackPushV2Op>(user) ||
-          llvm::isa<TF::StackPopV2Op>(user)) {
+      if (isa<TF::StackPushV2Op>(user) || isa<TF::StackPopV2Op>(user)) {
         // Stacks will be handled by a separate pass.
         do_not_touch = true;
         break;
@@ -575,7 +571,7 @@ void AddLoadsStoresOutsideControlFlowOp(
 }
 
 // Lifts loads/stores from while loop's body and cond functions.
-LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
+LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(&body.front());
   RemoveIdentity(&cond.front());
@@ -989,7 +985,7 @@ LogicalResult HoistForFunctionalControlFlow(
                                     lifted_partitioned_call_callees);
       HoistForFunctionalControlFlow(&cond.front(), module,
                                     lifted_partitioned_call_callees);
-      if (failed(HanldeWhileLoop(while_op, body, cond))) return failure();
+      if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
       auto then_branch =
           llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
@@ -1034,7 +1030,7 @@ LogicalResult HoistForFunctionalControlFlow(
   for (auto local_var : local_vars) {
     if (llvm::all_of(local_var.resource().getUsers(),
                      [](const Operation* user) {
-                       return llvm::isa<TF::AssignVariableOp>(user);
+                       return isa<TF::AssignVariableOp>(user);
                      })) {
       for (auto user : local_var.resource().getUsers()) user->erase();
       local_var.erase();
@@ -1043,18 +1039,18 @@ LogicalResult HoistForFunctionalControlFlow(
   return success();
 }
 
-// Lifts resource operation from tf_device.launch_func ops nested in `op`
-// outside. Returns failure if there are remaining resource-type values that can
-// not be lifted.
+// Lifts resource operation from tf_device.cluster ops nested in `op` outside.
+// Returns failure if there are remaining resource-type values that can not be
+// lifted.
 void ResourceOpLiftingPass::runOnOperation() {
   llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  auto result = getOperation().walk([&](FuncOp func_op) {
-    return func_op.walk([&](tf_device::LaunchOp launch_op) {
+  ModuleOp module = getOperation();
+  auto result = module.walk([&](FuncOp func_op) {
+    return func_op.walk([&](tf_device::ClusterOp cluster) {
       if (failed(HoistForFunctionalControlFlow(
-              &launch_op.GetBody(), getOperation(),
-              &lifted_partitioned_call_callees)) ||
-          failed(HoistResourceOpsFromLaunchOp(launch_op))) {
+              &cluster.GetBody(), module, &lifted_partitioned_call_callees)) ||
+          failed(HoistResourceOpsFromCluster(cluster, module))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();

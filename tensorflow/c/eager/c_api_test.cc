@@ -1132,51 +1132,6 @@ void BM_ExecuteFunction(int iters, int async) {
 }
 BENCHMARK(BM_ExecuteFunction)->Arg(0)->Arg(1);
 
-TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
-                                 TF_Status* status) {
-  // Create the variable handle.
-  TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "", 0);
-  TFE_OpSetAttrString(op, "shared_name", "", 0);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_TensorHandle* var_handle = nullptr;
-  int num_retvals = 1;
-  TFE_Execute(op, &var_handle, &num_retvals, status);
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(1, num_retvals);
-
-  // Assign 'value' to it.
-  op = TFE_NewOp(ctx, "AssignVariableOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpAddInput(op, var_handle, status);
-
-  // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
-      TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)), TF_DeleteTensor);
-  memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
-
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      value_handle(TFE_NewTensorHandle(t.get(), status),
-                   TFE_DeleteTensorHandle);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  TFE_OpAddInput(op, value_handle.get(), status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  num_retvals = 0;
-  TFE_Execute(op, nullptr, &num_retvals, status);
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(0, num_retvals);
-
-  return var_handle;
-}
-
 TEST(CAPI, Variables) {
   // Variables use resource handles, so this is really a test for resource
   // tensor handling.
@@ -1186,7 +1141,7 @@ TEST(CAPI, Variables) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
+  TFE_TensorHandle* var_handle = TestVariable(ctx, 12.0);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
@@ -1227,7 +1182,7 @@ void BM_ReadVariable(int iters) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
+  TFE_TensorHandle* var_handle = TestVariable(ctx, 5.0);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
@@ -1248,6 +1203,8 @@ void BM_ReadVariable(int iters) {
     CHECK_EQ(0, TFE_TensorHandleNumDims(h, status));
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     h = nullptr;
+    TFE_OpAddInput(op, var_handle, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteOp(op);
@@ -1591,15 +1548,11 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   TFE_Op* var_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  // There is currently no API to fetch attributes from an operation, fetching
-  // happens only as an implementation detail of custom devices.
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(var_op));
-  TFE_OpAttrs attributes{&operation->Attrs()};
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TFE_Op* copy_op = TFE_NewOp(ctx, "VarHandleOp", status);
   TFE_OpSetAttrType(copy_op, "dtype", TF_FLOAT);
-  TFE_OpAddAttrs(copy_op, &attributes);
+  TFE_OpAddAttrs(copy_op, attributes);
   unsigned char is_list = 0;
   ASSERT_EQ(TF_ATTR_TYPE,
             TFE_OpGetAttrType(copy_op, "dtype", &is_list, status));
@@ -1631,14 +1584,10 @@ TEST(CAPI, TestTFE_OpAttrsSerialize) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
   TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
-  // There is currently no API to fetch attributes from an operation, fetching
-  // happens only as an implementation detail of custom devices.
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(var_op));
-  TFE_OpAttrs attributes{&operation->Attrs()};
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(var_op);
 
   TF_Buffer* serialized_attr_values = TF_NewBuffer();
-  TFE_OpAttrsSerialize(&attributes, serialized_attr_values, status);
+  TFE_OpAttrsSerialize(attributes, serialized_attr_values, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   tensorflow::NameAttrList name_and_attrs;
   ASSERT_TRUE(name_and_attrs.ParseFromArray(serialized_attr_values->data,

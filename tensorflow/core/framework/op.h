@@ -249,6 +249,12 @@ class OpDefBuilderWrapper<true> {
     builder_.SetIsStateful();
     return *this;
   }
+  OpDefBuilderWrapper<true>& SetDoNotOptimize() {
+    // We don't have a separate flag to disable optimizations such as constant
+    // folding and CSE so we reuse the stateful flag.
+    builder_.SetIsStateful();
+    return *this;
+  }
   OpDefBuilderWrapper<true>& SetAllowsUninitializedInput() {
     builder_.SetAllowsUninitializedInput();
     return *this;
@@ -282,6 +288,7 @@ class OpDefBuilderWrapper<false> {
   OpDefBuilderWrapper<false>& SetIsCommutative() { return *this; }
   OpDefBuilderWrapper<false>& SetIsAggregate() { return *this; }
   OpDefBuilderWrapper<false>& SetIsStateful() { return *this; }
+  OpDefBuilderWrapper<false>& SetDoNotOptimize() { return *this; }
   OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
   OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
   OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }

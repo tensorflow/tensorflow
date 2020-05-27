@@ -287,14 +287,14 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.evaluate(x.initializer)
 
       # outside of auto cast scope.
-      v1 = constant_op.constant(3.14, dtype=dtypes.float32)
-      v2 = constant_op.constant(3.14, dtype=dtypes.float16)
+      v1 = constant_op.constant(3., dtype=dtypes.float32)
+      v2 = constant_op.constant(3., dtype=dtypes.float16)
 
       def run_and_check():
         # Assign float32 values
-        self.assertAllClose(3.14, self.evaluate(x.assign(v1)))
-        self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(v1)))
-        self.assertAllClose(3.14, self.evaluate(x.assign_sub(v1)))
+        self.assertAllClose(3., self.evaluate(x.assign(v1)))
+        self.assertAllClose(3. * 2, self.evaluate(x.assign_add(v1)))
+        self.assertAllClose(3., self.evaluate(x.assign_sub(v1)))
 
         # Attempt to assign float16 values
         with self.assertRaisesRegexp(
@@ -312,23 +312,23 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
         # Assign Python floats
         self.assertAllClose(0., self.evaluate(x.assign(0.)))
-        self.assertAllClose(3.14, self.evaluate(x.assign(3.14)))
-        self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(3.14)))
-        self.assertAllClose(3.14, self.evaluate(x.assign_sub(3.14)))
+        self.assertAllClose(3., self.evaluate(x.assign(3.)))
+        self.assertAllClose(3. * 2, self.evaluate(x.assign_add(3.)))
+        self.assertAllClose(3., self.evaluate(x.assign_sub(3.)))
 
         # Assign multiple times
         assign = x.assign(1.)
         self.assertAllClose(1., self.evaluate(assign))
         self.assertAllClose(0., self.evaluate(assign.assign(0.)))
-        assign_add = x.assign_add(3.14)
-        self.assertAllClose(3.14, self.evaluate(assign_add))
-        self.assertAllClose(3.14 * 3,
-                            self.evaluate(x.assign_add(3.14).assign_add(3.14)))
-        self.assertAllClose(3.14 * 3, x)
-        assign_sub = x.assign_sub(3.14)
-        self.assertAllClose(3.14 * 2, self.evaluate(assign_sub))
+        assign_add = x.assign_add(3.)
+        self.assertAllClose(3., self.evaluate(assign_add))
+        self.assertAllClose(3. * 3,
+                            self.evaluate(x.assign_add(3.).assign_add(3.)))
+        self.assertAllClose(3. * 3, x)
+        assign_sub = x.assign_sub(3.)
+        self.assertAllClose(3. * 2, self.evaluate(assign_sub))
         self.assertAllClose(0.,
-                            self.evaluate(x.assign_sub(3.14).assign_sub(3.14)))
+                            self.evaluate(x.assign_sub(3.).assign_sub(3.)))
 
         # Assign with read_value=False
         self.assertIsNone(self.evaluate(x.assign(1., read_value=False)))
@@ -340,10 +340,10 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
         # Use the tf.assign functions instead of the var.assign methods.
         self.assertAllClose(0., self.evaluate(state_ops.assign(x, 0.)))
-        self.assertAllClose(3.14, self.evaluate(state_ops.assign(x, 3.14)))
-        self.assertAllClose(3.14 * 2,
-                            self.evaluate(state_ops.assign_add(x, 3.14)))
-        self.assertAllClose(3.14, self.evaluate(state_ops.assign_sub(x, 3.14)))
+        self.assertAllClose(3., self.evaluate(state_ops.assign(x, 3.)))
+        self.assertAllClose(3. * 2,
+                            self.evaluate(state_ops.assign_add(x, 3.)))
+        self.assertAllClose(3., self.evaluate(state_ops.assign_sub(x, 3.)))
 
       run_and_check()
       # reset x

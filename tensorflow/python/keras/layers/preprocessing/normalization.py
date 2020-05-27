@@ -41,7 +41,7 @@ _VARIANCE_NAME = 'variance'
 class Normalization(CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
-  This layer will coerce its inputs into a normal distribution centered around
+  This layer will coerce its inputs into a distribution centered around
   0 with standard deviation 1. It accomplishes this by precomputing the mean and
   variance of the data, and calling (input-mean)/sqrt(var) at runtime.
 
@@ -55,6 +55,21 @@ class Normalization(CombinerPreprocessingLayer):
         in the specified axis. If set to 'None', the layer will perform scalar
         normalization (diving the input by a single scalar value). 0 (the batch
         axis) is not allowed.
+
+
+  Examples:
+
+  Calculate the mean and variance by analyzing the dataset in `adapt`.
+
+  >>> adapt_data = np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32)
+  >>> input_data = np.array([[1.], [2.], [3.]], np.float32)
+  >>> layer = Normalization()
+  >>> layer.adapt(adapt_data)
+  >>> layer(input_data)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[-1.4142135 ],
+         [-0.70710677],
+         [ 0.        ]], dtype=float32)>
   """
 
   def __init__(self, axis=-1, dtype=None, **kwargs):
@@ -101,12 +116,16 @@ class Normalization(CombinerPreprocessingLayer):
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),
-        dtype=dtypes.int32,
+        dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer)
 
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    # If the inputs are not floats, cast them to floats. This avoids issues
+    # with int-float multiplication and division below.
+    if inputs.dtype != K.floatx():
+      inputs = math_ops.cast(inputs, K.floatx())
     # We need to reshape the mean and variance data to ensure that Tensorflow
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)

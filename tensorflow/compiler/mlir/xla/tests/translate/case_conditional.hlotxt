@@ -1,0 +1,46 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule Indexed_Conditional
+
+%Negate (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %x)
+}
+
+%Identity (y: f32[]) -> f32[] {
+  %y = f32[] parameter(0)
+  ROOT %copy = f32[] copy(f32[] %y)
+}
+
+%Floor (z: f32[]) -> f32[] {
+  %z = f32[] parameter(0)
+  ROOT %floor = f32[] floor(f32[] %z)
+}
+
+ENTRY %indexed_conditional () -> f32[] {
+  %constant = s32[] constant(1)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  %constant.3 = f32[] constant(13)
+  ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+}
+
+// CHECK-LABEL: func @main() -> tensor<f32>
+// CHECK: %[[INDEX:.*]] = constant  {name = "constant"} dense<1> : tensor<i32>
+// CHECK: %[[OPERAND_1:.*]] = constant  {name = "{{.*}}"} dense<5.600000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_2:.*]] = constant  {name = "{{.*}}"} dense<1.200000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_3:.*]] = constant  {name = "{{.*}}"} dense<1.300000e+01> : tensor<f32>
+// CHECK: %[[RESULT:.*]] = "xla_hlo.case"(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]) ( {
+// CHECK:   ^bb0(%[[ARG_1:.*]]: tensor<f32>):
+// CHECK:     %[[RES_1:.*]] = "xla_hlo.negate"(%[[ARG_1]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
+// CHECK:     "xla_hlo.return"(%[[RES_1]]) : (tensor<f32>) -> ()
+// CHECK:   },  {
+// CHECK:   ^bb0(%[[ARG_2:.*]]: tensor<f32>):
+// CHECK:     %[[RES_2:.*]] = "xla_hlo.copy"(%[[ARG_2]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
+// CHECK:     "xla_hlo.return"(%[[RES_2]]) : (tensor<f32>) -> ()
+// CHECK:   },  {
+// CHECK:   ^bb0(%[[ARG_3:.*]]: tensor<f32>):
+// CHECK:     %[[RES_3:.*]] = "xla_hlo.floor"(%[[ARG_3]]) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f32>
+// CHECK:     "xla_hlo.return"(%[[RES_3]]) : (tensor<f32>) -> ()
+// CHECK:   }) {name = "{{.*}}"} : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK: return %[[RESULT]] : tensor<f32>

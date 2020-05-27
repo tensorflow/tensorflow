@@ -86,11 +86,11 @@ patch_kissfft() {
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
   xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
-  sed -i "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
 }
 
 build_embarc_mli() {
-  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
 }
 
 # Main function handling the download, verify, extract, and patch process.
@@ -137,6 +137,9 @@ download_and_extract() {
     exit 1
   fi
 
+  # delete anything after the '?' in a url that may mask true file extension
+  url=$(echo "${url}" | sed "s/\?.*//")
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then
@@ -170,7 +173,12 @@ download_and_extract() {
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    build_embarc_mli ${dir} ${action_param1}
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1

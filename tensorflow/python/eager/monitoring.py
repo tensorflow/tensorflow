@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import time
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import pywrap_tfe
@@ -428,3 +430,46 @@ class Sampler(Metric):
   def get_cell(self, *labels):
     """Retrieves the cell."""
     return SamplerCell(super(Sampler, self).get_cell(*labels))
+
+
+class MonitoredTimer(object):
+  """A context manager to measure the walltime and increment a Counter cell."""
+
+  def __init__(self, cell):
+    """Creates a new MonitoredTimer.
+
+    Args:
+      cell: the cell associated with the time metric that will be inremented.
+    """
+    self.cell = cell
+
+  def __enter__(self):
+    self.t = time.time()
+    return self
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    del exception_type, exception_value, traceback
+    micro_seconds = (time.time() - self.t) * 1000000
+    self.cell.increase_by(int(micro_seconds))
+
+
+def monitored_timer(cell):
+  """A function decorator for adding MonitoredTimer support.
+
+  Arguments:
+    cell: the cell associated with the time metric that will be inremented.
+  Returns:
+    A decorator that measure the function runtime and increment the specified
+    counter cell.
+  """
+
+  def actual_decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+      with MonitoredTimer(cell):
+        return func(*args, **kwargs)
+
+    return wrapper
+
+  return actual_decorator

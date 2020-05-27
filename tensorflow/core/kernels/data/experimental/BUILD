@@ -1,7 +1,6 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -111,6 +110,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "compression_ops",
+    srcs = ["compression_ops.cc"],
+    hdrs = ["compression_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -132,20 +145,17 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data/service:compression_utils",
-        "//tensorflow/core/data/service:credentials_factory",
-        "//tensorflow/core/data/service:grpc_util",
-        "//tensorflow/core/data/service:master_cc_grpc_proto",
-        "//tensorflow/core/data/service:master_proto_cc",
-        "//tensorflow/core/data/service:worker_cc_grpc_proto",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:serialization_utils",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -158,13 +168,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/data/service:credentials_factory",
-        "//tensorflow/core/data/service:grpc_util",
-        "//tensorflow/core/data/service:master_cc_grpc_proto",
-        "//tensorflow/core/data/service:master_proto_cc",
+        "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:iterator_ops",
-        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -531,6 +537,7 @@ cc_library(
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -689,6 +696,7 @@ tf_kernel_library(
         ":auto_shard_dataset_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
+        ":compression_ops",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",

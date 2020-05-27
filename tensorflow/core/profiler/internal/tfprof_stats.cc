@@ -58,7 +58,6 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph) << "Must at least have GraphDef";
 
-  absl::PrintF("Parsing Inputs...\n");
   AddGraph(std::move(graph));
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));

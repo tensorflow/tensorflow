@@ -799,11 +799,6 @@ Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
 
 Optional<CustomOptionsOffset> Translator::CreateCustomOpCustomOptions(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
-  std::string node_def_str;
-  if (!node_def.SerializeToString(&node_def_str)) {
-    return emitError(loc, "failed to serialize tensorflow node_def"),
-           llvm::None;
-  }
   auto flex_builder = CreateFlexBuilderWithNodeAttrs(node_def, loc);
   return builder_.CreateVector(flex_builder->GetBuffer());
 }
@@ -813,9 +808,13 @@ Translator::CreateFlexBuilderWithNodeAttrs(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
   auto flex_builder = absl::make_unique<flexbuffers::Builder>();
   size_t map_start = flex_builder->StartMap();
-  for (const auto& pair : node_def.attr()) {
+  using Item = std::pair<std::string, ::tensorflow::AttrValue>;
+  std::vector<Item> attrs(node_def.attr().begin(), node_def.attr().end());
+  std::sort(attrs.begin(), attrs.end(),
+            [](Item& p1, Item& p2) -> bool { return p1.first < p2.first; });
+  for (const Item& pair : attrs) {
     const char* key = pair.first.c_str();
-    const auto& attr = pair.second;
+    const ::tensorflow::AttrValue& attr = pair.second;
     switch (attr.value_case()) {
       case ::tensorflow::AttrValue::kS:
         flex_builder->String(key, attr.s());
@@ -1017,10 +1016,10 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       inst->getName().print(os);
       // Print out attributes except for large elementsattributes (which should
       // rarely be the cause why the legalization didn't happen).
-      if (!inst->getAttrList().getAttrs().empty()) {
+      if (!inst->getMutableAttrDict().getAttrs().empty()) {
         os << " {";
         bool first = true;
-        for (auto& named_attr : inst->getAttrList().getDictionary()) {
+        for (auto& named_attr : inst->getAttrDictionary()) {
           os << (!first ? ", " : "");
           first = false;
           named_attr.first.print(os);

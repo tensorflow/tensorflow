@@ -28,8 +28,24 @@ limitations under the License.
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_server_lib, m) {
-  py::class_<tensorflow::data::MasterGrpcDataServer>(m, "MasterGrpcDataServer");
-  py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer");
+  py::class_<tensorflow::data::MasterGrpcDataServer>(m, "MasterGrpcDataServer")
+      .def("start", &tensorflow::data::MasterGrpcDataServer::Start)
+      .def("stop", &tensorflow::data::MasterGrpcDataServer::Stop)
+      .def("join", &tensorflow::data::MasterGrpcDataServer::Join)
+      .def("bound_port", &tensorflow::data::MasterGrpcDataServer::BoundPort)
+      .def("num_workers",
+           [](tensorflow::data::MasterGrpcDataServer* server) -> int {
+             int num_workers;
+             tensorflow::Status status = server->NumWorkers(&num_workers);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return num_workers;
+           });
+
+  py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
+      .def("start", &tensorflow::data::WorkerGrpcDataServer::Start)
+      .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
+      .def("join", &tensorflow::data::WorkerGrpcDataServer::Join)
+      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
 
   m.def(
       "TF_DATA_NewMasterServer",
@@ -39,27 +55,9 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         tensorflow::Status status =
             tensorflow::data::NewMasterServer(port, protocol, &server);
         tensorflow::MaybeRaiseFromStatus(status);
-        server->Start();
         return server;
       },
       py::return_value_policy::reference);
-  m.def(
-      "TF_DATA_MasterServerBoundPort",
-      [](tensorflow::data::MasterGrpcDataServer* server) -> int {
-        return server->BoundPort();
-      },
-      py::return_value_policy::copy);
-  m.def("TF_DATA_DeleteMasterServer",
-        [](tensorflow::data::MasterGrpcDataServer* server) { server->Stop(); });
-  m.def(
-      "TF_DATA_MasterServerNumTasks",
-      [](tensorflow::data::MasterGrpcDataServer* server) -> int {
-        int num_tasks;
-        tensorflow::Status status = server->NumTasks(&num_tasks);
-        tensorflow::MaybeRaiseFromStatus(status);
-        return num_tasks;
-      },
-      py::return_value_policy::copy);
 
   m.def(
       "TF_DATA_NewWorkerServer",
@@ -70,16 +68,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         tensorflow::Status status = tensorflow::data::NewWorkerServer(
             port, protocol, master_address, worker_address, &server);
         tensorflow::MaybeRaiseFromStatus(status);
-        server->Start();
         return server;
       },
       py::return_value_policy::reference);
-  m.def(
-      "TF_DATA_WorkerServerBoundPort",
-      [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
-        return server->BoundPort();
-      },
-      py::return_value_policy::copy);
-  m.def("TF_DATA_DeleteWorkerServer",
-        [](tensorflow::data::WorkerGrpcDataServer* server) { server->Stop(); });
 };

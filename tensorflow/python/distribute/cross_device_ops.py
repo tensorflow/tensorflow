@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import threading
 
 import enum
 import six
@@ -31,7 +32,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -948,6 +949,20 @@ class CollectiveAllReduce(CrossDeviceOps):
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
     self._communication = communication
+    # In a multi threaded eager program we need to ensure different groups of
+    # collectives don't interleave each other, otherwise there will be deadlock.
+    self._lock = threading.Lock()
+
+    # Collective ops requires all devices to participate and is blocking. In
+    # eager, we need one async executor for each device to be able to launch
+    # them altogether. Note that async doesn't imply concurrency. Within an
+    # async executor operations are still executed sequentially. In graph or
+    # function building, the executors are not used.
+    self._executors = []
+    for _ in range(self._num_gpus_per_worker or 1):
+      # If num_gpus_per_worker is zero, we assume there's only one device (CPU).
+      self._executors.append(executor.new_executor(enable_async=True))
+
     super(CollectiveAllReduce, self).__init__()
 
   @property
@@ -1059,33 +1074,26 @@ class CollectiveAllReduce(CrossDeviceOps):
           "num_workers = %d, communication_hint = %s, num_packs = %d" %
           (batch_size, self._num_workers, communication, len(packs)), 10)
 
-    def batch_fn():
-      """Wrapper function around batched all-reduce calls."""
-      reduced_values = []
-      for pack in packs:
-        # By placing all CollectiveReduce ops in a pack under single name scope,
-        # we ensure they will be picked up by the `ScopedAllocator` grappler
-        # optimizer and packed into a single all-reduce.
-        with ops.name_scope("allreduce"):
-          for per_replica in pack:
-            # Add control dependencies per device from the last gradients to the
-            # current set, in order to serialize NCCL launches.
-            if (communication == CollectiveCommunication.NCCL.value and
-                reduced_values):
-              control_inputs = [g for g in reduced_values[-1]]
-            else:
-              control_inputs = None
-            reduced_values.append(
-                cross_device_utils.build_collective_reduce(
-                    per_replica.values, self._num_workers,
-                    self._collective_keys, "Add", "Id", communication,
-                    control_inputs))
-      return reduced_values
+    reduced_values = []
+    for pack in packs:
+      # By placing all CollectiveReduce ops in a pack under single name scope,
+      # we ensure they will be picked up by the `ScopedAllocator` grappler
+      # optimizer and packed into a single all-reduce.
+      with self._lock, ops.name_scope("allreduce"):
+        for per_replica in pack:
+          # Add control dependencies per device from the last gradients to the
+          # current set, in order to serialize NCCL launches.
+          if (communication == CollectiveCommunication.NCCL.value and
+              reduced_values):
+            control_inputs = list(reduced_values[-1])
+          else:
+            control_inputs = None
+          reduced_values.append(
+              cross_device_utils.build_collective_reduce(
+                  per_replica.values, self._num_workers,
+                  self._collective_keys, "Add", "Id", communication,
+                  control_inputs, executors=self._executors))
 
-    if context.executing_eagerly():
-      batch_fn = def_function.function(batch_fn)
-
-    reduced_values = batch_fn()
     mirrored = []
     # Reverse the order of reduced value to recover the order in the input.
     for value in reversed(reduced_values):
@@ -1133,6 +1141,12 @@ class CollectiveAllReduce(CrossDeviceOps):
             value[i].values = value[i].values / num_replicas
       mirrored.append(value_lib.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored
+
+  def __deepcopy__(self, memo):
+    # distribute_coordinator deep-copies the strategy object, so
+    # CollectiveAllReduce needs to support deep copy as well.
+    return CollectiveAllReduce(self._num_workers, self._num_gpus_per_worker,
+                               self._collective_keys, self._communication)
 
 
 def choose_the_best(devices, session_config=None):

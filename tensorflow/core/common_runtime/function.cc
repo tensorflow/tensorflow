@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
@@ -164,6 +165,12 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
   void Run(const Options& opts, Handle handle, CallFrameInterface* call_frame,
            DoneCallback done) override;
 
+  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+                 std::vector<Tensor>* rets) override;
+
+  Status RunSync(Options opts, Handle handle,
+                 CallFrameInterface* frame) override;
+
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       OpKernel** kernel) override;
 
@@ -232,6 +239,17 @@ void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
                                         CallFrameInterface* call_frame,
                                         DoneCallback done) {
   base_flr_->Run(opts, handle, call_frame, std::move(done));
+}
+
+Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
+                                              gtl::ArraySlice<Tensor> args,
+                                              std::vector<Tensor>* rets) {
+  return base_flr_->RunSync(std::move(opts), handle, args, rets);
+}
+
+Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
+                                              CallFrameInterface* call_frame) {
+  return base_flr_->RunSync(std::move(opts), handle, call_frame);
 }
 
 Status FunctionLibraryRuntimeOverlay::CreateKernel(
@@ -330,6 +348,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
            std::vector<Tensor>* rets, DoneCallback done) override;
   void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
            DoneCallback done) override;
+  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+                 std::vector<Tensor>* rets) override;
+  Status RunSync(Options opts, Handle handle,
+                 CallFrameInterface* call_frame) override;
 
   bool IsStateful(const string& function) const override;
 
@@ -422,6 +444,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                  Item* item, DoneCallback done);
+
+  Status PrepareRunSync(
+      Handle handle, Options* run_opts, Item** out_item,
+      std::unique_ptr<PrivateIntraProcessRendezvous>* out_rendezvous);
 
   void ExecutorArgsFromOptions(const FunctionLibraryRuntime::Options& run_opts,
                                CallFrameInterface* frame,
@@ -1186,6 +1212,80 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
+Status FunctionLibraryRuntimeImpl::PrepareRunSync(
+    Handle handle, Options* run_opts, Item** out_item,
+    std::unique_ptr<PrivateIntraProcessRendezvous>* out_rendezvous) {
+  if (run_opts->cancellation_manager &&
+      run_opts->cancellation_manager->IsCancelled()) {
+    return errors::Cancelled("");
+  }
+
+  if (run_opts->remote_execution) {
+    // NOTE(mrry): This bit is only set for a local function when `parent_`
+    // calls back into this class, and the current implementation of
+    // `ProcessFunctionLibraryRuntime` currently always uses the asynchronous
+    // Run() method.
+    return errors::Unimplemented("Remote calling with RunSync()");
+  }
+
+  if (run_opts->create_rendezvous) {
+    *out_rendezvous =
+        absl::make_unique<PrivateIntraProcessRendezvous>(device_mgr_);
+    run_opts->rendezvous = out_rendezvous->get();
+    run_opts->create_rendezvous = false;
+  }
+
+  LocalHandle local_handle = parent_->GetHandleOnDevice(
+      device_name_, handle, /*include_multi_device=*/true);
+  if (local_handle == kInvalidLocalHandle) {
+    *out_item = nullptr;
+    return Status::OK();
+  }
+
+  TF_RETURN_IF_ERROR(GetOrCreateItem(local_handle, out_item));
+
+  if (run_opts->runner == nullptr) {
+    run_opts->runner = &default_runner_;
+  }
+  DCHECK(run_opts->runner != nullptr);
+
+  return Status::OK();
+}
+
+Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
+                                           gtl::ArraySlice<Tensor> args,
+                                           std::vector<Tensor>* rets) {
+  Item* item = nullptr;
+  std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
+  TF_RETURN_IF_ERROR(PrepareRunSync(handle, &opts, &item, &rendezvous));
+  if (item == nullptr) {
+    return parent_->RunSync(opts, handle, args, rets);
+  }
+
+  Executor::Args exec_args;
+  const FunctionBody* fbody = GetFunctionBody(handle);
+  FunctionCallFrame frame(fbody->arg_types, fbody->ret_types);
+  TF_RETURN_IF_ERROR(frame.SetArgs(args));
+  ExecutorArgsFromOptions(opts, &frame, &exec_args);
+
+  TF_RETURN_IF_ERROR(item->exec->Run(exec_args));
+  return frame.ConsumeRetvals(rets, opts.allow_dead_tensors);
+}
+
+Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
+                                           CallFrameInterface* call_frame) {
+  Item* item = nullptr;
+  std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
+  TF_RETURN_IF_ERROR(PrepareRunSync(handle, &opts, &item, &rendezvous));
+  if (item == nullptr) {
+    return parent_->RunSync(opts, handle, call_frame);
+  }
+
+  Executor::Args exec_args;
+  ExecutorArgsFromOptions(opts, call_frame, &exec_args);
+  return item->exec->Run(exec_args);
+}
+
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {
   const OpDef* op_def;
   const Status s = base_lib_def_->LookUpOpDef(func, &op_def);
@@ -1393,40 +1493,6 @@ std::unique_ptr<FunctionBody> SymbolicGradientHelper::Compute() {
 
 std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f) {
   return SymbolicGradientHelper(f).Compute();
-}
-
-Status FunctionDefToBodyHelper(
-    const FunctionDef& fdef, const AttrSlice& attrs,
-    const FunctionLibraryDefinition* const lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    std::unique_ptr<FunctionBody>* fbody) {
-  // Instantiates the function template into a graph def.
-  InstantiationResult result;
-  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
-
-  std::unique_ptr<Graph> graph(new Graph(lib_def));
-  GraphConstructorOptions opts;
-  opts.allow_internal_ops = true;
-  opts.expect_device_spec = false;
-  TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get()));
-
-  // Call BuildControlFlowInfo to validate that this function body has
-  // well-formed control flow.
-  std::vector<ControlFlowInfo> dummy;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
-
-  *fbody = absl::make_unique<FunctionBody>(fdef, result.arg_types,
-                                           result.ret_types, graph.release());
-  return Status::OK();
-}
-
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
-  const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
-    return lib_def->LookUpOpDef(op, sig);
-  };
-  return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig, fbody);
 }
 
 }  // end namespace tensorflow

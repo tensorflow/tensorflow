@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -102,6 +105,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
@@ -143,6 +147,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      // XPlane semantics related.
+      {"$pt", kProducerType},
+      {"$ct", kConsumerType},
+      {"$p", kProducerId},
+      {"$c", kConsumerId},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},
@@ -154,6 +163,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
+      {"flow", kFlow},
       {"step_name", kStepName},
       {"level 0", kLevel0},
       {"tf_op", kTfOp},

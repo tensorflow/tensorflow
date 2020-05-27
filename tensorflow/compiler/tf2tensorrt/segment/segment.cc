@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -371,6 +371,174 @@ string TensorPropertiesToString(
                  });
 }
 
+// From the given list of input properties, returns the leading shape, which is
+// the shape that determines the batch size of the operation. The leading shape
+// is selected from the group of input shapes with the highest rank as follows:
+//  . If all of those shapes have non-negative values for the batch dimension,
+//    the leading shape is the one with the largest value for the batch
+//    dimension.
+//  . If some or all of those shapes have negative values for the batch
+//    dimension, and the rest of those shapes have 1 for the batch dimension,
+//    the leading shape is the first of those shapes with a negative value for
+//    the batch dimension.
+//  . Otherwise, we can't determine the leading shape for the operation and
+//    have to exclude the operation from TRT.
+//
+// Examples:
+//    case-1: a[1,3,4] + b[2,3,4] => leading shape [2,3,4]
+//    case-2: a[2,3,4] + b[scalar] => leading shape [2,3,4]
+//    case-3: a[-1,3,4] + b[1,3,4] => leading shape [-1,3,4]
+//    case-4: a[-1,3,4] + b[2,3,4] => no leading shape
+//
+// We have to return "no leading shape" for case-4 to exclude such operation
+// from being translated for this reason:
+//   The actually input for "a" have to be in the shape of [2,3,4] for the
+//   operation to be valid. On the other hand, if we translate the operation
+//   to implicit batch mode, it will becomes a[3,4]+b[3,4] which is valid for
+//   any input shape of "a".
+//
+// This routine assumes the input program is valid. For example, we shouldn't
+// see invalid operation like a[2,3,4] + b[3,3,4]. It also assumes the input
+// properties is not empty and all input have known shapes.
+//
+// TODO(bixia): find a way to share this knowledge with the converter.
+// TODO(bixia): investigate the use of symbolic shape analysis to improve
+//   segmentation, such as by requiring the dynamic dimensions to have the same
+//   negative value.
+absl::optional<const TensorShapeProto*> FindLeadingShape(
+    absl::Span<const OpInfo::TensorProperties> properties) {
+  DCHECK(!properties.empty());
+  const TensorShapeProto* result;
+  int max_batch_dim_value;
+  auto choose_shape_with_higher_rank = [&](const TensorShapeProto* s) {
+    result = s;
+    max_batch_dim_value = s->dim_size() < 1 ? 1 : s->dim(0).size();
+  };
+
+  DCHECK(!properties[0].shape().unknown_rank());
+  choose_shape_with_higher_rank(&properties[0].shape());
+
+  for (const OpInfo::TensorProperties& p : properties.subspan(1)) {
+    DCHECK(!p.shape().unknown_rank());
+    if (p.shape().dim_size() < result->dim_size()) continue;
+
+    if (p.shape().dim_size() > result->dim_size()) {
+      choose_shape_with_higher_rank(&p.shape());
+      continue;
+    }
+
+    // Among the shapes with the same rank, choose the one with a dynamic batch
+    // size. If no shapes have a dynamic batch size, choose the one with the
+    // largest size.
+    if (result->dim_size() < 1) continue;
+
+    if (p.shape().dim(0).size() < 0 || result->dim(0).size() < 0) {
+      if (p.shape().dim(0).size() < 0 && result->dim(0).size() >= 0) {
+        result = &p.shape();
+      } else {
+        max_batch_dim_value =
+            std::max<int>(max_batch_dim_value, p.shape().dim(0).size());
+      }
+
+      continue;
+    }
+
+    if (p.shape().dim(0).size() > result->dim(0).size()) {
+      result = &p.shape();
+      max_batch_dim_value = result->dim(0).size();
+    }
+  }
+
+  if (result->dim_size() > 0 && result->dim(0).size() < 0) {
+    // dynamic batch size
+    if (max_batch_dim_value <= 1) {
+      return result;
+    } else {
+      return absl::nullopt;
+    }
+  }
+
+  return result;
+}
+
+// Returns the inputs that are relevant to determinate the batch size of the
+// operation. This routine handles the following cases:
+//   . Operations that support implicit boradcasting, such as operation mul.
+//     In this case, we need to inspect all the inputs in order to determine the
+//     batch size of the operation.
+//   . Special cases. Such as "Conv2DBackpropInput", "Conv3DBackpropInputV2".
+//   . The batch size of a operation is determined by the first input of the
+//     operation.
+absl::Span<const OpInfo::TensorProperties> GetInputsToDeterminateBatchSize(
+    const Node* node, const std::vector<OpInfo::TensorProperties>& all_inputs) {
+  // TODO(bixia): Find a way to share this knowledge with the converter.
+  static std::set<string> broadcast_supporting_ops = {
+      // ops corresponding to ConvertBinary in the converter
+      "Add",
+      "AddV2",
+      "Mul",
+      "Sub"
+      "Div",
+      "FloorDiv",
+      "RealDiv",
+      "Minimum",
+      "Maximum",
+      "Pow",
+      // other ops that need to need GetTrtBroadcastShape to convert
+      "BiasAdd",
+      "SquaredDifference",
+      "BatchMatMul",
+      "BatchMatMulV2",
+  };
+  const string& op = node->def().op();
+
+  if (op == "Conv2DBackpropInput" || op == "Conv3DBackpropInputV2") {
+    DCHECK_EQ(all_inputs.size(), 3);
+    return absl::MakeSpan(all_inputs).subspan(2, 1);
+  }
+
+  if (broadcast_supporting_ops.count(op)) {
+    return absl::MakeSpan(all_inputs);
+  }
+
+  // This is the common case for the operations that don't support implicit
+  // broadcasting: the first operand determines its batch size. All otherwise
+  // cases are handled before reaching here.
+  return absl::MakeSpan(all_inputs).subspan(0, 1);
+}
+
+// Returns true if the operation we can remove the implicit batch of the
+// operation.
+//
+// In particular, if the input shape has dynamic rank or the input shape rank
+// is less than 2, we can't remove the implicit batch dimension and generate
+// a new operation for TRT translation.
+bool OperationCanBeTranslatedToImplicitBatch(
+    const grappler::GraphProperties* graph_properties, const Node* node) {
+  VLOG(3) << "process node " << node->name();
+  if (node->num_inputs() == 0) return true;
+  if (!graph_properties || !graph_properties->HasInputProperties(node->name()))
+    return false;
+
+  VLOG(3) << "input shapes "
+          << TensorPropertiesToString(
+                 graph_properties->GetInputProperties(node->name()));
+
+  const std::vector<OpInfo::TensorProperties>& all_input_properties =
+      graph_properties->GetInputProperties(node->name());
+  absl::Span<const OpInfo::TensorProperties> input_properties =
+      GetInputsToDeterminateBatchSize(node, all_input_properties);
+  if (absl::c_any_of(input_properties, [](const OpInfo::TensorProperties& p) {
+        return p.shape().unknown_rank();
+      })) {
+    return false;
+  }
+
+  absl::optional<const TensorShapeProto*> leading_shape =
+      FindLeadingShape(input_properties);
+  return leading_shape.has_value() && leading_shape.value()->dim_size() >= 2;
+}
+
 // Returns true if we can't be sure that the operand with the given properties
 // won't have negative values for non-batch dimensions.
 //
@@ -467,6 +635,42 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
   }
 }
 
+// Returns a batch size representation for a segment that only contains the
+// given node.
+ClusterBatchSize GetClusterBatchSizeForNode(
+    const grappler::GraphProperties* graph_properties, const Node* node,
+    bool use_implicit_batch) {
+  ClusterBatchSize cluster_batch_size;
+  if (!use_implicit_batch || !node || node->num_inputs() == 0) {
+    return cluster_batch_size;
+  }
+
+  if (!graph_properties ||
+      !graph_properties->HasInputProperties(node->name())) {
+    VLOG(3) << "doesn't have input property";
+    return cluster_batch_size.SetBatchSizeValue(-1);
+  }
+
+  const std::vector<OpInfo::TensorProperties>& input_properties =
+      graph_properties->GetInputProperties(node->name());
+  absl::optional<const TensorShapeProto*> optional_leading_shape =
+      FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
+  DCHECK(optional_leading_shape.has_value());
+  const TensorShapeProto* leading_shape = optional_leading_shape.value();
+
+  DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
+  return cluster_batch_size.SetBatchSizeValue(leading_shape->dim(0).size());
+}
+
+void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
+                       std::vector<UnionFind<SimpleNode*>>* segments,
+                       SimpleNode* node, bool use_implicit_batch) {
+  segments->emplace_back(
+      node, GetClusterBatchSizeForNode(
+                graph_properties, node == nullptr ? nullptr : node->tf_node(),
+                use_implicit_batch));
+}
+
 }  // namespace
 
 Status SegmentGraph(const Graph* tf_graph,
@@ -528,6 +732,12 @@ Status SegmentGraph(const Graph* tf_graph,
     };
     if (options.exclude_node_list.count(node->name()) != 0) {
       exclude_node("excluded by segmenter option");
+    } else if (options.use_implicit_batch &&
+               !OperationCanBeTranslatedToImplicitBatch(graph_properties,
+                                                        node->tf_node())) {
+      exclude_node(
+          "implicit batch mode requires input shape with at least two "
+          "dimensions");
     } else if (!options.allow_dynamic_non_batch_dim &&
                OperationHasDynamicNonBatchDimension(graph_properties,
                                                     node->tf_node())) {
@@ -548,7 +758,8 @@ Status SegmentGraph(const Graph* tf_graph,
                 << "(Op name: " << node->name();
       }
     }
-    node_segments.emplace_back(node);
+    AddSegmentForNode(graph_properties, &node_segments, node,
+                      options.use_implicit_batch);
   }
   string msg = StrCat(
       "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
@@ -581,18 +792,23 @@ Status SegmentGraph(const Graph* tf_graph,
               return true;
             });
   for (const SimpleNode* node : order) {
-    // All output nodes of 'node' have been visited...
+    // All output nodes of 'node' have been visited.
     VLOG(3) << "Trying node " << node->name() << " id=" << node->id();
-    // 'node' must be a TRT candidate...
+    // 'node' must be a TRT candidate.
     if (node_segments[node->id()].Value() == nullptr) {
       VLOG(3) << "... not a TRT candidate";
       continue;
     }
-    // Contract output edges to combine 'node' with output
-    // nodes. Iterate since combining two nodes may unblock other
-    // combining.
+    // Contract output edges to combine 'node' with output nodes. Repeat this
+    // step until no output edges can be further contracted. This is because
+    // contracting an output edge may unblock new edges for contracting.
+    ClusterBatchSize expected_batch_size =
+        node_segments[node->id()].BatchSize();
+    VLOG(3) << "batch size " << expected_batch_size;
     while (true) {
       std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
+      // TODO(bixia): consider merging the loop to find the edges and the loop
+      // to contract the edges.
       for (const SimpleEdge* out_edge : node->out_edges()) {
         VLOG(3) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
@@ -600,14 +816,26 @@ Status SegmentGraph(const Graph* tf_graph,
           VLOG(3) << "... ... Control Edge, Skipping";
           continue;
         }
-        // Out node must be TRT candidate...
+        // Out node must be a TRT candidate.
         if (node_segments[out_edge->dst()->id()].Value() == nullptr) {
           VLOG(3) << "... ... not a TRT candidate";
           continue;
         }
+        // Out node must have compatible batch size.
+        ClusterBatchSize out_batch_size =
+            node_segments[out_edge->dst()->id()].BatchSize();
+        ClusterBatchSize merged_batch_size = expected_batch_size;
+        if (!merged_batch_size.MergeIfCompatible(out_batch_size)) {
+          VLOG(3) << "... ... incompatible batch size "
+                  << expected_batch_size.ToString() << " "
+                  << out_batch_size.ToString();
+          continue;
+        }
         if (CanContractEdge(out_edge, graph)) {
-          VLOG(3) << "... ... can contract";
+          VLOG(3) << "... ... can contract. new batch size "
+                  << merged_batch_size.ToString();
           contract_edges.insert(out_edge);
+          expected_batch_size = merged_batch_size;
         } else {
           VLOG(3) << "... ... cannot contract, would form cycle";
         }
@@ -624,7 +852,8 @@ Status SegmentGraph(const Graph* tf_graph,
 
         VLOG(3) << "Merge " << src->name() << " <- " << dst->name() << " ("
                 << src->id() << " <- " << dst->id();
-        node_segments[src->id()].Merge(&node_segments[dst->id()]);
+        TF_RETURN_IF_ERROR(
+            node_segments[src->id()].Merge(&node_segments[dst->id()]));
 
         // Contracting the edge leaves disconnected graph edges.
         // Remove these from the graph and from 'contract_edges' so we
@@ -637,6 +866,12 @@ Status SegmentGraph(const Graph* tf_graph,
           contract_edges.erase(r);
           graph->RemoveEdge(r);
         }
+      }
+      ClusterBatchSize actual_batch_size =
+          node_segments[node->id()].BatchSize();
+      if (expected_batch_size != actual_batch_size) {
+        return errors::Internal(
+            "expected batch size is not the same as the actual batch size");
       }
     }
   }

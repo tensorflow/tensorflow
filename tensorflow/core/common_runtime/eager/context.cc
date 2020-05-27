@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
@@ -80,7 +81,8 @@ EagerContext::EagerContext(
     bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
-    : default_device_placement_policy_(default_device_placement_policy),
+    : opts_(opts),
+      default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
       host_cpu_device_(device_mgr->HostCPU()),
@@ -166,6 +168,28 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 AbstractTensorInterface* EagerContext::CreateTensor(
     DataType dtype, absl::Span<const int64> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
+}
+
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, const int64_t* dims, int num_dims, void* data, size_t len,
+    bool convert_string, MemoryReleaser memory_releaser,
+    void* memory_releaser_arg) {
+  TF_Tensor* tensor_wrapper =
+      TF_NewTensor(static_cast<TF_DataType>(dtype), dims, num_dims, data, len,
+                   memory_releaser, memory_releaser_arg);
+
+  if (convert_string) {
+    tensorflow::Tensor tensor;
+    Status status = TF_TensorToTensor(tensor_wrapper, &tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    if (!status.ok()) return nullptr;
+    return new TensorInterface(std::move(tensor));
+  } else {
+    AbstractTensorInterface* result = nullptr;
+    std::swap(result, tensor_wrapper->tensor);
+    TF_DeleteTensor(tensor_wrapper);
+    return result;
+  }
 }
 
 std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
@@ -511,6 +535,10 @@ EagerContext::~EagerContext() {
   // don't send RPCs and block in destructor.
   WaitForAndCloseRemoteContexts();
 
+  // Custom devices may have obtained references to various context components
+  // (executors, thread pool). It's safer to run their destructors early.
+  custom_devices_.clear();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
@@ -849,6 +877,18 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
+Status EagerContext::FindCompositeDeviceFromName(
+    const char* device_name, CompositeDevice** device) const {
+  tf_shared_lock l(composite_devices_mu_);
+  for (const auto& d : composite_devices_) {
+    if (d.second->name() == device_name) {
+      *device = d.second.get();
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("Unknown composite device: ", device_name);
+}
+
 Status EagerContext::FindCustomDeviceFromName(const string& device_name,
                                               CustomDevice** dev) const {
   auto dev_it = custom_devices_.find(device_name);
@@ -896,12 +936,14 @@ Status EagerContext::FindOrCreateCompositeDevice(
   }
 
   Status s;
-  auto device = CompositeDevice::MakeDevice(underlying_devices,
-                                            composite_devices_.size(), &s);
+  // Create a CompositeDevice on the same task as the host CPU, in order to
+  // trigger packed TensorHandle copy from a client to a remote worker.
+  auto device =
+      CompositeDevice::MakeDevice(underlying_devices, composite_devices_.size(),
+                                  HostCPU()->parsed_name(), &s);
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
-  // TODO(b/145922293): Add the composite device to the device set of pflr in
-  // order to make placer recognize it.
+  pflr_->AddCompositeDevice(*composite_device);
   composite_devices_.emplace(hash_key, std::move(device));
   return Status::OK();
 }
@@ -1010,7 +1052,7 @@ void EagerContext::IncrementContextViewId() {
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
@@ -1135,7 +1177,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+    Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1234,7 +1276,7 @@ Status EagerContext::SetMasterContextState(
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager, uint64 context_id,
-    uint64 context_view_id, Rendezvous* r, DeviceMgr* local_device_mgr,
+    uint64 context_view_id, Rendezvous* r, const DeviceMgr* local_device_mgr,
     int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1246,7 +1288,13 @@ Status EagerContext::SetMasterContextState(
   use_send_tensor_rpc_ =
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
-  local_device_manager_.Reset(local_device_mgr);
+  if (local_device_mgr != local_device_manager_.Get()) {
+    if (local_device_manager_.Owned()) {
+      old_local_device_managers_.push_back(
+          std::move(local_device_manager_.owned_object));
+    }
+    local_device_manager_.Reset(local_device_mgr);
+  }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();

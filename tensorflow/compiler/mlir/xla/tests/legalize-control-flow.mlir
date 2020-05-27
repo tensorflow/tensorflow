@@ -35,7 +35,7 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
 
   // CHECK:   [[VAL1:%.+]] = extract_element [[VAL0]][] : tensor<i1>
   // CHECK:   cond_br [[VAL1]], ^bb1(%arg0 : tensor<f32>), ^bb2(%arg0 : tensor<f32>)
-  %1 = "xla_hlo.conditional"(%0, %arg0, %arg0) ( {
+  %1 = "xla_hlo.if"(%0, %arg0, %arg0) ( {
 
   ^bb0(%arg1: tensor<f32>):
     // CHECK: ^bb1([[VAL2:%.+]]: tensor<f32>):
@@ -131,7 +131,7 @@ func @conditional_with_multiple_blocks(%arg0: tensor<f32>, %arg1: tensor<f32>, %
   // CHECK: ^[[EXIT]](%6: tensor<f32>):
   // CHECK:   return %6 : tensor<f32>
   // CHECK: }
-  %1 = "xla_hlo.conditional"(%pred, %arg0, %arg1) ( {
+  %1 = "xla_hlo.if"(%pred, %arg0, %arg1) ( {
   ^then_entry(%arg2: tensor<f32>):
     br ^then_succ(%arg2: tensor<f32>)
   ^then_succ(%0: tensor<f32>):

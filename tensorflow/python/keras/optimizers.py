@@ -899,4 +899,5 @@ def get(identifier):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
   else:
-    raise ValueError('Could not interpret optimizer identifier:', identifier)
+    raise ValueError(
+        'Could not interpret optimizer identifier: {}'.format(identifier))

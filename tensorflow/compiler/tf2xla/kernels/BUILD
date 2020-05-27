@@ -103,6 +103,7 @@ tf_kernel_library(
         "spacetodepth_op.cc",
         "sparse_to_dense_op.cc",
         "split_op.cc",
+        "spmd_manual_sharding_ops.cc",
         "stack_ops.cc",
         "stateful_random_ops.cc",
         "stateless_random_ops.cc",

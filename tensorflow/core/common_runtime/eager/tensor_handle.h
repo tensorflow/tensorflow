@@ -92,6 +92,11 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // If handles are on different devices, assign the packed handle to a
   // CompositeDevice.
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                   const tensorflow::DataType dtype,
+                                   const tensorflow::TensorShape& shape,
+                                   EagerContext* ctx,
+                                   TensorHandle** packed_handle);
+  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    EagerContext* ctx,
                                    TensorHandle** packed_handle);
 
@@ -133,6 +138,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
+  int64 resource_remote_device_incarnation() const {
+    return resource_remote_device_incarnation_;
+  }
 
   VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
@@ -161,7 +169,10 @@ class TensorHandle : public AbstractTensorHandleInterface,
                                 EagerContext* ctx);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(const Device* d, int64* op_id, int32* output_num) const;
+  // If wait_until_ready is true, block until the remote tensor is ready on the
+  // given remote worker.
+  Status RemoteAddress(const Device* d, const bool wait_until_ready,
+                       int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -229,6 +240,8 @@ class TensorHandle : public AbstractTensorHandleInterface,
       std::vector<DtypeAndPartialTensorShape>* result);
   Status GetResourceAllowedDevices(std::vector<string>* result);
 
+  // Returns the number of packed handles. 0 if the handle type is not PACKED.
+  int NumPackedHandles() const;
   // It's called on a packed TensorHandle. Extract a handle with the given
   // index.
   Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
@@ -261,6 +274,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
   // backing the resource. Else resource_device_ is nullptr.
   tensorflow::Device* const resource_device_;
+  // Incarnation ID of the resource device if it locates on a remote device, or
+  // 0 if it locates on a local device.
+  const int64 resource_remote_device_incarnation_;
 
   mutable mutex mu_;
 
@@ -314,6 +330,8 @@ class TensorHandle : public AbstractTensorHandleInterface,
     void Poison(Status status);
     string DebugString() const;
 
+    // Number of packed handles.
+    int NumPackedHandles() const;
     // Extract a handle on the given index.
     Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
 

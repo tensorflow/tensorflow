@@ -209,8 +209,8 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
-  bool adjoint_lhs;
-  bool adjoint_rhs;
+  bool adj_x;
+  bool adj_y;
 } TfLiteBatchMatMulParams;
 
 typedef struct {
@@ -297,6 +297,7 @@ typedef struct {
 
 typedef struct {
   bool align_corners;
+  bool half_pixel_centers;
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {

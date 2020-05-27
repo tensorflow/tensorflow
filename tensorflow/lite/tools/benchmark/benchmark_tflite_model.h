@@ -74,6 +74,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   // Allow subclasses to create a customized Op resolver during init.
   virtual std::unique_ptr<tflite::OpResolver> GetOpResolver() const;
 
+  // Allow subclass to initialize a customized tflite interpereter.
+  virtual TfLiteStatus InitInterpreter();
+
   // Create a BenchmarkListener that's specifically for TFLite profiling if
   // necessary.
   virtual std::unique_ptr<BenchmarkListener> MayCreateProfilingListener() const;

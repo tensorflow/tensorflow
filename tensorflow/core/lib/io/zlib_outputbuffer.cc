@@ -192,9 +192,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
 
 #if defined(PLATFORM_GOOGLE)
 Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
-  absl::CordReader reader(cord);
-  absl::string_view fragment;
-  while (reader.ReadFragment(&fragment)) {
+  for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));
   }
   return Status::OK();

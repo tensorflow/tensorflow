@@ -2,8 +2,11 @@
 #   Contains the Keras preprocess layers (internal TensorFlow version).
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = [
@@ -22,14 +25,16 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         ":discretization",
         ":hashing",
         ":image_preprocessing",
+        ":integer_lookup",
         ":normalization",
         ":preprocessing_stage",
         ":preprocessing_test_utils",
         ":reduction",
+        ":string_lookup",
         ":text_vectorization",
     ],
 )
@@ -47,9 +52,9 @@ py_library(
 )
 
 py_library(
-    name = "categorical_crossing",
+    name = "category_crossing",
     srcs = [
-        "categorical_crossing.py",
+        "category_crossing.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -109,6 +114,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":table_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -145,15 +151,26 @@ py_library(
 )
 
 py_library(
-    name = "text_vectorization",
+    name = "integer_lookup",
     srcs = [
-        "text_vectorization.py",
-        "text_vectorization_v1.py",
+        "integer_lookup.py",
+        "integer_lookup_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_encoding",
         ":index_lookup",
+        ":table_utils",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+py_library(
+    name = "table_utils",
+    srcs = [
+        "table_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -172,10 +189,37 @@ py_library(
 )
 
 py_library(
-    name = "categorical_encoding",
+    name = "text_vectorization",
     srcs = [
-        "categorical_encoding.py",
-        "categorical_encoding_v1.py",
+        "text_vectorization.py",
+        "text_vectorization_v1.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":category_encoding",
+        ":string_lookup",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+        "//tensorflow/python/ops/ragged",
+    ],
+)
+
+py_library(
+    name = "category_encoding",
+    srcs = [
+        "category_encoding.py",
+        "category_encoding_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -210,6 +254,20 @@ py_library(
 )
 
 py_library(
+    name = "string_lookup",
+    srcs = [
+        "string_lookup.py",
+        "string_lookup_v1.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":index_lookup",
+        ":table_utils",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+py_library(
     name = "preprocessing_stage",
     srcs = [
         "preprocessing_stage.py",
@@ -233,16 +291,16 @@ py_library(
 )
 
 cuda_py_test(
-    name = "categorical_crossing_test",
+    name = "category_crossing_test",
     size = "medium",
-    srcs = ["categorical_crossing_test.py"],
+    srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",  # b/149031156
     ],
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -250,12 +308,12 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "categorical_encoding_test",
+    name = "category_encoding_test",
     size = "medium",
-    srcs = ["categorical_encoding_test.py"],
+    srcs = ["category_encoding_test.py"],
     python_version = "PY3",
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         ":preprocessing_test_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -265,17 +323,41 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "categorical_encoding_tpu_test",
-    srcs = ["categorical_encoding_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "category_encoding_distribution_test",
+    srcs = ["category_encoding_distribution_test.py"],
+    main = "category_encoding_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
     deps = [
-        ":categorical_encoding",
-        "//tensorflow/python/distribute:tpu_strategy",
+        ":category_encoding",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
+distribute_py_test(
+    name = "category_crossing_distribution_test",
+    srcs = ["category_crossing_distribution_test.py"],
+    main = "category_crossing_distribution_test.py",
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
+    deps = [
+        ":category_crossing",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -284,6 +366,7 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":discretization",
         ":preprocessing_test_utils",
@@ -292,17 +375,17 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "discretization_tpu_test",
-    srcs = ["discretization_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "discretization_distribution_test",
+    srcs = ["discretization_distribution_test.py"],
+    main = "discretization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = ["multi_and_single_gpu"],
     deps = [
         ":discretization",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -321,16 +404,16 @@ cuda_py_test(
 )
 
 tpu_py_test(
-    name = "hashing_tpu_test",
-    srcs = ["hashing_tpu_test.py"],
-    disable_experimental = True,
+    name = "hashing_distribution_test",
+    srcs = ["hashing_distribution_test.py"],
+    main = "hashing_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = ["multi_and_single_gpu"],
     deps = [
         ":hashing",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -351,16 +434,16 @@ tf_py_test(
 )
 
 tpu_py_test(
-    name = "index_lookup_tpu_test",
-    srcs = ["index_lookup_tpu_test.py"],
-    disable_experimental = True,
+    name = "index_lookup_distribution_test",
+    srcs = ["index_lookup_distribution_test.py"],
+    main = "index_lookup_distribution_test.py",
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":index_lookup",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -391,17 +474,47 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "normalization_tpu_test",
-    srcs = ["normalization_tpu_test.py"],
-    disable_experimental = True,
+tf_py_test(
+    name = "integer_lookup_test",
+    size = "medium",
+    srcs = ["integer_lookup_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":integer_lookup",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "normalization_distribution_test",
+    srcs = ["normalization_distribution_test.py"],
+    main = "normalization_distribution_test.py",
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":normalization",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
+tf_py_test(
+    name = "table_utils_test",
+    srcs = ["table_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":table_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -410,6 +523,7 @@ tf_py_test(
     size = "medium",
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",
@@ -421,17 +535,23 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "text_vectorization_tpu_test",
-    srcs = ["text_vectorization_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "text_vectorization_distribution_test",
+    srcs = ["text_vectorization_distribution_test.py"],
+    main = "text_vectorization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/155502591
+    ],
     deps = [
         ":text_vectorization",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -442,6 +562,22 @@ tf_py_test(
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "string_lookup_test",
+    size = "medium",
+    srcs = ["string_lookup_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":preprocessing_test_utils",
+        ":string_lookup",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -31,6 +31,8 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
@@ -72,6 +74,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -182,6 +185,43 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
+
+  def testPackedVariable(self):
+    with ops.device('/cpu:0'):
+      v0_0 = resource_variable_ops.ResourceVariable(1.0)
+    with ops.device('/cpu:1'):
+      v0_1 = resource_variable_ops.ResourceVariable(2.0)
+      v1_0 = resource_variable_ops.ResourceVariable(3.0)
+    with ops.device('/cpu:2'):
+      v1_1 = resource_variable_ops.ResourceVariable(4.0)
+
+    packed_var_0 = ops.pack_eager_tensors([v0_0.handle, v0_1.handle])
+    packed_var_1 = ops.pack_eager_tensors([v1_0.handle, v1_1.handle])
+
+    # TODO(b/145922293): use ResourceVariable.assign_add and
+    # ResourceVariable.read_value directly once we support packing multiple
+    # ResourceVariable into one ResourceVariable.
+    @def_function.function
+    def read_var():
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_0, constant_op.constant(5.0))
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_1, constant_op.constant(6.0))
+      with ops.device('/cpu:0'):
+        read0 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+      with ops.device('/cpu:1'):
+        read1 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+        read2 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+      with ops.device('/cpu:2'):
+        read3 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+
+      return read0, read1, read2, read3
+
+    self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
 
   def testImplementsAttributeBasic(self):
     v = def_function.function(
@@ -360,6 +400,125 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     foo.func(constant_op.constant([1.0, 2.0]))
     self.assertTrue(unknown_dim[0])
+
+  def testInputShapeFunctionRelaxationWithRaggedTensors(self):
+    traced_type_spec = [None]
+
+    @def_function.function(experimental_relax_shapes=True)
+    def func(x):
+      traced_type_spec[0] = x._type_spec
+      return x
+
+    def check_trace(x, expected_trace):
+      traced_type_spec[0] = None
+      func(x)
+      self.assertEqual(traced_type_spec[0], expected_trace)
+
+    check_trace(  # Initial call gets traced.
+        ragged_factory_ops.constant([[1], [2, 3, 4]]),
+        ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32))
+    check_trace(  # Input TypeSpec is the same -> no retrace.
+        ragged_factory_ops.constant([[1, 2], [3, 4]]), None)
+    check_trace(  # Even if component tensor shapes change -> no retrace.
+        ragged_factory_ops.constant([[1, 2], [3, 4, 5, 6]]), None)
+    check_trace(  # Different TypeSpec shape (nrows): retrace
+        ragged_factory_ops.constant([[1], [2], [3]]),
+        ragged_tensor.RaggedTensorSpec([3, None], dtypes.int32))
+    check_trace(  # Different nrows again: relax & retrace
+        ragged_factory_ops.constant([[1], [2], [3], [4]]),
+        ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32))
+    check_trace(  # Different nrows yet again: not retrace
+        ragged_factory_ops.constant([[1]]), None)
+    check_trace(  # Different ragged_rank: retrace
+        ragged_factory_ops.constant([[[1]]]),
+        ragged_tensor.RaggedTensorSpec([1, None, None], dtypes.int32))
+    check_trace(  # Different ragged_rank again: retrace & relax
+        ragged_factory_ops.constant([[[1]], [[2]]]),
+        ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32))
+
+  def testInputShapeFunctionRelaxationWithStructuredTensors(self):
+    traced_type_spec = [None]
+
+    @def_function.function(experimental_relax_shapes=True)
+    def func(x):
+      traced_type_spec[0] = x._type_spec
+      return x
+
+    def check_trace(x, expected_trace):
+      traced_type_spec[0] = None
+      func(x)
+      self.assertEqual(traced_type_spec[0], expected_trace)
+
+    # If we have TypeSpecs that differ in ways other than just their shape,
+    # then retrace each time.
+    check_trace(
+        structured_tensor.StructuredTensor.from_pyval({'a': [1]}),
+        structured_tensor.StructuredTensorSpec(
+            [], {'a': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+    check_trace(
+        structured_tensor.StructuredTensor.from_pyval({'b': [1]}),
+        structured_tensor.StructuredTensorSpec(
+            [], {'b': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+    check_trace(
+        structured_tensor.StructuredTensor.from_pyval({'c': [1]}),
+        structured_tensor.StructuredTensorSpec(
+            [], {'c': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+
+    # But if we call again with only shape different, then do relax:
+    check_trace(  # retrace
+        structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
+        structured_tensor.StructuredTensorSpec(
+            [], {'a': tensor_spec.TensorSpec((2,), dtypes.int32)}))
+    check_trace(  # relax & retrace
+        structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3]}),
+        structured_tensor.StructuredTensorSpec(
+            [], {'a': tensor_spec.TensorSpec((None,), dtypes.int32)}))
+    check_trace(  # use relaxed graph
+        structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3, 4]}),
+        None)
+
+  def testInputShapeFunctionRelaxationWithDatasetIterators(self):
+    # For dataset iterators, the TypeSpec includes type information that's
+    # not derivable from the component tensors.  Make sure that the TypeSpec
+    # shapes get relaxed as appropriate.
+
+    traced_type_spec = [None]
+
+    @def_function.function(experimental_relax_shapes=True)
+    def func(x):
+      traced_type_spec[0] = x._type_spec
+      return x
+
+    def check_trace(x, expected_trace):
+      traced_type_spec[0] = None
+      func(x)
+      self.assertEqual(traced_type_spec[0], expected_trace)
+
+    ds_1_2 = dataset_ops.DatasetV2.from_tensors(array_ops.zeros([1, 2]))
+    ds_2_2 = dataset_ops.DatasetV2.from_tensors(array_ops.zeros([2, 2]))
+    ds_3_2 = dataset_ops.DatasetV2.from_tensors(array_ops.zeros([3, 2]))
+    ds_4_2 = dataset_ops.DatasetV2.from_tensors(array_ops.zeros([4, 2]))
+    ds_2_1 = dataset_ops.DatasetV2.from_tensors(array_ops.zeros([2, 1]))
+    check_trace(  # shape=[1, 2]: retrace
+        dataset_ops.make_one_shot_iterator(ds_1_2),
+        iterator_ops.IteratorSpec(
+            tensor_spec.TensorSpec([1, 2], dtypes.float32)))
+    check_trace(  # shape=[1, 2]: no retrace (use the [1, 2] graph)
+        dataset_ops.make_one_shot_iterator(ds_1_2), None)
+    check_trace(  # shape=[2, 2]: retrace
+        dataset_ops.make_one_shot_iterator(ds_2_2),
+        iterator_ops.IteratorSpec(
+            tensor_spec.TensorSpec([2, 2], dtypes.float32)))
+    check_trace(  # shape=[3, 2]: relax to [None, 2] and retrace
+        dataset_ops.make_one_shot_iterator(ds_3_2),
+        iterator_ops.IteratorSpec(
+            tensor_spec.TensorSpec([None, 2], dtypes.float32)))
+    check_trace(  # shape=[4, 2]: no retrace (use the [None, 2] graph)
+        dataset_ops.make_one_shot_iterator(ds_4_2), None)
+    check_trace(  # shape=[2, 1]: relax to [None, None] and retrace
+        dataset_ops.make_one_shot_iterator(ds_2_1),
+        iterator_ops.IteratorSpec(
+            tensor_spec.TensorSpec([None, None], dtypes.float32)))
 
   def testCapturesVariables(self):
     a = variables.Variable(1.0, trainable=False)
@@ -797,7 +956,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     class MyNdarray(numpy.ndarray):
       pass
 
-     # Test that the subclasses of ndarray are converted too.
+    # Test that the subclasses of ndarray are converted too.
     self.assertEqual(1., defined(np_ones.view(MyNdarray)).numpy())
     self.assertEqual(0., defined(np_zeros.view(MyNdarray)).numpy())
 
@@ -1717,11 +1876,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(total_function_cache(defined), 2)
 
       # pylint: disable=protected-access
-      self.assertLen(defined._function_cache.arg_relaxed_shapes, 1)
-      relaxed_shapes = (
-          list(defined._function_cache.arg_relaxed_shapes.values())[0])
-      self.assertLen(relaxed_shapes, 1)
-      relaxed_shape = relaxed_shapes[0]
+      self.assertLen(defined._function_cache.arg_relaxed_specs, 1)
+      relaxed_specs = (
+          list(defined._function_cache.arg_relaxed_specs.values())[0])
+      self.assertLen(relaxed_specs, 1)
+      relaxed_shape = relaxed_specs[0].shape
       # pylint: enable=protected-access
       self.assertEqual(relaxed_shape.rank, 1)
       self.assertEqual(tensor_shape.dimension_value(relaxed_shape[0]), None)
@@ -3621,8 +3780,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'      <1>: int32 Tensor, shape=\(\)\n'
                   r'      <2>: RaggedTensorSpec\(.*\)\n'
                   r'      <3>: RaggedTensorSpec\(.*\)')
-    self.assertRegexpMatches(c3.pretty_printed_signature(),
-                             c3_summary + '\n' + c3_details)
+
+    # python 3.5 does not gurantee deterministic iteration of dict contents
+    # which can lead mismatch on pretty_printed_signature output for "Args"
+    if sys.version_info >= (3, 6):
+      self.assertRegexpMatches(c3.pretty_printed_signature(),
+                               c3_summary + '\n' + c3_details)
 
     # pylint: disable=keyword-arg-before-vararg
     @def_function.function

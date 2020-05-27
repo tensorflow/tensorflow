@@ -56,7 +56,24 @@ message CreateJobRequest {
 }
 
 message CreateJobResponse {
-  // An id for the begun job.
+  // An id for the created job.
+  int64 job_id = 1;
+}
+
+message GetOrCreateJobRequest {
+  // The id of the dataset to create a job for.
+  int64 dataset_id = 1;
+  // A mode controlling how the tf.data service produces data for the job.
+  ProcessingModeDef processing_mode = 2;
+  // A name for the job.
+  string job_name = 3;
+  // An index for the job. Multiple jobs can be created for the same name, if
+  // they have different indices.
+  int64 job_name_index = 4;
+}
+
+message GetOrCreateJobResponse {
+  // The id of the (potentially newly created) job.
   int64 job_id = 1;
 }
 
@@ -81,6 +98,18 @@ message GetTasksResponse {
   bool job_finished = 2;
 }
 
+message WorkerInfo {
+  string address = 1;
+  int64 id = 2;
+}
+
+message GetWorkersRequest {}
+
+message GetWorkersResponse {
+  // A list of all workers.
+  repeated WorkerInfo workers = 1;
+}
+
 service MasterService {
   // Registers a worker with the master.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
@@ -96,9 +125,15 @@ service MasterService {
   rpc GetOrRegisterDataset(GetOrRegisterDatasetRequest)
       returns (GetOrRegisterDatasetResponse);
 
+  // Gets a job if it already exists, otherwise creates it.
+  rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
+
   // Creates a job for reading from the tf.data service.
   rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
 
   // Reports a list of all tasks for a job.
   rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+
+  // Reports a list of all workers registered with the master.
+  rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 }

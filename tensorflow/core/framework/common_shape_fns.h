@@ -92,6 +92,9 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Shape function for dataset iterators.
+Status DatasetIteratorShape(shape_inference::InferenceContext* c);
+
 // Returns a new shape with the specified dims arranged in the specified
 // format. The returned value is owned by this context.
 // Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.

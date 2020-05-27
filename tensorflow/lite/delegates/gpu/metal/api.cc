@@ -225,6 +225,10 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     }
     case OperationType::CONVOLUTION_2D: {
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "Convolution does not support more than 1 runtime tensor");
+      }
       const auto dst_shape = graph.FindOutputs(node_id)[0]->tensor.shape;
       auto attr =
           absl::any_cast<Convolution2DAttributes>(node->operation.attributes);

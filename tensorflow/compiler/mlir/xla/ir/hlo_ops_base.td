@@ -62,16 +62,18 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : ShapedContainerType<
-    [Index, AnySignlessInteger],
+    [HLO_DimensionValue],
     And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, AnySignlessInteger, HLO_Complex]>;
+      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
 
 //===----------------------------------------------------------------------===//
 // XLA on tensors combined type definitions.
@@ -147,15 +149,6 @@ class BASE_HLO_ClzOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
-class BASE_HLO_ComplexOp {
-  string summary = "Complex operator";
-
-  string description = [{
-    Performs element-wise conversion of a pair of real and imaginary values to
-    a complex value.
   }];
 }
 
@@ -400,6 +393,15 @@ class BASE_HLO_AddOp {
   }];
 }
 
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_DivOp {
   string summary = "Division operator";
 
@@ -551,6 +553,29 @@ class BASE_HLO_XorOp {
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// XLA control flow related op definitions.
+//===----------------------------------------------------------------------===//
+
+class BASE_HLO_CaseOp {
+  string summary = "Switch-Case operator";
+
+  string description = [{
+    Returns the result of executing `branches[index]`. If
+    `index` is < 0 or >= N, then `branches[N-1] is executed as
+    the default branch.
+
+    Each branch `branches[b]` must take in a single argument of same type as
+    `branch_operands[b]` and will be invoked with `branch_operands[b]`. The type
+    of the returned value of each branch must be the same.
+
+    Note that only one of the branches will be executed depending on the value
+    of index.
+    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+  }];
+
 }
 
 //===----------------------------------------------------------------------===//

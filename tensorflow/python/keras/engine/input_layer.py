@@ -132,7 +132,6 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -162,8 +161,11 @@ class InputLayer(base_layer.Layer):
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.shape.as_list())
-
+      try:
+        self._batch_input_shape = tuple(input_tensor.shape.as_list())
+      except ValueError:
+        # If the shape cannot be represented as a tuple (e.g. unknown rank)
+        self._batch_input_shape = None
     # Create an input node.
     input_tensor._keras_mask = None
     node_module.Node(layer=self, outputs=input_tensor)
@@ -216,7 +218,9 @@ def Input(  # pylint: disable=invalid-name
       dtype: The data type expected by the input, as a string
           (`float32`, `float64`, `int32`...)
       sparse: A boolean specifying whether the placeholder to be created is
-          sparse. Only one of 'ragged' and 'sparse' can be True.
+          sparse. Only one of 'ragged' and 'sparse' can be True. Note that,
+          if `sparse` is False, sparse tensors can still be passed into the
+          input - they will be densified with a default value of 0.
       tensor: Optional existing tensor to wrap into the `Input` layer.
           If set, the layer will not create a placeholder tensor.
       ragged: A boolean specifying whether the placeholder to be created is

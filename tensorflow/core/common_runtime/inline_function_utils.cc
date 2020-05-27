@@ -43,6 +43,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsConstants::kLowerUsingSwitchMergeAttr;
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
+
 namespace {
 // A few string constant used throughout this module.
 static constexpr const char* const kArgOp = FunctionLibraryDefinition::kArgOp;

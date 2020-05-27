@@ -418,6 +418,26 @@ def _sharding_grad(op, grad):
   return [grad]
 
 
+spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape
+spmd_shard_to_full_shape = gen_xla_ops.xla_spmd_shard_to_full_shape
+
+
+@ops.RegisterGradient("XlaSpmdFullToShardShape")
+def _spmd_full_to_shard_shape_grad(op, grad):
+  s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      full_shape=op.inputs[0].shape.as_list())
+  return [s2f]
+
+
+@ops.RegisterGradient("XlaSpmdShardToFullShape")
+def _spmd_shard_to_full_shape_grad(op, grad):
+  f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
+      grad, manual_sharding=op.get_attr("manual_sharding"))
+  return [f2s]
+
+
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while

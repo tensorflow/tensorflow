@@ -29,9 +29,10 @@ const char kOutputRegistrationFlag[] = "output_registration";
 const char kTfLitePathFlag[] = "tflite_path";
 const char kForMicro[] = "for_micro";
 
-void ParseFlagAndInit(int* argc, char** argv, string* input_model,
-                      string* output_registration, string* tflite_path,
-                      string* namespace_flag, bool* for_micro) {
+void ParseFlagAndInit(int* argc, char** argv, std::string* input_model,
+                      std::string* output_registration,
+                      std::string* tflite_path, std::string* namespace_flag,
+                      bool* for_micro) {
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kInputModelFlag, input_model,
                                "path to the tflite model"),
@@ -128,14 +129,14 @@ void GenerateFileContent(const std::string& tflite_path,
   fout.close();
 }
 
-void AddOpsFromModel(const string& input_model,
+void AddOpsFromModel(const std::string& input_model,
                      tflite::RegisteredOpMap* builtin_ops,
                      tflite::RegisteredOpMap* custom_ops) {
   std::ifstream fin(input_model);
   std::stringstream content;
   content << fin.rdbuf();
   // Need to store content data first, otherwise, it won't work in bazel.
-  string content_str = content.str();
+  std::string content_str = content.str();
   const ::tflite::Model* model = ::tflite::GetModel(content_str.data());
   ::tflite::ReadOpsFromModel(model, builtin_ops, custom_ops);
 }
@@ -143,10 +144,10 @@ void AddOpsFromModel(const string& input_model,
 }  // namespace
 
 int main(int argc, char** argv) {
-  string input_model;
-  string output_registration;
-  string tflite_path;
-  string namespace_flag;
+  std::string input_model;
+  std::string output_registration;
+  std::string tflite_path;
+  std::string namespace_flag;
   bool for_micro = false;
   ParseFlagAndInit(&argc, argv, &input_model, &output_registration,
                    &tflite_path, &namespace_flag, &for_micro);

@@ -25,13 +25,15 @@ from __future__ import print_function
 import datetime
 import os
 
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
+
 
 # This value changes every day with an automatic CL. It can be modified in code
 # via `forward_compatibility_horizon()` or with the environment variable
 # TF_FORWARD_COMPATIBILITY_DELTA_DAYS, which is added to the compatibility date.
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2020, 4, 28)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2020, 5, 26)
 _FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME = "TF_FORWARD_COMPATIBILITY_DELTA_DAYS"
 _FORWARD_COMPATIBILITY_DATE_NUMBER = None
 
@@ -53,6 +55,10 @@ def _update_forward_compatibility_date_number(date_to_override=None):
     if delta_days:
       date += datetime.timedelta(days=int(delta_days))
 
+  if date < _FORWARD_COMPATIBILITY_HORIZON:
+    logging.warning("Trying to set the forward compatibility date to the past"
+                    " date %s. This will be ignored by TensorFlow." % (date))
+    return
   _FORWARD_COMPATIBILITY_DATE_NUMBER = _date_to_date_number(
       date.year, date.month, date.day)
 

@@ -78,16 +78,26 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
         *status = Tensor(&src);
       }
       if (!status->ok()) return nullptr;
+
       tensor = *src;
     } else {
       *status = CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
 
-      *status = AddEmptyLocalMirror(nullptr);
-      if (!status->ok()) return nullptr;
       tensorflow::Tensor mirror = tensor;
-      *status = SetTensor(std::move(mirror), nullptr);
-      if (!status->ok()) return nullptr;
+      *status = AddLocalMirror(std::move(mirror), nullptr);
+      if (!status->ok()) {
+        // If a mirror was added since we called HasLocalMirror then drop the
+        // newly copied tensor and use the previously added mirror.
+        if (status->code() != error::Code::ALREADY_EXISTS) {
+          return nullptr;
+        }
+        const tensorflow::Tensor* src = nullptr;
+        *status = TensorFromDevice(nullptr, &src);
+        if (!status->ok()) return nullptr;
+
+        tensor = *src;
+      }
     }
     // TODO(b/153052876): Change TF_TensorFromTensor to just return an
     // AbstractTensorInterface

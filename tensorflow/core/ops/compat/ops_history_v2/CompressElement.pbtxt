@@ -1,0 +1,17 @@
+op {
+  name: "CompressElement"
+  input_arg {
+    name: "components"
+    type_list_attr: "input_types"
+  }
+  output_arg {
+    name: "compressed"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "input_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}

@@ -24,9 +24,9 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = constant 1
 //   CHECK-NOT:  linalg.generic
-//       CHECK:  loop.for {{.*}} step %[[C1]]
-//       CHECK:    loop.for {{.*}} step %[[C1]]
-//   CHECK-NOT:  loop.for
+//       CHECK:  scf.for {{.*}} step %[[C1]]
+//       CHECK:    scf.for {{.*}} step %[[C1]]
+//   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        addf
 //       CHECK:      linalg.generic
@@ -36,9 +36,9 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 //   TILED-DAG:  %[[C2:.*]] = constant 2
 //   TILED-DAG:  %[[C3:.*]] = constant 3
 //   TILED-NOT:  linalg.generic
-//       TILED:  loop.for {{.*}} step %[[C2]]
-//       TILED:    loop.for {{.*}} step %[[C3]]
-//   TILED-NOT:  loop.for
+//       TILED:  scf.for {{.*}} step %[[C2]]
+//       TILED:    scf.for {{.*}} step %[[C3]]
+//   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        addf
 //       TILED:      linalg.generic
@@ -46,8 +46,8 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 
 // PLOOP-LABEL: func @fusion
 //   PLOOP-NOT:  linalg.generic
-//       PLOOP:  loop.parallel
-//   PLOOP-NOT:  loop.parallel
+//       PLOOP:  scf.parallel
+//   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        addf
 //       PLOOP:      linalg.generic
@@ -94,9 +94,9 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = constant 1
 //   CHECK-NOT:  linalg.generic
-//       CHECK:  loop.for {{.*}} step %[[C1]]
-//       CHECK:    loop.for {{.*}} step %[[C1]]
-//   CHECK-NOT:  loop.for
+//       CHECK:  scf.for {{.*}} step %[[C1]]
+//       CHECK:    scf.for {{.*}} step %[[C1]]
+//   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:      linalg.generic
 //       CHECK:        subf
@@ -107,9 +107,9 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
 //   TILED-DAG:   %[[C2:.*]] = constant 2
 //   TILED-DAG:   %[[C3:.*]] = constant 3
 //   TILED-NOT:   linalg.generic
-//       TILED:   loop.for {{.*}} step %[[C2]]
-//       TILED:     loop.for {{.*}} step %[[C3]]
-//   TILED-NOT:   loop.for
+//       TILED:   scf.for {{.*}} step %[[C2]]
+//       TILED:     scf.for {{.*}} step %[[C3]]
+//   TILED-NOT:   scf.for
 //       TILED:       linalg.generic
 //       TILED:       linalg.generic
 //       TILED:         subf
@@ -118,8 +118,8 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
 
 // PLOOP-LABEL: func @fusion_of_three
 //   PLOOP-NOT:   linalg.generic
-//       PLOOP:   loop.parallel
-//   PLOOP-NOT:   loop.parallel
+//       PLOOP:   scf.parallel
+//   PLOOP-NOT:   scf.parallel
 //       PLOOP:       linalg.generic
 //       PLOOP:       linalg.generic
 //       PLOOP:         subf
@@ -147,11 +147,11 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
 // CHECK-LABEL: func @fusion_4d
 //       CHECK:  %[[C1:.*]] = constant 1
 //   CHECK-NOT:  linalg.generic
-//       CHECK:  loop.for {{.*}} step %[[C1]]
-//       CHECK:    loop.for {{.*}} step %[[C1]]
-//       CHECK:      loop.for {{.*}} step %[[C1]]
-//       CHECK:        loop.for {{.*}} step %[[C1]]
-//   CHECK-NOT:  loop.for
+//       CHECK:  scf.for {{.*}} step %[[C1]]
+//       CHECK:    scf.for {{.*}} step %[[C1]]
+//       CHECK:      scf.for {{.*}} step %[[C1]]
+//       CHECK:        scf.for {{.*}} step %[[C1]]
+//   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        addf
 //       CHECK:      linalg.generic
@@ -161,9 +161,9 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
 //   TILED-DAG:  %[[C2:.*]] = constant 2
 //   TILED-DAG:  %[[C3:.*]] = constant 3
 //   TILED-NOT:  linalg.generic
-//       TILED:  loop.for {{.*}} step %[[C2]]
-//       TILED:    loop.for {{.*}} step %[[C3]]
-//   TILED-NOT:  loop.for
+//       TILED:  scf.for {{.*}} step %[[C2]]
+//       TILED:    scf.for {{.*}} step %[[C3]]
+//   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        addf
 //       TILED:      linalg.generic
@@ -171,8 +171,8 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
 
 // PLOOP-LABEL: func @fusion_4d
 //   PLOOP-NOT:  linalg.generic
-//       PLOOP:  loop.parallel
-//   PLOOP-NOT:  loop.parallel
+//       PLOOP:  scf.parallel
+//   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        addf
 //       PLOOP:      linalg.generic

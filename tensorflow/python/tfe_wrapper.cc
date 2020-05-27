@@ -210,6 +210,22 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
   return output_tensor_handles;
 }
 
+// Packs multiple `EagerTensor`s of the same dtype and shape into one
+// `EagerTensor`.
+py::object TFE_Py_PackEagerTensors_wrapper(const py::handle& context,
+                                           const py::handle& tensors) {
+  TFE_Context* ctx = tensorflow::InputTFE_Context(context);
+  TFE_InputTensorHandles handles = InputTFE_InputTensorHandles(tensors);
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
+  int size = handles.size();
+  TFE_TensorHandle* packed_handle =
+      TFE_CreatePackedTensorHandle(ctx, handles.data(), &size, status.get());
+  tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  PyObject* packed_tensor =
+      EagerTensorFromHandle(packed_handle, /*is_packed=*/true);
+  return tensorflow::PyoOrThrow(packed_tensor);
+}
+
 // This function was created from fusing the typemap logic in platform/base.i.
 py::object TFE_Py_ExecuteCancelable_wrapper(
     const py::handle& context, const char* device_name, const char* op_name,
@@ -488,6 +504,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
+  m.def("TFE_ContextSetLogDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
 
   // TFE_Executor logic
   m.def(
@@ -546,6 +574,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_InitEagerTensor", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_InitEagerTensor(o.ptr()));
   });
+  m.def("TFE_Py_PackEagerTensors",
+        [](const py::handle& context, const py::handle& handles) {
+          return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
+        });
   m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));

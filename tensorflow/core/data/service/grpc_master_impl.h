@@ -46,7 +46,9 @@ class GrpcMasterImpl : public MasterService::Service {
   HANDLER(WorkerUpdate);
   HANDLER(GetOrRegisterDataset);
   HANDLER(CreateJob);
+  HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);
+  HANDLER(GetWorkers);
 #undef HANDLER
 
  private:

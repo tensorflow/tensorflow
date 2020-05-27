@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 
+#include <iterator>
 #include <tuple>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"

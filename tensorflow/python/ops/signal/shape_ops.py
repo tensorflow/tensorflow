@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import util_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -55,6 +56,7 @@ def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
 
 
 @tf_export("signal.frame")
+@dispatch.add_dispatch_support
 def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           name=None):
   """Expands `signal`'s `axis` dimension into frames of `frame_length`.

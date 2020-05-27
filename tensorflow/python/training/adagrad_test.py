@@ -84,7 +84,7 @@ class AdagradOptimizerTest(test.TestCase):
   def testBasic(self):
     self.doTestBasic(use_locking=False)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testBasicResource(self):
     self.doTestBasic(use_locking=False, use_resource=True)
 

@@ -44,6 +44,7 @@ def distribute_py_test(
     """
     _ignore = (full_precision)
     tpu_tags = tags if (tpu_tags == None) else tpu_tags
+    main = main if main else "%s.py" % name
 
     cuda_py_test(
         name = name,
