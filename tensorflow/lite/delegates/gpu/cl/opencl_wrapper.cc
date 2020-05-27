@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <dlfcn.h>
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -37,6 +39,8 @@ absl::Status LoadOpenCL() {
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
   } else {
+    // record error
+    std::string error(dlerror());
     // Pixel phone?
     libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
     if (libopencl) {
@@ -48,7 +52,7 @@ absl::Status LoadOpenCL() {
       return absl::OkStatus();
     } else {
       return absl::UnknownError(
-          absl::StrCat("OpenCL library not loaded - ", dlerror()));
+          absl::StrCat("Can not open OpenCL library on this device - ", error));
     }
   }
 }

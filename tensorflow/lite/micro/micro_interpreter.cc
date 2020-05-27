@@ -165,7 +165,7 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  TF_LITE_ENSURE_OK(&context_, allocator_.AllocateNodeAndRegistrations(
+  TF_LITE_ENSURE_OK(&context_, allocator_.InitializeFromFlatbuffer(
                                    op_resolver_, &node_and_registrations_));
 
   // Only allow AllocatePersistentBuffer in Init stage.

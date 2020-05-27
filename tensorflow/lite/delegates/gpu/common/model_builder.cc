@@ -2763,10 +2763,13 @@ absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
       ->IsSupported(context, node, registration);
 }
 
-bool IsAllAllowedTensors(TfLiteContext* context, const TfLiteIntArray* array,
+bool IsAllAllowedTensors(TfLiteContext* context,
+                         const TfLiteIntArray* tensor_indices,
                          bool allow_quant_ops = false) {
-  for (int i = 0; i < array->size; ++i) {
-    const TfLiteTensor* t = context->tensors + array->data[i];
+  for (int i = 0; i < tensor_indices->size; ++i) {
+    int tensor_idx = tensor_indices->data[i];
+    if (tensor_idx == kTfLiteOptionalTensor) continue;
+    const TfLiteTensor* t = &context->tensors[tensor_idx];
     bool type_supported =
         (t->type == kTfLiteFloat32 || t->type == kTfLiteFloat16);
     if (allow_quant_ops) {

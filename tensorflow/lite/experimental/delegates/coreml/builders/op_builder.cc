@@ -95,6 +95,7 @@ CoreML::Specification::Model* GraphBuilder::BuildModel() {
         CoreML::Specification::EXACT_ARRAY_MAPPING);
   } else {
     fprintf(stderr, "Unsupported Core ML version: %d\n", coreml_version_);
+    delete model;
     return nullptr;
   }
   auto* neural_network = model->mutable_neuralnetwork();

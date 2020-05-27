@@ -358,7 +358,8 @@ class Functional(training_lib.Model):
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
     output_tensors = self._run_internal_graph(inputs, mask=mask)
-    return nest.map_structure(lambda t: t._keras_mask, output_tensors)
+    return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
+                              output_tensors)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.

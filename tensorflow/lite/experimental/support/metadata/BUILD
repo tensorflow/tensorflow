@@ -62,6 +62,7 @@ py_library(
     deps = [
         ":metadata_schema_py",
         ":schema_py",
+        "//tensorflow/lite/experimental/support/metadata/cc/python:_pywrap_metadata_version",
         "//tensorflow/lite/experimental/support/metadata/flatbuffers_lib:_pywrap_flatbuffers",
         "//tensorflow/python:platform",
         "@flatbuffers//:runtime_py",

@@ -31,6 +31,12 @@ struct ObjectTypeGetter {
   ObjectType operator()(OpenClTexture) const {
     return ObjectType::OPENCL_TEXTURE;
   }
+  ObjectType operator()(VulkanBuffer) const {
+    return ObjectType::VULKAN_BUFFER;
+  }
+  ObjectType operator()(VulkanTexture) const {
+    return ObjectType::VULKAN_TEXTURE;
+  }
   ObjectType operator()(CpuMemory) const { return ObjectType::CPU_MEMORY; }
 };
 
@@ -42,6 +48,8 @@ struct ObjectValidityChecker {
   }
   bool operator()(OpenClBuffer obj) const { return obj.memobj; }
   bool operator()(OpenClTexture obj) const { return obj.memobj; }
+  bool operator()(VulkanBuffer obj) const { return obj.memory; }
+  bool operator()(VulkanTexture obj) const { return obj.memory; }
   bool operator()(CpuMemory obj) const {
     return obj.data != nullptr && obj.size_bytes > 0 &&
            (data_type == DataType::UNKNOWN ||
@@ -81,6 +89,10 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
       return absl::get_if<OpenClBuffer>(&obj);
     case ObjectType::OPENCL_TEXTURE:
       return absl::get_if<OpenClTexture>(&obj);
+    case ObjectType::VULKAN_BUFFER:
+      return absl::get_if<VulkanBuffer>(&obj);
+    case ObjectType::VULKAN_TEXTURE:
+      return absl::get_if<VulkanTexture>(&obj);
     case ObjectType::UNKNOWN:
       return false;
   }
