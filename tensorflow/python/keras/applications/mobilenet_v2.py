@@ -500,37 +500,12 @@ def _make_divisible(v, divisor, min_value=None):
 
 @keras_export('keras.applications.mobilenet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-
-  Raises
-    ValueError: In case of unknown `data_format` argument.
-  """
   return imagenet_utils.preprocess_input(
       x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
