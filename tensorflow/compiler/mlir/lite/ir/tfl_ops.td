@@ -254,6 +254,14 @@ class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
+class TFL_OperandIsNoneOrHasRank<int n, int m> :
+  PredOpTrait<"operand " # n # " is " # m # "-D",
+    Or<[
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
 class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[
@@ -3539,6 +3547,19 @@ def TFL_LSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
+           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
+           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
+           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
+           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
+           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,          // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "The full lstm operator";
 
@@ -3565,23 +3586,23 @@ Ba et al. 'Layer Normalization'
     ins TFL_TensorOf<[F32, QI8]>:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$input_to_input_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_forget_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_cell_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_output_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$recurrent_to_input_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_forget_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_cell_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_output_weights,
 
     // Cell weights
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_input_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_input_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_forget_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_forget_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_output_weights,
 
     // Bias
     TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
@@ -3590,7 +3611,7 @@ Ba et al. 'Layer Normalization'
     TFL_TensorOf<[F32, QI32]>:$output_gate_bias,
 
     // Projection weight and bias
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$projection_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$projection_weights,
     // Optional input
     TFL_TensorOfOrNone<[F32, QI32]>:$projection_bias,
 
@@ -3606,8 +3627,8 @@ Ba et al. 'Layer Normalization'
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
       DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
@@ -3647,6 +3668,24 @@ def TFL_UnidirectionalSequenceLSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
+           TFL_OperandHasRankAtLeast<0, 2>,    // input
+           TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
+           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
+           TFL_OperandHasRank<4, 2>,           // input_to_output_weights
+           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
+           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
+           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
+           TFL_OperandHasRank<8, 2>,           // recurrent_to_output_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
+           TFL_OperandIsNoneOrHasRank<12, 1>,  // input_gate_bias
+           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,          // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 2>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "Unidirectional sequence lstm operator";
 
@@ -3662,35 +3701,35 @@ def TFL_UnidirectionalSequenceLSTMOp :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8]>:$input,
+    ins TFL_FpTensor:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_output_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_output_weights,
 
     // Cell weights
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_input_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_input_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_forget_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_forget_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_output_weights,
 
     // Bias
     TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
-    TFL_TensorOf<[F32]>:$forget_gate_bias,
-    TFL_TensorOf<[F32]>:$cell_bias,
-    TFL_TensorOf<[F32]>:$output_gate_bias,
+    TFL_FpTensor:$forget_gate_bias,
+    TFL_FpTensor:$cell_bias,
+    TFL_FpTensor:$output_gate_bias,
 
     // Projection weight and bias
-    TFL_TensorOfOrNone<[F32, I8]>:$projection_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$projection_weights,
     // Optional input
     TFL_TensorOfOrNone<[F32]>:$projection_bias,
 
@@ -3699,19 +3738,19 @@ def TFL_UnidirectionalSequenceLSTMOp :
     TFL_StatefulTensor:$input_cell_state,
 
     // Layer norm coefficients
-    TFL_TensorOfOrNone<[F32, I8]>:$input_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$forget_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$output_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$forget_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$output_layer_norm_coefficients,
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
 
   let hasOptions = 1;
 
@@ -3908,15 +3947,14 @@ def TFL_BidirectionalSequenceLSTMOp :
   }];
 }
 
-def RnnResultConstraint : PredOpTrait<
-  "the input and result tensor elemental types must be same",
-  TCresVTEtIsSameAsOp<0, 0>>;
-
 // UnidirectionalSequenceRNN op.
-def TFL_UnidirectionalSequenceRNNOp :
-  TFL_Op<"unidirectional_sequence_rnn",
-         [RnnResultConstraint, TFL_StatefulOp]> {
-
+def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
+    TFL_OperandHasRank<4, 2>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"input and constant value operands must have same element type",
+      TFL_TCopVTEtAreSameAt<1, 2>>,
+    TFL_StatefulOp]> {
   let summary = "Unidirectional sequence rnn operator";
 
   let description = [{
@@ -3933,16 +3971,16 @@ def TFL_UnidirectionalSequenceRNNOp :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8]>:$input,
+    ins TFL_FpTensor:$input,
 
     // Weights
-    TFL_TensorOf<[F32, I8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_input_weights,
 
     // Recurrent weights
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_input_weights,
 
     // Bias
-    TFL_TensorOf<[F32]>:$input_gate_bias,
+    TFL_FpTensor:$input_gate_bias,
 
     // Hidden state.
     TFL_StatefulTensor:$hidden_state,
@@ -3952,7 +3990,7 @@ def TFL_UnidirectionalSequenceRNNOp :
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TFL_TensorOf<[F32, I8]>:$output);
+  let results = (outs TFL_FpTensor:$output);
 
   let hasOptions = 1;
 
