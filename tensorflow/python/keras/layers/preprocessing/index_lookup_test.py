@@ -79,6 +79,31 @@ def _get_end_to_end_test_cases():
       },
       {
           "testcase_name":
+              "test_inverse_strings_soft_vocab_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # accumulator is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([[1], [2], [3], [4], [4], [3], [1], [5]]),
+          "kwargs": {
+              "max_tokens": None,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+              "invert": True
+          },
+          "expected_output":
+              np.array([[b"earth"], [b"wind"], [b"and"], [b"fire"], [b"fire"],
+                        [b"and"], [b"earth"], [b"[OOV]"]]),
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
               "test_ints_soft_vocab_cap",
           # Create an array where 1138 is the most frequent term, followed by
           # 1729, then 725, then 42. This ensures that the vocab accumulator
@@ -98,6 +123,78 @@ def _get_end_to_end_test_cases():
               "dtype": dtypes.int64,
           },
           "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_strings_hard_vocab_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # accumulator is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+          },
+          "expected_output": [[2], [3], [4], [1], [1], [4], [2], [1]],
+          "input_dtype":
+              dtypes.string
+      },
+      {
+          "testcase_name":
+              "test_inverse_strings_hard_vocab_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # accumulator is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([[1], [2], [3], [4], [4], [3], [1], [5]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+              "invert": True
+          },
+          "expected_output":
+              np.array([[b"earth"], [b"wind"], [b"and"], [b"[OOV]"], [b"[OOV]"],
+                        [b"and"], [b"earth"], [b"[OOV]"]]),
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_ints_hard_vocab_cap",
+          # Create an array where 1138 is the most frequent term, followed by
+          # 1729, then 725, then 42. This ensures that the vocab accumulator
+          # is sorting by frequency.
+          "vocab_data":
+              np.array([[42], [1138], [1138], [1138], [1138], [1729], [1729],
+                        [1729], [725], [725]],
+                       dtype=np.int64),
+          "input_data":
+              np.array([[1138], [1729], [725], [42], [42], [725], [1138], [4]],
+                       dtype=np.int64),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": 0,
+              "oov_token": -1,
+              "dtype": dtypes.int64,
+          },
+          "expected_output": [[2], [3], [4], [1], [1], [4], [2], [1]],
           "input_dtype":
               dtypes.int64
       },
@@ -125,7 +222,11 @@ class IndexLookupLayerTest(keras_parameterized.TestCase,
                                        use_dataset, expected_output,
                                        input_dtype):
     cls = get_layer_class()
-    expected_output_dtype = dtypes.int64
+    if "invert" in kwargs and kwargs["invert"]:
+      expected_output_dtype = kwargs["dtype"]
+    else:
+      expected_output_dtype = dtypes.int64
+
     input_shape = input_data.shape
 
     if use_dataset:
@@ -156,7 +257,10 @@ class IndexLookupLayerTest(keras_parameterized.TestCase,
           expected_output_dtype=expected_output_dtype,
           validate_training=False,
           adapt_data=vocab_data)
-    self.assertAllClose(expected_output, output_data)
+    if "invert" in kwargs and kwargs["invert"]:
+      self.assertAllEqual(expected_output, output_data)
+    else:
+      self.assertAllClose(expected_output, output_data)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -242,6 +346,25 @@ class CategoricalEncodingInputTest(
     expected_output = [[2, 3, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, ragged=True)
+    layer = get_layer_class()(
+        max_tokens=None,
+        dtype=dtypes.int64,
+        num_oov_indices=1,
+        mask_token=0,
+        oov_token=-1)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int32_input_with_int64_keys(self):
+    vocab_data = np.array([10, 11, 12, 13], dtype=np.int64)
+    input_array = ragged_factory_ops.constant([[10, 11, 13], [13, 12, 10, 42]],
+                                              dtype=np.int32)
+    expected_output = [[2, 3, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
     layer = get_layer_class()(
         max_tokens=None,
         dtype=dtypes.int64,
@@ -745,6 +868,118 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         oov_token=-1,
         dtype=dtypes.int64)
     with self.assertRaisesRegex(ValueError, ".*Reserved mask.*"):
+      layer.set_vocabulary(vocab_data)
+
+
+@keras_parameterized.run_all_keras_modes
+class IndexLookupInverseVocabularyTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_int_output_explicit_vocab(self):
+    vocab_data = ["[OOV]", "earth", "wind", "and", "fire"]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[OOV]"]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(
+        vocabulary=vocab_data,
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string,
+        invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_vocab_with_max_cap(self):
+    vocab_data = ["", "[OOV]", "wind", "and", "fire"]
+    layer = get_layer_class()(
+        max_tokens=5,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string,
+        invert=True)
+    layer.set_vocabulary(vocab_data)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+
+  def test_int_vocab_with_max_cap(self):
+    vocab_data = [0, -1, 42, 1276, 1138]
+    layer = get_layer_class()(
+        max_tokens=5,
+        num_oov_indices=1,
+        mask_token=0,
+        oov_token=-1,
+        dtype=dtypes.int64,
+        invert=True)
+    layer.set_vocabulary(vocab_data)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+
+  def test_non_unique_vocab_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire", "fire"]
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*fire.*"):
+      _ = get_layer_class()(
+          vocabulary=vocab_data,
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token="",
+          oov_token="[OOV]",
+          dtype=dtypes.string,
+          invert=True)
+
+  def test_vocab_with_repeated_element_fails(self):
+    vocab_data = ["earth", "earth", "wind", "and", "fire"]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string,
+        invert=True)
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
+      layer.set_vocabulary(vocab_data)
+
+  def test_vocab_with_reserved_mask_element_fails(self):
+    vocab_data = ["earth", "mask_token", "wind", "and", "fire"]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="mask_token",
+        oov_token="[OOV]",
+        dtype=dtypes.string,
+        invert=True)
+    with self.assertRaisesRegex(ValueError, ".*Reserved mask.*"):
+      layer.set_vocabulary(vocab_data)
+
+  def test_non_unique_int_vocab_fails(self):
+    vocab_data = [12, 13, 14, 15, 15]
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*15.*"):
+      _ = get_layer_class()(
+          vocabulary=vocab_data,
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token=0,
+          oov_token=-1,
+          dtype=dtypes.int64,
+          invert=True)
+
+  def test_int_vocab_with_repeated_element_fails(self):
+    vocab_data = [11, 11, 34, 23, 124]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token=0,
+        oov_token=-1,
+        dtype=dtypes.int64,
+        invert=True)
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*11.*"):
       layer.set_vocabulary(vocab_data)
 
 

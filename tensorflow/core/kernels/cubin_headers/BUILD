@@ -45,3 +45,23 @@ func @relu(%arg0: tensor<?xf99>) -> tensor<?xf99> {
         ("f64", "DT_DOUBLE"),
     ]
 ]
+
+tanh_kernel = """
+func @tanh(%arg0: tensor<?xf99>) -> tensor<?xf99> {
+  %0 = "tf.Tanh"(%arg0) { T = "tfdtype$DT_TYPE" }
+    : (tensor<?xf99>) -> tensor<?xf99>
+  return %0 : tensor<?xf99>
+}
+"""
+
+[
+    gen_kernel_image_hdr(
+        name = "tanh_{type}_kernel".format(type = type),
+        op = tanh_kernel.replace("f99", type).replace("DT_TYPE", dtype),
+        tile_size = "256",
+    )
+    for (type, dtype) in [
+        ("f32", "DT_FLOAT"),
+        ("f64", "DT_DOUBLE"),
+    ]
+]

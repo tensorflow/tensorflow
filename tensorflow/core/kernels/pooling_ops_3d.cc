@@ -192,6 +192,7 @@ class Pooling3DOp : public UnaryOp<T> {
                                             {{out[2], out[1], out[0]}}, depth);
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) return;
     LaunchPoolingOp<Device, T, Type>::launch(context, tensor_in, window, stride,
                                              padding, data_format_, padding_,
                                              output);

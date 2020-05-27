@@ -224,7 +224,10 @@ cc_library(
     hdrs = [
         "ir/tf_attributes.h",
     ],
-    deps = ["@llvm-project//mlir:IR"],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
 )
 
 cc_library(
@@ -427,6 +430,7 @@ cc_library(
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/readonly_references_to_resources.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
         "transforms/resource_device_inference.cc",
@@ -555,8 +559,7 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:Shape",
     ],
     alwayslink = 1,
 )
@@ -785,6 +788,9 @@ cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         ":tensorflow_types",
         "//tensorflow/core:framework",
@@ -1140,6 +1146,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
+    "//tensorflow/compiler/mlir/xla:xla_sink_constants_to_control_flow",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/core:framework",
@@ -1278,6 +1285,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1292,6 +1300,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 

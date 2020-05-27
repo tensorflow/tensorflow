@@ -138,10 +138,18 @@ def InvokeNvcc(argv, log=False):
   nvccopts = ['-D_FORCE_INLINES']
   compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
   for capability in compute_capabilities:
-    print(capability)
     capability = capability[len('sm_'):]
-    nvccopts += [r'-gencode=arch=compute_%s,"code=sm_%s,compute_%s"' % (
-        capability, capability, capability)]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=sm_%s"' % (capability, capability)
+    ]
+  compute_capabilities, argv = GetOptionValue(argv, '--cuda-include-ptx')
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=compute_%s"' % (capability, capability)
+    ]
+  _, argv = GetOptionValue(argv, '--no-cuda-include-ptx')
+
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines

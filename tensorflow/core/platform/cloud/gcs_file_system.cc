@@ -158,12 +158,17 @@ string JoinGcsPath(const string& path, const string& subpath) {
 /// For example:
 ///  - for 'a/b/c/d' it will append 'a', 'a/b' and 'a/b/c'
 ///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
+///  - for 'a//b/c/' it will append 'a', 'a//b' and 'a//b/c'
+///  - for '/a/b/c/' it will append '/a', '/a/b' and '/a/b/c'
 std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   std::set<string> result;
   result.insert(paths.begin(), paths.end());
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
-    while (!subpath.empty()) {
+    // If `path` starts with `/`, `subpath` will be `/` and then we get into an
+    // infinite loop. Same behavior happens if there is a `//` pattern in
+    // `path`, so we check for that and leave the loop quicker.
+    while (!(subpath.empty() || subpath == "/")) {
       result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
@@ -1349,9 +1354,19 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 
         const auto& files_and_folders = AddAllSubpaths(all_files);
 
+        // To handle `/` in the object names, we need to remove it from `dir`
+        // and then use `StrCat` to insert it back.
+        const StringPiece dir_no_slash = str_util::StripSuffix(dir, "/");
+
         // Match all obtained paths to the input pattern.
         for (const auto& path : files_and_folders) {
-          const string& full_path = this->JoinPath(dir, path);
+          // Manually construct the path instead of using `JoinPath` for the
+          // cases where `path` starts with a `/` (which is a valid character in
+          // the filenames of GCS objects). `JoinPath` canonicalizes the result,
+          // removing duplicate slashes. We know that `dir_no_slash` does not
+          // end in `/`, so we are safe inserting the new `/` here as the path
+          // separator.
+          const string full_path = strings::StrCat(dir_no_slash, "/", path);
           if (this->Match(full_path, pattern)) {
             results->push_back(full_path);
           }

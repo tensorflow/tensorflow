@@ -149,7 +149,7 @@ class GradientCheckerTest(test.TestCase):
       self.assertAllEqual(correct, analytical)
       self.assertAllClose(correct, numerical, rtol=1e-4)
       self.assertLess(
-          gradient_checker.compute_gradient_error(x, size, y, size), 2e-4)
+          gradient_checker.compute_gradient_error(x, size, y, size), 3e-4)
 
   @test_util.run_deprecated_v1
   def testComplexConj(self):

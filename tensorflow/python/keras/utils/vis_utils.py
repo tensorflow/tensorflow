@@ -129,6 +129,7 @@ def model_to_dot(model,
   sub_w_first_node = {}
   sub_w_last_node = {}
 
+  layers = model.layers
   if not model._is_graph_network:
     node = pydot.Node(str(id(model)), label=model.name)
     dot.add_node(node)
@@ -136,7 +137,7 @@ def model_to_dot(model,
   elif isinstance(model, sequential.Sequential):
     if not model.built:
       model.build()
-  layers = model._layers
+    layers = super(sequential.Sequential, model).layers
 
   # Create graph nodes.
   for i, layer in enumerate(layers):

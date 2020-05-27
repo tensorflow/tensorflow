@@ -48,6 +48,7 @@ load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
     "if_mkl_v1_open_source_only",
+    "if_mkldnn_threadpool",
 )
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -327,6 +328,11 @@ def tf_copts(
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
         if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
+        if_mkldnn_threadpool([
+            "-DENABLE_MKLDNN_THREADPOOL",
+            "-DENABLE_MKLDNN_V1",
+            "-DINTEL_MKL_DNN_ONLY",
+        ]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_android_arm(["-mfpu=neon"]) +
@@ -348,7 +354,9 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    return if_mkl_lnx_x64(["-fopenmp"])
+    # TODO(intel-mkl): Remove -fopenmp for threadpool after removing all
+    # omp pragmas in tensorflow/core.
+    return if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fopenmp"])
 
 def tfe_xla_copts():
     return select({
@@ -615,6 +623,9 @@ def tf_cc_shared_object(
             linkshared = 1,
             data = data + data_extra,
             linkopts = linkopts + _rpath_linkopts(name_os_full) + select({
+                clean_dep("//tensorflow:ios"): [
+                    "-Wl,-install_name,@rpath/" + soname,
+                ],
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -863,7 +874,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
@@ -880,7 +891,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
@@ -2207,6 +2218,15 @@ def tf_py_test(
         xla_enabled = False,
         grpc_enabled = False,
         tfrt_enabled = False,
+        # `tfrt_enabled` is set for some test targets, and if we enable
+        # TFRT tests just by that, this will enable TFRT builds for open source.
+        # TFRT open source is not fully integrated yet so we need a temporary
+        # workaround to enable TFRT only for internal builds. `tfrt_enabled_internal`
+        # will be set by `tensorflow.google.bzl`'s `tf_py_test` target, which is
+        # only applied for internal builds.
+        # TODO(b/156911178): Revert this temporary workaround once TFRT open source
+        # is fully integrated with TF.
+        tfrt_enabled_internal = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2250,7 +2270,7 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
-    if tfrt_enabled:
+    if tfrt_enabled_internal:
         py_test(
             name = name + "_tfrt",
             size = size,
@@ -2846,7 +2866,7 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tfcompile_extra_flags():
+def tfcompile_target_cpu():
     return ""
 
 def tf_external_workspace_visible(visibility):

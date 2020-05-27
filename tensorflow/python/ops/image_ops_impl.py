@@ -39,6 +39,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -323,6 +324,7 @@ def fix_image_flip_shape(image, result):
 
 
 @tf_export('image.random_flip_up_down')
+@dispatch.add_dispatch_support
 def random_flip_up_down(image, seed=None):
   """Randomly flips an image vertically (upside down).
 
@@ -363,6 +365,7 @@ def random_flip_up_down(image, seed=None):
 
 
 @tf_export('image.random_flip_left_right')
+@dispatch.add_dispatch_support
 def random_flip_left_right(image, seed=None):
   """Randomly flip an image horizontally (left to right).
 
@@ -450,6 +453,7 @@ def _random_flip(image, flip_index, seed, scope_name):
 
 
 @tf_export('image.flip_left_right')
+@dispatch.add_dispatch_support
 def flip_left_right(image):
   """Flip an image horizontally (left to right).
 
@@ -484,6 +488,7 @@ def flip_left_right(image):
 
 
 @tf_export('image.flip_up_down')
+@dispatch.add_dispatch_support
 def flip_up_down(image):
   """Flip an image vertically (upside down).
 
@@ -549,6 +554,7 @@ def _flip(image, flip_index, scope_name):
 
 
 @tf_export('image.rot90')
+@dispatch.add_dispatch_support
 def rot90(image, k=1, name=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
@@ -660,6 +666,7 @@ def _rot90_4D(images, k, name_scope):
 
 
 @tf_export('image.transpose', v1=['image.transpose', 'image.transpose_image'])
+@dispatch.add_dispatch_support
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
 
@@ -718,6 +725,7 @@ def transpose(image, name=None):
 
 
 @tf_export('image.central_crop')
+@dispatch.add_dispatch_support
 def central_crop(image, central_fraction):
   """Crop the central region of the image(s).
 
@@ -850,6 +858,7 @@ def central_crop(image, central_fraction):
 
 
 @tf_export('image.pad_to_bounding_box')
+@dispatch.add_dispatch_support
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width):
   """Pad `image` with zeros to the specified `height` and `width`.
@@ -959,6 +968,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
 
 @tf_export('image.crop_to_bounding_box')
+@dispatch.add_dispatch_support
 def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                          target_width):
   """Crops an image to a specified bounding box.
@@ -1041,6 +1051,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
 @tf_export(
     'image.resize_with_crop_or_pad',
     v1=['image.resize_with_crop_or_pad', 'image.resize_image_with_crop_or_pad'])
+@dispatch.add_dispatch_support
 def resize_image_with_crop_or_pad(image, target_height, target_width):
   """Crops and/or pads an image to a target width and height.
 
@@ -1258,6 +1269,7 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
 
 
 @tf_export(v1=['image.resize_images', 'image.resize'])
+@dispatch.add_dispatch_support
 def resize_images(images,
                   size,
                   method=ResizeMethodV1.BILINEAR,
@@ -1343,6 +1355,7 @@ def resize_images(images,
 
 
 @tf_export('image.resize', v1=[])
+@dispatch.add_dispatch_support
 def resize_images_v2(images,
                      size,
                      method=ResizeMethod.BILINEAR,
@@ -1594,6 +1607,7 @@ def _resize_image_with_pad_common(image, target_height, target_width,
 
 
 @tf_export(v1=['image.resize_image_with_pad'])
+@dispatch.add_dispatch_support
 def resize_image_with_pad_v1(image,
                              target_height,
                              target_width,
@@ -1636,6 +1650,7 @@ def resize_image_with_pad_v1(image,
 
 
 @tf_export('image.resize_with_pad', v1=[])
+@dispatch.add_dispatch_support
 def resize_image_with_pad_v2(image,
                              target_height,
                              target_width,
@@ -1676,6 +1691,7 @@ def resize_image_with_pad_v2(image,
 
 
 @tf_export('image.per_image_standardization')
+@dispatch.add_dispatch_support
 def per_image_standardization(image):
   """Linearly scales each image in `image` to have mean 0 and variance 1.
 
@@ -1721,6 +1737,7 @@ def per_image_standardization(image):
 
 
 @tf_export('image.random_brightness')
+@dispatch.add_dispatch_support
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
 
@@ -1756,6 +1773,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 @tf_export('image.random_contrast')
+@dispatch.add_dispatch_support
 def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image or images by a random factor.
 
@@ -1796,6 +1814,7 @@ def random_contrast(image, lower, upper, seed=None):
 
 
 @tf_export('image.adjust_brightness')
+@dispatch.add_dispatch_support
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
@@ -1847,6 +1866,7 @@ def adjust_brightness(image, delta):
 
 
 @tf_export('image.adjust_contrast')
+@dispatch.add_dispatch_support
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
@@ -1903,6 +1923,7 @@ def adjust_contrast(images, contrast_factor):
 
 
 @tf_export('image.adjust_gamma')
+@dispatch.add_dispatch_support
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).
 
@@ -1967,6 +1988,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
 
 @tf_export('image.convert_image_dtype')
+@dispatch.add_dispatch_support
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
@@ -2066,6 +2088,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
 
 @tf_export('image.rgb_to_grayscale')
+@dispatch.add_dispatch_support
 def rgb_to_grayscale(images, name=None):
   """Converts one or more images from RGB to Grayscale.
 
@@ -2101,6 +2124,7 @@ def rgb_to_grayscale(images, name=None):
 
 
 @tf_export('image.grayscale_to_rgb')
+@dispatch.add_dispatch_support
 def grayscale_to_rgb(images, name=None):
   """Converts one or more images from Grayscale to RGB.
 
@@ -2137,6 +2161,7 @@ def grayscale_to_rgb(images, name=None):
 
 # pylint: disable=invalid-name
 @tf_export('image.random_hue')
+@dispatch.add_dispatch_support
 def random_hue(image, max_delta, seed=None):
   """Adjust the hue of RGB images by a random factor.
 
@@ -2179,6 +2204,7 @@ def random_hue(image, max_delta, seed=None):
 
 
 @tf_export('image.adjust_hue')
+@dispatch.add_dispatch_support
 def adjust_hue(image, delta, name=None):
   """Adjust hue of RGB images.
 
@@ -2246,6 +2272,7 @@ def adjust_hue(image, delta, name=None):
 
 # pylint: disable=invalid-name
 @tf_export('image.random_jpeg_quality')
+@dispatch.add_dispatch_support
 def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   """Randomly changes jpeg encoding quality for inducing jpeg noise.
 
@@ -2293,6 +2320,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
 
 @tf_export('image.adjust_jpeg_quality')
+@dispatch.add_dispatch_support
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
   """Adjust jpeg encoding quality of an image.
 
@@ -2343,6 +2371,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
 
 @tf_export('image.random_saturation')
+@dispatch.add_dispatch_support
 def random_saturation(image, lower, upper, seed=None):
   """Adjust the saturation of RGB images by a random factor.
 
@@ -2389,6 +2418,7 @@ def random_saturation(image, lower, upper, seed=None):
 
 
 @tf_export('image.adjust_saturation')
+@dispatch.add_dispatch_support
 def adjust_saturation(image, saturation_factor, name=None):
   """Adjust saturation of RGB images.
 
@@ -2480,42 +2510,43 @@ tf_export(
     'io.decode_and_crop_jpeg',
     'image.decode_and_crop_jpeg',
     v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
-        gen_image_ops.decode_and_crop_jpeg)
+        dispatch.add_dispatch_support(gen_image_ops.decode_and_crop_jpeg))
 
 tf_export(
     'io.decode_bmp',
     'image.decode_bmp',
     v1=['io.decode_bmp', 'image.decode_bmp'])(
-        gen_image_ops.decode_bmp)
+        dispatch.add_dispatch_support(gen_image_ops.decode_bmp))
 tf_export(
     'io.decode_gif',
     'image.decode_gif',
     v1=['io.decode_gif', 'image.decode_gif'])(
-        gen_image_ops.decode_gif)
+        dispatch.add_dispatch_support(gen_image_ops.decode_gif))
 tf_export(
     'io.decode_jpeg',
     'image.decode_jpeg',
     v1=['io.decode_jpeg', 'image.decode_jpeg'])(
-        gen_image_ops.decode_jpeg)
+        dispatch.add_dispatch_support(gen_image_ops.decode_jpeg))
 tf_export(
     'io.decode_png',
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
-        gen_image_ops.decode_png)
+        dispatch.add_dispatch_support(gen_image_ops.decode_png))
 
 tf_export(
     'io.encode_jpeg',
     'image.encode_jpeg',
     v1=['io.encode_jpeg', 'image.encode_jpeg'])(
-        gen_image_ops.encode_jpeg)
+        dispatch.add_dispatch_support(gen_image_ops.encode_jpeg))
 tf_export(
     'io.extract_jpeg_shape',
     'image.extract_jpeg_shape',
     v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
-        gen_image_ops.extract_jpeg_shape)
+        dispatch.add_dispatch_support(gen_image_ops.extract_jpeg_shape))
 
 
 @tf_export('io.encode_png', 'image.encode_png')
+@dispatch.add_dispatch_support
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
@@ -2548,6 +2579,7 @@ def encode_png(image, compression=-1, name=None):
     'io.decode_image',
     'image.decode_image',
     v1=['io.decode_image', 'image.decode_image'])
+@dispatch.add_dispatch_support
 def decode_image(contents,
                  channels=None,
                  dtype=dtypes.uint8,
@@ -2661,6 +2693,7 @@ def decode_image(contents,
 
 
 @tf_export('image.total_variation')
+@dispatch.add_dispatch_support
 def total_variation(images, name=None):
   """Calculate and return the total variation for one or more images.
 
@@ -2732,6 +2765,7 @@ def total_variation(images, name=None):
 
 
 @tf_export('image.sample_distorted_bounding_box', v1=[])
+@dispatch.add_dispatch_support
 def sample_distorted_bounding_box_v2(image_size,
                                      bounding_boxes,
                                      seed=0,
@@ -2831,6 +2865,7 @@ def sample_distorted_bounding_box_v2(image_size,
 
 
 @tf_export(v1=['image.sample_distorted_bounding_box'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None,
     instructions='`seed2` arg is deprecated.'
@@ -2945,6 +2980,7 @@ def sample_distorted_bounding_box(image_size,
 
 
 @tf_export('image.non_max_suppression')
+@dispatch.add_dispatch_support
 def non_max_suppression(boxes,
                         scores,
                         max_output_size,
@@ -2997,6 +3033,7 @@ def non_max_suppression(boxes,
 
 
 @tf_export('image.non_max_suppression_with_scores')
+@dispatch.add_dispatch_support
 def non_max_suppression_with_scores(boxes,
                                     scores,
                                     max_output_size,
@@ -3083,6 +3120,7 @@ def non_max_suppression_with_scores(boxes,
 
 
 @tf_export('image.non_max_suppression_overlaps')
+@dispatch.add_dispatch_support
 def non_max_suppression_with_overlaps(overlaps,
                                       scores,
                                       max_output_size,
@@ -3134,6 +3172,7 @@ _rgb_to_yiq_kernel = [[0.299, 0.59590059, 0.2115],
 
 
 @tf_export('image.rgb_to_yiq')
+@dispatch.add_dispatch_support
 def rgb_to_yiq(images):
   """Converts one or more images from RGB to YIQ.
 
@@ -3167,6 +3206,7 @@ _yiq_to_rgb_kernel = [[1, 1, 1], [0.95598634, -0.27201283, -1.10674021],
 
 
 @tf_export('image.yiq_to_rgb')
+@dispatch.add_dispatch_support
 def yiq_to_rgb(images):
   """Converts one or more images from YIQ to RGB.
 
@@ -3195,6 +3235,7 @@ _rgb_to_yuv_kernel = [[0.299, -0.14714119, 0.61497538],
 
 
 @tf_export('image.rgb_to_yuv')
+@dispatch.add_dispatch_support
 def rgb_to_yuv(images):
   """Converts one or more images from RGB to YUV.
 
@@ -3221,6 +3262,7 @@ _yuv_to_rgb_kernel = [[1, 1, 1], [0, -0.394642334, 2.03206185],
 
 
 @tf_export('image.yuv_to_rgb')
+@dispatch.add_dispatch_support
 def yuv_to_rgb(images):
   """Converts one or more images from YUV to RGB.
 
@@ -3314,6 +3356,7 @@ def _verify_compatible_image_shapes(img1, img2):
 
 
 @tf_export('image.psnr')
+@dispatch.add_dispatch_support
 def psnr(a, b, max_val, name=None):
   """Returns the Peak Signal-to-Noise Ratio between a and b.
 
@@ -3525,6 +3568,7 @@ def _ssim_per_channel(img1,
 
 
 @tf_export('image.ssim')
+@dispatch.add_dispatch_support
 def ssim(img1,
          img2,
          max_val,
@@ -3604,6 +3648,7 @@ _MSSSIM_WEIGHTS = (0.0448, 0.2856, 0.3001, 0.2363, 0.1333)
 
 
 @tf_export('image.ssim_multiscale')
+@dispatch.add_dispatch_support
 def ssim_multiscale(img1,
                     img2,
                     max_val,
@@ -3731,6 +3776,7 @@ def ssim_multiscale(img1,
 
 
 @tf_export('image.image_gradients')
+@dispatch.add_dispatch_support
 def image_gradients(image):
   """Returns image gradients (dy, dx) for each color channel.
 
@@ -3804,6 +3850,7 @@ def image_gradients(image):
 
 
 @tf_export('image.sobel_edges')
+@dispatch.add_dispatch_support
 def sobel_edges(image):
   """Returns a tensor holding Sobel edge maps.
 
@@ -3888,21 +3935,22 @@ resize_area_deprecation = deprecation.deprecated(
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
 tf_export(v1=['image.resize_area'])(
-    resize_area_deprecation(gen_image_ops.resize_area))
+    resize_area_deprecation(
+        dispatch.add_dispatch_support(gen_image_ops.resize_area)))
 
 resize_bicubic_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
 tf_export(v1=['image.resize_bicubic'])(
-    resize_bicubic_deprecation(resize_bicubic))
+    dispatch.add_dispatch_support(resize_bicubic_deprecation(resize_bicubic)))
 
 resize_bilinear_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
 tf_export(v1=['image.resize_bilinear'])(
-    resize_bilinear_deprecation(resize_bilinear))
+    dispatch.add_dispatch_support(resize_bilinear_deprecation(resize_bilinear)))
 
 resize_nearest_neighbor_deprecation = deprecation.deprecated(
     date=None,
@@ -3910,10 +3958,12 @@ resize_nearest_neighbor_deprecation = deprecation.deprecated(
         'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
         'instead.'))
 tf_export(v1=['image.resize_nearest_neighbor'])(
-    resize_nearest_neighbor_deprecation(resize_nearest_neighbor))
+    dispatch.add_dispatch_support(
+        resize_nearest_neighbor_deprecation(resize_nearest_neighbor)))
 
 
 @tf_export('image.crop_and_resize', v1=[])
+@dispatch.add_dispatch_support
 def crop_and_resize_v2(image,
                        boxes,
                        box_indices,
@@ -3997,6 +4047,7 @@ def crop_and_resize_v2(image,
 
 
 @tf_export(v1=['image.crop_and_resize'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              'box_ind is deprecated, use box_indices instead',
                              'box_ind')
@@ -4019,6 +4070,7 @@ crop_and_resize_v1.__doc__ = gen_image_ops.crop_and_resize.__doc__
 
 
 @tf_export(v1=['image.extract_glimpse'])
+@dispatch.add_dispatch_support
 def extract_glimpse(
     input,  # pylint: disable=redefined-builtin
     size,
@@ -4062,8 +4114,8 @@ def extract_glimpse(
   ...          [[6.0],
   ...           [7.0],
   ...           [8.0]]]]
-  >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
-  ...                         centered=False, normalized=False)
+  >>> tf.compat.v1.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+  ...                                    centered=False, normalized=False)
   <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
   array([[[[0.],
            [1.]],
@@ -4104,6 +4156,7 @@ def extract_glimpse(
 
 
 @tf_export('image.extract_glimpse', v1=[])
+@dispatch.add_dispatch_support
 def extract_glimpse_v2(
     input,  # pylint: disable=redefined-builtin
     size,
@@ -4150,10 +4203,10 @@ def extract_glimpse_v2(
   >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
   ...                         centered=False, normalized=False)
   <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
-  array([[[[0.],
-           [1.]],
-          [[3.],
-           [4.]]]], dtype=float32)>
+  array([[[[4.],
+           [5.]],
+          [[7.],
+           [8.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
@@ -4178,7 +4231,7 @@ def extract_glimpse_v2(
   Returns:
     A `Tensor` of type `float32`.
   """
-  return gen_image_ops.extract_glimpse(
+  return gen_image_ops.extract_glimpse_v2(
       input=input,
       size=size,
       offsets=offsets,
@@ -4190,6 +4243,7 @@ def extract_glimpse_v2(
 
 
 @tf_export('image.combined_non_max_suppression')
+@dispatch.add_dispatch_support
 def combined_non_max_suppression(boxes,
                                  scores,
                                  max_output_size_per_class,
@@ -4442,6 +4496,7 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
 
 
 @tf_export('image.non_max_suppression_padded')
+@dispatch.add_dispatch_support
 def non_max_suppression_padded(boxes,
                                scores,
                                max_output_size,
@@ -4816,6 +4871,7 @@ def non_max_suppression_padded_v1(boxes,
 
 
 @tf_export('image.draw_bounding_boxes', v1=[])
+@dispatch.add_dispatch_support
 def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   """Draw bounding boxes on a batch of images.
 
@@ -4870,6 +4926,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
 
 
 @tf_export(v1=['image.draw_bounding_boxes'])
+@dispatch.add_dispatch_support
 def draw_bounding_boxes(images, boxes, name=None, colors=None):
   """Draw bounding boxes on a batch of images.
 
@@ -4922,6 +4979,7 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
 
 
 @tf_export('image.generate_bounding_box_proposals')
+@dispatch.add_dispatch_support
 def generate_bounding_box_proposals(scores,
                                     bbox_deltas,
                                     image_info,

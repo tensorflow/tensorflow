@@ -23,11 +23,13 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -46,16 +48,16 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SvdOpTest(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 0"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*0"):
       linalg_ops.svd(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be at least rank 2 but is rank 1"):
+    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
+                                 "rank.* 2.*1"):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -224,45 +226,41 @@ def _NormalizingSvd(tf_a, full_matrices_):
 
 def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def Test(self):
-    np.random.seed(42)
-    a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
-    if dtype_ in [np.complex64, np.complex128]:
-      a += 1j * np.random.uniform(
-          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+
+    def RandomInput():
+      np.random.seed(42)
+      a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
+      if dtype_ in [np.complex64, np.complex128]:
+        a += 1j * np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(dtype_)
+      return a
+
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     # See Equation (21) in:
     # http://www.karenkopecky.net/Teaching/eco613614/Notes_NumericalDifferentiation.pdf
     # TODO(rmlarsen): Move step size control to gradient checker.
     epsilon = np.finfo(dtype_).eps
-    delta = 0.1 * epsilon**(1.0 / 3.0)
+    delta = 0.25 * epsilon**(1.0 / 3.0)
     if dtype_ in [np.float32, np.complex64]:
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.session(use_gpu=True):
-      tf_a = constant_op.constant(a)
-      if compute_uv_:
-        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)
-        outputs = [tf_s, tf_u, tf_v]
-      else:
-        tf_s = linalg_ops.svd(tf_a, compute_uv=False)
-        outputs = [tf_s]
-      for b in outputs:
-        x_init = np.random.uniform(
-            low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        if dtype_ in [np.complex64, np.complex128]:
-          x_init += 1j * np.random.uniform(
-              low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        theoretical, numerical = gradient_checker.compute_gradient(
-            tf_a,
-            tf_a.get_shape().as_list(),
-            b,
-            b.get_shape().as_list(),
-            x_init_value=x_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+    if compute_uv_:
+      funcs = [
+          lambda a: _NormalizingSvd(a, full_matrices_)[0],
+          lambda a: _NormalizingSvd(a, full_matrices_)[1],
+          lambda a: _NormalizingSvd(a, full_matrices_)[2]
+      ]
+    else:
+      funcs = [lambda a: linalg_ops.svd(a, compute_uv=False)]
+
+    for f in funcs:
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [RandomInput()], delta=delta)
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
   return Test
 
 

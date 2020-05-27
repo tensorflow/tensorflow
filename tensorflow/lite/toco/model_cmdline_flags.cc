@@ -204,7 +204,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
 
 #ifdef PLATFORM_GOOGLE
-  CHECK(!((base::SpecifiedOnCommandLine("batch") &&
+  CHECK(!((base::WasPresentOnCommandLine("batch") &&
            parsed_model_flags.variable_batch.specified())))
       << "The --batch and --variable_batch flags are mutually exclusive.";
 #endif

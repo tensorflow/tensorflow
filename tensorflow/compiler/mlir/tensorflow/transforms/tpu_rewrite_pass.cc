@@ -64,19 +64,14 @@ static llvm::cl::opt<bool> tpu_compile_metadata_debug(
                    "'tf._TPUCompileMlir' op as a proto debug string"));
 
 constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kPaddingMapAttr[] = "padding_map";
-constexpr char kTopologyAttr[] = "topology";
-constexpr char kDeviceAssignmentAttr[] = "device_assignment";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
-constexpr char kBadIntArrayElementMsg[] =
-    "bad '{0}' attribute at index {1}, not an int";
 constexpr char kBadArrayElementMsg[] =
     "bad '{0}' attribute at index {1} with value '{2}': failed to parse to {3}";
 constexpr char kBadArrayAttrLengthMsg[] =
@@ -160,32 +155,6 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     llvm::raw_string_ostream os(*serialized_func_module);
     module_for_func.get().print(os);
   }
-  return success();
-}
-
-// Extracts device coordinates from a device assignment attribute on an op.
-LogicalResult GetDeviceCoordinates(
-    tf_device::ClusterFuncOp op,
-    llvm::SmallVectorImpl<int64_t>* device_assignment) {
-  auto device_assignment_attr =
-      op.getAttrOfType<ArrayAttr>(kDeviceAssignmentAttr);
-  if (!device_assignment_attr)
-    return op.emitOpError(CreateMissingAttributeMsg(kDeviceAssignmentAttr));
-
-  device_assignment->reserve(device_assignment_attr.size());
-
-  for (auto device_coordinate_and_idx :
-       llvm::enumerate(device_assignment_attr)) {
-    auto device_coordinate =
-        device_coordinate_and_idx.value().dyn_cast<IntegerAttr>();
-    if (!device_coordinate)
-      return op.emitOpError(llvm::formatv(kBadIntArrayElementMsg,
-                                          kDeviceAssignmentAttr,
-                                          device_coordinate_and_idx.index()));
-
-    device_assignment->push_back(device_coordinate.getInt());
-  }
-
   return success();
 }
 
@@ -468,6 +437,18 @@ void AssignDevicesToReplicate(
                               builder->getStrArrayAttr(devices_by_core)));
   }
 
+  // For data parallelism, also add replicated host devices, as these are
+  // necessary for outside compilation.
+  if (num_cores_per_replica == 1) {
+    llvm::SmallVector<StringRef, 8> hosts;
+    hosts.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica)
+      hosts.push_back(tpu_devices[replica][0].host);
+
+    device_attrs.push_back(builder->getNamedAttr(
+        tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
+  }
+
   replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }
 
@@ -661,27 +642,41 @@ LogicalResult Rewrite(
           : nullptr;
   if (replicate) num_replicas = replicate.n().getLimitedValue();
 
-  auto num_cores_per_replica_attr =
-      cluster_func.getAttrOfType<IntegerAttr>(kNumCoresPerReplicaAttr);
+  auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
   if (!num_cores_per_replica_attr)
     return cluster_func.emitOpError(
-        CreateMissingAttributeMsg(kNumCoresPerReplicaAttr));
+        CreateMissingAttributeMsg(tensorflow::kNumCoresPerReplicaAttr));
 
   int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
-  auto topology_attr = cluster_func.getAttrOfType<StringAttr>(kTopologyAttr);
+  auto topology_attr =
+      cluster_func.getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
   if (!topology_attr)
-    return cluster_func.emitOpError(CreateMissingAttributeMsg(kTopologyAttr));
+    return cluster_func.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kTopologyAttr));
 
-  llvm::SmallVector<int64_t, 6> device_assignment;
-  if (failed(GetDeviceCoordinates(cluster_func, &device_assignment)))
-    return failure();
+  auto device_assignment_attr = cluster_func.getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return cluster_func.emitOpError(
+        llvm::formatv("requires attribute '{0}'",
+                      tensorflow::kDeviceAssignmentAttr)
+            .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+  if (!status_or_device_coodinates.ok())
+    return cluster_func.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().error_message();
 
   // Determine compilation and execution devices.
   auto status_or_tpu_device_assignment =
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices, num_replicas, num_cores_per_replica,
-          topology_attr.getValue(), device_assignment);
+          topology_attr.getValue(),
+          status_or_device_coodinates.ConsumeValueOrDie());
   if (!status_or_tpu_device_assignment.ok())
     return cluster_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
@@ -705,6 +700,19 @@ LogicalResult Rewrite(
       tpu_device_assignment.compilation_device,
       std::move(tpu_device_assignment.xla_device_assignment), builder);
   if (!compile_op) return failure();
+
+  // This replaces _TPUCompileMlir placeholder ops that are required
+  // by XlaRecvAtHost and XlaSendFromHost ops add in earlier pass.
+  // TODO(b/157054714): When a better abstraction instead of _TPUCompileMlirOp
+  // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
+  // structured lowering.
+  if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
+          cluster_func.getParentOp())) {
+    parallel_op.walk([&](TF::_TPUCompileMlirOp parallel_compile_op) {
+      parallel_compile_op.replaceAllUsesWith(compile_op);
+      parallel_compile_op.erase();
+    });
+  }
 
   // After rewrite, find if there is a TPUCompilationResultOp in the block with
   // the same _tpu_replicate attribute and replace it with the result of the

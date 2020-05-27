@@ -24,6 +24,7 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -73,6 +74,9 @@ class Node(object):
 
     # Cached for performance.
     self._flat_arguments = nest.flatten((self.call_args, self.call_kwargs))
+    # Used to avoid expensive `nest` operations in the most common case.
+    self._single_positional_tensor_passed = (not self.call_kwargs and len(
+        self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
 
     # Create TensorFlowOpLayers if needed.
     for obj in self._flat_arguments:
@@ -101,6 +105,10 @@ class Node(object):
     for i, tensor in enumerate(nest.flatten(outputs)):
       tensor._keras_history = KerasHistory(
           layer=layer, node_index=node_index, tensor_index=i)
+
+    # Cached for performance.
+    self.flat_input_ids = [str(id(t)) for t in self._keras_inputs]
+    self.flat_output_ids = [str(id(t)) for t in nest.flatten(self.outputs)]
 
   @property
   def keras_inputs(self):
@@ -133,13 +141,18 @@ class Node(object):
 
   def map_arguments(self, tensor_dict):
     """Maps Keras Tensors to computed Tensors using `tensor_dict`."""
-    flat_arguments = copy.copy(self._flat_arguments)
-    for kt_id, kt_index in self._keras_inputs_ids_and_indices:
-      flat_arguments[kt_index] = tensor_dict[kt_id].pop()
+    if self._single_positional_tensor_passed:
+      # Performance optimization for most common case.
+      kt_id, _ = self._keras_inputs_ids_and_indices[0]
+      return (tensor_dict[kt_id].pop(),), {}
+    else:
+      flat_arguments = copy.copy(self._flat_arguments)
+      for kt_id, kt_index in self._keras_inputs_ids_and_indices:
+        flat_arguments[kt_index] = tensor_dict[kt_id].pop()
 
-    args, kwargs = nest.pack_sequence_as(
-        (self.call_args, self.call_kwargs), flat_arguments)
-    return args, kwargs
+      args, kwargs = nest.pack_sequence_as((self.call_args, self.call_kwargs),
+                                           flat_arguments)
+      return args, kwargs
 
   def serialize(self, make_node_key, node_conversion_map):
     """Serializes `Node` for Functional API's `get_config`."""

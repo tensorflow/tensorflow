@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 
 from tensorflow.python.autograph.core import converter
@@ -59,6 +60,23 @@ class ApiTest(test.TestCase):
     tc = api.converted_call(TestSubclass, (), None, options=DEFAULT_RECURSIVE)
 
     self.assertEqual(5, tc.no_arg(2))
+
+  def test_converted_call_avoids_triggering_operators(self):
+
+    test_self = self
+
+    class Pair(collections.namedtuple('Pair', ['a', 'b'])):
+
+      def __call__(self):
+        return self.a + self.b
+
+      def __eq__(self, other):
+        test_self.fail('Triggered operator')
+
+    p = Pair(constant_op.constant(1), constant_op.constant(2))
+
+    x = api.converted_call(p, (), {}, options=DEFAULT_RECURSIVE)
+    self.assertIsNotNone(self.evaluate(x), 3)
 
 
 if __name__ == '__main__':

@@ -20,8 +20,17 @@ limitations under the License.
 #endif
 
 #include <cinttypes>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <vector>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 namespace {
 

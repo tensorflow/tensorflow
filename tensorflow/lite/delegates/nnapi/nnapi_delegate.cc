@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <initializer_list>
@@ -659,8 +660,10 @@ class NNAPIOpBuilder {
   // Lower hardswish according to the following equation:
   // hard_swish[x] = x (ReLU6(x + 3)) / 6 == x * (Relu_N1_to_1(x/3) * 3 + 3) / 6
   // = 0.5x * Relu_N1_to_1(x/3) + 0.5x
-  TfLiteStatus AddHardSwish(int lite_input_index, int lite_output_index,
-                            bool need_int8_conversion, int lite_node_index) {
+  TfLiteStatus TransformHardSwishIntoSupportedOps(int lite_input_index,
+                                                  int lite_output_index,
+                                                  bool need_int8_conversion,
+                                                  int lite_node_index) {
     const TfLiteTensor& tensor = context_->tensors[lite_input_index];
     float input_scale = tensor.params.scale;
     int input_zero_point = tensor.params.zero_point;
@@ -1623,7 +1626,7 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinResizeBilinear: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       const auto& input = context->tensors[node->inputs->data[0]];
       const auto output_dims = context->tensors[node->outputs->data[0]].dims;
       Expect(input.dims->size == 4,
@@ -1663,7 +1666,7 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinResizeNearestNeighbor: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
@@ -2334,6 +2337,11 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports floating point input.", &val_ctx);
     } break;
+    case kTfLiteBuiltinElu: {
+      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+    } break;
     default:
       // All other operators are not mapped.
       AddValidationFailure(NNAPIValidationFailureType::kUnsupportedOperator,
@@ -2418,6 +2426,9 @@ TfLiteStatus NNAPIDelegateKernel::Map(
           mapping_args.node->builtin_data);
       mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       *nn_op_type = ANEURALNETWORKS_FULLY_CONNECTED;
+    } break;
+    case kTfLiteBuiltinHardSwish: {
+      *nn_op_type = ANEURALNETWORKS_HARD_SWISH;
     } break;
     case kTfLiteBuiltinSoftmax: {
       auto builtin = reinterpret_cast<TfLiteSoftmaxParams*>(
@@ -3111,6 +3122,10 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
       *nn_op_type = ANEURALNETWORKS_REDUCE_SUM;
     } break;
+    case kTfLiteBuiltinElu: {
+      mapping_args.builder->AddScalarFloat32Operand(1.0);
+      *nn_op_type = ANEURALNETWORKS_ELU;
+    } break;
     default:
       // All other operators are not mapped.
       return kTfLiteError;
@@ -3246,6 +3261,22 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
     RETURN_TFLITE_ERROR_IF_NN_ERROR(context, set_caching_result,
                                     "configuring NNAPI caching", nnapi_errno);
   }
+  // Set compilation timeout if applicable.
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI13) {
+    if (delegate_options.max_compilation_timeout_duration_ns > 0) {
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context,
+          nnapi_->ANeuralNetworksCompilation_setTimeout(
+              compilation,
+              delegate_options.max_compilation_timeout_duration_ns),
+          "setting compilation timeout", nnapi_errno);
+    }
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(
+        context,
+        nnapi_->ANeuralNetworksCompilation_setPriority(
+            compilation, delegate_options.execution_priority),
+        "setting compilation priority", nnapi_errno);
+  }
   const int finish_result =
       nnapi_->ANeuralNetworksCompilation_finish(compilation);
   if (finish_result != ANEURALNETWORKS_NO_ERROR) {
@@ -3311,6 +3342,27 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                   "creating NNAPI execution", nnapi_errno);
   std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution>
       execution_unique_ptr(execution, NNFreeExecution(nnapi_));
+
+  // Set compilation timeout if applicable.
+  const auto delegate_options =
+      StatefulNnApiDelegate::GetOptions(node->delegate);
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI13) {
+    if (delegate_options.max_execution_timeout_duration_ns > 0) {
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context,
+          nnapi_->ANeuralNetworksExecution_setTimeout(
+              execution, delegate_options.max_execution_timeout_duration_ns),
+          "setting execution timeout", nnapi_errno);
+    }
+    if (delegate_options.max_execution_loop_timeout_duration_ns > 0) {
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context,
+          nnapi_->ANeuralNetworksExecution_setLoopTimeout(
+              execution,
+              delegate_options.max_execution_loop_timeout_duration_ns),
+          "setting execution loop timeout", nnapi_errno);
+    }
+  }
 
   // Set the input tensor buffers. Note: we access tflite tensors using
   // absolute indices but NN api indices inputs by relative indices.
@@ -3588,10 +3640,14 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
       input_tensor_flags |= NN_TENSOR_FLAG_SCALAR_AS_TENSOR;
     }
 
-    // h_swish will be lowered into supported NNAPI operations.
-    if (reg->builtin_code == kTfLiteBuiltinHardSwish) {
-      builder.AddHardSwish(node->inputs->data[0], node->outputs->data[0],
-                           need_int8_conversion, node_index);
+    // On SDK level less than 30, h_swish will be lowered into supported NNAPI
+    // operations. Since SDK level 30, h_swish is supported as a single
+    // operation.
+    if (reg->builtin_code == kTfLiteBuiltinHardSwish &&
+        nnapi_->android_sdk_version < kMinSdkVersionForNNAPI13) {
+      builder.TransformHardSwishIntoSupportedOps(
+          node->inputs->data[0], node->outputs->data[0], need_int8_conversion,
+          node_index);
       continue;
     }
     // Map inputs to NN API tensor indices.
@@ -3972,6 +4028,8 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
 
 using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
 
+StatefulNnApiDelegate::Data::Data(const NnApi* nnapi) : nnapi(nnapi) {}
+
 StatefulNnApiDelegate::Data::~Data() {
   std::for_each(std::begin(delegate_state_cache),
                 std::end(delegate_state_cache),
@@ -4009,9 +4067,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
 
 StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
                                              Options options)
-    : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(Data{.execution_preference = options.execution_preference,
-                          .nnapi = nnapi}) {
+    : TfLiteDelegate(TfLiteDelegateCreate()), delegate_data_(nnapi) {
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
@@ -4021,6 +4077,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   if (options.model_token) {
     delegate_data_.model_token = options.model_token;
   }
+  delegate_data_.execution_preference = options.execution_preference;
   delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;

@@ -50,5 +50,75 @@ TEST_F(DotDecomposerTest, CanonicalizeMultipleNonContractingDims) {
                                 op::Shape("f32[4032,512]"))));
 }
 
+TEST_F(DotDecomposerTest, DontCanonicalizeIfNoNoncontractingDims) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4]{1,0} parameter(0)
+    p1 = f32[64,4]{1,0} parameter(1)
+    ROOT dot = f32[64]{0} dot(p0, p1), lhs_batch_dims={0},
+                                       lhs_contracting_dims={1},
+                                       rhs_batch_dims={0},
+                                       rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_FALSE(canonicalized);
+}
+
+TEST_F(DotDecomposerTest, DontAddLhsNonContractingDimIfOne) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4]{1,0} parameter(0)
+    p1 = f32[64,4,2,1]{3,2,1,0} parameter(1)
+    ROOT dot = f32[64,2,1]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                               lhs_contracting_dims={1},
+                                               rhs_batch_dims={0},
+                                               rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/1,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,2]"))));
+}
+
+TEST_F(DotDecomposerTest, DontAddRhsNonContractingDimIfOne) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4,2,1]{3,2,1,0} parameter(0)
+    p1 = f32[64,4]{1,0} parameter(1)
+    ROOT dot = f32[64,2,1]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                               lhs_contracting_dims={1},
+                                               rhs_batch_dims={0},
+                                               rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/2,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,2]"))));
+}
+
 }  // namespace
 }  // namespace xla

@@ -102,6 +102,21 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_1 = output_multiplier_1;
+      op_params.output_shift_1 = output_shift_1;
+      op_params.output_multiplier_2 = output_multiplier_2;
+      op_params.output_shift_2 = output_shift_2;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
       TF_LITE_KERNEL_LOG(
           context, "Only float32 and uint8 are supported currently, got %d.",

@@ -2,6 +2,8 @@
 #   Contains the Keras preprocess layers (internal TensorFlow version).
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
@@ -23,7 +25,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         ":discretization",
         ":hashing",
         ":image_preprocessing",
@@ -50,9 +52,9 @@ py_library(
 )
 
 py_library(
-    name = "categorical_crossing",
+    name = "category_crossing",
     srcs = [
-        "categorical_crossing.py",
+        "category_crossing.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -194,7 +196,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         ":string_lookup",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -214,10 +216,10 @@ py_library(
 )
 
 py_library(
-    name = "categorical_encoding",
+    name = "category_encoding",
     srcs = [
-        "categorical_encoding.py",
-        "categorical_encoding_v1.py",
+        "category_encoding.py",
+        "category_encoding_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -289,16 +291,16 @@ py_library(
 )
 
 cuda_py_test(
-    name = "categorical_crossing_test",
+    name = "category_crossing_test",
     size = "medium",
-    srcs = ["categorical_crossing_test.py"],
+    srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",  # b/149031156
     ],
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -306,12 +308,12 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "categorical_encoding_test",
+    name = "category_encoding_test",
     size = "medium",
-    srcs = ["categorical_encoding_test.py"],
+    srcs = ["category_encoding_test.py"],
     python_version = "PY3",
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         ":preprocessing_test_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -322,9 +324,9 @@ tf_py_test(
 )
 
 distribute_py_test(
-    name = "categorical_encoding_distribution_test",
-    srcs = ["categorical_encoding_distribution_test.py"],
-    main = "categorical_encoding_distribution_test.py",
+    name = "category_encoding_distribution_test",
+    srcs = ["category_encoding_distribution_test.py"],
+    main = "category_encoding_distribution_test.py",
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
@@ -333,7 +335,7 @@ distribute_py_test(
         "no_oss",  # b/155502591
     ],
     deps = [
-        ":categorical_encoding",
+        ":category_encoding",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
@@ -341,9 +343,9 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "categorical_crossing_distribution_test",
-    srcs = ["categorical_crossing_distribution_test.py"],
-    main = "categorical_crossing_distribution_test.py",
+    name = "category_crossing_distribution_test",
+    srcs = ["category_crossing_distribution_test.py"],
+    main = "category_crossing_distribution_test.py",
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
@@ -352,7 +354,7 @@ distribute_py_test(
         "no_oss",  # b/155502591
     ],
     deps = [
-        ":categorical_crossing",
+        ":category_crossing",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
@@ -521,6 +523,7 @@ tf_py_test(
     size = "medium",
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",

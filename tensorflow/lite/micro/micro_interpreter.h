@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"

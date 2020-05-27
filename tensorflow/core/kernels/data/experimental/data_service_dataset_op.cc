@@ -21,14 +21,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/serialization_utils.h"
@@ -496,7 +496,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       std::vector<Tensor> element;
       if (!end_of_sequence) {
-        TF_RETURN_IF_ERROR(service_util::Uncompress(compressed, &element));
+        Tensor tensor(DT_VARIANT, TensorShape{});
+        tensor.scalar<Variant>()() = std::move(compressed);
+        element.push_back(tensor);
       }
       mutex_lock l(mu_);
       if (end_of_sequence) {

@@ -5,7 +5,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoryEncoding"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CenterCrop"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Hashing"
     mtype: "<type \'type\'>"
   }
   member {

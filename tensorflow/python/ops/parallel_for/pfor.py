@@ -24,6 +24,7 @@ import string
 import sys
 import traceback
 
+import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
@@ -52,6 +53,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -74,6 +76,19 @@ flags.DEFINE_bool(
 
 def _stack(t, length):
   """stacks `t` `length` times."""
+  # Note that this stacking may currently be triggered, for example, when a
+  # loop invariant tensor with dtype variant is input to a while_loop which then
+  # produces a loop dependent output. Simply stacking the variants may not be
+  # suitable since operations on stacked handles may expect a vectorized version
+  # of the variant.
+  # Given that variant types are generic, we are currently unable to figure out
+  # which particular variant type is being considered here and hence it may not
+  # be safe to allow stacking it.
+  if t.dtype == dtypes.variant:
+    raise NotImplementedError(
+        "Vectorization tried to stack variant tensor %s. "
+        "This is likely because vectorization of that variant "
+        "is not fully supported yet." % t)
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -93,11 +108,21 @@ def _stack(t, length):
 passthrough_stateful_ops = set([
     "VariableV2",
     "VarHandleOp",
+    "VariableShape",
     "ReadVariableOp",
     "StackV2",
     "TensorArrayWriteV3",
     "TensorArrayReadV3",
     "TensorArraySizeV3",
+])
+
+
+# Ops which we will treat like stateful for the purpose of vectorization.
+# Typically this is used to force pfor converters to run for these ops.
+force_stateful_ops = set([
+    # We vectorize this since we need to change the element shape set on the
+    # list.
+    "TensorListReserve",
 ])
 
 
@@ -109,6 +134,8 @@ def _is_stateful_pfor_op(op):
     return False
   if op.type in passthrough_stateful_ops:
     return False
+  if op.type in force_stateful_ops:
+    return True
   assert hasattr(op, "op_def") and op.op_def is not None, op
   return op.op_def.is_stateful
 
@@ -964,8 +991,9 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   return WrappedTensor(tensor, is_stacked, is_sparse_stacked)
 
 
-def _fallback_converter(pfor_input):
-  logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
+def _fallback_converter(pfor_input, warn=True):
+  if warn:
+    logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -2062,7 +2090,7 @@ def _convert_diag(pfor_input):
   else:
     # It is not clear if we can do better than a while loop here with existing
     # kernels.
-    return _fallback_converter(pfor_input)
+    return _fallback_converter(pfor_input, warn=False)
 
 
 # See notes for MatrixDiagV2
@@ -2105,7 +2133,7 @@ def _convert_diag_part(pfor_input):
   else:
     # It is not clear if we can do better than a while loop here with existing
     # kernels.
-    return _fallback_converter(pfor_input)
+    return _fallback_converter(pfor_input, warn=False)
 
 
 @RegisterPFor("OneHot")
@@ -3039,7 +3067,7 @@ def _convert_stateless_multinomial(pfor_input):
   # random numbers under vectorization.
   # Unfortunately, the kernels currently are not necessarily setup to do this
   # efficiently and hence we fallback to a sequential loop for vectorization.
-  return _fallback_converter(pfor_input)
+  return _fallback_converter(pfor_input, warn=False)
 
 
 # linalg_ops
@@ -3469,6 +3497,241 @@ def _convert_tensor_array_grad_v3(pfor_input):
       source=source)
   flow_out = _stack(flow_out, pfor_input.pfor.loop_len_vector).t
   return [wrap(grad_handle, False), wrap(flow_out, True)]
+
+
+def _stack_tensor_list_shape(shape, pfor_input):
+  first_dim = pfor_input.pfor.loop_len_vector
+  shape_value = tensor_util.constant_value(shape)
+  # Note that negative values in the shape are used to signify unknown shapes
+  # and are handled in a special way.
+  if shape_value is not None:
+    shape_value = np.asarray(shape_value)
+    if -1 in shape_value:
+      return constant_op.constant(-1)
+    elif not shape_value.size:
+      return first_dim
+  else:
+    shape = array_ops.reshape(shape, [-1])
+    return control_flow_ops.cond(
+        math_ops.reduce_any(shape < 0),
+        lambda: constant_op.constant(-1),
+        lambda: array_ops.concat([first_dim, shape], axis=0))
+
+
+def _tile_variant(t, pfor_input):
+  """stacks `t` `length` times."""
+  t.set_shape([])
+  t = array_ops.reshape(t, [-1])
+  with ops.device("CPU:0"):
+    return array_ops.tile(t, pfor_input.pfor.loop_len_vector)
+
+
+def _untile_variant(t):
+  return array_ops.gather(t, 0)
+
+
+@RegisterPFor("TensorListReserve")
+def _convert_tensor_list_reserve(pfor_input):
+  element_shape = pfor_input.unstacked_input(0)
+  num_elements = pfor_input.unstacked_input(1)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  # Prepend a dimension to element_shape.
+  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  handle = list_ops.tensor_list_reserve(
+      element_shape, num_elements, element_dtype=element_dtype)
+
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListElementShape")
+def _convert_tensor_list_element_shape(pfor_input):
+  handle = _untile_variant(pfor_input.stacked_input(0))
+  shape_type = pfor_input.get_attr("shape_type")
+  shape = list_ops.tensor_list_element_shape(handle, shape_type)
+  shape = array_ops.reshape(shape, [-1])
+  shape = shape[1:]
+  return wrap(shape, False)
+
+
+@RegisterPFor("TensorListLength")
+def _convert_tensor_list_length(pfor_input):
+  handle = _untile_variant(pfor_input.stacked_input(0))
+  return wrap(list_ops.tensor_list_length(handle), False)
+
+
+def _stack_tensor_list(handle, dtype, pfor_input, element_shape=None):
+  if element_shape is None:
+    element_shape = list_ops.tensor_list_element_shape(handle, dtypes.int32)
+  length = list_ops.tensor_list_length(handle)
+  new_handle = list_ops.tensor_list_reserve(
+      _stack_tensor_list_shape(element_shape, pfor_input), length, dtype)
+
+  def _body_fn(i, h):
+    elem = list_ops.tensor_list_get_item(handle, i, dtype, element_shape)
+    elem = _stack(elem, pfor_input.pfor.loop_len_vector).t
+    return i + 1, list_ops.tensor_list_set_item(h, i, elem)
+
+  return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
+                                     [0, new_handle])[1]
+
+
+@RegisterPFor("TensorListGetItem")
+def _convert_tensor_list_get_item(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  element_shape = pfor_input.unstacked_input(2)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  if handle_stacked:
+    handle = _untile_variant(handle)
+    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    if index_stacked:
+      # We use a sequential loop since that may be more efficient than first
+      # gathering and concatenating all the element corresponding to `index`,
+      # and then doing a gather on it.
+      def _map_fn(i):
+        item_i = list_ops.tensor_list_get_item(
+            handle,
+            index[i],
+            element_dtype=element_dtype)
+        return array_ops.gather(item_i, i)
+
+      output = map_fn.map_fn(_map_fn, pfor_input.pfor.all_indices)
+      return wrap(output, True)
+    else:
+      output = list_ops.tensor_list_get_item(
+          handle,
+          index,
+          element_shape=element_shape,
+          element_dtype=element_dtype)
+      return wrap(output, True)
+  else:
+    assert index_stacked
+    return wrap(
+        list_ops.tensor_list_gather(
+            handle,
+            index,
+            element_shape=element_shape,
+            element_dtype=element_dtype), True)
+
+
+@RegisterPFor("TensorListSetItem")
+def _convert_tensor_array_set_item(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  item, item_stacked, _ = pfor_input.input(2)
+
+  if not handle_stacked:
+    # Special case where we can statically guarantee that the indices are
+    # disjoint.
+    if index is pfor_input.pfor.all_indices:
+      if not item_stacked:
+        item = _stack(item, pfor_input.pfor.loop_len_vector).t
+      return wrap(
+          list_ops.tensor_list_scatter(item, index, input_handle=handle), False)
+    else:
+      handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+  else:
+    handle = _untile_variant(handle)
+
+  if index_stacked:
+    # TODO(agarwal): handle this.
+    raise ValueError("Vectorizing writes to a TensorList with loop "
+                     "variant indices is currently unsupported.")
+
+  else:
+    if not item_stacked:
+      item = _stack(item, pfor_input.pfor.loop_len_vector).t
+    handle = list_ops.tensor_list_set_item(handle, index, item)
+    return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListStack")
+def _convert_tensor_list_stack(pfor_input):
+  handle = pfor_input.stacked_input(0)
+  input_shape = pfor_input.unstacked_input(1)
+  element_dtype = pfor_input.get_attr("element_dtype")
+  num_elements = pfor_input.get_attr("num_elements")
+
+  handle = _untile_variant(handle)
+  input_shape = _stack_tensor_list_shape(input_shape, pfor_input)
+  output = list_ops.tensor_list_stack(
+      handle,
+      element_dtype,
+      element_shape=input_shape,
+      num_elements=num_elements)
+  output = _transpose_first_two_dims(output)
+  return wrap(output, True)
+
+
+@RegisterPFor("TensorListGather")
+def _convert_tensor_list_gather(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  index, index_stacked, _ = pfor_input.input(1)
+  element_shape = pfor_input.unstacked_input(2)
+  element_dtype = pfor_input.get_attr("element_dtype")
+
+  if handle_stacked:
+    handle = _untile_variant(handle)
+    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    if index_stacked:
+      # We use a sequential loop since that may be more efficient than first
+      # gathering and concatenating all the element corresponding to `index`,
+      # and then doing a gather on it.
+      def _map_fn(i):
+        item_i = list_ops.tensor_list_gather(
+            handle,
+            index[i],
+            element_dtype=element_dtype)
+        axis = array_ops.rank(index) - 1
+        return array_ops.gather(item_i, i, axis=axis)
+
+      output = map_fn.map_fn(_map_fn, pfor_input.pfor.all_indices)
+      return wrap(output, True)
+    else:
+      output = list_ops.tensor_list_gather(
+          handle,
+          index,
+          element_shape=element_shape,
+          element_dtype=element_dtype)
+      return wrap(output, True)
+  else:
+    assert index_stacked
+    index_shape = array_ops.shape(index)
+    index = array_ops.reshape(index, [-1])
+    values = list_ops.tensor_list_gather(
+        handle, index, element_shape=element_shape, element_dtype=element_dtype)
+    final_shape = array_ops.concat(
+        [index_shape, array_ops.shape(values)[1:]], axis=0)
+    return wrap(array_ops.reshape(values, final_shape), True)
+
+
+@RegisterPFor("TensorListScatterIntoExistingList")
+def _convert_tensor_list_scatter(pfor_input):
+  pfor_input.stack_inputs([1])
+  handle, handle_stacked, _ = pfor_input.input(0)
+  item = pfor_input.stacked_input(1)
+  # TODO(agarwal): handle stacked indices.
+  indices = pfor_input.unstacked_input(2)
+  if handle_stacked:
+    handle = _untile_variant(handle)
+  else:
+    handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+
+  item = _transpose_first_two_dims(item)
+  handle = list_ops.tensor_list_scatter(item, indices, input_handle=handle)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListFromTensor")
+def _convert_tensor_list_from_tensor(pfor_input):
+  tensor = pfor_input.stacked_input(0)
+  element_shape = pfor_input.unstacked_input(1)
+  tensor = _transpose_first_two_dims(tensor)
+  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  handle = list_ops.tensor_list_from_tensor(tensor, element_shape)
+  return wrap(_tile_variant(handle, pfor_input), True)
 
 
 # StackV2 conversion is tricky since we don't have arrays of StackV2. So similar

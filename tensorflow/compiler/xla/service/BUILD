@@ -491,6 +491,66 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "sharding_propagation",
+    srcs = [
+        "sharding_propagation.cc",
+    ],
+    hdrs = [
+        "sharding_propagation.h",
+    ],
+    deps = [
+        ":dot_as_convolution_util",
+        ":hlo",
+        ":hlo_graph_dumper",
+        ":hlo_pass",
+        ":hlo_sharding_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_propagation_test",
+    srcs = [
+        "sharding_propagation_test.cc",
+    ],
+    deps = [
+        "hlo_matchers",
+        ":hlo_parser",
+        ":sharding_propagation",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "dot_as_convolution_util",
+    srcs = [
+        "dot_as_convolution_util.cc",
+    ],
+    hdrs = [
+        "dot_as_convolution_util.h",
+    ],
+    deps = [
+        ":hlo",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
 tf_cc_test(
     name = "dynamic_parameter_binding_test",
     srcs = ["dynamic_parameter_binding_test.cc"],
@@ -3284,6 +3344,7 @@ cc_library(
         ":heap_simulator",
         ":hlo_cost_analysis",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core/lib/math:math_util",
     ],
 )
 
@@ -4497,6 +4558,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

@@ -42,6 +42,9 @@ namespace tflite {
 
 class InterpreterTest;
 class TestDelegate;
+namespace delegates {
+class InterpreterUtils;  // Class for friend declarations.
+}  // namespace delegates
 
 namespace impl {
 
@@ -322,10 +325,9 @@ class Interpreter {
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
   /// for tensor indices that are inputs or variables.
-  /// Returns status of failure or success.
-  /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
-  ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
-  ///   if our partners determine that dependency is acceptable.
+  /// Returns status of failure or success. Note that this doesn't actually
+  /// resize any existing buffers. A call to AllocateTensors() is required to
+  /// change the tensor input buffer.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
@@ -334,7 +336,8 @@ class Interpreter {
   // tensor indices that are inputs or variables. Only unknown dimensions can be
   // resized with this function. Unknown dimensions are indicated as `-1` in the
   // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
-  // or success.
+  // or success.  Note that this doesn't actually resize any existing buffers.
+  /// A call to AllocateTensors() is required to change the tensor input buffer.
   TfLiteStatus ResizeInputTensorStrict(int tensor_index,
                                        const std::vector<int>& dims);
 
@@ -529,6 +532,7 @@ class Interpreter {
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::TestDelegate;
+  friend class tflite::delegates::InterpreterUtils;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -541,6 +545,15 @@ class Interpreter {
   // Remove delegates (for fallback behaviour). The interpreter is invokable
   // afterwards.
   TfLiteStatus RemoveAllDelegates();
+
+  // Returns true if delegates have been applied.
+  bool HasDelegates();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
+
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

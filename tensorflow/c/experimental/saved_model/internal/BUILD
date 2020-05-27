@@ -155,6 +155,7 @@ cc_library(
         "saved_model_api_type.h",
     ],
     deps = [
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
     ],
 )

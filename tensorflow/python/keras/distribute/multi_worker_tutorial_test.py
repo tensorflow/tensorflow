@@ -120,8 +120,8 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
       multi_worker_model.fit(
           multi_worker_dataset,
-          epochs=3,
-          steps_per_epoch=70,
+          epochs=2,
+          steps_per_epoch=20,
           callbacks=callbacks)
 
     with test_util.skip_if_error(self, errors_impl.UnavailableError):

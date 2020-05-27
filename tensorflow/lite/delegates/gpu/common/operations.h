@@ -399,6 +399,9 @@ struct Resize3DAttributes {
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+  bool half_pixel_centers = false;
 };
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
@@ -460,6 +463,20 @@ struct SliceAttributes {
 //         input.
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr);
 
+// Simple slicing without advanced support for shrinking, reverse slicing etc.
+struct Slice3DAttributes {
+  // Specifies start and end dimensions for slicing.
+  BHWDC starts;
+  BHWDC ends;
+
+  // Stride should be >= 1.
+  BHWDC strides;
+};
+
+// @return shape of a tensor after Slice3D operation is applied to the given
+//         input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr);
+
 struct AddAttributes {
   TensorOrScalar param;
 };
@@ -485,6 +502,10 @@ struct ReshapeAttributes {
   BHWC new_shape;
 };
 
+struct Reshape3DAttributes {
+  BHWDC new_shape;
+};
+
 struct TransposeAttributes {
   // A permutation of the dimensions of input tensor
   BHWC perm;
@@ -493,6 +514,16 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct Transpose3DAttributes {
+  // A permutation of the dimensions of input tensor
+  BHWDC perm;
+};
+
+// @return shape of a tensor after Transpose3D operation is applied to
+// the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Transpose3DAttributes& attr);
 
 struct SpaceToDepthAttributes {
   int block_size;

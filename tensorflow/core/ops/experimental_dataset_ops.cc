@@ -132,6 +132,19 @@ REGISTER_OP("ExperimentalChooseFastestDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("CompressElement")
+    .Input("components: input_types")
+    .Output("compressed: variant")
+    .Attr("input_types: list(type) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("UncompressElement")
+    .Input("compressed: variant")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
+
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
     .Input("compression_type: string")

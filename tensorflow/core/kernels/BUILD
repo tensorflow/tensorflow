@@ -1338,7 +1338,10 @@ tf_kernel_library(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
+        "tile_functor_cpu_variant.cc",
         "tile_functor_sycl.cc",
     ],
     hdrs = ["tile_functor.h"],
@@ -6613,6 +6616,7 @@ filegroup(
         "avgpooling_op.h",
         "batch_matmul_op_impl.h",
         "batch_norm_op.h",
+        "broadcast_to_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_3d.h",
@@ -6702,6 +6706,7 @@ filegroup(
         "conv_ops_fused_float.cc",
         "conv_ops_fused_half.cc",
         "conv_ops_fused_impl.h",
+        "conv_ops_fused_image_transform.cc",
         "conv_ops_using_gemm.cc",
         "crop_and_resize_op.cc",
         "crop_and_resize_op.h",
@@ -6711,6 +6716,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_ceil.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
@@ -6803,6 +6809,7 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         "batchtospace_op.cc",
+        "broadcast_to_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
@@ -6906,7 +6913,10 @@ filegroup(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
+        "tile_functor_cpu_variant.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",
@@ -8227,7 +8237,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + mkl_deps(),
+    deps = NN_DEPS + [
+        ":fused_batch_norm_op",
+        ":no_op",
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -120,9 +121,22 @@ class Subgraph {
         return nullptr;
       }
 
-      for (int k = 0; k < node->inputs->size; k++) {
-        const int t = node->inputs->data[k];
-        tensors[t] = t;
+      switch (registration->builtin_code) {
+        case kTfLiteBuiltinPad:
+          // Ignore the second input (static padding), because it is
+          // represented as parameters of the XNNPACK operator rather than
+          // extra input.
+          {
+            const int t = node->inputs->data[0];
+            tensors[t] = t;
+          }
+          break;
+        default:
+          // All other operators: process all inputs
+          for (int k = 0; k < node->inputs->size; k++) {
+            const int t = node->inputs->data[k];
+            tensors[t] = t;
+          }
       }
       for (int k = 0; k < node->outputs->size; k++) {
         const int t = node->outputs->data[k];
@@ -532,10 +546,11 @@ class Subgraph {
     return kTfLiteOk;
   }
 
-  static TfLiteStatus CheckTensorFloatType(TfLiteContext* context,
-                                           const TfLiteTensor& tensor,
-                                           int tensor_index, int node_index) {
-    if (tensor.type != kTfLiteFloat32) {
+  static TfLiteStatus CheckTensorType(TfLiteContext* context,
+                                      const TfLiteTensor& tensor,
+                                      TfLiteType expected_type,
+                                      int tensor_index, int node_index) {
+    if (tensor.type != expected_type) {
       TF_LITE_MAYBE_KERNEL_LOG(
           context, "unsupported type %s in tensor #%d in node #%d",
           TfLiteTypeGetName(tensor.type), tensor_index, node_index);
@@ -544,26 +559,62 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorFloatType(TfLiteContext* context,
+                                           const TfLiteTensor& tensor,
+                                           int tensor_index, int node_index) {
+    return CheckTensorType(context, tensor, kTfLiteFloat32, tensor_index,
+                           node_index);
+  }
+
   static TfLiteStatus CheckTensorShape(TfLiteContext* context,
                                        const TfLiteTensor& tensor,
-                                       int expected_num_dims,
+                                       int min_num_dims, int max_num_dims,
                                        int tensor_index) {
-    if (tensor.dims->size != expected_num_dims) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          context,
-          "unexpected number of shape dimensions (%d != %d) in tensor #%d",
-          tensor.dims->size, expected_num_dims, tensor_index);
-      return kTfLiteError;
+    if (min_num_dims == max_num_dims) {
+      if (tensor.dims->size != min_num_dims) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context,
+            "unsupported number of shape dimensions (%d) in tensor #%d: "
+            "%d dimensions expected",
+            tensor.dims->size, tensor_index, min_num_dims);
+        return kTfLiteError;
+      }
+    } else {
+      if (tensor.dims->size < min_num_dims) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context,
+            "unsupported number of shape dimensions (%d) in tensor #%d: "
+            "at least %d dimensions expected",
+            tensor.dims->size, tensor_index, min_num_dims);
+        return kTfLiteError;
+      }
+      if (tensor.dims->size > max_num_dims) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context,
+            "unsupported number of shape dimensions (%d) in tensor #%d: "
+            "at most %d dimensions expected",
+            tensor.dims->size, tensor_index, max_num_dims);
+        return kTfLiteError;
+      }
     }
     for (int i = 0; i < tensor.dims->size; i++) {
       if (tensor.dims->data[i] <= 0) {
         TF_LITE_MAYBE_KERNEL_LOG(context,
-                                 "invalid dimension #%d (%d) in tensor #%d", i,
-                                 tensor.dims->data[i], tensor_index);
+                                 "invalid num of elements (%d) in "
+                                 "dimension #%d in tensor #%d",
+                                 tensor.dims->data[i], i, tensor_index);
         return kTfLiteError;
       }
     }
     return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckTensorShape(TfLiteContext* context,
+                                       const TfLiteTensor& tensor,
+                                       int expected_num_dims,
+                                       int tensor_index) {
+    return CheckTensorShape(context, tensor, expected_num_dims,
+                            expected_num_dims, tensor_index);
   }
 
   static TfLiteStatus CheckSlopeTensorShape(TfLiteContext* context,
@@ -588,6 +639,39 @@ class Subgraph {
             tensor.dims[i], i, tensor_index, node_index);
         return kTfLiteError;
       }
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckPaddingsTensorShape(TfLiteContext* context,
+                                               const TfLiteTensor& tensor,
+                                               int expected_rows,
+                                               int tensor_index,
+                                               int node_index) {
+    if (tensor.dims->size != 2) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of shape dimensions (%d) in "
+                               "padding tensor #%d in node #%d: "
+                               "expected a 2D tensor",
+                               tensor.dims->size, tensor_index, node_index);
+      return kTfLiteError;
+    }
+    if (tensor.dims->data[0] != expected_rows) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of rows (%d) in "
+                               "padding tensor #%d in node #%d: "
+                               "%d rows expected",
+                               tensor.dims->size, tensor_index, node_index,
+                               expected_rows);
+      return kTfLiteError;
+    }
+    if (tensor.dims->data[1] != 2) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of columns (%d) in "
+                               "padding tensor #%d in node #%d: "
+                               "2 columns expected",
+                               tensor.dims->size, tensor_index, node_index);
+      return kTfLiteError;
     }
     return kTfLiteOk;
   }
@@ -693,6 +777,9 @@ class Subgraph {
         return VisitMulNode(subgraph, logging_context, node_index, node,
                             context->tensors, mul_params, xnnpack_tensors);
       }
+      case kTfLiteBuiltinPad:
+        return VisitPadNode(subgraph, logging_context, node_index, node,
+                            context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinPrelu:
         return VisitPreluNode(subgraph, logging_context, node_index, node,
                               context->tensors, xnnpack_tensors);
@@ -1557,6 +1644,86 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MUL node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitPadNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 1,
+                                           XNN_MAX_TENSOR_DIMS,
+                                           node->inputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& paddings_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, paddings_tensor,
+                                          kTfLiteInt32, node->inputs->data[1],
+                                          node_index));
+    TF_LITE_ENSURE_STATUS(CheckPaddingsTensorShape(
+        logging_context, paddings_tensor, input_tensor.dims->size,
+        node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, paddings_tensor, node->inputs->data[1], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 1,
+                                           XNN_MAX_TENSOR_DIMS,
+                                           node->outputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const int32_t* paddings_data =
+        reinterpret_cast<const int32_t*>(paddings_tensor.data.data);
+    for (int i = 0; i < paddings_tensor.dims->size; i++) {
+      const int32_t pre_padding = paddings_data[i * 2 + 0];
+      if (pre_padding < 0) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "invalid pre-padding %d for dimension #%d in node %d", pre_padding,
+            i, node_index);
+        return kTfLiteError;
+      }
+
+      const int32_t post_padding = paddings_data[i * 2 + 1];
+      if (post_padding < 0) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "invalid post-padding %d for dimension #%d in node %d", pre_padding,
+            i, node_index);
+        return kTfLiteError;
+      }
+    }
+
+    if (subgraph != nullptr) {
+      std::array<size_t, XNN_MAX_TENSOR_DIMS> pre_paddings{};
+      std::array<size_t, XNN_MAX_TENSOR_DIMS> post_paddings{};
+      for (int i = 0; i < paddings_tensor.dims->data[0]; i++) {
+        pre_paddings[i] = static_cast<size_t>(paddings_data[i * 2 + 0]);
+        post_paddings[i] = static_cast<size_t>(paddings_data[i * 2 + 1]);
+      }
+
+      const xnn_status status = xnn_define_static_constant_pad(
+          subgraph, pre_paddings.data(), post_paddings.data(),
+          /*padding_value=*/0.0f,
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate PAD node #%d",
                            node_index);
         return kTfLiteError;
       }

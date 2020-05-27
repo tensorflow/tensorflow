@@ -978,7 +978,6 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
     if (dtype == DT_RESOURCE) {
       const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
       const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
-      LOG(INFO) << dtype_attr << " " << shape_attr;
       if (dtype_attr && shape_attr) {
         if (dtype_attr->list().type().empty()) {
           return errors::InvalidArgument(
@@ -1169,8 +1168,18 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
       return builder_.getArrayAttr(
           llvm::makeArrayRef(attrs.begin(), attrs.end()));
     }
-    case AttrValue::kFunc:
-      return errors::Unknown("kFunc type should be handled separately!");
+    case AttrValue::kFunc: {
+      // TODO(b/156546237): Unify kFunc/NameAttrList attribute representation.
+      // Currently kFunc/NameAttrList attributes in a kList/repeated AttrValue
+      // will not use this representation.
+      NamedAttrList attrs;
+      for (const auto& func_attr : value.func().attr()) {
+        TF_ASSIGN_OR_RETURN(auto attr, ConvertAttributeValue(func_attr.second));
+        attrs.push_back(builder_.getNamedAttr(func_attr.first, attr));
+      }
+      auto func_attrs = builder_.getDictionaryAttr(attrs);
+      return mlir::TF::FuncAttr::get(context_, value.func().name(), func_attrs);
+    }
     case AttrValue::VALUE_NOT_SET:
       return builder_.getUnitAttr();
     // kPlaceholder is not implemented.

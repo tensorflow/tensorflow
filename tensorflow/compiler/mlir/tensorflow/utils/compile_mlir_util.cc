@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -247,9 +248,10 @@ Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
 
 static void RegisterDialects() {
   static bool init_once = []() {
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
     mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    mlir::registerDialect<mlir::shape::ShapeDialect>();
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
     mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
     return true;
   }();
@@ -305,6 +307,10 @@ Status ConvertMLIRToXlaComputation(
   // invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
+  // In order to export to XLA, we must sink constants to control flow regions,
+  // since XLA uses functional control flow.
+  tf2xla.addNestedPass<mlir::FuncOp>(
+      mlir::xla_hlo::createSinkConstantsToControlFlowPass());
 
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass which requires disabling

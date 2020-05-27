@@ -26,7 +26,16 @@ Pod::Spec.new do |s|
   s.subspec 'Core' do |core|
     core.dependency 'TensorFlowLiteC', "#{s.version}"
     core.source_files = swift_dir + 'Sources/*.swift'
-    core.exclude_files = swift_dir + 'Sources/CoreMLDelegate.swift'
+    core.exclude_files = swift_dir + 'Sources/{CoreML,Metal}Delegate.swift'
+
+    core.test_spec 'Tests' do |ts|
+      ts.source_files = swift_dir + 'Tests/*.swift'
+      ts.exclude_files = swift_dir + 'Tests/MetalDelegateTests.swift'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+        tfl_dir + 'testdata/add_quantized.bin',
+      ]
+    end
   end
 
   s.subspec 'CoreML' do |coreml|
@@ -35,11 +44,17 @@ Pod::Spec.new do |s|
     coreml.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
   end
 
-  s.test_spec 'Tests' do |ts|
-    ts.source_files = swift_dir + 'Tests/*.swift'
-    ts.resources = [
-      tfl_dir + 'testdata/add.bin',
-      tfl_dir + 'testdata/add_quantized.bin',
-    ]
+  s.subspec 'Metal' do |metal|
+    metal.source_files = swift_dir + 'Sources/MetalDelegate.swift'
+    metal.dependency 'TensorFlowLiteC/Metal', "#{s.version}"
+    metal.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
+
+    metal.test_spec 'Tests' do |ts|
+      ts.source_files = swift_dir + 'Tests/{Interpreter,MetalDelegate}Tests.swift'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+        tfl_dir + 'testdata/add_quantized.bin',
+      ]
+    end
   end
 end

@@ -201,63 +201,35 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
 // MultiplyByQuantizedMultipler.
 #ifdef USE_NEON
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  const int left_shift = shift > 0 ? shift : 0;
-  const int right_shift = shift > 0 ? 0 : -shift;
+    int32x4x4_t input_val, int32 quantized_multiplier, int32 shift) {
+  const int left_shift = std::max(shift, 0);
+  const int right_shift = std::min(shift, 0);
   int32x4x4_t result;
-  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
-  // is limited to NEON.
-#ifdef GEMMLOWP_NEON
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
-  result.val[0] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[1] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[2] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[3] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-#else
-  for (int i = 0; i < 4; ++i) {
-    int32_t vals[4];
-    vals[0] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[1] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[2] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[3] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
 
-    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-  }
-#endif
+  int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  result.val[0] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[1] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[2] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[3] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
   return result;
 }
 #endif
@@ -7926,16 +7898,16 @@ inline void MaximumElementwise(int size, const ArithmeticParams& params,
                                const int8* input1_data, const int8* input2_data,
                                int8* output_data) {
   ruy::profiler::ScopeLabel label("MaximumElementwiseInt8/8bit");
-
   int i = 0;
 #ifdef USE_NEON
-  for (; i <= size - 8; i += 8) {
-    const int8x8_t input1_val_original = vld1_s8(input1_data + i);
-    const int8x8_t input2_val_original = vld1_s8(input2_data + i);
-    const int8x8_t max_data = vmax_s8(input1_val_original, input2_val_original);
-    vst1_s8(output_data + i, max_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input1_val_original = vld1q_s8(input1_data + i);
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
   }
-#endif  // NEON
+#endif  // USE_NEON
   for (; i < size; ++i) {
     const int8 input1_val = input1_data[i];
     const int8 input2_val = input2_data[i];
@@ -7950,13 +7922,14 @@ inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
   int i = 0;
 
 #ifdef USE_NEON
-  const int8x8_t input1_val_original = vdup_n_s8(input1_data);
-  for (; i <= size - 8; i += 8) {
-    const int8x8_t input2_val_original = vld1_s8(input2_data + i);
-    const int8x8_t max_data = vmax_s8(input1_val_original, input2_val_original);
-    vst1_s8(output_data + i, max_data);
+  const int8x16_t input1_val_original = vdupq_n_s8(input1_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
   }
-#endif  // NEON
+#endif  // USE_NEON
   for (; i < size; ++i) {
     const int8 input2_val = input2_data[i];
     output_data[i] = std::max(input1_data, input2_val);
@@ -7967,6 +7940,7 @@ inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
 inline void MinimumElementwise(int size, const ArithmeticParams& params,
                                const int8* input1_data, const int8* input2_data,
                                int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumElementwiseInt8/8bit");
   int i = 0;
 #ifdef USE_NEON
   for (; i <= size - 16; i += 16) {
@@ -7987,6 +7961,7 @@ inline void MinimumElementwise(int size, const ArithmeticParams& params,
 inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
                                    int8 input1_data, const int8* input2_data,
                                    int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumScalarBroadcastInt8/8bit");
   int i = 0;
 
 #ifdef USE_NEON
@@ -8013,10 +7988,7 @@ inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
                                     const RuntimeShape& output_shape,
                                     int8* output_data,
                                     ElementwiseF elementwise_f,
-                                    ScalarBroadcastF scalar_broadcast_f,
-                                    const std::string& label_name) {
-  ruy::profiler::ScopeLabel label(label_name);
-
+                                    ScalarBroadcastF scalar_broadcast_f) {
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
   switched_params.input1_multiplier = unswitched_params.input2_multiplier;
@@ -8118,8 +8090,7 @@ inline void BroadcastMaximumDispatch(const ArithmeticParams& params,
 
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
-                          MaximumElementwise, MaximumScalarBroadcast,
-                          "BroadcastMaximumFivefoldInt8/8bit");
+                          MaximumElementwise, MaximumScalarBroadcast);
 }
 
 template <typename Op>
@@ -8138,8 +8109,7 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
 
   BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
                           input2_data, output_shape, output_data,
-                          MinimumElementwise, MinimumScalarBroadcast,
-                          "BroadcastMinimumFivefoldInt8/8bit");
+                          MinimumElementwise, MinimumScalarBroadcast);
 }
 
 }  // namespace optimized_ops

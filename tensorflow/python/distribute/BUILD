@@ -1182,6 +1182,23 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "strategy_reduce_test",
+    srcs = ["strategy_reduce_test.py"],
+    main = "strategy_reduce_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
     main = "minimize_loss_test.py",
@@ -1546,6 +1563,7 @@ cuda_py_test(
     srcs = ["parameter_server_strategy_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/156428279): reenable this test once the image is updated.
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,
