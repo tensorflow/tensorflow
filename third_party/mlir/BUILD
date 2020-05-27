@@ -2896,6 +2896,14 @@ gentbl(
             "include/mlir/Dialect/OpenMP/OpenMPOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/OpenMP/OpenMPOpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/OpenMP/OpenMPOpsEnums.cpp.inc",
+        ),
+        (
             "-gen-dialect-decls",
             "include/mlir/Dialect/OpenMP/OpenMPOpsDialect.h.inc",
         ),
@@ -2926,6 +2934,7 @@ cc_library(
     deps = [
         ":IR",
         ":OpenMPOpsIncGen",
+        ":StandardOps",
         "@llvm-project//llvm:support",
     ],
 )
