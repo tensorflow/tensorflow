@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 
+#include <algorithm>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -407,33 +410,30 @@ absl::optional<HloInstruction*> ExchangeHalo(
   std::vector<HloInstruction*> concat_pieces;
 
   int64 max_left_halo_size = left_halo_size_function.MaxInRange(1, shard_count);
-  if (max_left_halo_size > input_shard_size) {
-    VLOG(1) << "ExchangeHalo failed: halo is beyond the left neighbor.";
-    return absl::nullopt;
-  }
-  if (max_left_halo_size > 0) {
+  for (int64 i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1; i >= 0;
+       --i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;
     target.tile_assignment().Each(
         [&](absl::Span<const int64> indices, int64 device) {
-          if (indices[dim] > 0) {
+          if (indices[dim] > i) {
             std::vector<int64> source_indices(indices.begin(), indices.end());
-            source_indices[dim] -= 1;
+            source_indices[dim] -= i + 1;
             source_target_pairs.emplace_back(
                 target.tile_assignment()(source_indices), device);
           }
         });
+    int64 halo_size =
+        std::min(max_left_halo_size - input_shard_size * i, input_shard_size);
     auto halo_shape = hlo->shape();
     auto source_halo_slice = hlo;
-    if (max_left_halo_size != hlo->shape().dimensions(dim)) {
-      halo_shape.set_dimensions(dim, max_left_halo_size);
+    if (halo_size != hlo->shape().dimensions(dim)) {
+      halo_shape.set_dimensions(dim, halo_size);
       std::vector<int64> halo_start_indices(halo_shape.rank(), 0);
-      halo_start_indices[dim] =
-          hlo->shape().dimensions(dim) - max_left_halo_size;
+      halo_start_indices[dim] = hlo->shape().dimensions(dim) - halo_size;
       std::vector<int64> halo_slice_strides(halo_shape.rank(), 1);
-
-      source_halo_slice = b->AddInstruction(
-          hlo->CreateSlice(halo_shape, hlo, halo_start_indices,
-                           hlo->shape().dimensions(), halo_slice_strides));
+      source_halo_slice = b->AddInstruction(HloInstruction::CreateSlice(
+          halo_shape, hlo, halo_start_indices, hlo->shape().dimensions(),
+          halo_slice_strides));
     }
     auto left_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
@@ -446,29 +446,30 @@ absl::optional<HloInstruction*> ExchangeHalo(
   // Right halo.
   int64 max_right_halo_size =
       right_halo_size_function.MaxInRange(0, shard_count - 1);
-  if (max_right_halo_size > input_shard_size) {
-    VLOG(1) << "ExchangeHalo failed: halo is beyond the right neighbor.";
-    return absl::nullopt;
-  }
-  if (max_right_halo_size > 0) {
+  for (int64 i = 0; i < CeilOfRatio(max_right_halo_size, input_shard_size);
+       ++i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;
     target.tile_assignment().Each(
         [&](absl::Span<const int64> indices, int64 device) {
-          if (indices[dim] > 0) {
+          if (indices[dim] > i) {
             std::vector<int64> target_indices(indices.begin(), indices.end());
-            target_indices[dim] -= 1;
+            target_indices[dim] -= i + 1;
             source_target_pairs.emplace_back(
                 device, target.tile_assignment()(target_indices));
           }
         });
+    int64 halo_size =
+        std::min(max_right_halo_size - input_shard_size * i, input_shard_size);
     auto halo_shape = hlo->shape();
-    halo_shape.set_dimensions(dim, max_right_halo_size);
-    std::vector<int64> halo_start_indices(halo_shape.rank(), 0);
-    std::vector<int64> halo_slice_strides(halo_shape.rank(), 1);
-
-    auto source_halo_slice = b->AddInstruction(
-        hlo->CreateSlice(halo_shape, hlo, halo_start_indices,
-                         halo_shape.dimensions(), halo_slice_strides));
+    HloInstruction* source_halo_slice = hlo;
+    if (halo_size != halo_shape.dimensions(dim)) {
+      halo_shape.set_dimensions(dim, halo_size);
+      std::vector<int64> halo_start_indices(halo_shape.rank(), 0);
+      std::vector<int64> halo_slice_strides(halo_shape.rank(), 1);
+      source_halo_slice = b->AddInstruction(HloInstruction::CreateSlice(
+          halo_shape, hlo, halo_start_indices, halo_shape.dimensions(),
+          halo_slice_strides));
+    }
     auto right_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
             b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
