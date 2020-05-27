@@ -235,19 +235,22 @@ class SliceTest(test.TestCase):
       self.assertAllEqual(slice_val, inp[x, 0:y])
 
   def testSimple(self):
-    with self.session(use_gpu=True) as sess:
-      inp = np.random.rand(4, 4).astype("f")
-      a = constant_op.constant(
-          [float(x) for x in inp.ravel(order="C")],
-          shape=[4, 4],
-          dtype=dtypes.float32)
-      slice_t = array_ops.slice(a, [0, 0], [2, 2])
-      slice2_t = a[:2, :2]
-      slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
-    self.assertAllEqual(slice_val, inp[:2, :2])
-    self.assertAllEqual(slice2_val, inp[:2, :2])
-    self.assertEqual(slice_val.shape, slice_t.get_shape())
-    self.assertEqual(slice2_val.shape, slice2_t.get_shape())
+    with test_util.use_gpu():
+      for dtype in [
+          np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
+          np.float16, np.float32, np.float64, np.complex64, np.complex128,]:
+        inp = np.random.rand(4, 4).astype(dtype)
+        a = constant_op.constant(
+            [float(x) for x in inp.ravel(order="C")],
+            shape=[4, 4],
+            dtype=dtypes.float32)
+        slice_t = array_ops.slice(a, [0, 0], [2, 2])
+        slice2_t = a[:2, :2]
+        slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
+        self.assertAllEqual(slice_val, inp[:2, :2])
+        self.assertAllEqual(slice2_val, inp[:2, :2])
+        self.assertEqual(slice_val.shape, slice_t.get_shape())
+        self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
   @test_util.run_deprecated_v1
   def testComplex(self):
