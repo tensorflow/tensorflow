@@ -1348,6 +1348,17 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    auto pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    if (pad_tensor->dims->size != 2) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid paddings tensor dimension: expected 2 dim, got ",
+          pad_tensor->dims->size, " dim"));
+    }
+    if (pad_tensor->dims->data[0] != 4 || pad_tensor->dims->data[1] != 2) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid paddings tensor shape: expected 4x2, got ",
+          pad_tensor->dims->data[0], "x", pad_tensor->dims->data[1]));
+    }
     return absl::OkStatus();
   }
 
@@ -1371,6 +1382,7 @@ class PadOperationParser : public TFLiteOperationParser {
 
     // 4x2 tensor with paddings.
     if (paddings.shape.h != 4 || paddings.shape.w != 2) {
+      // It shouldn't fail here since it's checked at IsSupported().
       return absl::InvalidArgumentError(
           "Paddings tensor has unexpected shape.");
     }
