@@ -57,7 +57,7 @@ if __name__ == '__main__':
       help='input standard deviation')
   parser.add_argument(
       '--num_threads',
-      default=1, type=int,
+      default=None, type=int,
       help='number of threads')
   args = parser.parse_args()
 

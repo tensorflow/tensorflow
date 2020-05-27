@@ -182,9 +182,10 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
-      num_threads: Set the number of threads used by TFLite kernels.
-        If not set, kernels are running single-threaded. Note that currently,
-        only some kernels, such as conv, are multithreaded.
+      num_threads: Sets the number of threads used by the interpreter and
+        available to CPU kernels. If not set, the interpreter will use an
+        implementation-dependent default number of threads. Currently,
+        only a subset of kernels, such as conv, support multi-threading.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -210,7 +211,7 @@ class Interpreter(object):
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
 
-    if num_threads:
+    if num_threads is not None:
       if not isinstance(num_threads, int):
         raise ValueError('type of num_threads should be int')
       if num_threads < 1:
