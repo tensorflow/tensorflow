@@ -304,12 +304,6 @@ def random_uniform(shape,
         if not maxval_is_one:
           result = math_ops.multiply(result, maxval)
       else:
-        # Use explicit "broadcast_to" so that any shape incompatibility
-        # are returned with InvalidArgument error.
-        # This prevent "slient broadcast" that may cause the shape of
-        # result "overflow" when minval or maxval is larger than expected shape
-        maxval = array_ops.broadcast_to(maxval, shape)
-        minval = array_ops.broadcast_to(minval, shape)
         result = math_ops.add(result * (maxval - minval), minval, name=name)
     # TODO(b/132092188): C++ shape inference inside functional ops does not
     # cross FuncGraph boundaries since that information is only available in
