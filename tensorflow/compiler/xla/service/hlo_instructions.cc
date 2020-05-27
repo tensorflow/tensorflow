@@ -1867,8 +1867,14 @@ std::unique_ptr<HloInstruction>
 HloParameterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloParameterInstruction>(parameter_number_, shape,
-                                                    name());
+  auto clone = absl::make_unique<HloParameterInstruction>(parameter_number_,
+                                                          shape, name());
+  if (parameter_replicated_at_leaf_buffers_ &&
+      ShapeUtil::Equal(shape, this->shape())) {
+    clone->set_parameter_replicated_at_leaf_buffers(
+        *parameter_replicated_at_leaf_buffers_);
+  }
+  return clone;
 }
 
 HloGetTupleElementInstruction::HloGetTupleElementInstruction(
