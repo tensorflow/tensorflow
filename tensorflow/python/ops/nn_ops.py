@@ -3061,12 +3061,12 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
   rather than an actual deconvolution.
 
   Args:
-    input: A 5-D `Tensor` of type `float` and shape `[batch, height, width,
-      in_channels]` for `NHWC` data format or `[batch, in_channels, height,
-      width]` for `NCHW` data format.
-    filters: A 5-D `Tensor` with the same type as `value` and shape `[height,
-      width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+    input: A 5-D `Tensor` of type `float` and shape `[batch, depth, height,
+      width, in_channels]` for `NDHWC` data format or `[batch, in_channels,
+      depth, height, width]` for `NCDHW` data format.
+    filters: A 5-D `Tensor` with the same type as `value` and shape `[depth,
+      height, width, output_channels, in_channels]`.  `filter`'s `in_channels`
+      dimension must match that of `value`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `3` or `5`.  The
