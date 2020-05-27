@@ -404,6 +404,18 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // Compare broadcast feasibility
   if (check_feasibility) {
     for (int i = 0; i < broadcast_num_dims; ++i) {
+      if (!use_implicit_batch && (output_l[i] == -1 || output_r[i] == -1)) {
+        // If the condition is true then we are in explicit batch mode and (at
+        // least) one of the input dimensions are unknown. In other words we
+        // are in dynamic shape mode. During conversion time we only see -1 for
+        // the unknown shapes, therefore we cannot decide on the feasibility of
+        // broadcast over the unknown dimensions. Therefore we just continue for
+        // the next dimension. In dynamic shape mode TRT can only check the
+        // feasibility of the broadcast when the actual input dimensions are
+        // specified by SetTrtEngineInputs and the inference job is launched by
+        // TrtEnque.
+        continue;
+      }
       if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
           (output_r[i] != 1)) {
         return errors::InvalidArgument("Infeasible broadcast scheme (",
@@ -3895,11 +3907,26 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
-  // If the input is NCHW, then we need to unsqueeze the bias such that its last
-  // dimensions are 1s (and the first dimension is C).
+  // The bias input arg is a 1-D tensor with length C. If the input is NCHW,
+  // then we need to unsqueeze the bias such that its shape is [1, C, 1, 1].
   if (data_format == "NCHW") {
-    bias_shape.nbDims = input_shape.nbDims;
-    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    if (params->use_implicit_batch) {
+      // The batch dim is not included in implicit batch mode, so the shape of
+      // the bias tensor is [C, 1, 1].
+      bias_shape.nbDims = input_shape.nbDims;
+      std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    } else {
+      // In explicit batch mode we create a tensor with shape [1, C, 1, 1].
+      std::vector<int> bias_shape_vec(bias_shape.d,
+                                      bias_shape.d + bias_shape.nbDims);
+      // Insert 1 before for batch dim
+      bias_shape_vec.insert(bias_shape_vec.begin(), 1);
+      // Trail with 1s to match input_shape size
+      bias_shape_vec.insert(bias_shape_vec.end(),
+                            input_shape.nbDims - bias_shape_vec.size(), 1);
+      TF_RETURN_IF_ERROR(
+          TensorShapeArrayToTrtDims(bias_shape_vec, &bias_shape));
+    }
   } else {
     // Next, broadcast the bias across the input.
     TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
