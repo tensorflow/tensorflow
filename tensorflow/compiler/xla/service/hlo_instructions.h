@@ -706,7 +706,7 @@ class HloMapInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
-  std::vector<int64>* mutable_dimensions() { return &dimensions_; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
