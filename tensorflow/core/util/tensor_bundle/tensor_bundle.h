@@ -306,6 +306,9 @@ class BundleReader {
   // differs from that of the current system's processor architecture.
   bool need_to_swap_bytes_;
 
+  // Protect internal states when accessing from multiple threads.
+  mutable mutex mu_;
+
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
