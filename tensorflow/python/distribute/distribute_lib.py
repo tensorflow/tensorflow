@@ -836,45 +836,39 @@ class StrategyBase(object):
     where that limitation does not exist.
 
     The `dataset_fn` should take an `tf.distribute.InputContext` instance where
-    information about batching and input replication can be accessed:
+    information about batching and input replication can be accessed.
 
-    ```
-    def dataset_fn(input_context):
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
-      return d.shard(
-          input_context.num_input_pipelines, input_context.input_pipeline_id)
+    You can also use the `element_spec` property of the distributed dataset
+    returned by this API to query the `tf.TypeSpec` of the elements returned
+    by the iterator. This can be used to set the `input_signature` property
+    of a `tf.function`.
 
-    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+    >>> global_batch_size = 8
+    >>> def dataset_fn(input_context):
+    ...   batch_size = input_context.get_per_replica_batch_size(
+    ...                    global_batch_size)
+    ...   d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
+    ...   return d.shard(
+    ...       input_context.num_input_pipelines,
+    ...       input_context.input_pipeline_id)
 
-    for batch in inputs:
-      replica_results = strategy.run(replica_fn, args=(batch,))
-    ```
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> ds = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+
+    >>> def train(ds):
+    ...   @tf.function(input_signature=[ds.element_spec])
+    ...   def step_fn(inputs):
+    ...     # train the model with inputs
+    ...     return inputs
+
+    ...   for batch in ds:
+    ...     replica_results = strategy.run(replica_fn, args=(batch,))
+    >>> train(ds)
 
     IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
     per-replica batch size, unlike `experimental_distribute_dataset`, which uses
     the global batch size.  This may be computed using
     `input_context.get_per_replica_batch_size`.
-
-    To query the `tf.TypeSpec` of the elements in the distributed dataset
-    returned by this API, you need to use the `element_spec` property of the
-    distributed iterator. This `tf.TypeSpec` can be used to set the
-    `input_signature` property of a `tf.function`.
-
-    ```python
-    # If you want to specify `input_signature` for a `tf.function` you must
-    # first create the iterator.
-    iterator = iter(inputs)
-
-    @tf.function(input_signature=[iterator.element_spec])
-    def replica_fn_with_signature(inputs):
-      # train the model with inputs
-      return
-
-    for _ in range(steps):
-      strategy.run(replica_fn_with_signature,
-          args=(next(iterator),))
-    ```
 
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
