@@ -12225,6 +12225,17 @@ op {
   }
 }
 op {
+  name: "DeviceIndex"
+  output_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  attr {
+    name: "device_names"
+    type: "list(string)"
+  }
+}
+op {
   name: "Diag"
   input_arg {
     name: "diagonal"
