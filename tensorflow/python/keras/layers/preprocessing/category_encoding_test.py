@@ -109,6 +109,32 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(sparse_tensor_data, steps=1)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_sparse_input_with_weights(self):
+    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 4]], dtype=np.int64)
+    weights_array = np.array([[.1, .2, .3, .4], [.2, .1, .4, .3]])
+    sparse_tensor_data = sparse_ops.from_dense(input_array)
+    sparse_weight_data = sparse_ops.from_dense(weights_array)
+
+    # pyformat: disable
+    expected_output = [[0, .1, .2, .3, .4, 0],
+                       [0, .4, 0, .1, .5, 0]]
+    # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT)
+    int_data = layer(input_data, count_weights=weight_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=[input_data, weight_data], outputs=int_data)
+    output_dataset = model.predict([sparse_tensor_data, sparse_weight_data],
+                                   steps=1)
+    self.assertAllClose(expected_output, output_dataset)
+
   def test_sparse_input_sparse_output(self):
     sp_inp = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 1], [2, 0], [2, 1], [3, 1]],
@@ -145,6 +171,33 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(
         sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
         output_dataset)
+
+  def test_sparse_input_sparse_output_with_weights(self):
+    indices = [[0, 0], [1, 1], [2, 0], [2, 1], [3, 1]]
+    sp_inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 2, 1, 1, 0], dense_shape=[4, 2])
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    sp_weight = sparse_tensor.SparseTensor(
+        indices=indices, values=[.1, .2, .4, .3, .2], dense_shape=[4, 2])
+    weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
+
+    # The expected output should be (X for missing value):
+    # [[1, X, X, X]
+    #  [X, X, 1, X]
+    #  [X, 2, X, X]
+    #  [1, X, X, X]]
+    expected_indices = [[0, 0], [1, 2], [2, 1], [3, 0]]
+    expected_values = [.1, .2, .7, .2]
+    max_tokens = 6
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+    int_data = layer(input_data, count_weights=weight_data)
+
+    model = keras.Model(inputs=[input_data, weight_data], outputs=int_data)
+    sp_output_dataset = model.predict([sp_inp, sp_weight], steps=1)
+    self.assertAllClose(expected_values, sp_output_dataset.values)
+    self.assertAllEqual(expected_indices, sp_output_dataset.indices)
 
   def test_ragged_input(self):
     input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 1]])
