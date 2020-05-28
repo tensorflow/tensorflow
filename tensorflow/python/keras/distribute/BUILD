@@ -65,6 +65,7 @@ py_library(
 cuda_py_test(
     name = "worker_training_state_test",
     srcs = ["worker_training_state_test.py"],
+    python_version = "PY3",
     shard_count = 4,
     deps = [
         ":multi_worker_testing_utils",
@@ -312,6 +313,7 @@ py_library(
 cuda_py_test(
     name = "keras_optimizer_v2_test",
     srcs = ["keras_optimizer_v2_test.py"],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
@@ -325,6 +327,7 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
+    python_version = "PY3",
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
