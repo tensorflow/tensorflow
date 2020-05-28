@@ -88,6 +88,11 @@ from tensorflow.tools.docs import doc_controls
 # Prefix that is added to the TF op layer names.
 _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
+# TODO(mdan): Should we have a single generic type for types that can be passed
+# to tf.cast?
+_AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
+                   ragged_tensor.RaggedTensor)
+
 _keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                            'keras layers usage', 'method')
 _keras_model_gauge = monitoring.BoolGauge(
@@ -931,7 +936,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
             try:
               with base_layer_utils.autocast_context_manager(
-                  self._compute_dtype):
+                  self._compute_dtype_object):
                 # Add auto_control_deps in V2 when they are not already added by
                 # a `tf.function`.
                 if (ops.executing_eagerly_outside_functions() and
@@ -993,7 +998,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs, input_list)
           with base_layer_utils.autocast_context_manager(
-              self._compute_dtype):
+              self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks, build_graph)
@@ -2115,6 +2120,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._dtype_defaulted_to_floatx = (not dtype and
                                        policy.policy_defaults_to_floatx())
 
+    # Performance optimization: cache the compute dtype as a Dtype object or
+    # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
+    # TODO(b/157486353): Investigate returning DTypes in Policy.
+    if self._dtype_policy.compute_dtype:
+      self._compute_dtype_object = dtypes.as_dtype(
+          self._dtype_policy.compute_dtype)
+    else:
+      self._compute_dtype_object = None
+
   # TODO(reedwm): Expose this property?
   @property
   def _compute_dtype(self):
@@ -2142,22 +2156,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       `inputs`, but tensors may have been casted to self._compute_dtype
     """
-    compute_dtype = self._compute_dtype
+    compute_dtype_object = self._compute_dtype_object
     should_autocast = (
-        self._autocast and compute_dtype and
-        dtypes.as_dtype(compute_dtype).is_floating)
+        self._autocast and compute_dtype_object and
+        compute_dtype_object.is_floating)
 
     if (should_autocast and
-        any(self._should_cast_single_input(x) for x in input_list)):
+        any(map(self._should_cast_single_input, input_list))):
       # Only perform expensive `nest` operation when needed.
       return nest.map_structure(self._cast_single_input, inputs)
     else:
       return inputs
 
   def _should_cast_single_input(self, x):
-    cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
-                  ragged_tensor.RaggedTensor)
-    return (isinstance(x, cast_types) and x.dtype.is_floating and
+    return (isinstance(x, _AUTOCAST_TYPES) and x.dtype.is_floating and
             x.dtype.base_dtype.name != self._compute_dtype)
 
   def _cast_single_input(self, x):
@@ -2165,7 +2177,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if self._should_cast_single_input(x):
       if self._dtype_defaulted_to_floatx:
         self._warn_about_input_casting(x.dtype.base_dtype)
-      return math_ops.cast(x, self._compute_dtype)
+      return math_ops.cast(x, self._compute_dtype_object)
     else:
       return x
 

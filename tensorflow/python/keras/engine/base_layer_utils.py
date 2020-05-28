@@ -493,7 +493,7 @@ def autocast_context_manager(dtype):
   Returns:
     A context manager to automatically cast AutoCastVariables.
   """
-  if dtype and not dtypes.as_dtype(dtype).is_floating:
+  if dtype and not dtype.is_floating:
     dtype = None
   return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
 

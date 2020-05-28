@@ -5133,14 +5133,13 @@ class Graph(object):
     Returns:
       The dtype that instances of `AutoCastVariable` will be casted to.
     """
-    if not hasattr(self._thread_local, "_auto_cast_variable_read_dtype"):
+    dtype = getattr(self._thread_local, "_auto_cast_variable_read_dtype", None)
+    if dtype is None:
       self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
-    return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
+    return dtype
 
   @_auto_cast_variable_read_dtype.setter
   def _auto_cast_variable_read_dtype(self, dtype):
-    if dtype:
-      dtype = dtypes.as_dtype(dtype)
     self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
 
   @tf_contextlib.contextmanager
