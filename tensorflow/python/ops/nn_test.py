@@ -1207,6 +1207,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [4, 9])
 
+  @test_util.disable_xla("unsupported data format")
   def testNHWCToWHCN(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1215,6 +1216,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [9, 4, 3, 7])
 
+  @test_util.disable_xla("unsupported data format")
   def testNHWCToWHCN_Size2(self):
     x_val = [4, 9]
     x = constant_op.constant(x_val)
