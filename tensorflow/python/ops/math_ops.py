@@ -167,6 +167,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num_int = array_ops.convert_to_int_tensor(num, name="num")
     num = cast(num_int, dtype=start.dtype)
 
+    broadcast_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(start), array_ops.shape(stop))
+    start = array_ops.broadcast_to(start, broadcast_shape)
+    stop = array_ops.broadcast_to(stop, broadcast_shape)
+
     expanded_start = array_ops.expand_dims(start, axis=axis)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
 
@@ -175,15 +180,18 @@ def linspace_nd(start, stop, num, name=None, axis=0):
 
     axis = array_ops.where_v2(axis >= 0, axis, ndims + axis)
 
-    # to avoid having negative values in the range or zero division
-    # The result is sliced in the end so a correct result is returned for
+    # To avoid having negative values in the range or zero division
+    # the result is sliced in the end so a correct result is returned for
     # num == 1.
-    n_steps = gen_math_ops.maximum(num - 1., 1.)
-    delta = (expanded_stop - expanded_start) / n_steps
+    n_steps = gen_math_ops.maximum(num_int - 1, 1)
+    delta = (expanded_stop - expanded_start) / cast(n_steps,
+                                                    expanded_stop.dtype)
     # If num < 0, we will throw exception in the range
     # otherwise use the same div for delta
     range_end = array_ops.where_v2(num_int > 0, n_steps, -1)
-    num_range = range(1., range_end, dtype=start.dtype)
+    # Even though range supports an output dtype, its limited
+    # (e.g. doesn't support half at the moment).
+    num_range = cast(range(1, range_end, dtype=dtypes.int64), start.dtype)
     shape_range = range(ndims)
     ones_like_shape_range = array_ops.ones_like(shape_range)
     axis_tiled = ones_like_shape_range * axis

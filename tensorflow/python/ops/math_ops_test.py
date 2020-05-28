@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import distutils
+import itertools
+
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -783,6 +786,30 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinspaceTest(test_util.TensorFlowTestCase):
+
+  def testLinspaceBroadcasts(self):
+    if distutils.version.LooseVersion(
+        np.version.version) < distutils.version.LooseVersion("1.16.0"):
+      self.skipTest("numpy doesn't support axes before version 1.16.0")
+
+    shapes = [(), (2,), (2, 2)]
+
+    for start_shape, stop_shape in itertools.product(shapes, repeat=2):
+      for num in [1, 2, 20]:
+        ndims = max(len(start_shape), len(stop_shape))
+        for axis in range(-ndims, ndims):
+          start = np.ones(start_shape)
+          stop = 10 * np.ones(stop_shape)
+
+          np_ans = np.linspace(start, stop, num, axis=axis)
+          tf_ans = self.evaluate(
+              math_ops.linspace_nd(start, stop, num, axis=axis))
+
+          self.assertAllClose(np_ans, tf_ans)
 
 
 if __name__ == "__main__":
