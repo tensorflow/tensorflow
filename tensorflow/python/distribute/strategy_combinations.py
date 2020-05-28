@@ -159,13 +159,13 @@ central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
         ["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 multi_worker_mirrored_two_workers = combinations.NamedDistribution(
-    "MultiWorkerMirrroedTwoWorkers",
+    "MultiWorkerMirroredTwoWorkers",
     collective_all_reduce_strategy.CollectiveAllReduceStrategy,
     has_chief=False,
     num_workers=2,
 )
 multi_worker_mirrored_one_chief_one_worker = combinations.NamedDistribution(
-    "MultiWorkerMirrroedOneChiefOneWorker",
+    "MultiWorkerMirroredOneChiefOneWorker",
     collective_all_reduce_strategy.CollectiveAllReduceStrategy,
     has_chief=True,
     num_workers=1,
