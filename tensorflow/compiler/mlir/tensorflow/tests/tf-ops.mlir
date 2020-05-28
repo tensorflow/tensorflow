@@ -1048,6 +1048,36 @@ func @testIfRegionOpYieldMismatchElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -
 
 // -----
 
+// value generated in one branch cannot be consumed in the other branch
+func @testIfRegionElseConsumingThen(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "tf.IfRegion"(%arg0) ({
+     %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     // expected-error @+1 {{use of undeclared SSA value name}}
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfRegionThenConsumingElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+   %0 = "tf.IfRegion"(%arg0) ({
+     // expected-error @+1 {{does not dominate this use}}
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+      // expected-note @+1 {{operand defined here}}
+      %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // Test valid tf.MatrixBandPart
 // CHECK-LABEL: func @testValidMatrixBandPartOp
 func @testValidMatrixBandPartOp(%arg0: tensor<64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
