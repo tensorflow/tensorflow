@@ -19,7 +19,10 @@ tf_cc_shared_object(
 cc_library(
     name = "gcs_filesystem_impl",
     srcs = ["gcs_filesystem.cc"],
-    copts = get_win_copts(),
+    copts = select({
+        "//conditions:default": [],
+        "//tensorflow:windows": get_win_copts(),
+    }),
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
