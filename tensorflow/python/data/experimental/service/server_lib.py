@@ -20,9 +20,11 @@ from __future__ import print_function
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.data.service import _pywrap_server_lib
+from tensorflow.python.data.experimental.service import _pywrap_server_lib
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.experimental.service.MasterServer", v1=[])
 class MasterServer(object):
   """An in-process tf.data service master server.
 
@@ -30,21 +32,22 @@ class MasterServer(object):
   `tf.data.experimental.service.WorkerServer`s. When the workers start, they
   register themselves with the master.
 
-  ```
-  master_server = tf.data.experimental.service.MasterServer(port=5050)
-  worker_server = tf.data.experimental.service.WorkerServer(
-      port=0, master_address="localhost:5050")
-  dataset = tf.data.Dataset.range(10)
-  dataset = dataset.apply(tf.data.experimental.service.distribute(
-      processing_mode="parallel_epochs", service="grpc://localhost:5050"))
-  ```
+  >>> master = tf.data.experimental.service.MasterServer(port=0)
+  >>> master_address = master.target.split("://")[1]
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     port=0, master_address=master_address)
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+  ...     processing_mode="parallel_epochs", service=master.target))
+  >>> print(list(dataset.as_numpy_iterator()))
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data master process, use join() to block
   indefinitely after starting up the server.
 
   ```
-  master_server = tf.data.experimental.service.MasterServer(port=5050)
-  master_server.join()
+  master = tf.data.experimental.service.MasterServer(port=5050)
+  master.join()
   ```
   """
 
@@ -72,6 +75,9 @@ class MasterServer(object):
   def start(self):
     """Starts this server.
 
+    >>> master = tf.data.experimental.service.MasterServer(port=0, start=False)
+    >>> master.start()
+
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         starting the server.
@@ -84,8 +90,8 @@ class MasterServer(object):
     This is useful when starting a dedicated master process.
 
     ```
-    master_server = tf.data.experimental.service.MasterServer(port=5050)
-    master_server.join()
+    master = tf.data.experimental.service.MasterServer(port=5050)
+    master.join()
     ```
 
     Raises:
@@ -93,6 +99,21 @@ class MasterServer(object):
         joining the server.
     """
     self._server.join()
+
+  @property
+  def target(self):
+    """Returns a target that can be used to connect to the server.
+
+    >>> master = tf.data.experimental.service.MasterServer(port=0)
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+    ...     processing_mode="parallel_epochs", service=master.target))
+
+    The returned string will be in the form protocol://address, e.g.
+    "grpc://localhost:5050".
+    """
+    return "{0}://localhost:{1}".format(self._protocol,
+                                        self._server.bound_port())
 
   def _stop(self):
     """Stops the server.
@@ -119,6 +140,7 @@ class MasterServer(object):
     return self._server.num_workers()
 
 
+@tf_export("data.experimental.service.WorkerServer", v1=[])
 class WorkerServer(object):
   """An in-process tf.data service worker server.
 
@@ -127,22 +149,23 @@ class WorkerServer(object):
   RPC. A worker is associated with a single
   `tf.data.experimental.service.MasterServer`.
 
-  ```
-  master_server = tf.data.experimental.service.MasterServer(port=5050)
-  worker_server = tf.data.experimental.service.WorkerServer(
-      port=0, master_address="localhost:5050")
-  dataset = tf.data.Dataset.range(10)
-  dataset = dataset.apply(tf.data.experimental.service.distribute(
-      processing_mode="parallel_epochs", service="grpc://localhost:5050"))
-  ```
+  >>> master = tf.data.experimental.service.MasterServer(port=0)
+  >>> master_address = master.target.split("://")[1]
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     port=0, master_address=master_address)
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+  ...     processing_mode="parallel_epochs", service=master.target))
+  >>> print(list(dataset.as_numpy_iterator()))
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block
   indefinitely after starting up the server.
 
   ```
-  worker_server = tf.data.experimental.service.WorkerServer(
-      port=5050, master_address="grpc://localhost:5050")
-  worker_server.join()
+  worker = tf.data.experimental.service.WorkerServer(
+      port=5051, master_address="grpc://localhost:5050")
+  worker.join()
   ```
   """
 
@@ -198,7 +221,7 @@ class WorkerServer(object):
 
     ```
     worker_server = tf.data.experimental.service.WorkerServer(
-        port=5050, master_address="grpc://localhost:5050")
+        port=5051, master_address="grpc://localhost:5050")
     worker_server.join()
     ```
 

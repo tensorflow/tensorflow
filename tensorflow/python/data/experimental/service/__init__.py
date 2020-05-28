@@ -19,3 +19,5 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
+from tensorflow.python.data.experimental.service.server_lib import MasterServer
+from tensorflow.python.data.experimental.service.server_lib import WorkerServer
