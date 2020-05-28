@@ -886,15 +886,18 @@ class OrderedEnqueuer(SequenceEnqueuer):
         `(inputs, targets)` or
         `(inputs, targets, sample_weights)`.
     """
-    try:
-      while self.is_running():
-        inputs = self.queue.get(block=True).get()
-        self.queue.task_done()
+    while self.is_running():
+      try:
+        inputs = self.queue.get(block=True, timeout=5).get()
+        if self.is_running():
+          self.queue.task_done()
         if inputs is not None:
           yield inputs
-    except Exception:  # pylint: disable=broad-except
-      self.stop()
-      six.reraise(*sys.exc_info())
+      except queue.Empty:
+        pass
+      except Exception:  # pylint: disable=broad-except
+        self.stop()
+        six.reraise(*sys.exc_info())
 
 
 def init_pool_generator(gens, random_seed=None, id_queue=None):
