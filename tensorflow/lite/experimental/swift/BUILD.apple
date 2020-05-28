@@ -73,6 +73,23 @@ swift_library(
     }),
 )
 
+swift_library(
+    name = "TensorFlowLiteAllDelegates",
+    testonly = 1,
+    srcs = glob(["Sources/*.swift"]),
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
+)
+
 # bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/swift:TensorFlowLite_framework
 ios_static_framework(
     name = "TensorFlowLite_framework",
@@ -104,7 +121,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS,
     deps = [
         ":Resources",
-        ":TensorFlowLite",
+        ":TensorFlowLiteAllDelegates",
     ],
 )
 
