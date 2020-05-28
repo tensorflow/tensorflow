@@ -942,7 +942,10 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     return captured_tensor
 
 
-def indexed_case(branch_index, branch_fns, name="indexed_case"):
+def indexed_case(branch_index,
+                 branch_fns,
+                 name="indexed_case",
+                 lower_using_switch_merge=None):
   """Like conv_v2, except emits a Case op instead of an If."""
   if isinstance(branch_index, int):
     raise TypeError("branch_index must not be a Python int", branch_index)
@@ -976,7 +979,8 @@ def indexed_case(branch_index, branch_fns, name="indexed_case"):
     return _build_case(
         branch_index,
         branch_graphs, [g.external_captures for g in branch_graphs],
-        name=scope)
+        name=scope,
+        lower_using_switch_merge=lower_using_switch_merge)
 
 
 @ops.RegisterGradient("Case")
@@ -1064,7 +1068,11 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   return [None] + outputs
 
 
-def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
+def _build_case(branch_index,
+                branch_graphs,
+                branch_inputs,
+                name=None,
+                lower_using_switch_merge=None):
   """Creates an `Case` op from `branch_index`, branch graphs and inputs.
 
   Note that this modifies `branch_graphs` to make the inputs match, and to
@@ -1080,6 +1088,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
     branch_inputs: List of lists of Tensors to be passed to corresponding
       branch_graph as input.
     name: the name for the Case op.
+    lower_using_switch_merge: Lower this op using switch merge ops (optional).
 
   Returns:
     A list of Tensors which are the outputs of the Case op. Does not include
@@ -1105,7 +1114,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
   case_op, tensors = _get_op_and_outputs(tensors)
 
   if case_op is not None:
-    util.maybe_set_lowering_attr(case_op)
+    util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
     util.maybe_propagate_compile_time_consts_in_xla(case_op)
     _set_read_only_resource_inputs_attr(case_op, branch_graphs)
     # Prevent fetching since the variant outputs can't be fetched directly.
