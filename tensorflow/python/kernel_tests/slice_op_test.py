@@ -247,8 +247,8 @@ class SliceTest(test.TestCase):
         slice_t = array_ops.slice(a, [0, 0], [2, 2])
         slice2_t = a[:2, :2]
         slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
-        self.assertAllEqual(slice_val, inp[:2, :2])
-        self.assertAllEqual(slice2_val, inp[:2, :2])
+        self.assertAllEqual(slice_val, np.array(inp[:2, :2], dtype=np.float32))
+        self.assertAllEqual(slice2_val, np.array(inp[:2, :2], dtype=np.float32))
         self.assertEqual(slice_val.shape, slice_t.get_shape())
         self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
