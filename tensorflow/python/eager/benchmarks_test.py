@@ -852,11 +852,13 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def _benchmark_tf_reduce_logsumexp(self,
                                      device=CPU,
                                      execution_mode=None,
-                                     defunc=False):
+                                     defunc=False,
+                                     xla_compile=False):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       if defunc:
-        reduce_func = def_function.function(math_ops.reduce_logsumexp)
+        reduce_func = def_function.function(
+            math_ops.reduce_logsumexp, experimental_compile=xla_compile)
         func = lambda: reduce_func(x)
       else:
         func = lambda: math_ops.reduce_logsumexp(x)
@@ -896,6 +898,16 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_tf_reduce_logsumexp_GPU_async_defun(self):
     self._benchmark_tf_reduce_logsumexp(
         device=GPU, execution_mode=context.ASYNC, defunc=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, defunc=True, xla_compile=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_async_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC, defunc=True, xla_compile=True)
 
   def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
     with context.device(device):
