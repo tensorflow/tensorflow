@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "bfloat16_scope"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'\'], "
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "core"
