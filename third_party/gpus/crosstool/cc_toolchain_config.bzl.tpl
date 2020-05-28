@@ -281,14 +281,14 @@ def _no_canonical_prefixes_group(extra_flags):
 
 def _cuda_set(cuda_path, actions):
     if cuda_path:
-        return flag_set(
+        return [flag_set(
             actions = actions,
             flag_groups = [
                 flag_group(
                     flags = ["--cuda-path=" + cuda_path],
                 ),
             ],
-        )
+        )]
     else:
         return []
 
@@ -415,7 +415,7 @@ def _features(cpu, compiler, ctx):
                     ),
                 ] + _cuda_set(
                     ctx.attr.cuda_path,
-                    all_compile_actions,
+                    all_compile_actions(),
                 ) + [
                     flag_set(
                         actions = all_compile_actions(),
