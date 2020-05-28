@@ -63,10 +63,6 @@ class ExecutionInput {
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {}
-  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
-                 std::vector<ShapeIndex> owner_held_indices)
-      : buffers_(std::move(buffers)),
-        unowned_indices_(std::move(owner_held_indices)) {}
   ExecutionInput(ExecutionInput&&) = default;
 
   ~ExecutionInput() {
