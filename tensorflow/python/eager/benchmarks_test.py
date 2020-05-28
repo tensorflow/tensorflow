@@ -1231,6 +1231,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def benchmark_convert_tensor(self):
+    value = ops.convert_to_tensor(42)
+
+    def fn():
+      return ops.convert_to_tensor(value)
+
+    self._run(fn, 10000)
+
   def _benchmark_convert_constant(self, value, cached):
     global GLOBAL_TEST_VALUE
     GLOBAL_TEST_VALUE = value
