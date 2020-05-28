@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -94,6 +95,15 @@ static bool AreBroadcastCompatible(Value x, Value y) {
                                             y_ranked.getShape(), resultShape);
 }
 
+// Returns the shape of the given value in a Constant Op.
+ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
+  ArrayRef<int64_t> shape = value.getType().cast<ShapedType>().getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
 /// Performs the lowering to XLA dialect.
@@ -107,7 +117,7 @@ void LegalizeHloToTf::runOnFunction() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp>();
+  target.addLegalOp<CallOp, ConstantOp>();
   if (failed(applyPartialConversion(getFunction(), target, patterns)))
     signalPassFailure();
 }
