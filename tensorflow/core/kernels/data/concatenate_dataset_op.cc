@@ -76,7 +76,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   int64 Cardinality() const override {
     int64 n1 = input_->Cardinality();
     int64 n2 = to_concatenate_->Cardinality();
-    if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
+    if (n2 == kInfiniteCardinality) {
       return kInfiniteCardinality;
     }
     if (n1 == kUnknownCardinality || n2 == kUnknownCardinality) {
@@ -220,6 +220,10 @@ void ConcatenateDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                   " have different output_types %s and %s",
                   (DataTypeVectorString(input->output_dtypes()),
                    DataTypeVectorString(to_concatenate->output_dtypes()))));
+  if (input->Cardinality() == kInfiniteCardinality) {
+    output = input;
+    return;
+  }
   *output = new Dataset(ctx, input, to_concatenate);
 }
 
