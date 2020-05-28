@@ -40,7 +40,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   // A NestedComputer computes an element of the output of the given computation
   // given a Span of its input elements.
-  using NestedComputer = std::function<StatusOr<llvm::Value*>(
+  using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
@@ -91,12 +91,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view) override {
-    // TODO(b/118332391): Supported variadic return values.
-    auto result = compute_nested_(callee, parameters);
-    if (!result.ok()) {
-      return result.status();
-    }
-    return std::vector<llvm::Value*>{result.ValueOrDie()};
+    return compute_nested_(callee, parameters);
   }
 
   llvm::Value* EmitThreadId() override;

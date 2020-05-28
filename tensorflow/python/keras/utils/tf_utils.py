@@ -328,7 +328,7 @@ def shape_type_conversion(fn):
 
 
 def are_all_symbolic_tensors(tensors):
-  return all(is_symbolic_tensor(tensor) for tensor in tensors)
+  return all(map(is_symbolic_tensor, tensors))
 
 
 _user_convertible_tensor_types = set()
@@ -346,9 +346,12 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    tensor = ops.convert_to_tensor_or_composite(tensor)
-  if isinstance(tensor, variables.Variable):
+  if isinstance(tensor, ops.Tensor):
+    return hasattr(tensor, 'graph')
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
+  elif isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
     # TODO(omalleyt): We need a better way to check this in order to
@@ -356,12 +359,11 @@ def is_symbolic_tensor(tensor):
     # return Variables as outputs.
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
-  if isinstance(tensor, composite_tensor.CompositeTensor):
-    component_tensors = nest.flatten(tensor, expand_composites=True)
-    return any(hasattr(t, 'graph') for t in component_tensors)
-  if isinstance(tensor, ops.Tensor):
-    return hasattr(tensor, 'graph')
-  return False
+  elif isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
+    return is_symbolic_tensor(tensor)
+  else:
+    return False
 
 
 def register_symbolic_tensor_type(cls):
@@ -526,4 +528,3 @@ def to_numpy_or_python_type(tensors):
     return t  # Don't turn ragged or sparse tensors to NumPy.
 
   return nest.map_structure(_to_single_numpy_or_python_type, tensors)
-

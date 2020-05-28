@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests of `multi_worker_training_state.py` utilities."""
+"""Tests of `worker_training_state.py` utilities."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,12 +26,12 @@ from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
-from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 
 
-class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
-                                   parameterized.TestCase):
+class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
+                          parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
@@ -48,7 +48,7 @@ class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
         callbacks.ModelCheckpoint(
             filepath=saving_filepath, save_weights_only=save_weights_only)
     ]
-    self.assertFalse(training_state.checkpoint_exists(saving_filepath))
+    self.assertFalse(file_io.file_exists(saving_filepath))
 
     try:
       model.fit(
@@ -56,11 +56,10 @@ class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
     except NotFoundError as e:
       if 'Failed to create a NewWriteableFile' in e.message:
         self.skipTest('b/138941852, path not found error in Windows py35.')
-
-    self.assertTrue(training_state.checkpoint_exists(saving_filepath))
-    self.assertTrue(
-        training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))
-    self.assertFalse(training_state.checkpoint_exists(saving_filepath))
+    tf_saved_model_exists = file_io.file_exists(saving_filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists(saving_filepath +
+                                                            '.index')
+    self.assertTrue(tf_saved_model_exists or tf_weights_only_checkpoint_exists)
 
 
 if __name__ == '__main__':

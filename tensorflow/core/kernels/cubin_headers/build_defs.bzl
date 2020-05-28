@@ -22,6 +22,8 @@ def _gen_kernel_image_hdr_impl(ctx):
     cubins = []
     images = []
     for arch in ctx.attr.gpu_archs:
+        # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
+        arch = arch.replace("compute_", "sm_")
         filename = "%s.%s.cubin" % (name, arch)
         cubin = ctx.actions.declare_file(filename)
         ctx.actions.run(

@@ -20,8 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
+#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -35,15 +37,21 @@ class Arguments {
   Arguments() = default;
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddInt(const std::string& name, int value = 0);
+  void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
+  void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
+
+  void AddObject(const std::string& name, GPUObjectPtr&& object);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);
+  absl::Status SetImage2D(const std::string& name, cl_mem memory);
+  absl::Status SetBuffer(const std::string& name, cl_mem memory);
 
   std::string GetListOfArgs();
 
   absl::Status Bind(cl_kernel kernel, int offset);
 
-  void ResolveArgsPass(std::string* code);
+  absl::Status TransformToCLCode(std::string* code);
 
   // Move only
   Arguments(Arguments&& args);
@@ -53,6 +61,14 @@ class Arguments {
 
  private:
   std::string AddActiveArgument(const std::string& arg_name);
+  void AddGPUResources(const std::string& name, const GPUResources& resources);
+
+  absl::Status SetGPUResources(const std::string& name,
+                               const GPUResourcesWithValue& resources);
+
+  absl::Status AddObjectArgs();
+
+  void ResolveArgsPass(std::string* code);
 
   struct IntValue {
     int value;
@@ -79,6 +95,15 @@ class Arguments {
   };
   std::map<std::string, FloatValue> float_values_;
   std::vector<float> shared_float4s_data_;
+
+  std::map<std::string, GPUBufferDescriptor> buffers_;
+  std::map<std::string, GPUImage2DDescriptor> images2d_;
+
+  struct ObjectArg {
+    AccessType access_type;
+    GPUObjectPtr obj_ptr;
+  };
+  std::map<std::string, ObjectArg> objects_;
 };
 
 }  // namespace cl

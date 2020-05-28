@@ -66,8 +66,6 @@ _TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
 _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
-
 def to_list_of_strings(elements):
     """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
 
@@ -410,18 +408,40 @@ _NVCC_VERSION_PREFIX = "Cuda compilation tools, release "
 _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
 
 def compute_capabilities(repository_ctx):
-    """Returns a list of strings representing cuda compute capabilities."""
-    capabilities_str = get_host_environ(repository_ctx, _TF_CUDA_COMPUTE_CAPABILITIES)
-    if capabilities_str == None:
-        return _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-    capabilities = capabilities_str.split(",")
-    for capability in capabilities:
-        # Workaround for Skylark's lack of support for regex. This check should
-        # be equivalent to checking:
-        #     if re.match("[0-9]+.[0-9]+", capability) == None:
+    """Returns a list of strings representing cuda compute capabilities.
+
+    Args:
+      repository_ctx: the repo rule's context.
+    Returns: list of cuda architectures to compile for. 'compute_xy' refers to
+      both PTX and SASS, 'sm_xy' refers to SASS only.
+    """
+    capabilities = get_host_environ(
+        repository_ctx,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+        "compute_35,compute_52",
+    ).split(",")
+
+    # Map old 'x.y' capabilities to 'compute_xy'.
+    for i, capability in enumerate(capabilities):
         parts = capability.split(".")
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        if len(parts) != 2:
+            continue
+        capabilities[i] = "compute_%s%s" % (parts[0], parts[1])
+
+    # Make list unique
+    capabilities = dict(zip(capabilities, capabilities)).keys()
+
+    # Validate capabilities.
+    for capability in capabilities:
+        if not capability.startswith(("compute_", "sm_")):
             auto_configure_fail("Invalid compute capability: %s" % capability)
+        for prefix in ["compute_", "sm_"]:
+            if not capability.startswith(prefix):
+                continue
+            if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
+                continue
+            auto_configure_fail("Invalid compute capability: %s" % capability)
+
     return capabilities
 
 def lib_name(base_name, cpu_value, version = None, static = False):
@@ -849,21 +869,14 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    capability_flags = [
-        "--cuda-gpu-arch=sm_" + cap.replace(".", "")
-        for cap in compute_capabilities
-    ]
+    capability_flags = ["--no-cuda-include-ptx=all"]
+    for capability in compute_capabilities:
+        if capability.startswith("compute_"):
+            capability = capability.replace("compute_", "sm_")
+            capability_flags.append("--cuda-include-ptx=%s" % capability)
+        capability_flags.append("--cuda-gpu-arch=%s" % capability)
+
     return str(capability_flags)
-
-def _compute_cuda_gpu_architectures(repository_ctx, compute_capabilities):
-    gpu_architectures = [
-        "sm_" + capability.replace(".", "")
-        for capability in compute_capabilities
-    ]
-
-    # Make the list unique.
-    gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
-    return str(gpu_architectures)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
@@ -996,10 +1009,7 @@ def _create_local_cuda_repository(repository_ctx):
                 repository_ctx,
                 cuda_config.compute_capabilities,
             ),
-            "%{cuda_gpu_architectures}": _compute_cuda_gpu_architectures(
-                repository_ctx,
-                cuda_config.compute_capabilities,
-            ),
+            "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
         },
     )
 

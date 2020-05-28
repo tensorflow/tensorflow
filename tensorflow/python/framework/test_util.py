@@ -2128,7 +2128,9 @@ class TensorFlowTestCase(googletest.TestCase):
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
-        return tensor.numpy()
+        # Convert tensors and composite tensors to numpy arrays.
+        return nest.map_structure(lambda t: t.numpy(), tensor,
+                                  expand_composites=True)
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 

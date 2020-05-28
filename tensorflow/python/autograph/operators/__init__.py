@@ -62,5 +62,6 @@ from tensorflow.python.autograph.operators.slices import get_item
 from tensorflow.python.autograph.operators.slices import GetItemOpts
 from tensorflow.python.autograph.operators.slices import set_item
 from tensorflow.python.autograph.operators.variables import ld
+from tensorflow.python.autograph.operators.variables import ldu
 from tensorflow.python.autograph.operators.variables import Undefined
 from tensorflow.python.autograph.operators.variables import UndefinedReturnValue

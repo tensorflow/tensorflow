@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/ops.h"
+#include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -1165,6 +1166,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
+  BuildOutfeedReceiverSubmodule(&m);
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

@@ -64,6 +64,7 @@ else:
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
 from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
+from tensorflow.python.keras.layers.preprocessing.discretization import Discretization
 from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
 
 # Advanced activations.

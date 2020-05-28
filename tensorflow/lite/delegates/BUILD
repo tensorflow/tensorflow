@@ -21,6 +21,15 @@ package(
 )
 
 cc_library(
+    name = "status",
+    hdrs = ["status.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],

@@ -237,7 +237,6 @@ cond: A Tensor. If the tensor is a scalar of non-boolean type, the
     True and zero means False; if the scalar is a string, non-empty
     means True and empty means False. If the tensor is not a scalar,
     being empty means False and being non-empty means True.
-input: A list of input tensors.
 then_branch: A region that computes the outputs of the op if cond = true.
     It returns a list of tensors using tf.yield (as the terminator). The
     types of these returned tensors is same as that of the else_branch
@@ -248,7 +247,6 @@ else_branch: A region that computes the outputs of the op if cond = false.
 
   let arguments = (ins
     TF_Tensor:$cond,
-    Variadic<TF_Tensor>:$input,
 
     DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 

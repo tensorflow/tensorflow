@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
@@ -146,6 +148,13 @@ class Conv2DTester {
 
   int32_t DilationWidth() const { return dilation_width_; }
 
+  inline Conv2DTester& FP16Weights() {
+    fp16_weights_ = true;
+    return *this;
+  }
+
+  inline bool FP16Weights() const { return fp16_weights_; }
+
   Conv2DTester& SamePadding(bool same_padding) {
     same_padding_ = same_padding;
     return *this;
@@ -154,11 +163,7 @@ class Conv2DTester {
   bool SamePadding() const { return same_padding_; }
 
   void Test(TfLiteDelegate* delegate) const {
-    std::random_device random_device;
-    auto rng = std::mt19937(random_device());
-    auto f32rng = std::bind(std::uniform_real_distribution<float>(), rng);
-
-    std::vector<char> buffer = CreateTfLiteModel(std::ref(f32rng));
+    std::vector<char> buffer = CreateTfLiteModel();
     const Model* model = GetModel(buffer.data());
 
     std::unique_ptr<Interpreter> delegate_interpreter;
@@ -186,6 +191,10 @@ class Conv2DTester {
 
     ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate),
               kTfLiteOk);
+
+    std::random_device random_device;
+    auto rng = std::mt19937(random_device());
+    auto f32rng = std::bind(std::uniform_real_distribution<float>(), rng);
 
     float* default_input_data = default_interpreter->typed_tensor<float>(
         default_interpreter->inputs()[0]);
@@ -219,82 +228,149 @@ class Conv2DTester {
   }
 
  private:
-  std::vector<char> CreateTfLiteModel(std::function<float()> f32rng) const {
+  std::vector<char> CreateTfLiteModel() const {
+    std::random_device random_device;
+    auto rng = std::mt19937(random_device());
+    auto f32rng = std::bind(std::uniform_real_distribution<float>(), rng);
+
     flatbuffers::FlatBufferBuilder builder;
-    flatbuffers::Offset<OperatorCode> operator_code =
-        CreateOperatorCode(builder, BuiltinOperator_CONV_2D, 0);
+    std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
+        {CreateOperatorCode(builder, BuiltinOperator_CONV_2D, 0)}};
+    std::vector<flatbuffers::Offset<tflite::Operator>> operators;
+    std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
+        {CreateBuffer(builder, builder.CreateVector({}))}};
+
+    if (FP16Weights()) {
+      operator_codes.emplace_back(
+          CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+
+      auto f16rng = std::bind(fp16_ieee_from_fp32_value, f32rng);
+
+      std::vector<uint16_t> filter_data(OutputChannels() * KernelHeight() *
+                                        KernelWidth() * InputChannels());
+      std::vector<uint16_t> bias_data(OutputChannels());
+
+      std::generate(filter_data.begin(), filter_data.end(), f16rng);
+      std::generate(bias_data.begin(), bias_data.end(), f16rng);
+
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(uint16_t) * filter_data.size())));
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(uint16_t) * bias_data.size())));
+
+      const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
+      const std::array<int32_t, 1> dequantize_filter_outputs{{3}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/1,
+          builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                        dequantize_filter_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                        dequantize_filter_outputs.size())));
+      const std::array<int32_t, 1> dequantize_bias_inputs{{1}};
+      const std::array<int32_t, 1> dequantize_bias_outputs{{4}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/1,
+          builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
+                                        dequantize_bias_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
+                                        dequantize_bias_outputs.size())));
+    } else {
+      std::vector<float> filter_data(OutputChannels() * KernelHeight() *
+                                     KernelWidth() * InputChannels());
+      std::vector<float> bias_data(OutputChannels());
+
+      std::generate(filter_data.begin(), filter_data.end(), f32rng);
+      std::generate(bias_data.begin(), bias_data.end(), f32rng);
+
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(float) * filter_data.size())));
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
+    }
+
+    const std::array<int32_t, 4> input_shape{
+        {BatchSize(), InputHeight(), InputWidth(), InputChannels()}};
+    const std::array<int32_t, 4> output_shape{
+        {BatchSize(), OutputHeight(), OutputWidth(), OutputChannels()}};
+    const std::array<int32_t, 4> filter_shape{
+        {OutputChannels(), KernelHeight(), KernelWidth(), InputChannels()}};
+    const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
+
+    std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
+    if (FP16Weights()) {
+      tensors.emplace_back(
+          CreateTensor(builder,
+                       builder.CreateVector<int32_t>(filter_shape.data(),
+                                                     filter_shape.size()),
+                       TensorType_FLOAT16, /*buffer=*/1));
+      tensors.emplace_back(CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+          TensorType_FLOAT16, /*buffer=*/2));
+    }
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
+        TensorType_FLOAT32));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 1));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 2));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
+        TensorType_FLOAT32));
+
+    const std::array<int32_t, 3> op_inputs{
+        {static_cast<int>(tensors.size()) - 4,
+         static_cast<int>(tensors.size()) - 3,
+         static_cast<int>(tensors.size()) - 2}};
+    const std::array<int32_t, 1> op_outputs{
+        {static_cast<int>(tensors.size()) - 1}};
 
     flatbuffers::Offset<Conv2DOptions> conv2d_options = CreateConv2DOptions(
         builder, SamePadding() ? tflite::Padding_SAME : tflite::Padding_VALID,
         StrideWidth(), StrideHeight(), ActivationFunctionType_NONE,
         DilationWidth(), DilationHeight());
 
-    std::vector<float> filter_data(OutputChannels() * KernelHeight() *
-                                   KernelWidth() * InputChannels());
-    std::vector<float> bias_data(OutputChannels());
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/0,
+        builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
+        builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
+        BuiltinOptions_Conv2DOptions, conv2d_options.Union()));
 
-    std::generate(filter_data.begin(), filter_data.end(), f32rng);
-    std::generate(bias_data.begin(), bias_data.end(), f32rng);
-
-    flatbuffers::Offset<Buffer> buffers[3] = {
-        CreateBuffer(builder, builder.CreateVector({})),
-        CreateBuffer(builder,
-                     builder.CreateVector(
-                         reinterpret_cast<const uint8_t*>(filter_data.data()),
-                         sizeof(float) * filter_data.size())),
-        CreateBuffer(builder,
-                     builder.CreateVector(
-                         reinterpret_cast<const uint8_t*>(bias_data.data()),
-                         sizeof(float) * bias_data.size())),
-    };
-
-    const int32_t input_shape[4] = {BatchSize(), InputHeight(), InputWidth(),
-                                    InputChannels()};
-    const int32_t output_shape[4] = {BatchSize(), OutputHeight(), OutputWidth(),
-                                     OutputChannels()};
-    const int32_t filter_shape[4] = {OutputChannels(), KernelHeight(),
-                                     KernelWidth(), InputChannels()};
-    const int32_t bias_shape[1] = {OutputChannels()};
-
-    flatbuffers::Offset<Tensor> tensors[4] = {
-        CreateTensor(builder, builder.CreateVector<int32_t>(input_shape, 4),
-                     TensorType_FLOAT32, /*buffer=*/0,
-                     builder.CreateString("X")),
-        CreateTensor(builder, builder.CreateVector<int32_t>(filter_shape, 4),
-                     TensorType_FLOAT32, /*buffer=*/1,
-                     builder.CreateString("W")),
-        CreateTensor(builder, builder.CreateVector<int32_t>(bias_shape, 1),
-                     TensorType_FLOAT32, /*buffer=*/2,
-                     builder.CreateString("b")),
-        CreateTensor(builder, builder.CreateVector<int32_t>(output_shape, 4),
-                     TensorType_FLOAT32, /*buffer=*/0,
-                     builder.CreateString("Y")),
-    };
-
-    const int32_t op_inputs[3] = {0, 1, 2};
-    const int32_t op_outputs[1] = {3};
-
-    flatbuffers::Offset<Operator> op =
-        CreateOperator(builder, /*opcode_index=*/0,
-                       builder.CreateVector<int32_t>(op_inputs, 3),
-                       builder.CreateVector<int32_t>(op_outputs, 1),
-                       BuiltinOptions_Conv2DOptions, conv2d_options.Union());
-
-    int32_t subgraph_inputs[1] = {0};
-    int32_t subgraph_outputs[1] = {3};
-    flatbuffers::Offset<SubGraph> subgraph =
-        CreateSubGraph(builder, builder.CreateVector(tensors, 4),
-                       builder.CreateVector<int32_t>(subgraph_inputs, 1),
-                       builder.CreateVector<int32_t>(subgraph_outputs, 1),
-                       builder.CreateVector(&op, 1), /*name=*/0);
+    const std::array<int32_t, 1> subgraph_inputs{
+        {static_cast<int>(tensors.size()) - 4}};
+    const std::array<int32_t, 1> subgraph_outputs{
+        {static_cast<int>(tensors.size()) - 1}};
+    flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
+        builder, builder.CreateVector(tensors.data(), tensors.size()),
+        builder.CreateVector<int32_t>(subgraph_inputs.data(),
+                                      subgraph_inputs.size()),
+        builder.CreateVector<int32_t>(subgraph_outputs.data(),
+                                      subgraph_outputs.size()),
+        builder.CreateVector(operators.data(), operators.size()));
 
     flatbuffers::Offset<flatbuffers::String> description =
         builder.CreateString("Conv2D model");
 
     flatbuffers::Offset<Model> model_buffer = CreateModel(
-        builder, TFLITE_SCHEMA_VERSION, builder.CreateVector(&operator_code, 1),
+        builder, TFLITE_SCHEMA_VERSION,
+        builder.CreateVector(operator_codes.data(), operator_codes.size()),
         builder.CreateVector(&subgraph, 1), description,
-        builder.CreateVector(buffers, 3));
+        builder.CreateVector(buffers.data(), buffers.size()));
 
     builder.Finish(model_buffer);
 
@@ -313,6 +389,7 @@ class Conv2DTester {
   int32_t stride_width_ = 1;
   int32_t dilation_height_ = 1;
   int32_t dilation_width_ = 1;
+  bool fp16_weights_ = false;
   bool same_padding_ = true;
 };
 
@@ -503,6 +580,36 @@ TEST(Conv2D, DilationWithValidPadding) {
       .DilationHeight(dilation_rng())
       .DilationWidth(dilation_rng())
       .SamePadding(false)
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(Conv2D, FP16Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(1, 16), std::ref(rng));
+
+  Conv2DTester()
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding(true)
+      .FP16Weights()
       .Test(xnnpack_delegate.get());
 }
 

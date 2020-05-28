@@ -33,11 +33,14 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distributed_file_utils
-from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
+from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
@@ -1192,51 +1195,19 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
-    # pylint: disable=protected-access
-    if self.model._in_multi_worker_mode():
-      # MultiWorkerTrainingState is used to manage the training state needed
-      # for preemption-recovery of a worker in multi-worker training.
-      self.model._training_state = (
-          training_state.MultiWorkerTrainingState(self.model, self.filepath))
-      self._training_state = self.model._training_state
-      if self._training_state.restore():
-        # If the training state needs to be and is successfully restored,
-        # it is recovering from a previous failure (or preemption). In such
-        # case, do not load the weights from user specified file path.
-        return
-
-    # If this is not multi worker training, restoring is not needed, or
-    # restoring failed, check if it should load weights on restart.
     if self.load_weights_on_restart:
-      if (not self.model._in_multi_worker_mode() or
-          multi_worker_util.should_load_checkpoint()):
-        filepath_to_load = (
-            self._get_most_recently_modified_file_matching_pattern(
-                self.filepath))
-        if (filepath_to_load is not None and
-            training_state.checkpoint_exists(filepath_to_load)):
-          try:
-            # `filepath` may contain placeholders such as `{epoch:02d}`, and
-            # thus it attempts to load the most recently modified file with file
-            # name matching the pattern.
-            self.model.load_weights(filepath_to_load)
-          except (IOError, ValueError) as e:
-            raise ValueError('Error loading file from {}. Reason: {}'.format(
-                filepath_to_load, e))
-
-  def on_train_end(self, logs=None):
-    # pylint: disable=protected-access
-    if self.model._in_multi_worker_mode():
-      if self.model.stop_training or getattr(
-          self.model, '_successful_loop_finish', False):
-        # In multi-worker training, on successful exit of training, delete the
-        # training state backup file that was saved for the purpose of worker
-        # recovery.
-        self._training_state.delete_backup()
-        # Restore the training state so the model is ready for next (possible)
-        # multi worker training.
-        del self._training_state
-        self.model._training_state = None
+      filepath_to_load = (
+          self._get_most_recently_modified_file_matching_pattern(self.filepath))
+      if (filepath_to_load is not None and
+          self._checkpoint_exists(filepath_to_load)):
+        try:
+          # `filepath` may contain placeholders such as `{epoch:02d}`, and
+          # thus it attempts to load the most recently modified file with file
+          # name matching the pattern.
+          self.model.load_weights(filepath_to_load)
+        except (IOError, ValueError) as e:
+          raise ValueError('Error loading file from {}. Reason: {}'.format(
+              filepath_to_load, e))
 
   def on_train_batch_end(self, batch, logs=None):
     if self._should_save_on_batch(batch):
@@ -1249,17 +1220,7 @@ class ModelCheckpoint(Callback):
     self.epochs_since_last_save += 1
     # pylint: disable=protected-access
     if self.save_freq == 'epoch':
-      if self.model._in_multi_worker_mode():
-        # Exclude training state variables in user-requested checkpoint file.
-        with self._training_state.untrack_vars():
-          self._save_model(epoch=epoch, logs=logs)
-      else:
-        self._save_model(epoch=epoch, logs=logs)
-    if self.model._in_multi_worker_mode():
-      # For multi-worker training, back up the weights and current training
-      # state for possible future recovery.
-      # TODO(rchao): Call `back_up` at finer period such as N steps.
-      self._training_state.back_up(epoch)
+      self._save_model(epoch=epoch, logs=logs)
 
   def _should_save_on_batch(self, batch):
     """Handles batch-level saving logic, supports steps_per_execution."""
@@ -1353,6 +1314,14 @@ class ModelCheckpoint(Callback):
     distributed_file_utils.remove_temp_dir_with_filepath(
         self._write_filepath, self.model.distribute_strategy)
 
+  def _checkpoint_exists(self, filepath):
+    """Returns whether the checkpoint `filepath` refers to exists."""
+    if filepath.endswith('.h5'):
+      return file_io.file_exists(filepath)
+    tf_saved_model_exists = file_io.file_exists(filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+    return tf_saved_model_exists or tf_weights_only_checkpoint_exists
+
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
     """Returns the most recently modified filepath matching pattern.
 
@@ -1443,6 +1412,119 @@ class ModelCheckpoint(Callback):
       # If there are more than one file having latest modified time, return
       # the file path with the largest file name.
       return file_path_with_largest_file_name
+
+
+@keras_export('keras.callbacks.experimental.BackupAndRestore', v1=[])
+class BackupAndRestore(Callback):
+  """Callback to back up and restore the training state.
+
+  `BackupAndRestore` callback is intended to recover from interruptions that
+  happened in the middle of a model.fit execution by backing up the
+  training states in a temporary checkpoint file (based on TF CheckpointManager)
+  at the end of each epoch. If training restarted before completion, the
+  training state and model are restored to the most recently saved state at the
+  beginning of a new model.fit() run.
+  Note that user is responsible to bring jobs back up.
+  This callback is important for the backup and restore mechanism for fault
+  tolerance purpose. And the model to be restored from an previous checkpoint is
+  expected to be the same as the one used to back up. If user changes arguments
+  passed to compile or fit, the checkpoint saved for fault tolerance can become
+  invalid.
+
+  Note:
+  1. This callback is not compatible with disabling eager execution.
+  2. A checkpoint is saved at the end of each epoch, when restoring we'll redo
+  any partial work from an unfinished epoch in which the training got restarted
+  (so the work done before a interruption doesn't affect the final model state).
+  3. This works for both single worker and multi-worker mode, only
+  MirroredStrategy and MultiWorkerMirroredStrategy are supported for now.
+
+  Example:
+
+  >>> class InterruptingCallback(tf.keras.callbacks.Callback):
+  ...   def on_epoch_begin(self, epoch, logs=None):
+  ...     if epoch == 4:
+  ...       raise RuntimeError('Interrupting!')
+  >>> callback = tf.keras.callbacks.experimental.BackupAndRestore(
+  ... backup_dir="/tmp")
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> try:
+  ...   model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
+  ...             batch_size=1, callbacks=[callback, InterruptingCallback()],
+  ...             verbose=0)
+  ... except:
+  ...   pass
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
+  ...             batch_size=1, callbacks=[callback], verbose=0)
+  >>> # Only 6 more epochs are run, since first trainning got interrupted at
+  >>> # zero-indexed epoch 4, second training will continue from 4 to 9.
+  >>> len(history.history['loss'])
+  6
+
+  Arguments:
+      backup_dir: String, path to save the model file. This is the directory in
+        which the system stores temporary files to recover the model from jobs
+        terminated unexpectedly. The directory cannot be reused elsewhere to
+        store other checkpoints, e.g. by BackupAndRestore callback of another
+        training, or by another callback (ModelCheckpoint) of the same training.
+  """
+
+  def __init__(self, backup_dir):
+    super(BackupAndRestore, self).__init__()
+    self.backup_dir = backup_dir
+    self._supports_tf_logs = True
+    self._supported_strategies = (
+        distribute_lib._DefaultDistributionStrategy,
+        mirrored_strategy.MirroredStrategy,
+        collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+
+    if not context.executing_eagerly():
+      if ops.inside_function():
+        raise ValueError('This Callback\'s method contains Python state and '
+                         'should be called outside of `tf.function`s.')
+      else:  # Legacy graph mode:
+        raise ValueError(
+            'BackupAndRestore only supports eager mode. In graph '
+            'mode, consider using ModelCheckpoint to manually save '
+            'and restore weights with `model.load_weights()` and by '
+            'providing `initial_epoch` in `model.fit()` for fault tolerance.')
+
+    # Only the chief worker writes model checkpoints, but all workers
+    # restore checkpoint at on_train_begin().
+    self._chief_worker_only = False
+
+  def set_model(self, model):
+    self.model = model
+
+  def on_train_begin(self, logs=None):
+    # TrainingState is used to manage the training state needed for
+    # failure-recovery of a worker in training.
+    # pylint: disable=protected-access
+
+    if not isinstance(self.model.distribute_strategy,
+                      self._supported_strategies):
+      raise NotImplementedError(
+          'Currently only support empty strategy, MirroredStrategy and '
+          'MultiWorkerMirroredStrategy.')
+    self.model._training_state = (
+        worker_training_state.WorkerTrainingState(self.model, self.backup_dir))
+    self._training_state = self.model._training_state
+    self._training_state.restore()
+
+  def on_train_end(self, logs=None):
+    # pylint: disable=protected-access
+    # On exit of training, delete the training state backup file that was saved
+    # for the purpose of worker recovery.
+    self._training_state.delete_backup()
+
+    # Clean up the training state.
+    del self._training_state
+    del self.model._training_state
+
+  def on_epoch_end(self, epoch, logs=None):
+    # Back up the model and current epoch for possible future recovery.
+    self._training_state.back_up(epoch)
 
 
 @keras_export('keras.callbacks.EarlyStopping')

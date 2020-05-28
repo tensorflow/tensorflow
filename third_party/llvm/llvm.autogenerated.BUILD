@@ -2745,6 +2745,27 @@ cc_library(
 )
 
 cc_library(
+    name = "ml_policies",
+    srcs = glob([
+        "lib/Analysis/ML/*.c",
+        "lib/Analysis/ML/*.cpp",
+        "lib/Analysis/ML/*.inc",
+        "lib/Analysis/ML/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Analysis/ML/*.h",
+        "include/llvm/Analysis/ML/*.def",
+        "include/llvm/Analysis/ML/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "msp430_asm_parser",
     srcs = glob([
         "lib/Target/MSP430/AsmParser/*.c",
@@ -3227,6 +3248,7 @@ cc_library(
         ":inst_combine",
         ":instrumentation",
         ":ipo",
+        ":ml_policies",
         ":scalar",
         ":support",
         ":target",

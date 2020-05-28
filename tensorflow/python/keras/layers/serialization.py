@@ -48,6 +48,7 @@ from tensorflow.python.keras.layers import wrappers
 from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import discretization
 from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
@@ -64,7 +65,7 @@ ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                embeddings, einsum_dense, local, merge, noise, normalization,
                pooling, image_preprocessing, preprocessing_normalization_v1,
                preprocessing_text_vectorization_v1, recurrent, wrappers,
-               hashing, category_crossing, category_encoding_v1)
+               hashing, category_crossing, category_encoding_v1, discretization)
 ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2,
                   preprocessing_normalization, preprocessing_text_vectorization,
                   category_encoding)

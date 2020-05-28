@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -212,6 +213,63 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "outfeed_receiver",
+    srcs = ["outfeed_receiver.cc"],
+    hdrs = ["outfeed_receiver.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_outfeed_receiver_test",
+    size = "small",
+    srcs = ["outfeed_receiver_test.cc"],
+    deps = [
+        ":outfeed_receiver",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/pjrt:cpu_device",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "outfeed_receiver_py",
+    srcs = ["outfeed_receiver_py.cc"],
+    hdrs = ["outfeed_receiver_py.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":outfeed_receiver",
+        ":types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
 config_setting(
     name = "enable_gpu",
     values = {"define": "xla_python_enable_gpu=true"},
@@ -233,6 +291,7 @@ pybind_extension(
         ":dlpack",
         ":ops",
         ":python_ref_manager",
+        ":outfeed_receiver_py",
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",

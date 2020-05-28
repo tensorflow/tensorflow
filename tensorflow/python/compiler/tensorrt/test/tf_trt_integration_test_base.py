@@ -595,17 +595,32 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         if k not in removed_const_nodes
     }
 
-    # Compute the actual mapping from each node to its input nodes.
+    # Compute the actual mapping from each node to its input nodes. If a cast
+    # op doesn't exist in the original graph, we replace the use of the cast op
+    # with the input of the op. This allows the verification to handle the case
+    # where the TF-TRT bridge splits a cast op into a chain of two cast ops.
+    new_cast_op_name_to_node_map = {
+        node.name: node
+        for node in converted_gdef.node
+        if (node.name not in old_to_new_node_map and node.op == "Cast")
+    }
     actual_input_map = {}
     for node in converted_gdef.node:
       name_str = node.name
+      # Only nodes from the original graph or TRTEngineOp nodes are added as
+      # keys to the map.
       if node.op == "TRTEngineOp":
         name_str = self._RemoveGraphSequenceNumber(name_str)
+      elif name_str not in old_to_new_node_map:
+        continue
       actual_input_map[name_str] = set()
       input_set = actual_input_map[name_str]
       for inp in node.input:
         (prefix, node_name) = _InputName(inp)
         node_name = self._MayRemoveGraphSequenceNumber(node_name)
+        if node_name in new_cast_op_name_to_node_map:
+          (prefix, node_name) = _InputName(
+              new_cast_op_name_to_node_map[node_name].input[0])
         input_set.add(prefix + node_name)
 
     self.assertEqual(
