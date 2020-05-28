@@ -637,6 +637,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
         // Clear accumulators.
         RUY_MAKE_ZERO(q6)
+        RUY_MAKE_ZERO(q7)
         "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
         RUY_MAKE_ZERO(q8)
         RUY_MAKE_ZERO(q9)
