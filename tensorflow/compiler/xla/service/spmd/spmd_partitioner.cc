@@ -2325,18 +2325,44 @@ Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
   if (reverse->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
-  if (absl::c_all_of(reverse->dimensions(), [&](int64 d) {
-        return reverse->sharding().tile_assignment().dim(d) == 1;
-      })) {
-    auto operand =
-        GetPartitionedHlo(reverse->operand(0)).Reshard(reverse->sharding());
-    SetPartitionedHlo(hlo, [&] {
-      return b_.AddInstruction(
-          hlo->CloneWithNewOperands(operand.hlo()->shape(), {operand.hlo()}));
-    });
-    return Status::OK();
+  auto operand = GetPartitionedHlo(reverse->operand(0))
+                     .Reshard(hlo_sharding_util::ReverseSharding(
+                         reverse->sharding(), reverse->dimensions()));
+  // Create a window config to halo exchange for unevenly partitioned reverse
+  // dimensions.
+  Window window;
+  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(1);
+    dim->set_stride(1);
+    dim->set_window_dilation(1);
+    dim->set_window_reversal(false);
+    int64 low_padding = 0;
+    if (absl::c_linear_search(reverse->dimensions(), i)) {
+      low_padding =
+          RoundUpToNearest(reverse->shape().dimensions(i),
+                           reverse->sharding().tile_assignment().dim(i)) -
+          reverse->shape().dimensions(i);
+    }
+    dim->set_padding_low(low_padding);
+    dim->set_padding_high(0);
+    dim->set_base_dilation(1);
   }
-  return DefaultAction(hlo);
+
+  auto reshard_operand = operand.ReshardAsWindowedInput(
+      window, operand.sharding(),
+      CreateZero(ShapeUtil::MakeShape(hlo->shape().element_type(), {}), &b_),
+      /*mask_invalid_region=*/false);
+  if (!reshard_operand.has_value()) {
+    return DefaultAction(hlo);
+  }
+  TF_RET_CHECK(!reshard_operand->dynamic_slice_index_on_output.has_value());
+  SetPartitionedHlo(hlo, [&] {
+    return b_.AddInstruction(
+        hlo->CloneWithNewOperands(reshard_operand->sharded_input->shape(),
+                                  {reshard_operand->sharded_input}));
+  });
+  return Status::OK();
 }
 
 Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {

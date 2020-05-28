@@ -3212,7 +3212,7 @@ ENTRY entry {
                     op::Shape("f32[9,9]")));
 }
 
-TEST_F(SpmdPartitioningTest, TiledReverse) {
+TEST_F(SpmdPartitioningTest, TiledReversePassthrough) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -3230,6 +3230,62 @@ ENTRY entry {
                           op::Reverse(op::DynamicSlice(
                               op::Pad(op::Constant(), op::Constant()),
                               op::Reshape(), op::Constant()))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReversePassthroughViaReversedSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[2]"), op::Reverse(op::Parameter(0))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseSwapShards) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"),
+                    op::Reverse(op::CollectivePermute(op::Parameter(0)))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[3] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[3] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto halo_exchange_concat =
+      op::Concatenate(AllOf(op::Shape("f32[1]"),
+                            op::CollectivePermute(op::Slice(op::Parameter(0)))),
+                      op::Parameter(0));
+  auto after_halo_exchange = op::Slice(halo_exchange_concat);
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"), op::Reverse(after_halo_exchange)));
 }
 
 TEST_F(SpmdPartitioningTest, MixWithManualPartitioning) {
