@@ -308,9 +308,11 @@ static port::Status InternalInit() {
 
   if (res == CUDA_SUCCESS) {
     return port::Status::OK();
+  } else if (res == CUDA_ERROR_SHARED_OBJECT_INIT_FAILED) {
+    LOG(WARNING) << "failed call to cuInit: " << ToString(res);    
+  } else {
+    LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
-
-  LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
   return port::Status(port::error::ABORTED,
                       absl::StrCat("failed call to cuInit: ", ToString(res)));
