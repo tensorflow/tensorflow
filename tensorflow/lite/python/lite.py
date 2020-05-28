@@ -201,11 +201,6 @@ class QuantizationMode(object):
             self._representative_dataset is not None and
             self._smallest_supported_type() == constants.INT8)
 
-  def is_post_training_integer_quantize(self):
-    """Post training integer quantization."""
-    return (self.post_training_int8_no_float() or
-            self.post_training_int8_allow_float())
-
   def training_time_int8_allow_float(self):
     """Training-time int8 quantize, allow float fallback."""
     return (self._any_optimization_enabled() and
@@ -418,56 +413,7 @@ class TFLiteConverterBase(object):
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
-  """Converter subclass to share functionality between V2 converters.
-
-  Attributes:
-    allow_custom_ops: Boolean indicating whether to allow custom operations.
-      When False, any unknown operation is an error. When True, custom ops are
-      created for any op that is unknown. The developer needs to provide these
-      to the TensorFlow Lite runtime with a custom resolver. (default False)
-    optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
-    representative_dataset: A representative dataset that can be used to
-      generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations. Note that this is an optional
-      attribute but it is necessary if INT8 is the only support builtin ops in
-      target ops.
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
-    inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
-    inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
-    experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
-  """
-
-  def __init__(self):
-    """Constructor for TFLiteConverter."""
-    super(TFLiteConverterBaseV2, self).__init__()
-    self.inference_input_type = constants.FLOAT
-    self.inference_output_type = constants.FLOAT
-
-  def _validate_inference_input_output_types(self, quant_mode):
-    """Validate inference_input_type and inference_output_type flags."""
-    default_types = [constants.FLOAT, None]
-    # We only support integer types for post training integer quantization
-    # as we have statistical information to quantize the input and output.
-    if quant_mode.is_post_training_integer_quantize():
-      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
-      if self.inference_input_type not in all_types or \
-          self.inference_output_type not in all_types:
-        all_types_names = ["tf." + t.name for t in all_types]
-        raise ValueError("The inference_input_type and inference_output_type "
-                         "must be in {}.".format(all_types_names))
-    elif self.inference_input_type not in default_types or \
-        self.inference_output_type not in default_types:
-      raise ValueError("The inference_input_type and inference_output_type "
-                       "must be tf.float32.")
+  """Converter subclass to share functionality between V2 converters."""
 
   def convert(self, graph_def, input_tensors, output_tensors):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -490,8 +436,6 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     """
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, graph_def)
-
-    self._validate_inference_input_output_types(quant_mode)
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -535,9 +479,6 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           "quantize_to_float16": True,
       })
 
-    # Converter requires that the inference_input_type flag is set to FLOAT
-    converter_kwargs.update({"inference_input_type": constants.FLOAT})
-
     if not self.experimental_new_converter:
       logging.warning(
           "Please consider switching to use new converter by setting "
@@ -557,11 +498,11 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         **converter_kwargs)
 
     if quant_mode.post_training_int8_no_float():
-      result = self._calibrate_quantize_model(result, self.inference_input_type,
-                                              self.inference_output_type, False)
+      result = self._calibrate_quantize_model(result, constants.FLOAT,
+                                              constants.FLOAT, False)
     elif quant_mode.post_training_int8_allow_float():
-      result = self._calibrate_quantize_model(result, self.inference_input_type,
-                                              self.inference_output_type, True)
+      result = self._calibrate_quantize_model(result, constants.FLOAT,
+                                              constants.FLOAT, True)
 
     if self._experimental_sparsify_model:
       result = _mlir_sparsify(result)
@@ -817,9 +758,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
   Attributes:
     allow_custom_ops: Boolean indicating whether to allow custom operations.
-      When False, any unknown operation is an error. When True, custom ops are
-      created for any op that is unknown. The developer needs to provide these
-      to the TensorFlow Lite runtime with a custom resolver. (default False)
+      When false any unknown operation is an error. When true, custom ops are
+      created for any op that is unknown. The developer will need to provide
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
+    target_spec: Experimental flag, subject to change. Specification of target
+      device.
     optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
@@ -827,19 +771,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       dataset to evaluate different optimizations. Note that this is an optional
       attribute but it is necessary if INT8 is the only support builtin ops in
       target ops.
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
-    inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
-    inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
-    experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
-
+    experimental_new_converter: Experimental flag, subject to change.
+      Enables MLIR-based conversion instead of TOCO conversion.
   Example usage:
 
     ```python
