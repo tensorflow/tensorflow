@@ -2423,7 +2423,7 @@ class CSVLogger(Callback):
 
     if self.model.stop_training:
       # We set NA so that csv parsers do not fail for this last epoch.
-      logs = dict([(k, logs[k]) if k in logs else (k, 'NA') for k in self.keys])
+      logs = dict((k, logs[k]) if k in logs else (k, 'NA') for k in self.keys)
 
     if not self.writer:
 
