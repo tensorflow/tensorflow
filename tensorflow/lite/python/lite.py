@@ -279,7 +279,7 @@ class QuantizationMode(object):
     })
 
     for node_def in self._graph_def.node:
-      if any([op in node_def.name for op in training_quant_ops]):
+      if any(op in node_def.name for op in training_quant_ops):
         return True
     return False
 

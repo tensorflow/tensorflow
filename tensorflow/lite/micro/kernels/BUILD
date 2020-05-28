@@ -51,6 +51,7 @@ cc_library(
         "split.cc",
         "strided_slice.cc",
         "sub.cc",
+        "tanh.cc",
         "unpack.cc",
     ] + select({
         "//conditions:default": [
@@ -153,6 +154,7 @@ cc_library(
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
+        "tanh.cc",
         "unpack.cc",
     ],
     hdrs = ["micro_ops.h"],
@@ -653,6 +655,17 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "tanh_test",
+    srcs = ["tanh_test.cc"],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

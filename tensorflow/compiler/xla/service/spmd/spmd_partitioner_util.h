@@ -57,6 +57,10 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding);
 // target sharding.
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding);
 
+// Similar to ShapeUtil::ByteSizeOf(), but does not check it has dense layout
+// since this can be before layout assignment.
+int64 ShapeSizeInBytes(const Shape& shape);
+
 // Returns the shard shape for a partition without padding due to uneven
 // sharding.
 Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,

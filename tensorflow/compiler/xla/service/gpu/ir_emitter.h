@@ -89,7 +89,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleRecv(HloInstruction* recv) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
@@ -213,7 +212,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);
 
-  StatusOr<llvm::Value*> ComputeNestedElement(
+  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
       const HloComputation& computation,
       absl::Span<llvm::Value* const> parameter_elements);
 

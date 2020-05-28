@@ -768,7 +768,7 @@ class Layer(base_layer.Layer):
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
-                  self._compute_dtype):
+                  self._compute_dtype_object):
                 outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
@@ -813,7 +813,7 @@ class Layer(base_layer.Layer):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
           with base_layer_utils.autocast_context_manager(
-              self._compute_dtype):
+              self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -1748,6 +1748,14 @@ class Layer(base_layer.Layer):
     # warnings.
     self._dtype_defaulted_to_floatx = (not dtype and
                                        policy.policy_defaults_to_floatx())
+
+    # Performance optimization: cache the compute dtype as a Dtype object or
+    # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
+    if self._dtype_policy.compute_dtype:
+      self._compute_dtype_object = dtypes.as_dtype(
+          self._dtype_policy.compute_dtype)
+    else:
+      self._compute_dtype_object = None
 
   # TODO(reedwm): Expose this property?
   @property

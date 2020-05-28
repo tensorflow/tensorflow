@@ -81,11 +81,10 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   string report = hlo->ToString();
   int64 max_value = -1;
   for (HloInstruction* inst : group) {
-    if (inst->shape().IsTuple()) {
+    if (!inst->shape().IsArray()) {
       continue;
     }
-    max_value =
-        std::max<int64>(max_value, ShapeUtil::ByteSizeOf(inst->shape(), 4));
+    max_value = std::max<int64>(max_value, ShapeSizeInBytes(inst->shape()));
     absl::StrAppend(&report, "     * ", inst->ToString(), "\n");
   }
   entries_.push_back(std::make_pair(max_value, report));
@@ -149,14 +148,14 @@ template <typename F>
   const auto add_report = [&](std::vector<HloInstruction*>* insts) {
     std::sort(insts->begin(), insts->end(),
               [](const HloInstruction* inst0, const HloInstruction* inst1) {
-                return ShapeUtil::ByteSizeOf(inst0->shape()) >
-                       ShapeUtil::ByteSizeOf(inst1->shape());
+                return ShapeSizeInBytes(inst0->shape()) >
+                       ShapeSizeInBytes(inst1->shape());
               });
     for (int64 i = 0;
          i < std::min<int64>(report_instruction_count, insts->size()); ++i) {
       absl::StrAppend(&report, "  ",
                       tensorflow::strings::HumanReadableNumBytes(
-                          ShapeUtil::ByteSizeOf((*insts)[i]->shape())),
+                          ShapeSizeInBytes((*insts)[i]->shape())),
                       " : ", (*insts)[i]->ToString(), "\n");
     }
   };
@@ -1180,8 +1179,8 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
     if (GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
             operand, scatter_dims_to_operand_dims, slice_size,
             num_partitions_) &&
-        ShapeUtil::ByteSizeOf(updates.base_shape()) <
-            ShapeUtil::ByteSizeOf(scatter->shape())) {
+        ShapeSizeInBytes(updates.base_shape()) <
+            ShapeSizeInBytes(scatter->shape())) {
       // Operand is sharded on trivial slice dims (update slice size 1). We can
       // adjust the indices on each partition by subtracting the offsets. Then
       // we execute a scatter on full updated indices, and out-of-bound accesses
@@ -1968,8 +1967,8 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
     if (GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
             operand, start_index_map, gather->gather_slice_sizes(),
             num_partitions_) &&
-        ShapeUtil::ByteSizeOf(gather->shape()) <
-            ShapeUtil::ByteSizeOf(gather->operand(0)->shape())) {
+        ShapeSizeInBytes(gather->shape()) <
+            ShapeSizeInBytes(gather->operand(0)->shape())) {
       indices = indices.Reshard(HloSharding::Replicate());
       // Now the operand is partitioned in trivial slice dimensions, and the
       // indices are replicated. We execute a gather on partitioned operand,
@@ -2762,8 +2761,7 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
 
   auto zero = b_.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(hlo->shape().element_type())));
-  if (ShapeUtil::ByteSizeOf(lhs.base_shape()) <
-      ShapeUtil::ByteSizeOf(rhs.base_shape())) {
+  if (ShapeSizeInBytes(lhs.base_shape()) < ShapeSizeInBytes(rhs.base_shape())) {
     if (unsupported_sharding(aligned_lhs_sharding, rhs.sharding())) {
       return DefaultAction(hlo);
     }
@@ -3005,8 +3003,8 @@ Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
       };
       auto zero = b_.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(hlo->shape().element_type())));
-      if (ShapeUtil::ByteSizeOf(lhs.base_shape()) <
-          ShapeUtil::ByteSizeOf(rhs.base_shape())) {
+      if (ShapeSizeInBytes(lhs.base_shape()) <
+          ShapeSizeInBytes(rhs.base_shape())) {
         if (unsupported_sharding(aligned_lhs_sharding, rhs.sharding())) {
           return DefaultAction(hlo);
         }
@@ -3731,7 +3729,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
   };
   if (output_lhs_non_contracting_partitions == num_partitions_ &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      ShapeUtil::ByteSizeOf(hlo->operand(1)->shape()) >=
+      ShapeSizeInBytes(hlo->operand(1)->shape()) >=
           options_.threshold_for_windowed_einsum_mib * 1024 * 1024) {
     if (rhs_contracting_partitions == num_partitions_) {
       return emit_windowed_dot_general(0, 1, true, false);
@@ -3745,7 +3743,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
   }
   if (output_rhs_non_contracting_partitions == num_partitions_ &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      ShapeUtil::ByteSizeOf(hlo->operand(0)->shape()) >=
+      ShapeSizeInBytes(hlo->operand(0)->shape()) >=
           options_.threshold_for_windowed_einsum_mib * 1024 * 1024) {
     if (lhs_contracting_partitions == num_partitions_) {
       return emit_windowed_dot_general(1, 0, true, false);
@@ -3775,8 +3773,8 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
         LiteralUtil::Zero(hlo->shape().element_type())));
     // Pad both sides with zero, since NaN at one side cannot be masked by zero
     // on the other side.
-    if (ShapeUtil::ByteSizeOf(lhs.base_shape()) <
-        ShapeUtil::ByteSizeOf(rhs.base_shape())) {
+    if (ShapeSizeInBytes(lhs.base_shape()) <
+        ShapeSizeInBytes(rhs.base_shape())) {
       lhs =
           lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithValue(zero);
       rhs = rhs.PadWithValue(zero);
@@ -4607,8 +4605,8 @@ HloInstruction* SpmdPartitioner::AllGatherShards(SpmdBuilder* b,
       xpose_permutation[i] = i + tiled_dims.size() - split_dims_added;
     } else {
       xpose_permutation[i] = split_dims_added;
+      xpose_permutation[i + 1] = i + tiled_dims.size() - split_dims_added;
       split_dims_added++;
-      xpose_permutation[i + 1] = i + tiled_dims.size();
       i++;
     }
   }

@@ -74,6 +74,13 @@ class BinaryElementwiseTester {
 
   inline bool Input2Static() const { return input2_static_; }
 
+  inline BinaryElementwiseTester& FP16Weights() {
+    fp16_weights_ = true;
+    return *this;
+  }
+
+  inline bool FP16Weights() const { return fp16_weights_; }
+
   inline BinaryElementwiseTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -114,6 +121,7 @@ class BinaryElementwiseTester {
   std::vector<int32_t> input2_shape_;
   bool input1_static_ = false;
   bool input2_static_ = false;
+  bool fp16_weights_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

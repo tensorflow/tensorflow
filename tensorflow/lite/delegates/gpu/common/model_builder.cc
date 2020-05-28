@@ -402,6 +402,13 @@ class AddOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError("ADD requires two input tensors.");
     }
     // TODO(eignasheva): Add shapes check.
+    for (int i = 0; i < 2; i++) {
+      auto input = tflite::GetInput(context, tflite_node, i);
+      if (IsConstantTensor(input) && input->dims->size > 0) {
+        RETURN_IF_ERROR(CheckIfLinearConvertible(input->dims));
+      }
+    }
+
     TfLiteAddParams* tf_options = nullptr;
     return RetrieveBuiltinData(tflite_node, &tf_options);
   }
@@ -2453,15 +2460,15 @@ class TransformLandmarksV2OperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
     std::string op_name = "transform_landmarks_v2";
     node->operation.type = op_name;
-    BHWC output_shape;
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    BHWC output_shape = output_value->tensor.shape;
     RETURN_IF_ERROR(
         ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
                               tflite_node->custom_initial_data_size,
                               &(node->operation.attributes), &output_shape));
 
-    auto output_value = graph->FindOutputs(node->id)[0];
-
-    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
     return absl::OkStatus();
   }
 

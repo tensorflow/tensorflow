@@ -649,6 +649,43 @@ ENTRY entry {
                           op::ReduceWindow(masked, op::Constant())));
 }
 
+TEST_F(SpmdPartitioningTest, ReduceWindowTiledOneSideHaloBeyondNeighbor) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[9,2] parameter(0), sharding={devices=[5,1]0,1,2,3,4}
+  constant.1 = f32[] constant(0), sharding={replicated}
+  ROOT reduce-window = f32[5,2]{1,0} reduce-window(param, constant.1),
+    window={size=4x1 stride=2x1 pad=3_0x0_0}, to_apply=sum,
+    sharding={devices=[5,1]0,1,2,3,4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/5));
+  VLOG(1) << module->ToString();
+  auto halo0 = AllOf(op::Shape("f32[1,2]"),
+                     op::CollectivePermute(op::Slice(op::Parameter(0))));
+  auto halo1 =
+      AllOf(op::Shape("f32[2,2]"), op::CollectivePermute(op::Parameter(0)));
+  auto pre_mask =
+      AllOf(op::Shape("f32[4,2]"),
+            op::Slice(AllOf(op::Shape("f32[5,2]"),
+                            op::Concatenate(halo0, halo1, op::Parameter(0)))));
+  auto masked =
+      op::Select(op::Compare(op::Add(op::Iota(), op::Broadcast(op::Multiply())),
+                             op::Broadcast(op::Constant())),
+                 pre_mask, op::Broadcast(op::Constant()));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[1,2]{1,0}"),
+                          op::ReduceWindow(masked, op::Constant())));
+}
+
 TEST_F(SpmdPartitioningTest, ReduceWindowTiledOneSideUnequalHalo) {
   const char* const hlo_string = R"(
 HloModule module

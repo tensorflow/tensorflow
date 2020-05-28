@@ -654,6 +654,15 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      square_real = math_ops.square(math_ops.real(x))
+      square_imag = math_ops.square(math_ops.imag(x))
+      square_sum = math_ops.real(
+          math_ops.reduce_sum(square_real + square_imag, axis, keepdims=True))
+      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
+      norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
+      return math_ops.complex(norm_real, norm_imag, name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)

@@ -279,22 +279,6 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "tftext_utils_test",
-    size = "small",
-    srcs = ["utils/lstm_utils_test.cc"],
-    deps = [
-        ":lstm_utils",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
 cc_library(
     name = "stateful_ops_utils",
     srcs = [

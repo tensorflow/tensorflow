@@ -481,6 +481,7 @@ cc_library(
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
+        "reference/tanh.h",
     ],
     build_for_embedded = True,
     copts = tflite_copts(),
@@ -551,6 +552,7 @@ cc_library(
         "reference/softmax.h",
         "reference/strided_slice.h",
         "reference/sub.h",
+        "reference/tanh.h",
     ],
     copts = tflite_copts(),
     deps = [

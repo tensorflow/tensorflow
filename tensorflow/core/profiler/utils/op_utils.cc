@@ -63,13 +63,11 @@ void HostOpMetricsDbBuilder::UpdateHostInfeedEnqInfo(
       start_timestamp_ps_diff);
 }
 
-void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
-                                       absl::string_view name,
-                                       absl::string_view category,
-                                       absl::string_view provenance,
-                                       bool is_eager, uint64 occurrences,
-                                       uint64 time_ps, uint64 children_time_ps,
-                                       int64 flops, int64 bytes_accessed) {
+void DeviceOpMetricsDbBuilder::EnterOp(
+    uint64 program_id, absl::string_view name, absl::string_view category,
+    absl::string_view provenance, bool is_eager, uint64 occurrences,
+    uint64 time_ps, uint64 children_time_ps, int64 flops, int64 bytes_accessed,
+    const std::vector<OpMetrics::MemoryAccessed>& memory_accessed_breakdown) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
@@ -89,6 +87,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
       op_metrics->bytes_accessed() +
       GetCappedPerf(bytes_accessed * occurrences, self_time_ps,
                     peak_hbm_bw_giga_bytes_per_second_ / 1000));
+  for (const auto& memory_accessed : memory_accessed_breakdown) {
+    *op_metrics->add_memory_accessed_breakdown() = memory_accessed;
+  }
   db()->set_total_op_time_ps(db()->total_op_time_ps() + self_time_ps);
 }
 

@@ -52,6 +52,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -61,6 +62,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
@@ -850,11 +852,13 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def _benchmark_tf_reduce_logsumexp(self,
                                      device=CPU,
                                      execution_mode=None,
-                                     defunc=False):
+                                     defunc=False,
+                                     xla_compile=False):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       if defunc:
-        reduce_func = def_function.function(math_ops.reduce_logsumexp)
+        reduce_func = def_function.function(
+            math_ops.reduce_logsumexp, experimental_compile=xla_compile)
         func = lambda: reduce_func(x)
       else:
         func = lambda: math_ops.reduce_logsumexp(x)
@@ -894,6 +898,16 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_tf_reduce_logsumexp_GPU_async_defun(self):
     self._benchmark_tf_reduce_logsumexp(
         device=GPU, execution_mode=context.ASYNC, defunc=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, defunc=True, xla_compile=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_async_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC, defunc=True, xla_compile=True)
 
   def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
     with context.device(device):
@@ -1355,6 +1369,47 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmarkTenResourceReadsInCondInInnerFunc(self):
     self._benchmarkResourceReadsInCondInInnerFunc(10)
+
+  def benchmark_tf_name_scope(self):
+
+    def fn():
+      with ops.name_scope_v2("name"):
+        pass
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_nest_map_structure(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+
+    def fn():
+      nest.map_structure(lambda x: x, nested)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_nest_pack_sequence_as(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+    flat = nest.flatten(nested)
+
+    def fn():
+      nest.pack_sequence_as(nested, flat)
+
+    self._run(fn, 10000)
+
+  # TODO(b/157587712): Move to keras when benchmarks are setup.
+  def benchmark_tf_keras_layer_call(self):
+
+    class OnlyOverheadLayer(base_layer.Layer):
+
+      def call(self, x):
+        return x
+
+    layer = OnlyOverheadLayer()
+    x = ops.convert_to_tensor([[1.]])
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
 
 
 if __name__ == "__main__":

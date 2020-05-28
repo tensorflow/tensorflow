@@ -32,29 +32,8 @@ from tensorflow.python.platform import test
 
 
 @keras_parameterized.run_all_keras_modes
-class CategoricalEncodingInputTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
-
-  def test_bucketize_with_explicit_buckets_one_hot(self):
-    input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
-
-    # pyformat: disable
-    expected_output = [[[1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [0, 1, 0, 0]],
-                       [[0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0], [0, 1, 0, 0]]]
-    # pyformat: enable
-    num_buckets = 4
-    expected_output_shape = [None, None, num_buckets]
-
-    input_data = keras.Input(shape=(None,))
-    layer = discretization.Discretization(
-        bins=[0., 1., 2.], output_mode=discretization.BINARY)
-    bucket_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=bucket_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+class DiscretizationTest(keras_parameterized.TestCase,
+                         preprocessing_test_utils.PreprocessingLayerTest):
 
   def test_bucketize_with_explicit_buckets_integer(self):
     input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
@@ -63,8 +42,7 @@ class CategoricalEncodingInputTest(
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,))
-    layer = discretization.Discretization(
-        bins=[0., 1., 2.], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -79,8 +57,7 @@ class CategoricalEncodingInputTest(
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
-    layer = discretization.Discretization(
-        bins=[-.5, 0.5, 1.5], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -94,8 +71,7 @@ class CategoricalEncodingInputTest(
         indices=indices, values=[-1.5, 1.0, 3.4], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.float32, sparse=True)
-    layer = discretization.Discretization(
-        bins=[-.5, 0.5, 1.5], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
@@ -111,8 +87,7 @@ class CategoricalEncodingInputTest(
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True)
-    layer = discretization.Discretization(
-        bins=[0., 1., 2.], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -128,8 +103,7 @@ class CategoricalEncodingInputTest(
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
-    layer = discretization.Discretization(
-        bins=[-.5, 0.5, 1.5], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -143,8 +117,7 @@ class CategoricalEncodingInputTest(
         indices=indices, values=[-1, 1, 3], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32, sparse=True)
-    layer = discretization.Discretization(
-        bins=[-.5, 0.5, 1.5], output_mode=discretization.INTEGER)
+    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
