@@ -6,7 +6,6 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = ["buffer-assignment.mlir"],  # TODO(b/157616173)
     test_file_exts = ["mlir"],
 )
 

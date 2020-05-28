@@ -203,12 +203,12 @@ func @moving_alloc_and_inserting_missing_dealloc(%cond : i1, %arg0 : memref<2xf3
     "buffer_assignment_test.unary_lowered"(%arg0, %1) : (memref<2xf32>, memref<2xf32>) -> ()
     br ^exit(%1 : memref<2xf32>)
   ^exit(%arg2: memref<2xf32>):
-    "bufer_assignment_test.copy"(%arg2, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
+    "buffer_assignment_test.copy"(%arg2, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
     return
 }
 // CHECK-NEXT: %[[FIRST_ALLOC:.*]] = alloc()
 // CHECK-NEXT: %[[SECOND_ALLOC:.*]] = alloc()
-//      CHECK: "bufer_assignment_test.copy"
+//      CHECK: "buffer_assignment_test.copy"
 // CHECK-NEXT: dealloc
 // CHECK-NEXT: dealloc
 // CHECK-NEXT: return
@@ -226,11 +226,11 @@ func @moving_invalid_dealloc_op_complex(%cond : i1, %arg0 : memref<2xf32>, %arg1
     dealloc %1 : memref<2xf32>
     br ^exit(%1 : memref<2xf32>)
   ^exit(%arg2: memref<2xf32>):
-    "bufer_assignment_test.copy"(%arg2, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
+    "buffer_assignment_test.copy"(%arg2, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
     return
 }
 // CHECK-NEXT: %[[ALLOC:.*]] = alloc()
-//      CHECK: bufer_assignment_test.copy
+//      CHECK: buffer_assignment_test.copy
 // CHECK-NEXT: dealloc
 // CHECK-NEXT: return
 
@@ -240,10 +240,10 @@ func @moving_invalid_dealloc_op_complex(%cond : i1, %arg0 : memref<2xf32>, %arg1
 func @inserting_missing_dealloc_simple(%arg0 : memref<2xf32>, %arg1: memref<2xf32>){
     %0 = alloc() : memref<2xf32>
     "buffer_assignment_test.unary_lowered"(%arg0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-    "bufer_assignment_test.copy"(%0, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
+    "buffer_assignment_test.copy"(%0, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
     return
 }
-//      CHECK: bufer_assignment_test.copy
+//      CHECK: buffer_assignment_test.copy
 // CHECK-NEXT: dealloc
 
 // -----
@@ -253,8 +253,8 @@ func @moving_invalid_dealloc_op(%arg0 : memref<2xf32>, %arg1: memref<2xf32>){
     %0 = alloc() : memref<2xf32>
     "buffer_assignment_test.unary_lowered"(%arg0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
     dealloc %0 : memref<2xf32>
-    "bufer_assignment_test.copy"(%0, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
+    "buffer_assignment_test.copy"(%0, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
     return
 }
-//      CHECK: bufer_assignment_test.copy
+//      CHECK: buffer_assignment_test.copy
 // CHECK-NEXT: dealloc
