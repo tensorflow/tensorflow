@@ -11540,6 +11540,21 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// Return the index of device the op runs.
+func DeviceIndex(scope *Scope, device_names []string) (index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"device_names": device_names}
+	opspec := tf.OpSpec{
+		Type: "DeviceIndex",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ShardDatasetAttr is an optional argument to ShardDataset.
 type ShardDatasetAttr func(optionalAttr)
 
