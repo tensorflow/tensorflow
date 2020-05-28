@@ -205,8 +205,14 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<xla_hlo::ReduceOp> {
         entry_block.getArgument(original_arg_count).getType());
     // Remove the old arguments.
     for (int i = original_arg_count - 1; i >= 0; --i) {
-      entry_block.eraseArgument(i);
+//      entry_block.eraseArgument(i);
+      entry_block.eraseArgument(2*original_arg_count -1);
     }
+
+    Operation* oper = entry_block.getTerminator();
+    oper->dump();
+    rewriter.replaceOpWithNewOp<xla_lhlo::TerminatorOp>(oper);
+		    
     // Insert terminator at the end.
     rewriter.setInsertionPointToEnd(&entry_block);
     rewriter.create<xla_lhlo::TerminatorOp>(loc);
